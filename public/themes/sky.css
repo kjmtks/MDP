@@ -1,0 +1,113 @@
+/*-------------------------------------------------*/
+:root{
+  --accent-color: #3b82f6;
+}
+
+.slide-content {
+  background-color: white;
+  color: black;
+  font-size: 24px;
+  box-sizing: border-box;
+}
+
+.slide-content h1 {
+  font-size: 2.5em;
+  margin: 0 0 0.25em 0;
+  border-bottom: 3px solid var(--accent-color);
+}
+
+.slide-content h2 {
+  font-size: 1.8em;
+  margin: 0 0 0.25em 0;
+  border-bottom: 1.5px solid var(--accent-color);
+}
+
+.slide-content h3 {
+  font-size: 1.2em;
+  margin: 0 0 0.25em 0;
+  border-bottom: 1px dashed var(--accent-color);
+}
+
+
+.slide-content ul, 
+.slide-content ol {
+  margin: 0.5em 0;
+  padding-left: 1.5em;
+}
+
+.slide-content li {
+  margin-bottom: 0.3em;
+}
+
+.slide-content img {
+  max-width: 100%;
+  max-height: 500px;
+  object-fit: contain;
+  display: block;
+  margin: 10px auto;
+}
+
+/* 引用 */
+.slide-content blockquote {
+  border-left: 8px solid var(--accent-color);;
+  padding-left: 20px;
+  margin: 0.5em 0;
+  color: black;
+  font-style: italic;
+}
+
+
+
+.slide-content.newsection {
+  background-color: var(--accent-color);
+  color: white;
+}
+.slide-content.newsection h1 {
+  color: white;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.slide-content.cover {
+  border-left: 20px solid var(--accent-color);
+}
+
+
+/* ---------------------------- */
+
+:root {
+  --chat-bubble-color: #c6dcfe;
+}
+.chat {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 18px;
+}
+.avatar {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  border: 4px solid var(--accent-color);
+  object-fit: cover;
+  display: block;
+}
+.bubble {
+  margin: 14px 0;
+  position: relative;
+  max-width: 60ch;
+  padding: 10px 14px;
+  background: var(--chat-bubble-color);
+  border-radius: 12px;
+  line-height: 1.6;
+  min-height: calc(64px - 2*12px);
+  display: flex;
+  align-items: center;
+}
+.bubble::before {
+  content: "";
+  position: absolute;
+  top: 24px;
+  left: -10px;
+  border-width: 6px 12px 6px 0;
+  border-style: solid;
+  border-color: transparent var(--chat-bubble-color) transparent transparent;
+}

@@ -1,0 +1,46 @@
+﻿[
+  {
+    "category": "New Slides",
+    "items": [
+      { "label": "Normal Slide", "text": "\n---\n# Title\n", "description": "Insert new normal slide" },
+      { "label": "New Section Slide", "text": "\n---\n<!-- @pageclass newsection -->\n# New Section\n* Message\n", "description": "Insert new new section slide" },
+      { "label": "New Cover Slide", "text": "\n---\n<!-- @cover -->\n", "description": "Insert cover slide" }
+    ]
+  },
+  {
+    "category": "Structure",
+    "items": [
+      { "label": "Code Block", "text": "\n```lang:name {1,2-3} start=1\ncode\n```\n", "description": "Insert code block" },
+      { "label": "Math Block", "text": "\n\\[\n  x = y^2\n\\]\n", "description": "Insert display math" },
+      { "label": "Multi Column", "text": "\n<!-- @begin multicolumn 1:1 -->\n\n<!-- @nextcolumn -->\n\n<!-- @end multicolumn -->\n", "description": "Insert multicolumn" },
+      { "label": "Hidden Slide", "text": "\n<!-- @hide -->\n", "description": "Set the slide to be hidden" }
+    ]
+  },
+  {
+    "category": "Elements",
+    "items": [
+      { "label": "Image", "text": "\n<!-- @caption caption -->\n![](/vite.svg)", "description": "Insert image" },
+      { "label": "Table", "text": "\n<!-- @caption caption -->\n| A | B |\n|---|---|\n| 1 | 2 |\n", "description": "Insert table" },
+      { "label": "Link", "text": "[Label](url)", "description": "Insert link" },
+      { "label": "Note", "text": "\n<!-- @note: note -->\n", "description": "Insert speaker note" }
+    ]
+  },
+  {
+    "category": "Math Symbols",
+    "items": [
+      { "label": "Fraction", "text": "\\frac{a}{b}" },
+      { "label": "Sum", "text": "\\sum_{i=0}^{n}" },
+      { "label": "Integral", "text": "\\int_{a}^{b}" },
+      { "label": "Matrix", "text": "\\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}" }
+    ]
+  },
+  {
+    "category": "Formatting",
+    "items": [
+      { "label": "Bold", "text": "**text**" },
+      { "label": "Italic", "text": "*text*" },
+      { "label": "Strike", "text": "~~text~~" },
+      { "label": "List", "text": "\n- Item 1\n- Item 2\n" }
+    ]
+  }
+]
