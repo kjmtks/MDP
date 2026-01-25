@@ -357,7 +357,3 @@ blockquote.chat-message::after {
   border-style: solid;
   border-color: transparent var(--chat-message-bubble-color) transparent transparent;
 }
-blockquote.chat-message p, blockquote.chat-message span {
-  padding: 0;
-  margin: 0;
-}
