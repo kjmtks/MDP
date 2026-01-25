@@ -47,15 +47,9 @@
   margin: 10px auto;
 }
 
-/* 引用 */
 .slide-content blockquote {
-  border-left: 8px solid var(--accent-color);;
-  padding-left: 20px;
-  margin: 0.5em 0;
-  color: black;
-  font-style: italic;
+  border-left: 8px solid var(--accent-color);
 }
-
 
 
 .slide-content.newsection {
@@ -71,43 +65,10 @@
   border-left: 20px solid var(--accent-color);
 }
 
-
-/* ---------------------------- */
-
 :root {
-  --chat-bubble-color: #c6dcfe;
+  --chat-message-bubble-color: #c6dcfe;
+  --chat-message-accent-color: #3b82f6;
 }
-.chat {
-  display: inline-flex;
-  align-items: flex-start;
-  gap: 18px;
-}
-.avatar {
-  width: 64px;
-  height: 64px;
-  border-radius: 50%;
-  border: 4px solid var(--accent-color);
-  object-fit: cover;
-  display: block;
-}
-.bubble {
-  margin: 14px 0;
-  position: relative;
-  max-width: 60ch;
-  padding: 10px 14px;
-  background: var(--chat-bubble-color);
-  border-radius: 12px;
-  line-height: 1.6;
-  min-height: calc(64px - 2*12px);
-  display: flex;
-  align-items: center;
-}
-.bubble::before {
-  content: "";
-  position: absolute;
-  top: 24px;
-  left: -10px;
-  border-width: 6px 12px 6px 0;
-  border-style: solid;
-  border-color: transparent var(--chat-bubble-color) transparent transparent;
+blockquote.chat-message {
+  border-left: 0;
 }

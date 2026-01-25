@@ -43,5 +43,11 @@
       { "label": "Strike", "text": "~~text~~" },
       { "label": "List", "text": "\n- Item 1\n- Item 2\n" }
     ]
+  },
+  {
+    "category": "Component",
+    "items": [
+      { "label": "Chat Message", "text": "\n<!-- @addclass blockquote chat-message -->\n<!-- @addstyle blockquote --avatar: url('https://2.gravatar.com/avatar/0cf8ed5976c8ccffa72fd147284fa714d869efa2fa8bdf0d0196affc4f49af5e') -->\n> Chat Message\n" }
+    ]
   }
 ]
