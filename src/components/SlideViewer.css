@@ -30,7 +30,6 @@
 .slide-content img {
   object-fit: contain;
   display: block;
-  margin: 10px auto;
 }
 .slide-content blockquote {
   border-left: 8px solid #ccc;
@@ -261,6 +260,8 @@
   align-items: center;
   justify-content: center;
   width: 100%;
+  padding: 0;
+  margin: 0;
 }
 .slide-content-wrapper figcaption {
   font-size: 0.9em;
