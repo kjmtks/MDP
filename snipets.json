@@ -19,6 +19,7 @@
   {
     "category": "Elements",
     "items": [
+      { "label": "Draw.io Image", "text": "\n<!-- @caption caption -->\n![@drawio]()", "description": "Insert Draw.io image" },
       { "label": "Image", "text": "\n<!-- @caption caption -->\n![](/vite.svg)", "description": "Insert image" },
       { "label": "Table", "text": "\n<!-- @caption caption -->\n| A | B |\n|---|---|\n| 1 | 2 |\n", "description": "Insert table" },
       { "label": "Link", "text": "[Label](url)", "description": "Insert link" },

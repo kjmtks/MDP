@@ -9,9 +9,12 @@ import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import { Panel, Group, Separator } from 'react-resizable-panels';
 import { Box, Tabs, Tab, Typography, Button, Stack, Tooltip, List, ListItem, ListItemButton, ListItemText, ListSubheader, Divider } from '@mui/material';
 import CodeMirror, { ViewUpdate } from '@uiw/react-codemirror';
-import type { ReactCodeMirrorRef } from '@uiw/react-codemirror';
+import type { DecorationSet, ReactCodeMirrorRef } from '@uiw/react-codemirror';
 import { markdown as markdownLang } from '@codemirror/lang-markdown';
-import { EditorView, keymap } from '@codemirror/view';
+import { EditorView, keymap, Decoration, ViewPlugin, WidgetType } from '@codemirror/view';
+import { RangeSetBuilder } from '@codemirror/state';
+
+import { DrawioEditor } from './components/DrawioEditor';
 
 import { splitMarkdownToBlocks, parseGlobalContext } from './utils/slideParser';
 import { useSlideGenerator } from './hooks/useSlideGenerator';
@@ -47,6 +50,107 @@ interface TabPanelProps {
   noScroll?: boolean;
 }
 type FileType = 'markdown' | 'image' | 'text' | 'binary' | 'limit-exceeded';
+
+
+class CollapseWidget extends WidgetType {
+  readonly base64: string;
+  constructor(base64: string) {
+    super();
+    this.base64 = base64;
+  }
+  eq(other: CollapseWidget) { return other.base64 === this.base64; }
+  ignoreEvent() { return true; }
+  toDOM() {
+    const wrapper = document.createElement("span");
+    wrapper.style.cssText = "display: inline-flex; align-items: center; gap: 6px; vertical-align: middle; margin: 0 4px;";
+    const textSpan = document.createElement("span");
+    textSpan.textContent = "Drawio Data (...)";
+    textSpan.style.cssText = `
+      background-color: #444;
+      color: #aaa;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 0.85em;
+      user-select: none;
+      border: 1px solid #555;
+    `;
+    const editBtn = document.createElement("button");
+    editBtn.type = "button";
+    editBtn.textContent = "Edit";
+    editBtn.className = "cm-drawio-edit-btn";
+    editBtn.dataset.base64 = this.base64;
+    editBtn.style.cssText = `
+      background-color: #1976d2;
+      color: white;
+      border: none;
+      border-radius: 3px;
+      padding: 2px 8px;
+      font-size: 0.5em;
+      cursor: pointer;
+      line-height: 1.0;
+      font-family: sans-serif;
+    `;
+    editBtn.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const event = new CustomEvent('open-drawio-editor', {
+        bubbles: true,
+        detail: { base64: this.base64, target: editBtn } 
+      });
+      window.dispatchEvent(event);
+    };
+    wrapper.appendChild(textSpan);
+    wrapper.appendChild(editBtn);
+    return wrapper;
+  }
+}
+
+const drawioCollapsePlugin = ViewPlugin.fromClass(class {
+  decorations: DecorationSet;
+  ranges: { from: number, to: number, base64: string }[] = [];
+  constructor(view: EditorView) {
+    this.ranges = this.parse(view.state.doc.toString());
+    this.decorations = this.buildDecorations(view);
+  }
+  update(update: ViewUpdate) {
+    if (update.docChanged) {
+      this.ranges = this.parse(update.state.doc.toString());
+      this.decorations = this.buildDecorations(update.view);
+    } else if (update.selectionSet || update.viewportChanged) {
+      this.decorations = this.buildDecorations(update.view);
+    }
+  }
+  parse(text: string) {
+    const ranges = [];
+    const regex = /!\[@drawio\]\(([^)]*)\)/g;
+    let match;
+    while ((match = regex.exec(text))) {
+      const from = match.index + 11;
+      const to = match.index + match[0].length - 1;
+      ranges.push({ from, to, base64: match[1] });
+    }
+    return ranges;
+  }
+  buildDecorations(view: EditorView) {
+    const builder = new RangeSetBuilder<Decoration>();
+    const { from: selFrom, to: selTo } = view.state.selection.main;
+    for (const { from, to, base64 } of this.ranges) {
+      const syntaxStart = from - 11;
+      const syntaxEnd = to + 1;
+      const isCursorInside = (selFrom >= syntaxStart && selFrom <= syntaxEnd) || 
+                             (selTo >= syntaxStart && selTo <= syntaxEnd);
+      if (!isCursorInside) {
+        builder.add(from, to, Decoration.replace({
+          widget: new CollapseWidget(base64), 
+        }));
+      }
+    }
+    return builder.finish();
+  }
+}, {
+  decorations: v => v.decorations
+});
+
 
 const determineFileType = (filename: string, isBinaryFromServer?: boolean): FileType => {
   const lower = filename.toLowerCase();
@@ -133,11 +237,14 @@ function App() {
   const [isSlideshow, setIsSlideshow] = useState(false);
   const slideshowRef = useRef<HTMLDivElement>(null);
   const [isLaserPointer, setIsLaserPointer] = useState(false);
+  const [isDrawioModalOpen, setIsDrawioModalOpen] = useState(false);
+  const [drawioEditTarget, setDrawioEditTarget] = useState<{ base64: string, lineNo: number } | null>(null);
 
   const lastWheelTime = useRef(0);
   const editorRef = useRef<ReactCodeMirrorRef>(null);
   const isSyncingFromEditor = useRef(false);
   const prevSlideIndexRef = useRef(currentSlideIndex);
+  const markdownRef = useRef(INITIAL_MARKDOWN);
 
   const baseUrl = useMemo(() => {
     if (!currentFileName) return '/files/';
@@ -262,6 +369,11 @@ function App() {
       .then(data => setFileTree(data))
       .catch(err => console.error("Failed to load file tree:", err));
   }, []);
+  
+  const handleManualRefresh = useCallback(() => {
+    fetchFileTree();
+    setLastUpdated(Date.now());
+  }, [fetchFileTree]);
 
   const loadFile = useCallback((fileName: string, isBinaryFromServer?: boolean, initialPage: number = 0) => {
     if (fileName.startsWith('http://') || fileName.startsWith('https://')) {
@@ -372,14 +484,33 @@ function App() {
       const originalTitle = document.title;
       document.title = "✅ Saved!";
       setTimeout(() => document.title = originalTitle, 2000);
-      setLastUpdated(Date.now());
+      if (currentFileName.endsWith('.css')) {
+        setLastUpdated(Date.now());
+      }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
       alert(`保存に失敗しました: ${err.message}`);
     }
   }, [currentFileName, markdown, currentFileType]);
 
-  
+  const handleDrawioSave = useCallback((base64Xml: string) => {
+    if (!drawioEditTarget || !editorRef.current?.view) {
+        handleInsertText(`\n![@drawio](${base64Xml})\n`);
+        return;
+    }
+    const view = editorRef.current.view;
+    const line = view.state.doc.line(drawioEditTarget.lineNo);
+    const newText = `![@drawio](${base64Xml})`;
+    view.dispatch({
+      changes: { from: line.from, to: line.to, insert: newText }
+    });
+    const newDoc = view.state.doc.toString();
+    setMarkdown(newDoc);
+    markdownRef.current = newDoc;
+  }, [drawioEditTarget, handleInsertText]);
+
+
+
   useEffect(() => {
     const handleFullscreenChange = () => {
       if (!document.fullscreenElement) {
@@ -439,6 +570,7 @@ function App() {
       .then(res => res.text())
       .then(text => setTemplateContent(text))
       .catch(err => console.error("Failed to load template:", err));
+      
     const params = new URLSearchParams(window.location.search);
     const fileUrl = params.get('file');
     if (fileUrl) {
@@ -454,7 +586,6 @@ function App() {
         ws.onmessage = (event) => {
           if (event.data === 'file-change') {
             fetchFileTree();
-            setLastUpdated(Date.now());
           }
         };
         ws.onclose = () => setTimeout(connectWs, 5000);
@@ -469,6 +600,35 @@ function App() {
   const saveKeymap = useMemo(() => {
     return keymap.of([{ key: "Mod-s", run: () => { handleSave(); return true; }, preventDefault: true }]);
   }, [handleSave]);
+
+  useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const handleOpenDrawio = (e: any) => {
+      const base64 = e.detail.base64;
+      const target = e.detail.target as HTMLElement;
+      const view = editorRef.current?.view;
+      if (view && typeof base64 === 'string' && target) {
+        try {
+          const pos = view.posAtDOM(target);
+          const line = view.state.doc.lineAt(pos);
+          setDrawioEditTarget({ base64, lineNo: line.number });
+          setIsDrawioModalOpen(true);
+        } catch (err) {
+          console.error("Failed to locate widget position:", err);
+        }
+      }
+    };
+    window.addEventListener('open-drawio-editor', handleOpenDrawio);
+    return () => window.removeEventListener('open-drawio-editor', handleOpenDrawio);
+  }, []);
+
+
+  const extensions = useMemo(() => [
+      markdownLang(), 
+      EditorView.lineWrapping, 
+      saveKeymap,
+      drawioCollapsePlugin,
+  ], [saveKeymap]);
 
   useEffect(() => {
     if (currentFileType !== 'markdown') return;
@@ -497,6 +657,7 @@ function App() {
   const onEditorUpdate = useCallback((viewUpdate: ViewUpdate) => {
     if (currentFileType !== 'markdown') return;
     if (!viewUpdate.view.hasFocus) return;
+    if (slides.length === 0) return;
     if (viewUpdate.selectionSet) {
       const state = viewUpdate.state;
       const head = state.selection.main.head;
@@ -532,6 +693,12 @@ function App() {
 
   return (
     <div className="container">
+      <DrawioEditor 
+        open={isDrawioModalOpen}
+        onClose={() => setIsDrawioModalOpen(false)}
+        initialBase64Xml={drawioEditTarget?.base64}
+        onSave={handleDrawioSave}
+      />
       <div className="print-container">
         <style>{`
           @media print {
@@ -685,7 +852,7 @@ function App() {
                   <Stack direction="row" spacing={1} sx={{ p: 1, borderBottom: '1px solid #555', bgcolor: 'white' }}>
                     
                     <Tooltip title="Refresh List">
-                      <Button variant="outlined" size="small" onClick={fetchFileTree} sx={{ minWidth: '30px', px: 1, color: '#000', borderColor: '#555' }}>
+                      <Button variant="outlined" size="small" onClick={handleManualRefresh} sx={{ minWidth: '30px', px: 1, color: '#000', borderColor: '#555' }}>
                         <RefreshIcon fontSize="small" />
                       </Button>
                     </Tooltip>
@@ -790,7 +957,7 @@ function App() {
                                 value={editorInitialValue}
                                 height="100%"
                                 className="full-height-editor"
-                                extensions={[markdownLang(), EditorView.lineWrapping, saveKeymap]}
+                                extensions={extensions}
                                 onChange={onChangeEditor}
                                 onUpdate={onEditorUpdate}
                                 theme="dark"

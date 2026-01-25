@@ -214,8 +214,16 @@ export const slideRenderer = (context: SlideContext, baseUrl: string = "", lastU
     
   },
 
-  image({ href, title, text }) {
+  image({ href, title, text }) {    
     let cleanHref = href || '';
+    if (text === '@drawio') {
+      const content = href || "";
+      const cleanContent = content.replace(/[\r\n\s]/g, '');
+      baseUrl = "";
+      cleanHref = cleanContent;
+      text = "";
+      lastUpdated = 0;
+    }
     if (baseUrl && !cleanHref.match(/^(https?:|\/|data:)/)) {
       cleanHref = `${baseUrl}${cleanHref}`;
     }
@@ -223,11 +231,9 @@ export const slideRenderer = (context: SlideContext, baseUrl: string = "", lastU
       const separator = cleanHref.includes('?') ? '&' : '?';
       cleanHref = `${cleanHref}${separator}_t=${lastUpdated}`;
     }
-
     const attrs = getAttributesAndClear(context, 'img');
     const titleAttr = title ? ` title="${title}"` : '';
     const altAttr = text ? ` alt="${text}"` : '';
-    
     const caption = context.caption;
     if (caption) {
       delete context.caption;

@@ -14,6 +14,7 @@ if (!fs.existsSync(targetDir)) {
 
 app.use(express.json({ limit: '10mb' }));
 app.use('/files', express.static(targetDir));
+app.use('/drawio', express.static(path.join(__dirname, 'drawio')));
 app.use(express.static(path.join(__dirname, 'dist')));
 
 const isBinaryFile = (filePath) => {

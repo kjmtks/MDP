@@ -15,6 +15,10 @@ export default defineConfig({
       '/files': {
         target: 'http://localhost:3000',
         changeOrigin: true,
+      },
+      '/drawio': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
       }
     }
   }
