@@ -53,12 +53,8 @@ type FileType = 'markdown' | 'image' | 'text' | 'binary' | 'limit-exceeded';
 
 
 class CollapseWidget extends WidgetType {
-  readonly base64: string;
-  constructor(base64: string) {
-    super();
-    this.base64 = base64;
-  }
-  eq(other: CollapseWidget) { return other.base64 === this.base64; }
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  eq(_other: CollapseWidget) { return true; }
   ignoreEvent() { return true; }
   toDOM() {
     const wrapper = document.createElement("span");
@@ -78,7 +74,6 @@ class CollapseWidget extends WidgetType {
     editBtn.type = "button";
     editBtn.textContent = "Edit";
     editBtn.className = "cm-drawio-edit-btn";
-    editBtn.dataset.base64 = this.base64;
     editBtn.style.cssText = `
       background-color: #1976d2;
       color: white;
@@ -95,7 +90,7 @@ class CollapseWidget extends WidgetType {
       e.stopPropagation();
       const event = new CustomEvent('open-drawio-editor', {
         bubbles: true,
-        detail: { base64: this.base64, target: editBtn } 
+        detail: { target: editBtn } 
       });
       window.dispatchEvent(event);
     };
@@ -107,41 +102,44 @@ class CollapseWidget extends WidgetType {
 
 const drawioCollapsePlugin = ViewPlugin.fromClass(class {
   decorations: DecorationSet;
-  ranges: { from: number, to: number, base64: string }[] = [];
+  ranges: { from: number, to: number }[] = [];
   constructor(view: EditorView) {
-    this.ranges = this.parse(view.state.doc.toString());
-    this.decorations = this.buildDecorations(view);
+    this.ranges = this.scan(view);
+    this.decorations = this.build(view);
   }
   update(update: ViewUpdate) {
     if (update.docChanged) {
-      this.ranges = this.parse(update.state.doc.toString());
-      this.decorations = this.buildDecorations(update.view);
-    } else if (update.selectionSet || update.viewportChanged) {
-      this.decorations = this.buildDecorations(update.view);
+      this.ranges = this.scan(update.view);
+    }
+    if (update.docChanged || update.viewportChanged || update.selectionSet) {
+      this.decorations = this.build(update.view);
     }
   }
-  parse(text: string) {
-    const ranges = [];
-    const regex = /!\[@drawio\]\(([^)]*)\)/g;
+  scan(view: EditorView) {
+    const found = [];
+    const text = view.state.doc.toString();
+    const regex = /!\[@drawio\]\([^)]*\)/g;
     let match;
     while ((match = regex.exec(text))) {
-      const from = match.index + 11;
-      const to = match.index + match[0].length - 1;
-      ranges.push({ from, to, base64: match[1] });
+      const start = match.index;
+      const length = match[0].length;
+      const from = start + 11;
+      const to = start + length - 1;
+      found.push({ from, to });
     }
-    return ranges;
+    return found;
   }
-  buildDecorations(view: EditorView) {
+  build(view: EditorView) {
     const builder = new RangeSetBuilder<Decoration>();
     const { from: selFrom, to: selTo } = view.state.selection.main;
-    for (const { from, to, base64 } of this.ranges) {
+    for (const { from, to } of this.ranges) {
       const syntaxStart = from - 11;
       const syntaxEnd = to + 1;
       const isCursorInside = (selFrom >= syntaxStart && selFrom <= syntaxEnd) || 
                              (selTo >= syntaxStart && selTo <= syntaxEnd);
       if (!isCursorInside) {
         builder.add(from, to, Decoration.replace({
-          widget: new CollapseWidget(base64), 
+          widget: new CollapseWidget(),
         }));
       }
     }
@@ -604,15 +602,19 @@ function App() {
   useEffect(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const handleOpenDrawio = (e: any) => {
-      const base64 = e.detail.base64;
-      const target = e.detail.target as HTMLElement;
+      const target = e.detail.target as HTMLElement; 
       const view = editorRef.current?.view;
-      if (view && typeof base64 === 'string' && target) {
+      if (view && target) {
         try {
           const pos = view.posAtDOM(target);
           const line = view.state.doc.lineAt(pos);
-          setDrawioEditTarget({ base64, lineNo: line.number });
-          setIsDrawioModalOpen(true);
+          const text = line.text;
+          const match = text.match(/!\[@drawio\]\(([^)]*)\)/);
+          if (match) {
+             const base64 = match[1];
+             setDrawioEditTarget({ base64, lineNo: line.number });
+             setIsDrawioModalOpen(true);
+          }
         } catch (err) {
           console.error("Failed to locate widget position:", err);
         }
@@ -621,7 +623,6 @@ function App() {
     window.addEventListener('open-drawio-editor', handleOpenDrawio);
     return () => window.removeEventListener('open-drawio-editor', handleOpenDrawio);
   }, []);
-
 
   const extensions = useMemo(() => [
       markdownLang(), 
