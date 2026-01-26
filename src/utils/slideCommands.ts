@@ -28,6 +28,15 @@ export const parseCommand = (input: string): CommandResult | null => {
   if (matchMeta) {
     return { type: 'META', scope: 'GLOBAL', params: { key: matchMeta[1], value: matchMeta[2] } };
   }
+  const matchHeader = text.match(/^@header\s*([\s\S]*)$/);
+  if (matchHeader) {
+    return { type: 'HEADER', scope: 'GLOBAL', params: matchHeader[1].trim() };
+  }
+  const matchFooter = text.match(/^@footer\s*([\s\S]*)$/);
+  if (matchFooter) {
+    return { type: 'FOOTER', scope: 'GLOBAL', params: matchFooter[1].trim() };
+  }
+
   const matchCaption = text.match(/^@caption\s+(.*)$/);
   if (matchCaption) {
     return { type: 'CAPTION', scope: 'LOCAL', params: matchCaption[1] };

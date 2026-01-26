@@ -9,6 +9,8 @@ interface SlideViewProps {
   slideSize: { width: number; height: number };
   style?: React.CSSProperties;
   className?: string;
+  header?: string;
+  footer?: string;
 }
 
 export const SlideView: React.FC<SlideViewProps> = memo(({ 
@@ -18,7 +20,9 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
   isEnabledPointerEvents = true,
   slideSize,
   style,
-  className = '' 
+  className = '',
+  header,
+  footer,
 }) => {
   return (
     <div 
@@ -41,11 +45,17 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
         } as React.CSSProperties)
       }}
     >
+      {header && (
+        <div className="slide-header" dangerouslySetInnerHTML={{ __html: header }} />
+      )}
       <div 
         className={`slide-content ${className}`} 
         dangerouslySetInnerHTML={{ __html: html }} 
         style={{ width: '100%', height: '100%' }}
       />
+      {footer && (
+        <div className="slide-footer" dangerouslySetInnerHTML={{ __html: footer }} />
+      )}
       {pageNumber && (
         <div className="slide-page-number">
           {pageNumber}

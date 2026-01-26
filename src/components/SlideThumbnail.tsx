@@ -5,9 +5,11 @@ type ContentProps = {
   htmlContent: string;
   slideSize: { width: number; height: number };
   className?: string;
+  header?: string;
+  footer?: string;
 };
 
-const ThumbnailContent = React.memo<ContentProps>(({ htmlContent, slideSize, className }) => {
+const ThumbnailContent = React.memo<ContentProps>(({ htmlContent, slideSize, className, header, footer }) => {
   return (
     <div className="thumbnail-frame">
       <SlideScaler width={1280} height={720}>
@@ -16,6 +18,8 @@ const ThumbnailContent = React.memo<ContentProps>(({ htmlContent, slideSize, cla
           isActive={true}
           className={className}
           slideSize={slideSize}
+          header={header}
+          footer={footer}
           isEnabledPointerEvents={false}
         />
       </SlideScaler>
@@ -32,9 +36,11 @@ type Props = {
   pageNumber?: number | null;
   isHidden: boolean;
   isCover: boolean;
+  header?: string;
+  footer?: string;
 };
 
-export const SlideThumbnail: React.FC<Props> = ({ htmlContent, slideSize, className, isActive, onClick, pageNumber, isHidden, isCover }) => {
+export const SlideThumbnail: React.FC<Props> = ({ htmlContent, slideSize, className, isActive, onClick, pageNumber, isHidden, isCover, header, footer }) => {
   return (
     <div 
       className={`thumbnail-wrapper ${isActive ? 'active' : ''}`}
@@ -49,7 +55,7 @@ export const SlideThumbnail: React.FC<Props> = ({ htmlContent, slideSize, classN
       {isCover && (
         <div className="thumbnail-cover"></div>
       )}
-      <ThumbnailContent htmlContent={htmlContent} slideSize={slideSize} className={className} />
+      <ThumbnailContent htmlContent={htmlContent} slideSize={slideSize} className={className} header={header} footer={footer} />
     </div>
   );
 };

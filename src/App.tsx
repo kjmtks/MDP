@@ -788,6 +788,8 @@ function App() {
                 className={slide.className}
                 isActive={true}
                 slideSize={slideSize}
+                header={slide.header}
+                footer={slide.footer}
               />
             </div>
           )
@@ -809,6 +811,8 @@ function App() {
                   isActive={true}
                   slideSize={slideSize}
                   isEnabledPointerEvents={!isLaserPointer}
+                  header={slides[currentSlideIndex].header}
+                  footer={slides[currentSlideIndex].footer}
                 />
               )}
             </SlideScaler>
@@ -945,6 +949,8 @@ function App() {
                   isCover={slide.isCover}
                   isHidden={slide.isHidden}
                   pageNumber={slide.pageNumber}
+                  header={slide.header}
+                  footer={slide.footer}
                 />
               </div>
             </div>
@@ -976,6 +982,8 @@ function App() {
                               isCover={slide.isCover}
                               isHidden={slide.isHidden}
                               pageNumber={slide.pageNumber}
+                              header={slide.header}
+                              footer={slide.footer}
                             />
                           </div>
                         ))}
@@ -1044,6 +1052,8 @@ function App() {
                               isActive={index === currentSlideIndex}
                               slideSize={slideSize}
                               isEnabledPointerEvents={true}
+                              header={slide.header}
+                              footer={slide.footer}
                             />
                           ))}
                         </SlideScaler>

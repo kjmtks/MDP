@@ -311,7 +311,39 @@
   background-color: #f9fafb;
 }
 
-
+.slide-header {
+  position: absolute;
+  top: 25px;
+  right: 25px;
+  left: auto;
+  width: auto;
+  color: #c62828;
+  font-weight: 900;
+  font-size: 1rem;
+  letter-spacing: 0.1em;
+  border: 4px double #c62828;
+  padding: 4px 12px;
+  border-radius: 4px;
+  background-color: rgba(255, 255, 255, 0.8);
+  z-index: 20;
+  pointer-events: none;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+.slide-footer {
+  position: absolute;
+  bottom: 12px;
+  left: 40px;
+  right: 80px;
+  font-size: 0.65rem;
+  color: black;
+  line-height: 1.3;
+  text-align: left;
+  border-top: 1px solid #ddd;
+  padding-top: 4px;
+  z-index: 20;
+  white-space: pre-wrap; 
+  word-wrap: break-word;
+}
 
 /* ----------------------------
  * Chat Message

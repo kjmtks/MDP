@@ -12,6 +12,8 @@ export interface SlideContext {
   aspectRatio: [number, number];
   meta: SlideContextMeta;
   themeCss?: string;
+  header?: string;
+  footer?: string;
   caption?: string;
   pageClass?: string;
   columnsRatio?: number[];

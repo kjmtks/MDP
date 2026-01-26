@@ -22,8 +22,7 @@
       { "label": "Draw.io Image", "text": "\n<!-- @caption caption -->\n![@drawio]()", "description": "Insert Draw.io image" },
       { "label": "Image", "text": "\n<!-- @caption caption -->\n![](/vite.svg)", "description": "Insert image" },
       { "label": "Table", "text": "\n<!-- @caption caption -->\n| A | B |\n|---|---|\n| 1 | 2 |\n", "description": "Insert table" },
-      { "label": "Link", "text": "[Label](url)", "description": "Insert link" },
-      { "label": "Note", "text": "\n<!-- @note: note -->\n", "description": "Insert speaker note" }
+      { "label": "Link", "text": "[Label](url)", "description": "Insert link" }
     ]
   },
   {
@@ -45,7 +44,15 @@
     ]
   },
   {
-    "category": "Component",
+    "category": "Meta",
+    "items": [
+      { "label": "Note", "text": "\n<!-- @note:\nnote\n-->\n", "description": "Insert speaker note" },
+      { "label": "Header", "text": "\n<!-- @header CONFIDENTIAL -->\n", "description": "Insert header" },
+      { "label": "Footer", "text": "\n<!-- @footer footer -->\n", "description": "Insert footer" }
+    ]
+  },
+  {
+    "category": "Components",
     "items": [
       { "label": "Chat Message", "text": "\n<!-- @addclass blockquote chat-message -->\n<!-- @addstyle blockquote --avatar: url('https://2.gravatar.com/avatar/0cf8ed5976c8ccffa72fd147284fa714d869efa2fa8bdf0d0196affc4f49af5e') -->\n> Chat Message\n" }
     ]

@@ -23,6 +23,8 @@ export interface SlideData {
   raw: string;
   className: string;
   range: { startLine: number; endLine: number };
+  header?: string;
+  footer?: string;
 }
 
 export const splitMarkdownToBlocks = (markdown: string): RawBlock[] => {
@@ -64,10 +66,21 @@ export const parseGlobalContext = (preambleRaw: string): SlideContext => {
   return context;
 };
 
+const renderInlineMarkdown = (text: string): string => {
+  if (!text) return "";
+  const texText = text
+      .replace(/\\\[([\s\S]*?)\\\]/g, '$$$$$1$$$$')
+      .replace(/\\\(([\s\S]*?)\\\)/g, '$$$1$$');
+  return marked.parseInline(texText) as string;
+};
+
 export const renderSlideHTML = (block: RawBlock, globalContext: SlideContext, pageIndex: number, baseUrl: string, lastUpdated: number): SlideData => {
   let slideMarkdown = block.rawContent;
   const extractedNotes: string[] = [];
   let pageClassName = "normal";
+  let localHeader: string | undefined = undefined;
+  let localFooter: string | undefined = undefined;
+
   const noteRegex = /<!--\s*@note:\s*([\s\S]*?)\s*-->/g;
   slideMarkdown = slideMarkdown.replace(noteRegex, (_, noteContent) => {
     extractedNotes.push(noteContent.trim());
@@ -82,6 +95,17 @@ export const renderSlideHTML = (block: RawBlock, globalContext: SlideContext, pa
   if (/<!--\s*@cover\s*-->/.test(slideMarkdown)) {
     pageClassName = 'cover';
   }
+  const headerMatch = slideMarkdown.match(/<!--\s*@header\s*([\s\S]*?)\s*-->/);
+  if (headerMatch) {
+    localHeader = headerMatch[1].trim();
+    slideMarkdown = slideMarkdown.replace(headerMatch[0], "");
+  }
+  const footerMatch = slideMarkdown.match(/<!--\s*@footer\s*([\s\S]*?)\s*-->/);
+  if (footerMatch) {
+    localFooter = footerMatch[1].trim();
+    slideMarkdown = slideMarkdown.replace(footerMatch[0], "");
+  }
+
   slideMarkdown = slideMarkdown
     .replace(/\\\[([\s\S]*?)\\\]/g, '$$$$$1$$$$') 
     .replace(/\\\(([\s\S]*?)\\\)/g, '$$$1$$');
@@ -108,12 +132,20 @@ export const renderSlideHTML = (block: RawBlock, globalContext: SlideContext, pa
     gfm: true,
     async: false
   }) as string : "";
+
+  const finalHeaderRaw = localHeader !== undefined ? localHeader : globalContext.header;
+  const finalFooterRaw = localFooter !== undefined ? localFooter : globalContext.footer;
+  const finalHeader = finalHeaderRaw ? renderInlineMarkdown(finalHeaderRaw) : undefined;
+  const finalFooter = finalFooterRaw ? renderInlineMarkdown(finalFooterRaw) : undefined;
+
   return {
     html: slideHtml,
     noteHtml: noteHtml,
     raw: block.rawContent,
     range: { startLine: block.startLine, endLine: block.endLine },
-    className: pageClassName
+    className: pageClassName,
+    header: finalHeader,
+    footer: finalFooter
   };
 };
 
@@ -133,6 +165,12 @@ const applyGlobalCommands = (text: string, context: SlideContext) => {
         const { key, value } = command.params;
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (context.meta as any)[key] = value;
+      }
+      else if (command.type === 'HEADER') {
+        context.header = command.params as string;
+      }
+      else if (command.type === 'FOOTER') {
+        context.footer = command.params as string;
       }
     }
   }
