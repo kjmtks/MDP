@@ -823,7 +823,8 @@ function App() {
         alignItems: 'center', 
         padding: '0 1rem',
         gap: '1rem',
-        height: '40px' 
+        height: '40px',
+        maxHeight: '40px'
       }}>
         
         <div style={{ 
