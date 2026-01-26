@@ -824,7 +824,8 @@ function App() {
         padding: '0 1rem',
         gap: '1rem',
         height: '40px',
-        maxHeight: '40px'
+        maxHeight: '40px',
+        minHeight: '40px'
       }}>
         
         <div style={{ 
