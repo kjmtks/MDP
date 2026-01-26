@@ -853,7 +853,7 @@ function App() {
             </span>
           </Tooltip>
 
-          <Tooltip title="Start Slideshow (F5)">
+          <Tooltip title="Start Slideshow">
             <span>
               <Button 
                 variant="text" 
