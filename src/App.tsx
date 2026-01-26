@@ -6,6 +6,7 @@ import NoteAddIcon from '@mui/icons-material/NoteAdd';
 import CreateNewFolderIcon from '@mui/icons-material/CreateNewFolder';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import PresentToAllIcon from '@mui/icons-material/PresentToAll';
+import GridViewIcon from '@mui/icons-material/GridView';
 
 import { Panel, Group, Separator } from 'react-resizable-panels';
 import { Box, Tabs, Tab, Typography, Button, Stack, Tooltip, List, ListItem, ListItemButton, ListItemText, ListSubheader, Divider } from '@mui/material';
@@ -237,6 +238,7 @@ function App() {
   const [leftTabIndex, setLeftTabIndex] = useState(0);
   const [bottomTabIndex, setBottomTabIndex] = useState(1);
   const [isSlideshow, setIsSlideshow] = useState(false);
+  const [isSlideOverview, setIsSlideOverview] = useState(false);
   const slideshowRef = useRef<HTMLDivElement>(null);
   const [isLaserPointer, setIsLaserPointer] = useState(false);
   const [isDrawioModalOpen, setIsDrawioModalOpen] = useState(false);
@@ -337,6 +339,10 @@ function App() {
       setCurrentSlideIndex(nextIndex);
     }
   }, [currentSlideIndex, slides]);
+
+  const toggleSlideOverview = useCallback(() => {
+    setIsSlideOverview(prev => !prev);
+  }, []);
 
   const moveSlideRef = useRef(moveSlide);
   useEffect(() => { moveSlideRef.current = moveSlide; }, [moveSlide]);
@@ -870,6 +876,17 @@ function App() {
               </Button>
             </span>
           </Tooltip>
+          <Tooltip title="Slide Overview">
+             <Button 
+               variant="text" 
+               size="small" 
+               onClick={toggleSlideOverview}
+               disabled={!currentFileName || currentFileType !== 'markdown'}
+               sx={{ color: isSlideOverview ? '#90caf9' : '#eee', minWidth: '40px', '&.Mui-disabled': { color: 'rgba(255, 255, 255, 0.3)' } }}
+             >
+               <GridViewIcon />
+             </Button>
+          </Tooltip>
           <Tooltip title="Print / Export PDF">
             <span>
               <Button 
@@ -892,204 +909,245 @@ function App() {
         </Stack>
       </div>
 
-      <div className="content">
-        <Group orientation="horizontal">
-          <Panel defaultSize={200} className="thumbnail-list-panel">
-            <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-              <Box sx={{ borderBottom: 1, borderColor: 'divider', flexShrink: 0 }}>
-                <Tabs value={leftTabIndex} onChange={handleLeftTabChange} variant="fullWidth">
-                  <Tab label="Thumbnail" />
-                  <Tab label="Files" />
-                </Tabs>
-              </Box>
-              <Box sx={{ flexGrow: 1, overflow: 'hidden' }}>
-                <CustomTabPanel value={leftTabIndex} index={0}>
-                  {currentFileName && currentFileType === 'markdown' ? (
-                    <div className="thumbnail-list">
-                      {slides.map((slide, index) => (
-                        <div key={index} style={{ opacity: slide.isHidden ? 0.5 : 1 }}>
-                          <SlideThumbnail
-                            htmlContent={slide.html}
-                            slideSize={slideSize}
-                            className={slide.className}
-                            isActive={index === currentSlideIndex}
-                            onClick={() => setCurrentSlideIndex(index)}
-                            isCover={slide.isCover}
-                            isHidden={slide.isHidden}
-                            pageNumber={slide.pageNumber}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <Box sx={{ p: 2, color: '#888', textAlign: 'center', fontSize: '0.8rem' }}>
-                      {currentFileName ? "Thumbnails available for Markdown only." : "No file selected."}
-                    </Box>
-                  )}
-                </CustomTabPanel>
-                <CustomTabPanel value={leftTabIndex} index={1}>
-                  <Stack direction="row" spacing={1} sx={{ p: 1, borderBottom: '1px solid #555', bgcolor: 'white' }}>
-                    
-                    <Tooltip title="Refresh List">
-                      <Button variant="outlined" size="small" onClick={handleManualRefresh} sx={{ minWidth: '30px', px: 1, color: '#000', borderColor: '#555' }}>
-                        <RefreshIcon fontSize="small" />
-                      </Button>
-                    </Tooltip>
-
-                    <Tooltip title="New File">
-                      <Button variant="outlined" size="small" onClick={() => handleCreate('file')} sx={{ minWidth: '30px', px: 1, color: '#000', borderColor: '#555' }}>
-                        <NoteAddIcon fontSize="small" />
-                      </Button>
-                    </Tooltip>
-
-                    <Tooltip title="New Folder">
-                      <Button variant="outlined" size="small" onClick={() => handleCreate('directory')} sx={{ minWidth: '30px', px: 1, color: '#000', borderColor: '#555' }}>
-                        <CreateNewFolderIcon fontSize="small" />
-                      </Button>
-                    </Tooltip>
-
-                  </Stack>
-                  <Box sx={{ p: 1, color: '#e0e0e0', fontSize: '0.9rem', overflowY: 'auto' }}>
-                    {fileTree.length > 0 ? (
-                      fileTree.map(node => (
-                        <FileTreeItem 
-                          key={node.path} 
-                          node={node} 
-                          level={0} 
-                          onSelect={(n) => loadFile(n.path, n.isBinary)} 
-                        />
-                      ))
-                    ) : (
-                      <Typography variant="body2" color="textSecondary" sx={{p:2}}>Loading...</Typography>
-                    )}
-                  </Box>
-                </CustomTabPanel>
-              </Box>
-            </Box>
-          </Panel>
-          <Separator className="resize-handle" />
-          <Panel minSize={40} className="detail-panel">
-            <Group orientation="vertical">
-                <Panel minSize={30} className="preview-panel">
-                  <div className="preview-pane" style={{ backgroundColor: '#333', display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-                    {!currentFileName ? (
-                      <EmptyState />
-                    ) : currentFileType === 'markdown' ? (
-                      <SlideScaler width={slideSize.width} height={slideSize.height}>
+      {isSlideOverview ? (
+        <div style={{
+          flex: 1,
+          overflowY: 'auto',
+          backgroundColor: '#202020',
+          padding: '2rem',
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+          gap: '2rem',
+          alignContent: 'flex-start'
+        }}>
+          {slides.map((slide, index) => (
+            <div 
+              key={index} 
+              onClick={() => { setCurrentSlideIndex(index); setIsSlideOverview(false); }}
+              style={{ 
+                cursor: 'pointer',
+                transform: index === currentSlideIndex ? 'scale(1.02)' : 'none',
+                border: index === currentSlideIndex ? '2px solid #3b82f6' : '2px solid transparent',
+                borderRadius: '6px',
+                transition: 'transform 0.1s',
+                display: slide.isHidden ? 'none' : 'auto',
+              }}
+            >
+              <div style={{ pointerEvents: 'none', background: 'white', opacity: slide.isHidden ? 0.5 : 1, }}>
+                <SlideThumbnail
+                  htmlContent={slide.html}
+                  slideSize={slideSize}
+                  className={slide.className}
+                  isActive={false}
+                  onClick={() => setCurrentSlideIndex(index)}
+                  isCover={slide.isCover}
+                  isHidden={slide.isHidden}
+                  pageNumber={slide.pageNumber}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="content">
+          <Group orientation="horizontal">
+            <Panel defaultSize={200} className="thumbnail-list-panel">
+              <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+                <Box sx={{ borderBottom: 1, borderColor: 'divider', flexShrink: 0 }}>
+                  <Tabs value={leftTabIndex} onChange={handleLeftTabChange} variant="fullWidth">
+                    <Tab label="Thumbnail" />
+                    <Tab label="Files" />
+                  </Tabs>
+                </Box>
+                <Box sx={{ flexGrow: 1, overflow: 'hidden' }}>
+                  <CustomTabPanel value={leftTabIndex} index={0}>
+                    {currentFileName && currentFileType === 'markdown' ? (
+                      <div className="thumbnail-list">
                         {slides.map((slide, index) => (
-                        <SlideView
-                            key={index}
-                            html={slide.html}
-                            pageNumber={slide.pageNumber}
-                            className={slide.className}
-                            isActive={index === currentSlideIndex}
-                            slideSize={slideSize}
-                            isEnabledPointerEvents={true}
-                          />
+                          <div key={index} style={{ opacity: slide.isHidden ? 0.5 : 1, marginBottom: '20px' }}>
+                            <SlideThumbnail
+                              htmlContent={slide.html}
+                              slideSize={slideSize}
+                              className={slide.className}
+                              isActive={index === currentSlideIndex}
+                              onClick={() => setCurrentSlideIndex(index)}
+                              isCover={slide.isCover}
+                              isHidden={slide.isHidden}
+                              pageNumber={slide.pageNumber}
+                            />
+                          </div>
                         ))}
-                      </SlideScaler>
-                    ) : currentFileType === 'image' ? (
-                      <img src={`/files/${currentFileName}`} alt={currentFileName} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+                      </div>
                     ) : (
-                      <Typography variant="body1" sx={{ color: '#888' }}>
-                        {currentFileType === 'text' ? "No preview for text files" : 
-                         currentFileType === 'limit-exceeded' ? "File too large to preview" : "Preview not available"}
-                      </Typography>
+                      <Box sx={{ p: 2, color: '#888', textAlign: 'center', fontSize: '0.8rem' }}>
+                        {currentFileName ? "Thumbnails available for Markdown only." : "No file selected."}
+                      </Box>
                     )}
-                  </div>
-                </Panel>
-                
-                <Separator className="resize-handle-row" />
-                
-                <Panel defaultSize={400}>
-                  <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-                    <Box sx={{ borderBottom: 1, borderColor: 'divider', flexShrink: 0, bgcolor: 'background.paper' }}>
-                      <Tabs value={bottomTabIndex} onChange={handleBottomTabChange}>
-                        <Tab label="Note" />
-                        <Tab label="Editor" />
-                      </Tabs>
-                    </Box>
-                    <Box sx={{ flexGrow: 1, overflow: 'hidden', bgcolor: 'white', position: 'relative' }}>
+                  </CustomTabPanel>
+                  <CustomTabPanel value={leftTabIndex} index={1}>
+                    <Stack direction="row" spacing={1} sx={{ p: 1, borderBottom: '1px solid #555', bgcolor: 'white' }}>
                       
-                      <CustomTabPanel value={bottomTabIndex} index={0}>
-                         {!currentFileName ? (
-                           <Box sx={{ p: 3, color: '#aaa', textAlign: 'center' }}>No file selected.</Box>
-                         ) : currentFileType === 'markdown' ? (
-                           <div style={{ padding: '1rem', height: '100%', overflowY: 'auto' }}>
-                              {slides[currentSlideIndex]?.noteHtml ? <div style={{ fontSize: '0.95rem', lineHeight: '1.7' }} dangerouslySetInnerHTML={{ __html: slides[currentSlideIndex].noteHtml }} /> : <Typography variant="body2" color="text.disabled" sx={{ fontStyle: 'italic' }}>No notes.</Typography>}
-                           </div>
-                         ) : (
-                           <Box sx={{ p: 2, color: '#aaa', fontStyle: 'italic' }}>Notes available for Markdown files only.</Box>
-                         )}
-                      </CustomTabPanel>
+                      <Tooltip title="Refresh List">
+                        <Button variant="outlined" size="small" onClick={handleManualRefresh} sx={{ minWidth: '30px', px: 1, color: '#000', borderColor: '#555' }}>
+                          <RefreshIcon fontSize="small" />
+                        </Button>
+                      </Tooltip>
 
-                      <CustomTabPanel value={bottomTabIndex} index={1} noScroll={true}>
-                        {!currentFileName ? (
-                          <Box sx={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#999', bgcolor: '#f5f5f5' }}>
-                            <Typography>No file selected</Typography>
-                          </Box>
-                        ) : (currentFileType === 'markdown' || currentFileType === 'text') ? (
-                          <Group orientation="horizontal" style={{ height: '100%' }}>
-                            <Panel minSize={50} defaultSize={75}>
-                              <CodeMirror
-                                ref={editorRef}
-                                value={editorInitialValue}
-                                height="100%"
-                                className="full-height-editor"
-                                extensions={extensions}
-                                onChange={onChangeEditor}
-                                onUpdate={onEditorUpdate}
-                                theme="dark"
-                                basicSetup={{ lineNumbers: true, foldGutter: true, highlightActiveLine: true }}
-                              />
-                            </Panel>
-                            <Separator className="resize-handle" />
-                            <Panel minSize={10} defaultSize={25}>
-                              <Box sx={{ height: '100%', overflowY: 'auto', bgcolor: '#f7f7f7', borderLeft: '1px solid #ddd' }}>
-                                <List subheader={<li />}>
-                                  {snipets.map((section) => (
-                                    <li key={section.category}>
-                                      <Box component="ul" sx={{ p: 0, m: 0 }}>
-                                        <ListSubheader sx={{ bgcolor: '#eee', lineHeight: '30px', fontWeight: 'bold' }}>
-                                          {section.category}
-                                        </ListSubheader>
-                                        {section.items.map((item) => (
-                                          <ListItem key={item.label} disablePadding>
-                                            <ListItemButton 
-                                              onClick={() => handleInsertText(item.text)}
-                                              sx={{ py: 0.5 }}
-                                            >
-                                              <ListItemText 
-                                                primary={item.label} 
-                                                primaryTypographyProps={{ fontSize: '0.85rem' }}
-                                                secondary={item.description}
-                                                secondaryTypographyProps={{ fontSize: '0.7rem' }}
-                                              />
-                                            </ListItemButton>
-                                          </ListItem>
-                                        ))}
-                                        <Divider />
-                                      </Box>
-                                    </li>
-                                  ))}
-                                </List>
-                              </Box>
-                            </Panel>
-                          </Group>
-                        ) : (
-                          <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', bgcolor: '#f5f5f5', color: '#999', gap: 1 }}>
-                            <Typography variant="h6">{currentFileType === 'limit-exceeded' ? "File Too Large" : "Editor Disabled"}</Typography>
-                            <Typography variant="body2">{currentFileType === 'image' ? "Image file" : currentFileType === 'binary' ? "Binary file" : currentFileType === 'limit-exceeded' ? `Exceeds editor limit (${MAX_FILE_SIZE / 1024}KB)` : "Unknown file type"}</Typography>
-                          </Box>
-                        )}
-                      </CustomTabPanel>
+                      <Tooltip title="New File">
+                        <Button variant="outlined" size="small" onClick={() => handleCreate('file')} sx={{ minWidth: '30px', px: 1, color: '#000', borderColor: '#555' }}>
+                          <NoteAddIcon fontSize="small" />
+                        </Button>
+                      </Tooltip>
+
+                      <Tooltip title="New Folder">
+                        <Button variant="outlined" size="small" onClick={() => handleCreate('directory')} sx={{ minWidth: '30px', px: 1, color: '#000', borderColor: '#555' }}>
+                          <CreateNewFolderIcon fontSize="small" />
+                        </Button>
+                      </Tooltip>
+
+                    </Stack>
+                    <Box sx={{ p: 1, color: '#e0e0e0', fontSize: '0.9rem', overflowY: 'auto' }}>
+                      {fileTree.length > 0 ? (
+                        fileTree.map(node => (
+                          <FileTreeItem 
+                            key={node.path} 
+                            node={node} 
+                            level={0} 
+                            onSelect={(n) => loadFile(n.path, n.isBinary)} 
+                          />
+                        ))
+                      ) : (
+                        <Typography variant="body2" color="textSecondary" sx={{p:2}}>Loading...</Typography>
+                      )}
                     </Box>
-                  </Box>
-                </Panel>
-            </Group>
-          </Panel>
-        </Group>
-      </div>
+                  </CustomTabPanel>
+                </Box>
+              </Box>
+            </Panel>
+            <Separator className="resize-handle" />
+            <Panel minSize={40} className="detail-panel">
+              <Group orientation="vertical">
+                  <Panel minSize={30} className="preview-panel">
+                    <div className="preview-pane" style={{ backgroundColor: '#333', display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+                      {!currentFileName ? (
+                        <EmptyState />
+                      ) : currentFileType === 'markdown' ? (
+                        <SlideScaler width={slideSize.width} height={slideSize.height}>
+                          {slides.map((slide, index) => (
+                          <SlideView
+                              key={index}
+                              html={slide.html}
+                              pageNumber={slide.pageNumber}
+                              className={slide.className}
+                              isActive={index === currentSlideIndex}
+                              slideSize={slideSize}
+                              isEnabledPointerEvents={true}
+                            />
+                          ))}
+                        </SlideScaler>
+                      ) : currentFileType === 'image' ? (
+                        <img src={`/files/${currentFileName}`} alt={currentFileName} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+                      ) : (
+                        <Typography variant="body1" sx={{ color: '#888' }}>
+                          {currentFileType === 'text' ? "No preview for text files" : 
+                          currentFileType === 'limit-exceeded' ? "File too large to preview" : "Preview not available"}
+                        </Typography>
+                      )}
+                    </div>
+                  </Panel>
+                  
+                  <Separator className="resize-handle-row" />
+                  
+                  <Panel defaultSize={400}>
+                    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+                      <Box sx={{ borderBottom: 1, borderColor: 'divider', flexShrink: 0, bgcolor: 'background.paper' }}>
+                        <Tabs value={bottomTabIndex} onChange={handleBottomTabChange}>
+                          <Tab label="Note" />
+                          <Tab label="Editor" />
+                        </Tabs>
+                      </Box>
+                      <Box sx={{ flexGrow: 1, overflow: 'hidden', bgcolor: 'white', position: 'relative' }}>
+                        
+                        <CustomTabPanel value={bottomTabIndex} index={0}>
+                          {!currentFileName ? (
+                            <Box sx={{ p: 3, color: '#aaa', textAlign: 'center' }}>No file selected.</Box>
+                          ) : currentFileType === 'markdown' ? (
+                            <div style={{ padding: '1rem', height: '100%', overflowY: 'auto' }}>
+                                {slides[currentSlideIndex]?.noteHtml ? <div style={{ fontSize: '0.95rem', lineHeight: '1.7' }} dangerouslySetInnerHTML={{ __html: slides[currentSlideIndex].noteHtml }} /> : <Typography variant="body2" color="text.disabled" sx={{ fontStyle: 'italic' }}>No notes.</Typography>}
+                            </div>
+                          ) : (
+                            <Box sx={{ p: 2, color: '#aaa', fontStyle: 'italic' }}>Notes available for Markdown files only.</Box>
+                          )}
+                        </CustomTabPanel>
+
+                        <CustomTabPanel value={bottomTabIndex} index={1} noScroll={true}>
+                          {!currentFileName ? (
+                            <Box sx={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#999', bgcolor: '#f5f5f5' }}>
+                              <Typography>No file selected</Typography>
+                            </Box>
+                          ) : (currentFileType === 'markdown' || currentFileType === 'text') ? (
+                            <Group orientation="horizontal" style={{ height: '100%' }}>
+                              <Panel minSize={50} defaultSize={75}>
+                                <CodeMirror
+                                  ref={editorRef}
+                                  value={editorInitialValue}
+                                  height="100%"
+                                  className="full-height-editor"
+                                  extensions={extensions}
+                                  onChange={onChangeEditor}
+                                  onUpdate={onEditorUpdate}
+                                  theme="dark"
+                                  basicSetup={{ lineNumbers: true, foldGutter: true, highlightActiveLine: true }}
+                                />
+                              </Panel>
+                              <Separator className="resize-handle" />
+                              <Panel minSize={10} defaultSize={25}>
+                                <Box sx={{ height: '100%', overflowY: 'auto', bgcolor: '#f7f7f7', borderLeft: '1px solid #ddd' }}>
+                                  <List subheader={<li />}>
+                                    {snipets.map((section) => (
+                                      <li key={section.category}>
+                                        <Box component="ul" sx={{ p: 0, m: 0 }}>
+                                          <ListSubheader sx={{ bgcolor: '#eee', lineHeight: '30px', fontWeight: 'bold' }}>
+                                            {section.category}
+                                          </ListSubheader>
+                                          {section.items.map((item) => (
+                                            <ListItem key={item.label} disablePadding>
+                                              <ListItemButton 
+                                                onClick={() => handleInsertText(item.text)}
+                                                sx={{ py: 0.5 }}
+                                              >
+                                                <ListItemText 
+                                                  primary={item.label} 
+                                                  primaryTypographyProps={{ fontSize: '0.85rem' }}
+                                                  secondary={item.description}
+                                                  secondaryTypographyProps={{ fontSize: '0.7rem' }}
+                                                />
+                                              </ListItemButton>
+                                            </ListItem>
+                                          ))}
+                                          <Divider />
+                                        </Box>
+                                      </li>
+                                    ))}
+                                  </List>
+                                </Box>
+                              </Panel>
+                            </Group>
+                          ) : (
+                            <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', bgcolor: '#f5f5f5', color: '#999', gap: 1 }}>
+                              <Typography variant="h6">{currentFileType === 'limit-exceeded' ? "File Too Large" : "Editor Disabled"}</Typography>
+                              <Typography variant="body2">{currentFileType === 'image' ? "Image file" : currentFileType === 'binary' ? "Binary file" : currentFileType === 'limit-exceeded' ? `Exceeds editor limit (${MAX_FILE_SIZE / 1024}KB)` : "Unknown file type"}</Typography>
+                            </Box>
+                          )}
+                        </CustomTabPanel>
+                      </Box>
+                    </Box>
+                  </Panel>
+              </Group>
+            </Panel>
+          </Group>
+        </div>
+      )}
     </div>
   );
 }
