@@ -262,3 +262,119 @@ body {
 .slide-content-wrapper {
   position: relative;
 }
+
+
+.presenter-container {
+  background-color: #222;
+  color: #eee;
+  overflow: hidden;
+  font-family: sans-serif;
+  height: 100vh;
+  width: 100vw;
+  display: flex;
+  flex-direction: column;
+}
+.presenter-header {
+  padding: 0 20px;
+  height: 50px;
+  background-color: #333;
+  border-bottom: 1px solid #444;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-shrink: 0;
+}
+.presenter-main-view {
+  background-color: #000;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.presenter-next-preview {
+  background-color: #1a1a1a;
+  border-bottom: 1px solid #444;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 10px;
+  box-sizing: border-box;
+}
+.presenter-notes {
+  background-color: #1e1e1e;
+  color: #ddd;
+  font-size: 1.1rem;
+  line-height: 1.6;
+  width: 100%;
+  height: 100%;
+  padding: 15px;
+  box-sizing: border-box;
+  overflow-y: auto;
+}
+.presenter-notes h1, .presenter-notes h2, .presenter-notes h3 {
+  font-size: 1.2em;
+  color: #aaa;
+  margin-top: 1em;
+  border-bottom: 1px solid #444;
+  padding-bottom: 4px;
+}
+.presenter-notes p {
+  margin-bottom: 1em;
+}
+.presenter-notes ul, .presenter-notes ol {
+  padding-left: 1.5em;
+  margin-bottom: 1em;
+}
+.presenter-footer {
+  padding: 10px 20px;
+  height: 60px;
+  background-color: #333;
+  border-top: 1px solid #444;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: monospace;
+  font-size: 1.2rem;
+  box-sizing: border-box;
+  flex-shrink: 0;
+}
+.presenter-timer-controls button {
+  background: transparent;
+  border: 1px solid #666;
+  color: #eee;
+  padding: 5px 10px;
+  margin-left: 10px;
+  cursor: pointer;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.presenter-timer-controls button:hover {
+  background-color: #555;
+}
+.presenter-label {
+  font-size: 0.75rem;
+  color: #888;
+  margin-bottom: 4px;
+  display: block;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+.presenter-nav-button {
+  background-color: #444;
+  border: 1px solid #666;
+  color: white;
+  padding: 8px 16px;
+  cursor: pointer;
+  font-size: 1rem;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+.presenter-nav-button:hover {
+  background-color: #555;
+}

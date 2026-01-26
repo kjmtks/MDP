@@ -5,6 +5,7 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import NoteAddIcon from '@mui/icons-material/NoteAdd';
 import CreateNewFolderIcon from '@mui/icons-material/CreateNewFolder';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+import PresentToAllIcon from '@mui/icons-material/PresentToAll';
 
 import { Panel, Group, Separator } from 'react-resizable-panels';
 import { Box, Tabs, Tab, Typography, Button, Stack, Tooltip, List, ListItem, ListItemButton, ListItemText, ListSubheader, Divider } from '@mui/material';
@@ -21,6 +22,9 @@ import { useSlideGenerator } from './hooks/useSlideGenerator';
 import { SlideView } from './components/SlideView';
 import { SlideThumbnail } from './components/SlideThumbnail';
 import { SlideScaler } from './components/SlideScaler';
+
+import { PresenterTool } from './components/PresenterTool';
+
 import './App.css';
 
 const INITIAL_MARKDOWN = "";
@@ -227,7 +231,7 @@ function App() {
   const [lastUpdated, setLastUpdated] = useState<number>(Date.now());
   const [snipets, setSnipets] = useState<SnipetsCategory[]>([]);
   const [templateContent, setTemplateContent] = useState<string>("# New Slide\n\nContent...");
-  const [currentSlideIndex, setCurrentSlideIndex] = useState<number>(1);
+  const [currentSlideIndex, setCurrentSlideIndex] = useState<number>(0);
   const [currentFileName, setCurrentFileName] = useState<string | null>(null);
   const [currentFileType, setCurrentFileType] = useState<FileType>('markdown');
   const [leftTabIndex, setLeftTabIndex] = useState(0);
@@ -285,7 +289,9 @@ function App() {
     const width = (BASE_HEIGHT * w) / h;
     return { width, height: BASE_HEIGHT };
   }, [globalContext.aspectRatio]);
-  
+
+  const channelId = useMemo(() => `mdp-channel-${Math.random().toString(36).slice(2)}`, []);
+  const broadcastChannel = useRef<BroadcastChannel | null>(null);
 
   useEffect(() => {
     const handler = setTimeout(() => { setDebouncedMarkdown(markdown); }, 300);
@@ -331,6 +337,54 @@ function App() {
       setCurrentSlideIndex(nextIndex);
     }
   }, [currentSlideIndex, slides]);
+
+  const moveSlideRef = useRef(moveSlide);
+  useEffect(() => { moveSlideRef.current = moveSlide; }, [moveSlide]);
+
+  const sendSyncData = useCallback(() => {
+    if (broadcastChannel.current) {
+      let themeCssUrl = globalContext.themeCss;
+      if (themeCssUrl && !themeCssUrl.match(/^(https?:|\/)/)) {
+        themeCssUrl = `${baseUrl}${themeCssUrl}`;
+      }
+      broadcastChannel.current.postMessage({
+        type: 'SYNC_STATE',
+        payload: {
+          slides,
+          index: currentSlideIndex,
+          slideSize,
+          themeCssUrl, 
+          lastUpdated,
+        }
+      });
+    }
+  }, [slides, currentSlideIndex, slideSize, globalContext.themeCss, baseUrl, lastUpdated]);
+
+  useEffect(() => {
+    const ch = new BroadcastChannel(channelId);
+    broadcastChannel.current = ch;
+    ch.onmessage = (event) => {
+      const { type, direction } = event.data;
+      if (type === 'NAV') {
+        moveSlideRef.current(direction);
+      }
+      if (type === 'PRESENTER_READY') {
+        setTimeout(() => sendSyncData(), 100);
+      }
+    };
+    return () => {
+      ch.close();
+    };
+  }, [channelId, sendSyncData]);
+
+  useEffect(() => {
+    sendSyncData();
+  }, [sendSyncData]);
+
+  const openPresenterTool = useCallback(() => {
+    window.open(`/presenter?channel=${channelId}`, '_blank', 'width=1000,height=800');
+  }, [channelId]);
+
 
   const toggleSlideshow = useCallback(() => {
     if (!document.fullscreenElement) {
@@ -692,6 +746,12 @@ function App() {
     </Box>
   );
 
+
+  const isPresenterMode = window.location.pathname === '/presenter';
+  if (isPresenterMode) {
+     return <PresenterTool />;
+  }
+
   return (
     <div className="container">
       <DrawioEditor 
@@ -775,6 +835,24 @@ function App() {
         </div>
         
         <Stack direction="row" spacing={1} alignItems="center" sx={{ flexShrink: 0 }}>
+          <Tooltip title="Open Presenter View">
+            <span>
+              <Button 
+                variant="text" 
+                size="small" 
+                onClick={openPresenterTool}
+                disabled={!currentFileName || currentFileType !== 'markdown'}
+                sx={{ 
+                  color: '#eee', 
+                  minWidth: '40px',
+                  '&.Mui-disabled': { color: 'rgba(255, 255, 255, 0.3)' } 
+                }}
+              >
+                <PresentToAllIcon />
+              </Button>
+            </span>
+          </Tooltip>
+
           <Tooltip title="Start Slideshow (F5)">
             <span>
               <Button 
