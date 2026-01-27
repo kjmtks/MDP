@@ -151,7 +151,7 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
       
       <div 
         ref={setContainerEl}
-        className="slide-content" 
+        className={`slide-content ${className}`} 
         dangerouslySetInnerHTML={{ __html: processedHtml }} 
         style={{ width: '100%', height: '100%' }} 
       />
