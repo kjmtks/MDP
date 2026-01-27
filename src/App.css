@@ -151,7 +151,6 @@ body {
 }
 .thumbnail-frame {
   width: 100%;
-  aspect-ratio: 16 / 9;
   background: white;
   border: 1px solid #d1d5db;
   border-radius: 4px;

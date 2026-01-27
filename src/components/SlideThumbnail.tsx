@@ -11,8 +11,11 @@ type ContentProps = {
 
 const ThumbnailContent = React.memo<ContentProps>(({ htmlContent, slideSize, className, header, footer }) => {
   return (
-    <div className="thumbnail-frame">
-      <SlideScaler width={1280} height={720}>
+    <div
+      className="thumbnail-frame"
+      style={{ aspectRatio: `${slideSize.width} / ${slideSize.height}` }}
+    >
+      <SlideScaler width={slideSize.width} height={slideSize.height}>
         <SlideView 
           html={htmlContent}
           isActive={true}
