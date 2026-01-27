@@ -369,7 +369,7 @@ blockquote.chat-message {
   display: flex;
   align-items: center;
   position: relative;
-  margin: 15px 0 0 92px;
+  margin: 15px 0 30px 92px;
   padding: 8px 14px;
   color: var(--chat-message-font-color);
   background: var(--chat-message-bubble-color);
