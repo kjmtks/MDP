@@ -159,7 +159,7 @@ app.get(/.*/, (req, res) => {
   }
 });
 
-const server = app.listen(PORT, () => {
+const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`--------------------------------------------------`);
   console.log(` Hosting directory: ${targetDir}`);
   console.log(` Server running at: http://localhost:${PORT}`);
