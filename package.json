@@ -28,6 +28,7 @@
     "marked": "^17.0.1",
     "marked-highlight": "^2.2.3",
     "marked-katex-extension": "^5.1.6",
+    "mermaid": "^11.12.2",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-resizable-panels": "^4.4.1",

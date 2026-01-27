@@ -244,6 +244,9 @@ export const slideRenderer = (context: SlideContext, baseUrl: string = "", lastU
   },
 
   code({ text, lang }: { text: string, lang?: string }) {
+    if (lang === '@mermaid') {
+      return `<div class="mermaid">${text}</div>`;
+    }
     const code = text;
     const infostring = lang || '';
     const langMatch = infostring.match(/^([^:\s\\{]+)(?::([^:\s\\{]+))?/);

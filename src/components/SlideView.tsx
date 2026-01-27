@@ -1,5 +1,8 @@
-﻿import React, { memo } from 'react';
+﻿import React, { memo, useEffect, useState } from 'react';
+import mermaid from 'mermaid';
 import './SlideViewer.css';
+
+mermaid.initialize({ startOnLoad: false, theme: 'default' });
 
 interface SlideViewProps {
   html: string;
@@ -24,6 +27,33 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
   header,
   footer,
 }) => {
+  const [containerEl, setContainerEl] = useState<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!containerEl) return;
+    const renderMermaid = async () => {
+      const mermaidNodes = containerEl.querySelectorAll('.mermaid:not([data-processed="true"])');
+      if (mermaidNodes.length === 0) return;
+      for (const node of Array.from(mermaidNodes) as HTMLElement[]) {
+        const code = node.textContent || '';
+        try {
+          await mermaid.parse(code);
+          await mermaid.run({ nodes: [node] });
+        } catch (error) {
+           console.warn("Mermaid rendering skipped due to syntax error.");
+           node.setAttribute('data-processed', 'true');
+           node.style.color = 'red';
+           node.style.whiteSpace = 'pre-wrap';
+           node.style.border = '1px solid red';
+           node.style.padding = '8px';
+           node.style.backgroundColor = '#fff0f0';
+           node.textContent = `Mermaid Syntax Error:\n${(error as Error).message || error}\n\n${code}`;
+        }
+      }
+    };
+    renderMermaid();
+  }); 
+
   return (
     <div 
       className={`slide-content-wrapper markdown-body`}
@@ -49,6 +79,7 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
         <div className="slide-header" dangerouslySetInnerHTML={{ __html: header }} />
       )}
       <div 
+        ref={setContainerEl}
         className={`slide-content ${className}`} 
         dangerouslySetInnerHTML={{ __html: html }} 
         style={{ width: '100%', height: '100%' }}
