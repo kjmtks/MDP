@@ -247,6 +247,14 @@ export const slideRenderer = (context: SlideContext, baseUrl: string = "", lastU
     if (lang === '@mermaid') {
       return `<div class="mermaid">${text}</div>`;
     }
+    if (lang === '@chartjs') {
+      try {
+        const base64 = btoa(unescape(encodeURIComponent(text)));
+        return `<div class="chartjs-render" data-chart="${base64}" style="position:relative; width:100%; height:400px;"><canvas></canvas></div>`;
+      } catch {
+        return `<div style="color:red">Chart JSON Error</div>`;
+      }
+    }
     const code = text;
     const infostring = lang || '';
     const langMatch = infostring.match(/^([^:\s\\{]+)(?::([^:\s\\{]+))?/);

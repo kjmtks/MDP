@@ -52,7 +52,37 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
       }
     };
     renderMermaid();
-  }); 
+
+    const chartContainers = containerEl.querySelectorAll('.chartjs-render:not([data-processed="true"])');
+    if (chartContainers.length > 0) {
+      import('chart.js/auto').then(({ default: Chart }) => {
+        chartContainers.forEach(container => {
+          container.setAttribute('data-processed', 'true');
+          const canvas = container.querySelector('canvas');
+          const base64 = container.getAttribute('data-chart');
+          if (canvas && base64) {
+            try {
+              const jsonStr = decodeURIComponent(escape(atob(base64)));
+              const config = JSON.parse(jsonStr);
+              if (!config.options) config.options = {};
+              config.options.maintainAspectRatio = false;
+              config.options.responsive = true;
+              
+              new Chart(canvas, config);
+            } catch (e) {
+              console.error("ChartJS render error:", e);
+              container.innerHTML = `<div style="color:red">Chart Render Error</div>`;
+            }
+          }
+        });
+      }).catch(err => {
+        console.warn("Chart.js not found. Run 'npm install chart.js' to use charts.", err);
+        chartContainers.forEach(el => {
+          el.innerHTML = `<div style="color:#666; border:1px dashed #ccc; padding:10px;">Chart.js not installed.<br/>Run <code>npm install chart.js</code></div>`;
+        });
+      });
+    }
+  });
 
   return (
     <div 
