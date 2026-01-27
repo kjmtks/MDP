@@ -1016,7 +1016,7 @@ function App() {
                       </Tooltip>
 
                     </Stack>
-                    <Box sx={{ p: 1, color: '#e0e0e0', fontSize: '0.9rem', overflowY: 'auto' }}>
+                    <Box sx={{ p: 1, color: '#e0e0e0', fontSize: '0.9rem', overflowY: 'auto', overflowX: 'hidden' }}>
                       {fileTree.length > 0 ? (
                         fileTree.map(node => (
                           <FileTreeItem 
