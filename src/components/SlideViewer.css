@@ -139,6 +139,18 @@
   font-family: 'Consolas', 'Monaco', monospace;
   font-size: 0.9em;
 }
+:not(pre) > h1 code {
+  font-size: 0.6em;
+  vertical-align: 0.2em;
+}
+:not(pre) > h2 code {
+  font-size: 0.85em;
+  vertical-align: 0.075em;
+}
+:not(pre) > h3 code {
+  font-size: 0.9em;
+  vertical-align: 0.05em;
+}
 .code-filename {
   position: absolute;
   top: 0;
