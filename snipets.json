@@ -19,8 +19,6 @@
   {
     "category": "Elements",
     "items": [
-      { "label": "Draw.io Image", "text": "\n<!-- @caption caption -->\n![@drawio]()", "description": "Insert Draw.io image" },
-      { "label": "mermaid Image", "text": "\n```@mermaid\ngraph LR\n  A[Square Rect] -- Link text --> B((Circle))\n  A --> C(Round Rect)\n  B --> D{Rhombus}\n  C --> D\n```", "description": "Insert mermaid image" },
       { "label": "Image", "text": "\n<!-- @caption caption -->\n![](/vite.svg)", "description": "Insert image" },
       { "label": "Table", "text": "\n<!-- @caption caption -->\n| A | B |\n|---|---|\n| 1 | 2 |\n", "description": "Insert table" },
       { "label": "Link", "text": "[Label](url)", "description": "Insert link" }
@@ -55,6 +53,9 @@
   {
     "category": "Components",
     "items": [
+      { "label": "Draw.io Image", "text": "\n<!-- @caption caption -->\n![@drawio]()", "description": "Insert Draw.io image" },
+      { "label": "mermaid Image", "text": "\n```@mermaid\ngraph LR\n  A[Square Rect] -- Link text --> B((Circle))\n  A --> C(Round Rect)\n  B --> D{Rhombus}\n  C --> D\n```", "description": "Insert mermaid image" },
+      { "label": "Chart.js", "text": "```@chartjs\n{\n  \"type\": \"bar\",\n  \"data\": {\n    \"labels\": [\"Red\", \"Blue\", \"Yellow\",\n\"Green\", \"Purple\", \"Orange\"],\n    \"datasets\": [{\n      \"label\": \"Label\",\n      \"data\": [12, 19, 3, 5, 2, 3],\n      \"borderWidth\": 1\n    }]\n  }\n}\n```", "description": "Insert Chart.js" },
       { "label": "Chat Message", "text": "\n<!-- @addclass blockquote chat-message -->\n<!-- @addstyle blockquote --avatar: url('https://2.gravatar.com/avatar/0cf8ed5976c8ccffa72fd147284fa714d869efa2fa8bdf0d0196affc4f49af5e') -->\n> Chat Message\n" }
     ]
   }
