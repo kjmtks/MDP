@@ -22,7 +22,7 @@ export const PresenterTool: React.FC = () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [slides, setSlides] = useState<any[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [slideSize, ] = useState({ width: 1280, height: 720 });
+  const [slideSize, setSlideSize] = useState({ width: 1280, height: 720 });
   const [themeCssUrl, setThemeCssUrl] = useState<string | undefined>(undefined);
   const [lastUpdated, setLastUpdated] = useState<number>(0);
   
@@ -45,6 +45,7 @@ export const PresenterTool: React.FC = () => {
         const data = payload as SyncData;
         setSlides(data.slides);
         setCurrentIndex(data.index);
+        if (data.slideSize) setSlideSize(data.slideSize);
         setThemeCssUrl(data.themeCssUrl);
         setLastUpdated(data.lastUpdated);
       }

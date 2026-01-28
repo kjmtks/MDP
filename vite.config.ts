@@ -20,6 +20,10 @@ export default defineConfig({
       '/drawio': {
         target: 'http://localhost:3000',
         changeOrigin: true,
+      },
+      '/plantuml': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
       }
     }
   }

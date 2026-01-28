@@ -54,9 +54,11 @@
     "category": "Components",
     "items": [
       { "label": "Draw.io Image", "text": "\n<!-- @caption caption -->\n![@drawio]()" },
-      { "label": "Mermaid", "text": "\n```@mermaid\ngraph LR\n  A[Square Rect] -- Lable --> B((Circle))\n  A --> C(Round Rect)\n  B --> D{Rhombus}\n```\n" },
+      { "label": "Mermaid", "text": "\n```@mermaid\ngraph LR\n  A[Square Rect] -- $$a$$ --> B((Circle))\n  A --> C(Round Rect)\n  B --> D{Rhombus}\n```\n" },
+      { "label": "PlantUML", "text": "\n```@plantuml\n@startuml\nAlice -> Bob: Request\nBob --> Alice: Response\n@enduml\n```\n" },
       { "label": "Chart.js", "text": "```@chartjs\n{\n  \"type\": \"bar\",\n  \"data\": {\n    \"labels\": [\"Red\", \"Blue\", \"Yellow\",\n\"Green\", \"Purple\", \"Orange\"],\n    \"datasets\": [{\n      \"label\": \"Label\",\n      \"data\": [12, 19, 3, 5, 2, 3],\n      \"borderWidth\": 1\n    }]\n  }\n}\n```" },
       { "label": "Chat Message", "text": "\n<!-- @addclass blockquote chat-message -->\n<!-- @addstyle blockquote --avatar: url('https://2.gravatar.com/avatar/0cf8ed5976c8ccffa72fd147284fa714d869efa2fa8bdf0d0196affc4f49af5e') -->\n> Chat Message\n" }
     ]
   }
 ]
+

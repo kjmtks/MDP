@@ -1,5 +1,4 @@
 ﻿import React, { memo, useEffect, useRef, useState } from 'react';
-import { useMermaid } from '../hooks/useMermaid';
 import './SlideViewer.css';
 
 interface SlideViewProps {
@@ -28,13 +27,15 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
   const [containerEl, setContainerEl] = useState<HTMLDivElement | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mountedRoots = useRef<any[]>([]);
-  const processedHtml = useMermaid(html);
+
   useEffect(() => {
     if (!containerEl) return;
+
     mountedRoots.current.forEach(root => {
       try { root.unmount(); } catch { /* ignore */ }
     });
     mountedRoots.current = [];
+    
     const chartContainers = containerEl.querySelectorAll('.chartjs-render:not([data-processed="true"])');
     if (chartContainers.length > 0) {
       import('chart.js/auto').then(({ default: Chart }) => {
@@ -70,7 +71,7 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
       });
       mountedRoots.current = [];
     };
-  }, [processedHtml, containerEl, isActive]);
+  }, [html, containerEl, isActive]);
 
   return (
     <div 
@@ -100,7 +101,7 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
       <div 
         ref={setContainerEl}
         className={`slide-content ${className}`} 
-        dangerouslySetInnerHTML={{ __html: processedHtml }} 
+        dangerouslySetInnerHTML={{ __html: html }} 
         style={{ width: '100%', height: '100%' }}
       />
       {footer && (

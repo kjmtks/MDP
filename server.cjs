@@ -3,6 +3,8 @@ const path = require('path');
 const fs = require('fs');
 const { WebSocketServer } = require('ws');
 const chokidar = require('chokidar');
+const { spawn } = require('child_process');
+const plantumlEncoder = require('plantuml-encoder');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -16,6 +18,54 @@ app.use(express.json({ limit: '10mb' }));
 app.use('/files', express.static(targetDir));
 app.use('/drawio', express.static(path.join(__dirname, 'drawio')));
 app.use(express.static(path.join(__dirname, 'dist')));
+
+app.get('/plantuml/svg/:encoded', (req, res) => {
+  const encoded = req.params.encoded;
+  let decoded;
+  
+  try {
+    decoded = plantumlEncoder.decode(encoded);
+  } catch (e) {
+    return res.status(400).send('<svg><text>Invalid PlantUML Code</text></svg>');
+  }
+
+  const plantumlJar = path.join(__dirname, 'plantuml', 'plantuml.jar');
+  
+  if (!fs.existsSync(plantumlJar)) {
+    return res.status(500).send('<svg><text y="20" fill="red">Error: plantuml.jar not found on server.</text></svg>');
+  }
+
+  const child = spawn('java', ['-jar', plantumlJar, '-tsvg', '-pipe']);
+  
+  let stdoutData = '';
+  let stderrData = '';
+
+  child.stdout.on('data', (data) => {
+    stdoutData += data.toString();
+  });
+
+  child.stderr.on('data', (data) => {
+    stderrData += data.toString();
+  });
+
+  child.on('error', (err) => {
+    console.error('Failed to start Java:', err);
+    res.status(500).send(`<svg><text y="20" fill="red">Error: Failed to execute Java. Is Java installed?</text></svg>`);
+  });
+
+  child.on('close', (code) => {
+    if (code === 0) {
+      res.set('Content-Type', 'image/svg+xml');
+      res.send(stdoutData);
+    } else {
+      console.error('PlantUML Error:', stderrData);
+      res.status(500).send(`<svg><text y="20" fill="red">PlantUML Error (Exit code ${code})</text><text y="40" fill="gray">${stderrData}</text></svg>`);
+    }
+  });
+
+  child.stdin.write(decoded);
+  child.stdin.end();
+});
 
 const isBinaryFile = (filePath) => {
   try {

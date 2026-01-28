@@ -247,6 +247,9 @@ export const slideRenderer = (context: SlideContext, baseUrl: string = "", lastU
     if (lang === '@mermaid') {
       return `<div class="mermaid">${text}</div>`;
     }
+    if (lang === '@plantuml') {
+      return `<div class="plantuml">${text}</div>`;
+    }
     if (lang === '@chartjs') {
       try {
         const base64 = btoa(unescape(encodeURIComponent(text)));
