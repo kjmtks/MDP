@@ -97,7 +97,7 @@ export const slideRenderer = (context: SlideContext, baseUrl: string = "", lastU
         return "";
     }
     if (command.type === 'COVER') {
-        let html = "";
+        let html = `<div class="cover-title-wrapper">`;
         const m = context.meta;
         if (m.date) html += `<div class="date">${renderMeta(m.date)}</div>`;
         if (m.title) html += `<div class="title">${renderMeta(m.title)}</div>`;
@@ -105,6 +105,7 @@ export const slideRenderer = (context: SlideContext, baseUrl: string = "", lastU
         if (m.presenter) html += `<div class="presenter">${renderMeta(m.presenter)}</div>`;
         if (m.affiliation) html += `<div class="affiliation">${renderMeta(m.affiliation)}</div>`;
         if (m.contact) html += `<div class="contact">${renderMeta(m.contact)}</div>`;
+        html += `</div>`;
         return html;
     }
     return token.text;
