@@ -14,7 +14,6 @@ import EditIcon from '@mui/icons-material/Edit';
 import LinkIcon from '@mui/icons-material/Link';
 
 import '../App.css';
-import '../styles/default.css';
 
 interface SyncData {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
