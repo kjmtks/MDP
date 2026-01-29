@@ -981,7 +981,11 @@ function MainEditor() {
                 size="small" 
                 onClick={() => setIsConnectDialogOpen(true)}
                 disabled={!currentFileName}
-                sx={{ color: '#eee', minWidth: '40px' }}
+                sx={{ 
+                  color: '#eee', 
+                  minWidth: '40px',
+                  '&.Mui-disabled': { color: 'rgba(255, 255, 255, 0.3)' } 
+                }}
               >
                 <DevicesIcon />
               </Button>
