@@ -9,6 +9,12 @@ export default defineConfig({
       usePolling: true,
     },
     proxy: {
+      '/ws': {
+        target: 'ws://localhost:3000',
+        ws: true,
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/ws/, '')
+      },
       '/api': {
         target: 'http://localhost:3000',
         changeOrigin: true,
