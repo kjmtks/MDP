@@ -426,8 +426,14 @@ function MainEditor() {
       case 'CLEAR_DRAWING':
         clear(msg.pageIndex);
         break;
+      case 'UNDO':
+        undo(msg.pageIndex);
+        break;
+      case 'REDO':
+        redo(msg.pageIndex);
+        break;
     }
-  }, [addStroke, clear]));
+  }, [addStroke, clear, redo, undo]));
 
   useEffect(() => {
     sendSyncData(send);

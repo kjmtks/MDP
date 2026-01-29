@@ -3,8 +3,8 @@ import { useSync, type SyncMessage } from '../hooks/useSync';
 import { SlideView } from './SlideView';
 import { SlideScaler } from './SlideScaler';
 import { DrawingOverlay, type Stroke } from './DrawingOverlay';
-import { DrawingPalette } from './DrawingPalette';
-import { useDrawing } from '../hooks/useDrawing';
+import { DrawingPalette } from './DrawingPalette'; 
+import { useDrawing } from '../hooks/useDrawing'; 
 
 import { Button, IconButton, TextField, Paper, Typography } from '@mui/material';
 import ArrowBackIosIcon from '@mui/icons-material/ArrowBackIos';
@@ -14,6 +14,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import LinkIcon from '@mui/icons-material/Link';
 
 import '../App.css';
+import '../styles/default.css';
 
 interface SyncData {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -22,7 +23,7 @@ interface SyncData {
   slideSize: { width: number; height: number };
   themeCssUrl?: string;
   lastUpdated: number;
-  allDrawings?: Record<number, Stroke[]>; // ★追加: 全描画データ
+  allDrawings?: Record<number, Stroke[]>;
 }
 
 export const RemoteControl: React.FC = () => {
@@ -36,15 +37,18 @@ export const RemoteControl: React.FC = () => {
   const [slides, setSlides] = useState<any[]>([]);
   const [index, setIndex] = useState(0);
   const [slideSize, setSlideSize] = useState({ width: 1280, height: 720 });
-  const { drawings, addStroke, syncDrawings, undo, redo, clear, canUndo, canRedo } = useDrawing();
+  
+  const { drawings, addStroke, syncDrawings, clear } = useDrawing();
+  
   const [isDrawingMode, setIsDrawingMode] = useState(false);
   const [toolType, setToolType] = useState<'pen' | 'eraser'>('pen');
   const [penColor, setPenColor] = useState('#FF0000');
   const [penWidth, setPenWidth] = useState(3);
+  
   const [themeCssUrl, setThemeCssUrl] = useState<string | undefined>();
   const [lastUpdated, setLastUpdated] = useState(0);
+  
   const { send } = useSync(channelId, (msg: SyncMessage) => {
-    
     switch (msg.type) {
       case 'SYNC_STATE': {
         const p = msg.payload as SyncData;
@@ -58,7 +62,6 @@ export const RemoteControl: React.FC = () => {
         if (p.lastUpdated) setLastUpdated(p.lastUpdated);
         break;
       }
-        
       case 'NAV':
         break;
 
@@ -113,6 +116,16 @@ export const RemoteControl: React.FC = () => {
     send({ type: 'CLEAR_DRAWING', pageIndex: index, channelId });
   };
 
+  const handleUndo = () => {
+    if (!channelId) return;
+    send({ type: 'UNDO', pageIndex: index, channelId });
+  };
+
+  const handleRedo = () => {
+    if (!channelId) return;
+    send({ type: 'REDO', pageIndex: index, channelId });
+  };
+
   if (!channelId) {
     return (
       <div style={{ width: '100vw', height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#222' }}>
@@ -145,7 +158,17 @@ export const RemoteControl: React.FC = () => {
   const currentSlide = slides[index];
 
   return (
-    <div style={{ width: '100vw', height: '100vh', background: '#222', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ 
+      width: '100vw', 
+      height: '100vh', 
+      background: '#222', 
+      display: 'flex', 
+      flexDirection: 'column',
+      touchAction: 'none',
+      userSelect: 'none',
+      WebkitUserSelect: 'none',
+      WebkitTouchCallout: 'none', 
+    }}>
       
       <div style={{ height: 60, background: '#333', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px', color: 'white', flexShrink: 0 }}>
         <div style={{ fontWeight: 'bold' }}>Remote</div>
@@ -165,16 +188,25 @@ export const RemoteControl: React.FC = () => {
         </div>
       </div>
 
-      <div style={{ flex: 1, position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000' }}>
+      <div style={{ 
+        flex: 1, 
+        position: 'relative', 
+        overflow: 'hidden', 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'center', 
+        background: '#000',
+        touchAction: 'none'
+      }}>
          {isDrawingMode && (
             <DrawingPalette 
               toolType={toolType} setToolType={setToolType}
               color={penColor} setColor={setPenColor}
               lineWidth={penWidth} setLineWidth={setPenWidth}
-              canUndo={canUndo(index)}
-              canRedo={canRedo(index)}
-              onUndo={() => undo(index)}
-              onRedo={() => redo(index)}
+              canUndo={true} 
+              canRedo={true}
+              onUndo={handleUndo}
+              onRedo={handleRedo}
               onClear={handleClear}
               container={document.body}
             />
@@ -214,9 +246,11 @@ export const RemoteControl: React.FC = () => {
           >
             <ArrowBackIosIcon />
           </Button>
+          
           <Typography color="white" sx={{ mx: 2 }}>
             {index + 1} / {slides.length}
           </Typography>
+          
           <Button 
             variant="contained" 
             sx={{ height: '100%', flex: 1, ml: 1, fontSize: '1.2rem' }} 
