@@ -697,7 +697,7 @@ function MainEditor() {
       window.removeEventListener('wheel', handleWheel);
       window.removeEventListener('mousedown', handleClick);
     };
-  }, [isSlideshow, moveSlide, undo, redo, currentSlideIndex, isLaserPointer, clear]);
+  }, [isSlideshow, moveSlide, undo, redo, currentSlideIndex, isLaserPointer, clear, send, channelId]);
 
   useEffect(() => {
     fetchFileTree();

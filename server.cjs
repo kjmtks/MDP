@@ -114,8 +114,8 @@ app.post('/api/create', (req, res) => {
   }
 });
 
-app.get('/api/config/shortcuts', (req, res) => {
-    const p = path.join(__dirname, 'shortcuts.json');
+app.get('/api/config/snipets', (req, res) => {
+    const p = path.join(__dirname, 'snipets.json');
     if (fs.existsSync(p)) res.sendFile(p); else res.json([]);
 });
 
