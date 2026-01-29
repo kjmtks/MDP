@@ -1,11 +1,10 @@
-﻿import React, { useRef, useEffect, useState, useCallback } from 'react';
+﻿import React, { useRef, useEffect, useCallback } from 'react';
 
-// ストロークデータの定義
 export interface Stroke {
   points: { x: number; y: number }[];
   color: string;
   width: number;
-  type: 'pen' | 'eraser'; // 描画タイプ
+  type: 'pen' | 'eraser';
 }
 
 interface DrawingOverlayProps {
@@ -16,7 +15,7 @@ interface DrawingOverlayProps {
   color: string;
   lineWidth: number;
   toolType: 'pen' | 'eraser';
-  isInteracting: boolean; // 描画可能かどうか（パレット表示中など）
+  isInteracting: boolean;
 }
 
 export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
@@ -30,42 +29,53 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
   isInteracting
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [isDrawing, setIsDrawing] = useState(false);
+  
+  const isDrawing = useRef(false);
   const currentStroke = useRef<Stroke | null>(null);
+  
+  const propsRef = useRef({ color, lineWidth, toolType, onAddStroke, isInteracting, width, height, data });
+  useEffect(() => {
+    propsRef.current = { color, lineWidth, toolType, onAddStroke, isInteracting, width, height, data };
+  }, [color, lineWidth, toolType, onAddStroke, isInteracting, width, height, data]);
 
-  // 描画関数
   const draw = useCallback((ctx: CanvasRenderingContext2D, strokes: Stroke[]) => {
+    const { width, height } = propsRef.current;
     ctx.clearRect(0, 0, width, height);
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
     strokes.forEach(stroke => {
-      if (stroke.points.length < 2) return;
+      if (stroke.points.length === 0) return;
       
       ctx.beginPath();
       ctx.strokeStyle = stroke.color;
       ctx.lineWidth = stroke.width;
       
-      // 消しゴムの場合は合成モードを変更
       if (stroke.type === 'eraser') {
         ctx.globalCompositeOperation = 'destination-out';
       } else {
         ctx.globalCompositeOperation = 'source-over';
       }
       
-      ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
-      for (let i = 1; i < stroke.points.length; i++) {
-        // 簡易的な平滑化（二次ベジェ曲線）を入れるとより滑らかになりますが、今回は直線で実装
-        ctx.lineTo(stroke.points[i].x, stroke.points[i].y);
+      if (stroke.points.length === 1) {
+          ctx.fillStyle = stroke.color;
+          ctx.arc(stroke.points[0].x, stroke.points[0].y, stroke.width / 2, 0, Math.PI * 2);
+          ctx.fill();
+      } else {
+          ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
+          for (let i = 1; i < stroke.points.length; i++) {
+            ctx.lineTo(stroke.points[i].x, stroke.points[i].y);
+          }
+          ctx.stroke();
       }
-      ctx.stroke();
     });
     
-    // 描画後は合成モードを戻す
     ctx.globalCompositeOperation = 'source-over';
-  }, [width, height]);
+  }, []);
 
-  // データ更新時の再描画
+  const drawRef = useRef(draw);
+  useEffect(() => { drawRef.current = draw; }, [draw]);
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -73,79 +83,118 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
     if (!ctx) return;
 
     const strokesToDraw = [...data];
-    // 描画中のストロークがあればそれも描画
     if (currentStroke.current) {
-      strokesToDraw.push(currentStroke.current);
+        strokesToDraw.push(currentStroke.current);
     }
+    
+    requestAnimationFrame(() => draw(ctx, strokesToDraw));
+  }, [data, draw, width, height]);
 
-    draw(ctx, strokesToDraw);
-  }, [data, width, height, draw]); // currentStroke.currentの変更はイベントハンドラ内で再描画を呼ぶ
 
-  // --- イベントハンドラ ---
-
-  const getPos = (e: React.MouseEvent | React.TouchEvent) => {
+  useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return { x: 0, y: 0 };
-    const rect = canvas.getBoundingClientRect();
-    
-    let clientX, clientY;
-    if ('touches' in e) {
-      clientX = e.touches[0].clientX;
-      clientY = e.touches[0].clientY;
-    } else {
-      clientX = (e as React.MouseEvent).clientX;
-      clientY = (e as React.MouseEvent).clientY;
-    }
+    if (!canvas) return;
 
-    const scaleX = width / rect.width;
-    const scaleY = height / rect.height;
-
-    return {
-      x: (clientX - rect.left) * scaleX,
-      y: (clientY - rect.top) * scaleY
+    const renderCurrentState = () => {
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        
+        const strokes = [...propsRef.current.data];
+        if (currentStroke.current) {
+            strokes.push(currentStroke.current);
+        }
+        
+        requestAnimationFrame(() => drawRef.current(ctx, strokes));
     };
-  };
 
-  const startDrawing = (e: React.MouseEvent | React.TouchEvent) => {
-    if (!isInteracting) return;
-    // 左クリックのみ
-    if ('button' in e && (e as React.MouseEvent).button !== 0) return;
+    const getPos = (e: MouseEvent | TouchEvent) => {
+        const rect = canvas.getBoundingClientRect();
+        let clientX, clientY;
+        
+        if (window.TouchEvent && e instanceof TouchEvent) {
+            clientX = e.touches[0].clientX;
+            clientY = e.touches[0].clientY;
+        } else {
+            clientX = (e as MouseEvent).clientX;
+            clientY = (e as MouseEvent).clientY;
+        }
+        
+        const { width, height } = propsRef.current;
+        const scaleX = width / rect.width;
+        const scaleY = height / rect.height;
 
-    e.preventDefault();
-    setIsDrawing(true);
-    
-    const pos = getPos(e);
-    currentStroke.current = {
-      points: [pos],
-      color: toolType === 'eraser' ? 'rgba(0,0,0,1)' : color, // 消しゴムの色は何でも良い(合成で消える)
-      width: lineWidth,
-      type: toolType
+        return {
+            x: (clientX - rect.left) * scaleX,
+            y: (clientY - rect.top) * scaleY
+        };
     };
-  };
 
-  const drawMove = (e: React.MouseEvent | React.TouchEvent) => {
-    if (!isDrawing || !currentStroke.current) return;
-    e.preventDefault();
+    const start = (e: MouseEvent | TouchEvent) => {
+        if (!propsRef.current.isInteracting) return;
+        
+        if (e instanceof MouseEvent && e.button !== 0) return;
+        
+        e.preventDefault();
+        e.stopPropagation();
 
-    const pos = getPos(e);
-    currentStroke.current.points.push(pos);
+        isDrawing.current = true;
+        const pos = getPos(e);
+        const { color, lineWidth, toolType } = propsRef.current;
+        
+        currentStroke.current = {
+            points: [pos],
+            color: toolType === 'eraser' ? 'rgba(0,0,0,1)' : color,
+            width: lineWidth,
+            type: toolType
+        };
+        
+        renderCurrentState();
+    };
 
-    // リアルタイム反映
-    const canvas = canvasRef.current;
-    const ctx = canvas?.getContext('2d');
-    if (ctx) {
-       draw(ctx, [...data, currentStroke.current]);
-    }
-  };
+    const move = (e: MouseEvent | TouchEvent) => {
+        if (!isDrawing.current || !currentStroke.current) return;
+        e.preventDefault();
+        e.stopPropagation();
 
-  const endDrawing = () => {
-    if (!isDrawing || !currentStroke.current) return;
-    setIsDrawing(false);
+        const pos = getPos(e);
+        currentStroke.current.points.push(pos);
+        
+        renderCurrentState();
+    };
+
+    const end = (e: MouseEvent | TouchEvent) => {
+        if (!isDrawing.current) return;
+        e.preventDefault();
+        e.stopPropagation();
+        
+        isDrawing.current = false;
+        
+        if (currentStroke.current) {
+            propsRef.current.onAddStroke(currentStroke.current);
+            currentStroke.current = null;
+        }
+    };
+
+    canvas.addEventListener('mousedown', start);
+    document.addEventListener('mousemove', move);
+    document.addEventListener('mouseup', end);
     
-    // 確定データを親へ送る
-    onAddStroke(currentStroke.current);
-    currentStroke.current = null;
-  };
+    canvas.addEventListener('touchstart', start, { passive: false });
+    canvas.addEventListener('touchmove', move, { passive: false });
+    canvas.addEventListener('touchend', end, { passive: false });
+    canvas.addEventListener('touchcancel', end, { passive: false });
+
+    return () => {
+        canvas.removeEventListener('mousedown', start);
+        document.removeEventListener('mousemove', move);
+        document.removeEventListener('mouseup', end);
+        
+        canvas.removeEventListener('touchstart', start);
+        canvas.removeEventListener('touchmove', move);
+        canvas.removeEventListener('touchend', end);
+        canvas.removeEventListener('touchcancel', end);
+    };
+  }, []);
 
   return (
     <canvas
@@ -158,18 +207,11 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
         left: 0,
         width: '100%',
         height: '100%',
-        pointerEvents: isInteracting ? 'auto' : 'none', // 描画モードでないときは透過
+        pointerEvents: isInteracting ? 'auto' : 'none',
         zIndex: 50,
         cursor: isInteracting ? (toolType === 'eraser' ? 'cell' : 'crosshair') : 'default',
-        touchAction: 'none' // タッチデバイスでのスクロール防止
+        touchAction: 'none'
       }}
-      onMouseDown={startDrawing}
-      onMouseMove={drawMove}
-      onMouseUp={endDrawing}
-      onMouseLeave={endDrawing}
-      onTouchStart={startDrawing}
-      onTouchMove={drawMove}
-      onTouchEnd={endDrawing}
     />
   );
 };
