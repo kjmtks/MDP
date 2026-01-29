@@ -25,6 +25,9 @@ import { SlideThumbnail } from './components/SlideThumbnail';
 import { SlideScaler } from './components/SlideScaler';
 
 import { PresenterTool } from './components/PresenterTool';
+import { DrawingOverlay } from './components/DrawingOverlay';
+import { DrawingPalette } from './components/DrawingPalette';
+import { useDrawing } from './hooks/useDrawing';
 
 import './App.css';
 
@@ -243,6 +246,11 @@ function App() {
   const [isLaserPointer, setIsLaserPointer] = useState(false);
   const [isDrawioModalOpen, setIsDrawioModalOpen] = useState(false);
   const [drawioEditTarget, setDrawioEditTarget] = useState<{ base64: string, lineNo: number } | null>(null);
+  const { drawings, addStroke, undo, redo, clear, canUndo, canRedo } = useDrawing();
+  const [isPaletteVisible, setIsPaletteVisible] = useState(false);
+  const [toolType, setToolType] = useState<'pen' | 'eraser'>('pen');
+  const [penColor, setPenColor] = useState('#FF0000');
+  const [penWidth, setPenWidth] = useState(3);
 
   const lastWheelTime = useRef(0);
   const editorRef = useRef<ReactCodeMirrorRef>(null);
@@ -582,14 +590,37 @@ function App() {
   useEffect(() => {
     if (!isSlideshow) return;
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'p') {
+        setIsPaletteVisible(prev => {
+          const nextState = !prev;
+          if (nextState) setIsLaserPointer(false);
+          return nextState;
+        });
+      }
+      if (e.key === 'b') {
+        setIsLaserPointer(prev => {
+          const nextState = !prev;
+          if (nextState) setIsPaletteVisible(false);
+          return nextState;
+        });
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
+        e.preventDefault();
+        undo(currentSlideIndex);
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'y') {
+        e.preventDefault();
+        redo(currentSlideIndex);
+      }
+      if (e.key === 'c') {
+          clear(currentSlideIndex);
+      }
       if (['ArrowRight', 'ArrowDown', ' ', 'Enter', 'PageDown'].includes(e.key)) {
         e.preventDefault();
         moveSlide(1);
       } else if (['ArrowLeft', 'ArrowUp', 'PageUp'].includes(e.key)) {
         e.preventDefault();
         moveSlide(-1);
-      } else if (e.key === 'b') {
-        setIsLaserPointer(prev => !prev);
       }
     };
     const handleWheel = (e: WheelEvent) => {
@@ -616,7 +647,7 @@ function App() {
       window.removeEventListener('wheel', handleWheel);
       window.removeEventListener('mousedown', handleClick);
     };
-  }, [isLaserPointer, isSlideshow, moveSlide]);
+  }, [isSlideshow, moveSlide, undo, redo, currentSlideIndex, isLaserPointer, clear]);
 
   useEffect(() => {
     fetchFileTree();
@@ -797,23 +828,45 @@ function App() {
       </div>
 
       {isSlideshow && (
-        <div 
-          ref={slideshowRef} 
-          className={`slideshow-overlay ${isLaserPointer ? 'laser-mode' : ''}`}
-        >
+        <div ref={slideshowRef} className={`slideshow-overlay ${isLaserPointer ? 'laser-mode' : ''}`}>
+          
+          {isPaletteVisible && (
+            <DrawingPalette 
+              toolType={toolType} setToolType={setToolType}
+              color={penColor} setColor={setPenColor}
+              lineWidth={penWidth} setLineWidth={setPenWidth}
+              canUndo={canUndo(currentSlideIndex)}
+              canRedo={canRedo(currentSlideIndex)}
+              onUndo={() => undo(currentSlideIndex)}
+              onRedo={() => redo(currentSlideIndex)}
+              onClear={() => clear(currentSlideIndex)}
+            />
+          )}
           <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <SlideScaler width={slideSize.width} height={slideSize.height} marginRate={1}>
               {slides[currentSlideIndex] && !slides[currentSlideIndex].isHidden && (
-                <SlideView
-                  html={slides[currentSlideIndex].html}
-                  pageNumber={slides[currentSlideIndex].pageNumber}
-                  className={slides[currentSlideIndex].className}
-                  isActive={true}
-                  slideSize={slideSize}
-                  isEnabledPointerEvents={!isLaserPointer}
-                  header={slides[currentSlideIndex].header}
-                  footer={slides[currentSlideIndex].footer}
-                />
+                <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+                    <SlideView 
+                      html={slides[currentSlideIndex].html}
+                      pageNumber={slides[currentSlideIndex].pageNumber}
+                      className={slides[currentSlideIndex].className}
+                      isActive={true}
+                      slideSize={slideSize}
+                      isEnabledPointerEvents={!isLaserPointer}
+                      header={slides[currentSlideIndex].header}
+                      footer={slides[currentSlideIndex].footer}
+                    />
+                    <DrawingOverlay 
+                        width={slideSize.width}
+                        height={slideSize.height}
+                        data={drawings[currentSlideIndex] || []}
+                        onAddStroke={(stroke) => addStroke(currentSlideIndex, stroke)}
+                        color={penColor}
+                        lineWidth={penWidth}
+                        toolType={toolType}
+                        isInteracting={isPaletteVisible}
+                    />
+                </div>
               )}
             </SlideScaler>
           </div>
