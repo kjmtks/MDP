@@ -5,8 +5,11 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import NoteAddIcon from '@mui/icons-material/NoteAdd';
 import CreateNewFolderIcon from '@mui/icons-material/CreateNewFolder';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
-import PresentToAllIcon from '@mui/icons-material/PresentToAll';
+import EditIcon from '@mui/icons-material/Edit';
+import AddPhotoAlternateIcon from '@mui/icons-material/AddPhotoAlternate';
 import GridViewIcon from '@mui/icons-material/GridView';
+import PresentToAllIcon from '@mui/icons-material/PresentToAll';
+import DevicesIcon from '@mui/icons-material/Devices'; 
 
 import { Panel, Group, Separator } from 'react-resizable-panels';
 import { Box, Tabs, Tab, Typography, Button, Stack, Tooltip, List, ListItem, ListItemButton, ListItemText, ListSubheader, Divider } from '@mui/material';
@@ -28,6 +31,9 @@ import { PresenterTool } from './components/PresenterTool';
 import { DrawingOverlay } from './components/DrawingOverlay';
 import { DrawingPalette } from './components/DrawingPalette';
 import { useDrawing } from './hooks/useDrawing';
+import { RemoteControl } from './components/RemoteControl';
+import { ConnectDialog } from './components/ConnectDialog';
+import { useSync, type SyncMessage } from './hooks/useSync';
 
 import './App.css';
 
@@ -35,14 +41,21 @@ const INITIAL_MARKDOWN = "";
 const MAX_FILE_SIZE = 500 * 1024;
 const BASE_HEIGHT = 720;
 
-interface ShortcutItem {
+const CODEMIRROR_BASIC_SETUP = {
+  lineNumbers: true,
+  foldGutter: true,
+  highlightActiveLine: true,
+};
+
+interface SnipetItem {
   label: string;
   text: string;
   description?: string;
+  icon?: string;
 }
 interface SnipetsCategory {
   category: string;
-  items: ShortcutItem[];
+  items: SnipetItem[];
 }
 interface FileNode {
   name: string;
@@ -61,8 +74,13 @@ type FileType = 'markdown' | 'image' | 'text' | 'binary' | 'limit-exceeded';
 
 
 class CollapseWidget extends WidgetType {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  eq(_other: CollapseWidget) { return true; }
+  readonly base64: string;
+
+  constructor(base64: string) {
+    super();
+    this.base64 = base64;
+  }
+  eq(other: CollapseWidget) { return other.base64 === this.base64; }
   ignoreEvent() { return true; }
   toDOM() {
     const wrapper = document.createElement("span");
@@ -82,15 +100,16 @@ class CollapseWidget extends WidgetType {
     editBtn.type = "button";
     editBtn.textContent = "Edit";
     editBtn.className = "cm-drawio-edit-btn";
+    editBtn.dataset.base64 = this.base64;
     editBtn.style.cssText = `
       background-color: #1976d2;
       color: white;
       border: none;
       border-radius: 3px;
       padding: 2px 8px;
-      font-size: 0.5em;
+      font-size: 0.8em;
       cursor: pointer;
-      line-height: 1.0;
+      line-height: 1.4;
       font-family: sans-serif;
     `;
     editBtn.onclick = (e) => {
@@ -98,9 +117,9 @@ class CollapseWidget extends WidgetType {
       e.stopPropagation();
       const event = new CustomEvent('open-drawio-editor', {
         bubbles: true,
-        detail: { target: editBtn } 
+        detail: { base64: this.base64, target: editBtn } 
       });
-      window.dispatchEvent(event);
+      editBtn.dispatchEvent(event);
     };
     wrapper.appendChild(textSpan);
     wrapper.appendChild(editBtn);
@@ -108,9 +127,15 @@ class CollapseWidget extends WidgetType {
   }
 }
 
+interface DrawioRange {
+  from: number;
+  to: number;
+  base64: string;
+}
+
 const drawioCollapsePlugin = ViewPlugin.fromClass(class {
   decorations: DecorationSet;
-  ranges: { from: number, to: number }[] = [];
+  ranges: DrawioRange[] = [];
   constructor(view: EditorView) {
     this.ranges = this.scan(view);
     this.decorations = this.build(view);
@@ -124,30 +149,30 @@ const drawioCollapsePlugin = ViewPlugin.fromClass(class {
     }
   }
   scan(view: EditorView) {
-    const found = [];
+    const found: DrawioRange[] = [];
     const text = view.state.doc.toString();
-    const regex = /!\[@drawio\]\([^)]*\)/g;
+    const regex = /!\[@drawio\]\(([^)]*)\)/g;
     let match;
     while ((match = regex.exec(text))) {
       const start = match.index;
       const length = match[0].length;
       const from = start + 11;
       const to = start + length - 1;
-      found.push({ from, to });
+      found.push({ from, to, base64: match[1] });
     }
     return found;
   }
   build(view: EditorView) {
     const builder = new RangeSetBuilder<Decoration>();
     const { from: selFrom, to: selTo } = view.state.selection.main;
-    for (const { from, to } of this.ranges) {
+    for (const { from, to, base64 } of this.ranges) {
       const syntaxStart = from - 11;
       const syntaxEnd = to + 1;
       const isCursorInside = (selFrom >= syntaxStart && selFrom <= syntaxEnd) || 
                              (selTo >= syntaxStart && selTo <= syntaxEnd);
       if (!isCursorInside) {
         builder.add(from, to, Decoration.replace({
-          widget: new CollapseWidget(),
+          widget: new CollapseWidget(base64),
         }));
       }
     }
@@ -227,7 +252,7 @@ function CustomTabPanel(props: TabPanelProps) {
 }
 
 // -------------------------------------------------------------------------------------------------
-function App() {
+function MainEditor() {
   const [markdown, setMarkdown] = useState<string>(INITIAL_MARKDOWN);
   const [editorInitialValue, setEditorInitialValue] = useState<string>(INITIAL_MARKDOWN);
   const [debouncedMarkdown, setDebouncedMarkdown] = useState<string>(INITIAL_MARKDOWN);
@@ -239,24 +264,33 @@ function App() {
   const [currentFileName, setCurrentFileName] = useState<string | null>(null);
   const [currentFileType, setCurrentFileType] = useState<FileType>('markdown');
   const [leftTabIndex, setLeftTabIndex] = useState(0);
-  const [bottomTabIndex, setBottomTabIndex] = useState(1);
+  const [bottomTabIndex, setBottomTabIndex] = useState(0);
   const [isSlideshow, setIsSlideshow] = useState(false);
   const [isSlideOverview, setIsSlideOverview] = useState(false);
   const slideshowRef = useRef<HTMLDivElement>(null);
   const [isLaserPointer, setIsLaserPointer] = useState(false);
   const [isDrawioModalOpen, setIsDrawioModalOpen] = useState(false);
   const [drawioEditTarget, setDrawioEditTarget] = useState<{ base64: string, lineNo: number } | null>(null);
+  const [drawioButtonPos, setDrawioButtonPos] = useState<{ top: number, left: number } | null>(null);
+  const [syncRequestToken, setSyncRequestToken] = useState(0);
+  const [isConnectDialogOpen, setIsConnectDialogOpen] = useState(false);
   const { drawings, addStroke, undo, redo, clear, canUndo, canRedo } = useDrawing();
   const [isPaletteVisible, setIsPaletteVisible] = useState(false);
   const [toolType, setToolType] = useState<'pen' | 'eraser'>('pen');
   const [penColor, setPenColor] = useState('#FF0000');
   const [penWidth, setPenWidth] = useState(3);
-
+  
   const lastWheelTime = useRef(0);
   const editorRef = useRef<ReactCodeMirrorRef>(null);
   const isSyncingFromEditor = useRef(false);
   const prevSlideIndexRef = useRef(currentSlideIndex);
   const markdownRef = useRef(INITIAL_MARKDOWN);
+
+  const isLoadingFile = useRef<boolean>((() => {
+    if (typeof window === 'undefined') return false;
+    const params = new URLSearchParams(window.location.search);
+    return params.has('file');
+  })());
 
   const baseUrl = useMemo(() => {
     if (!currentFileName) return '/files/';
@@ -299,9 +333,12 @@ function App() {
     const width = (BASE_HEIGHT * w) / h;
     return { width, height: BASE_HEIGHT };
   }, [globalContext.aspectRatio]);
-
-  const channelId = useMemo(() => `mdp-channel-${Math.random().toString(36).slice(2)}`, []);
-  const broadcastChannel = useRef<BroadcastChannel | null>(null);
+  
+  const slideStyleVariables = useMemo(() => ({
+    '--slide-width': `${slideSize.width}px`,
+    '--slide-height': `${slideSize.height}px`,
+    '--slide-aspect-ratio': `${slideSize.width}/${slideSize.height}`,
+  } as React.CSSProperties), [slideSize]);
 
   useEffect(() => {
     const handler = setTimeout(() => { setDebouncedMarkdown(markdown); }, 300);
@@ -335,8 +372,6 @@ function App() {
       }
     }
   }, [globalContext.themeCss, baseUrl, lastUpdated]);
-  
-
 
   const moveSlide = useCallback((direction: number) => {
     let nextIndex = currentSlideIndex + direction;
@@ -355,45 +390,48 @@ function App() {
   const moveSlideRef = useRef(moveSlide);
   useEffect(() => { moveSlideRef.current = moveSlide; }, [moveSlide]);
 
-  const sendSyncData = useCallback(() => {
-    if (broadcastChannel.current) {
-      let themeCssUrl = globalContext.themeCss;
-      if (themeCssUrl && !themeCssUrl.match(/^(https?:|\/)/)) {
-        themeCssUrl = `${baseUrl}${themeCssUrl}`;
-      }
-      broadcastChannel.current.postMessage({
-        type: 'SYNC_STATE',
-        payload: {
-          slides,
-          index: currentSlideIndex,
-          slideSize,
-          themeCssUrl, 
-          lastUpdated,
-        }
-      });
+  const channelId = useMemo(() => `mdp-${Math.random().toString(36).slice(2, 8)}`, []);
+  
+  const sendSyncData = useCallback((sendFn: (msg: SyncMessage) => void) => {
+    let themeCssUrl = globalContext.themeCss;
+    if (themeCssUrl && !themeCssUrl.match(/^(https?:|\/)/)) {
+      themeCssUrl = `${baseUrl}${themeCssUrl}`;
     }
-  }, [slides, currentSlideIndex, slideSize, globalContext.themeCss, baseUrl, lastUpdated]);
+    
+    sendFn({
+      type: 'SYNC_STATE',
+      channelId,
+      payload: {
+        slides,
+        index: currentSlideIndex,
+        slideSize,
+        themeCssUrl,
+        lastUpdated,
+        allDrawings: drawings
+      }
+    });
+  }, [channelId, slides, currentSlideIndex, slideSize, globalContext.themeCss, baseUrl, lastUpdated, drawings]);
+
+  const { send } = useSync(channelId, useCallback((msg: SyncMessage) => {
+    switch (msg.type) {
+      case 'NAV':
+        moveSlideRef.current(msg.direction);
+        break;
+      case 'REQUEST_SYNC':
+        setSyncRequestToken(t => t + 1);
+        break; 
+      case 'DRAW_STROKE':
+        addStroke(msg.pageIndex, msg.stroke, true);
+        break;
+      case 'CLEAR_DRAWING':
+        clear(msg.pageIndex);
+        break;
+    }
+  }, [addStroke, clear]));
 
   useEffect(() => {
-    const ch = new BroadcastChannel(channelId);
-    broadcastChannel.current = ch;
-    ch.onmessage = (event) => {
-      const { type, direction } = event.data;
-      if (type === 'NAV') {
-        moveSlideRef.current(direction);
-      }
-      if (type === 'PRESENTER_READY') {
-        setTimeout(() => sendSyncData(), 100);
-      }
-    };
-    return () => {
-      ch.close();
-    };
-  }, [channelId, sendSyncData]);
-
-  useEffect(() => {
-    sendSyncData();
-  }, [sendSyncData]);
+    sendSyncData(send);
+  }, [currentSlideIndex, drawings, sendSyncData, send, syncRequestToken]);
 
   const openPresenterTool = useCallback(() => {
     window.open(`/presenter?channel=${channelId}`, '_blank', 'width=1000,height=800');
@@ -446,6 +484,7 @@ function App() {
       alert("外部URLの読み込みはサポートしていません。");
       return;
     }
+    isLoadingFile.current = true;
     const params = new URLSearchParams(window.location.search);
     params.set('file', fileName);
     const newUrl = `${window.location.pathname}?${params.toString()}`;
@@ -458,6 +497,7 @@ function App() {
       setMarkdown(""); 
       setDebouncedMarkdown("");
       setEditorInitialValue(""); 
+      markdownRef.current = ""; 
       return;
     }
     const fetchPath = `/files/${fileName}`;
@@ -478,15 +518,21 @@ function App() {
         setMarkdown(text);
         setDebouncedMarkdown(text);
         setEditorInitialValue(text);
+        markdownRef.current = text;
         setLastUpdated(Date.now());
         prevSlideIndexRef.current = -1;
+        setTimeout(() => {
+            isLoadingFile.current = false;
+        }, 1000);
       })
       .catch(err => {
+        isLoadingFile.current = false;
         if (err.message === 'FILE_TOO_LARGE') {
           setCurrentFileType('limit-exceeded');
           setMarkdown("");
           setDebouncedMarkdown("");
           setEditorInitialValue("");
+          markdownRef.current = "";
         } else {
           console.error("Failed to fetch content:", err);
           alert(`ファイルの読み込みに失敗しました。\n(Error: ${err.message})`);
@@ -559,6 +605,10 @@ function App() {
     }
   }, [currentFileName, markdown, currentFileType]);
 
+  const handleCreateDrawio = useCallback(() => {
+    setDrawioEditTarget(null);
+    setIsDrawioModalOpen(true);
+  }, []);
   const handleDrawioSave = useCallback((base64Xml: string) => {
     if (!drawioEditTarget || !editorRef.current?.view) {
         handleInsertText(`\n![@drawio](${base64Xml})\n`);
@@ -573,9 +623,8 @@ function App() {
     const newDoc = view.state.doc.toString();
     setMarkdown(newDoc);
     markdownRef.current = newDoc;
+    setDrawioButtonPos(null);
   }, [drawioEditTarget, handleInsertText]);
-
-
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -614,6 +663,7 @@ function App() {
       }
       if (e.key === 'c') {
           clear(currentSlideIndex);
+          send({ type: 'CLEAR_DRAWING', channelId, pageIndex: currentSlideIndex });
       }
       if (['ArrowRight', 'ArrowDown', ' ', 'Enter', 'PageDown'].includes(e.key)) {
         e.preventDefault();
@@ -659,16 +709,19 @@ function App() {
       .then(res => res.text())
       .then(text => setTemplateContent(text))
       .catch(err => console.error("Failed to load template:", err));
-      
     const params = new URLSearchParams(window.location.search);
     const fileUrl = params.get('file');
+    
     if (fileUrl) {
       loadFile(fileUrl, undefined);
     }
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsHost = window.location.port === '5173' ? 'localhost:3000' : window.location.host;
     let ws: WebSocket;
+    let retryTimer: ReturnType<typeof setTimeout>;
+    let isUnmounting = false; 
     const connectWs = () => {
+      if (isUnmounting) return;
       try {
         ws = new WebSocket(`${wsProtocol}//${wsHost}`);
         ws.onopen = () => console.log("Connected to file watcher");
@@ -677,13 +730,27 @@ function App() {
             fetchFileTree();
           }
         };
-        ws.onclose = () => setTimeout(connectWs, 5000);
+        ws.onclose = () => {
+          if (!isUnmounting) {
+            retryTimer = setTimeout(connectWs, 5000);
+          }
+        };
       } catch (e) {
         console.error("WS connection error:", e);
+        if (!isUnmounting) {
+           retryTimer = setTimeout(connectWs, 5000);
+        }
       }
     };
     connectWs();
-    return () => { if (ws) ws.close(); };
+    return () => { 
+      isUnmounting = true;
+      clearTimeout(retryTimer); 
+      if (ws) {
+        ws.onclose = null;
+        ws.close(); 
+      }
+    };
   }, [fetchFileTree, loadFile]);
 
   const saveKeymap = useMemo(() => {
@@ -693,19 +760,16 @@ function App() {
   useEffect(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const handleOpenDrawio = (e: any) => {
-      const target = e.detail.target as HTMLElement; 
+      const base64 = e.detail.base64;
+      const target = e.detail.target as HTMLElement;
       const view = editorRef.current?.view;
-      if (view && target) {
+      
+      if (view && typeof base64 === 'string' && target) {
         try {
           const pos = view.posAtDOM(target);
           const line = view.state.doc.lineAt(pos);
-          const text = line.text;
-          const match = text.match(/!\[@drawio\]\(([^)]*)\)/);
-          if (match) {
-             const base64 = match[1];
-             setDrawioEditTarget({ base64, lineNo: line.number });
-             setIsDrawioModalOpen(true);
-          }
+          setDrawioEditTarget({ base64, lineNo: line.number });
+          setIsDrawioModalOpen(true);
         } catch (err) {
           console.error("Failed to locate widget position:", err);
         }
@@ -731,8 +795,7 @@ function App() {
     }
     if (currentSlideIndex === prevSlideIndexRef.current) return;
     if (!editorRef.current?.view || !slides[currentSlideIndex]) return;
-
-
+    
     const view = editorRef.current.view;
     const lineNo = slides[currentSlideIndex].range.startLine;
     if (lineNo > view.state.doc.lines) return;
@@ -740,16 +803,41 @@ function App() {
     view.dispatch({ selection: { anchor: linePos.from, head: linePos.from }, scrollIntoView: true });
     prevSlideIndexRef.current = currentSlideIndex;
 
+    if (isLoadingFile.current) {
+        setTimeout(() => { isLoadingFile.current = false; }, 150);
+    }
   }, [currentSlideIndex, slides, currentFileType]);
-
 
   const handleLeftTabChange = (_: React.SyntheticEvent, newValue: number) => setLeftTabIndex(newValue);
   const handleBottomTabChange = (_: React.SyntheticEvent, newValue: number) => setBottomTabIndex(newValue);
-  const onChangeEditor = useCallback((val: string) => setMarkdown(val), []);
+  
+  const onChangeEditor = useCallback((val: string) => {
+    setMarkdown(val);
+    markdownRef.current = val;
+  }, []);
+
   const onEditorUpdate = useCallback((viewUpdate: ViewUpdate) => {
     if (currentFileType !== 'markdown') return;
+    if (isLoadingFile.current) return;
     if (!viewUpdate.view.hasFocus) return;
     if (slides.length === 0) return;
+    if (viewUpdate.selectionSet || viewUpdate.docChanged || viewUpdate.viewportChanged) {
+        const state = viewUpdate.state;
+        const head = state.selection.main.head;
+        const line = state.doc.lineAt(head);
+        const text = line.text;
+        const match = text.match(/^!\[@drawio\]\((.*)\)$/);
+        if (match) {
+            const coords = viewUpdate.view.coordsAtPos(line.to);
+            if (coords) {
+                setDrawioButtonPos({ top: coords.top, left: coords.right + 20 });
+                setDrawioEditTarget({ base64: match[1], lineNo: line.number });
+            }
+        } else {
+            setDrawioButtonPos(null);
+            setDrawioEditTarget(null);
+        }
+    }
     if (viewUpdate.selectionSet) {
       const state = viewUpdate.state;
       const head = state.selection.main.head;
@@ -765,29 +853,11 @@ function App() {
   }, [slides, currentSlideIndex, currentFileType]);
 
   const EmptyState = () => (
-    <Box sx={{ 
-      height: '100%', 
-      width: '100%',
-      display: 'flex', 
-      flexDirection: 'column', 
-      alignItems: 'center', 
-      justifyContent: 'center', 
-      bgcolor: '#202020', 
-      color: '#888',
-      gap: 2
-    }}>
+    <Box sx={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', bgcolor: '#202020', color: '#888', gap: 2 }}>
       <Typography variant="h5" color="#ccc">No File Selected</Typography>
-      <Typography variant="body2">
-        Select a file from the list on the left to start editing.
-      </Typography>
+      <Typography variant="body2">Select a file from the list on the left to start editing.</Typography>
     </Box>
   );
-
-
-  const isPresenterMode = window.location.pathname === '/presenter';
-  if (isPresenterMode) {
-     return <PresenterTool />;
-  }
 
   return (
     <div className="container">
@@ -797,31 +867,47 @@ function App() {
         initialBase64Xml={drawioEditTarget?.base64}
         onSave={handleDrawioSave}
       />
+      {drawioButtonPos && (
+        <Button
+          variant="contained"
+          color="primary"
+          size="small"
+          startIcon={<EditIcon />}
+          style={{
+            position: 'fixed',
+            top: drawioButtonPos.top - 8,
+            left: drawioButtonPos.left,
+            zIndex: 1200, 
+            padding: '2px 8px',
+            fontSize: '0.75rem',
+            minWidth: 'auto',
+            textTransform: 'none',
+            boxShadow: '0 2px 5px rgba(0,0,0,0.3)'
+          }}
+          onClick={() => setIsDrawioModalOpen(true)}
+        >
+          Edit Diagram
+        </Button>
+      )}
+      
+      <ConnectDialog 
+        open={isConnectDialogOpen} 
+        onClose={() => setIsConnectDialogOpen(false)} 
+        channelId={channelId} 
+      />
+
       <div className="print-container">
         <style>{`
           @media print {
-            @page {
-              size: ${slideSize.width}px ${slideSize.height}px;
-              margin: 0;
-            }
-            .print-slide-page {
-              width: ${slideSize.width}px !important;
-              height: ${slideSize.height}px !important;
-            }
+            @page { size: ${slideSize.width}px ${slideSize.height}px; margin: 0; }
+            .print-slide-page { width: ${slideSize.width}px !important; height: ${slideSize.height}px !important; }
+            .print-slide-content { width: 100% !important; height: 100% !important; }
           }
         `}</style>
         {slides.map((slide, index) => (
           !slide.isHidden && (
             <div key={index} className="print-slide-page">
-              <SlideView 
-                html={slide.html}
-                pageNumber={slide.pageNumber}
-                className={slide.className}
-                isActive={true}
-                slideSize={slideSize}
-                header={slide.header}
-                footer={slide.footer}
-              />
+              <SlideView html={slide.html} pageNumber={slide.pageNumber} isActive={true} className={`print-slide-content ${slide.className || 'normal'}`} style={slideStyleVariables} slideSize={slideSize} />
             </div>
           )
         ))}
@@ -839,9 +925,14 @@ function App() {
               canRedo={canRedo(currentSlideIndex)}
               onUndo={() => undo(currentSlideIndex)}
               onRedo={() => redo(currentSlideIndex)}
-              onClear={() => clear(currentSlideIndex)}
+              onClear={() => {
+                clear(currentSlideIndex);
+                send({ type: 'CLEAR_DRAWING', channelId, pageIndex: currentSlideIndex });
+              }}
+              container={slideshowRef.current}
             />
           )}
+
           <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <SlideScaler width={slideSize.width} height={slideSize.height} marginRate={1}>
               {slides[currentSlideIndex] && !slides[currentSlideIndex].isHidden && (
@@ -852,15 +943,19 @@ function App() {
                       className={slides[currentSlideIndex].className}
                       isActive={true}
                       slideSize={slideSize}
-                      isEnabledPointerEvents={!isLaserPointer}
+                      isEnabledPointerEvents={!isLaserPointer && !isPaletteVisible} 
                       header={slides[currentSlideIndex].header}
                       footer={slides[currentSlideIndex].footer}
                     />
+                    
                     <DrawingOverlay 
                         width={slideSize.width}
                         height={slideSize.height}
                         data={drawings[currentSlideIndex] || []}
-                        onAddStroke={(stroke) => addStroke(currentSlideIndex, stroke)}
+                        onAddStroke={(stroke) => {
+                          addStroke(currentSlideIndex, stroke);
+                          send({ type: 'DRAW_STROKE', channelId, pageIndex: currentSlideIndex, stroke });
+                        }}
                         color={penColor}
                         lineWidth={penWidth}
                         toolType={toolType}
@@ -873,33 +968,26 @@ function App() {
         </div>
       )}
 
-      <div className="header" style={{ 
-        display: 'flex', 
-        flexDirection: 'row',
-        justifyContent: 'flex-start',
-        alignItems: 'center', 
-        padding: '0 1rem',
-        gap: '1rem',
-        height: '40px',
-        maxHeight: '40px',
-        minHeight: '40px'
-      }}>
-        
-        <div style={{ 
-          color: '#fff', 
-          fontWeight: 'bold', 
-          whiteSpace: 'nowrap', 
-          overflow: 'hidden', 
-          textOverflow: 'ellipsis',
-          width: '14em',
-          maxWidth: '14em', 
-          flexShrink: 0, 
-          textAlign: 'left'
-        }} title={currentFileName || "MDP"}>
+      <div className="header" style={{ display: 'flex', flexDirection: 'row', justifyContent: 'flex-start', alignItems: 'center', padding: '0 1rem', gap: '1rem', height: '40px' }}>
+        <div style={{ color: '#fff', fontWeight: 'bold', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '14em', flexShrink: 0, textAlign: 'left', cursor: 'default' }} title={currentFileName || "MDP"}>
           MDP {currentFileName ? ` - ${currentFileName}` : ""}
         </div>
-        
         <Stack direction="row" spacing={1} alignItems="center" sx={{ flexShrink: 0 }}>
+          
+          <Tooltip title="Connect Remote">
+            <span>
+              <Button 
+                variant="text" 
+                size="small" 
+                onClick={() => setIsConnectDialogOpen(true)}
+                disabled={!currentFileName}
+                sx={{ color: '#eee', minWidth: '40px' }}
+              >
+                <DevicesIcon />
+              </Button>
+            </span>
+          </Tooltip>
+
           <Tooltip title="Open Presenter View">
             <span>
               <Button 
@@ -918,23 +1006,9 @@ function App() {
             </span>
           </Tooltip>
 
-          <Tooltip title="Start Slideshow">
-            <span>
-              <Button 
-                variant="text" 
-                size="small" 
-                onClick={toggleSlideshow}
-                disabled={!currentFileName || currentFileType !== 'markdown'}
-                sx={{ 
-                  color: '#eee', 
-                  minWidth: '40px',
-                  '&.Mui-disabled': { color: 'rgba(255, 255, 255, 0.3)' }
-                }}
-              >
-                <PlayArrowIcon />
-              </Button>
-            </span>
-          </Tooltip>
+          <Tooltip title="Start Slideshow (F5)"><Button variant="text" size="small" onClick={toggleSlideshow} disabled={!currentFileName || currentFileType !== 'markdown'} sx={{ color: '#eee', minWidth: '40px', '&.Mui-disabled': { color: 'rgba(255, 255, 255, 0.3)' } }}><PlayArrowIcon /></Button></Tooltip>
+          <Tooltip title="Print / Export PDF"><Button variant="text" size="small" onClick={handlePrint} disabled={!currentFileName || currentFileType !== 'markdown'} sx={{ color: '#eee', minWidth: '40px', '&.Mui-disabled': { color: 'rgba(255, 255, 255, 0.3)' } }}><PrintIcon /></Button></Tooltip>
+          
           <Tooltip title="Slide Overview">
              <Button 
                variant="text" 
@@ -945,25 +1019,6 @@ function App() {
              >
                <GridViewIcon />
              </Button>
-          </Tooltip>
-          <Tooltip title="Print / Export PDF">
-            <span>
-              <Button 
-                variant="text" 
-                size="small" 
-                onClick={handlePrint}
-                disabled={!currentFileName || currentFileType !== 'markdown'}
-                sx={{ 
-                  color: '#eee', 
-                  minWidth: '40px',
-                  '&.Mui-disabled': { 
-                    color: 'rgba(255, 255, 255, 0.3)' 
-                  }
-                }}
-              >
-                <PrintIcon />
-              </Button>
-            </span>
           </Tooltip>
         </Stack>
       </div>
@@ -992,19 +1047,22 @@ function App() {
                 display: slide.isHidden ? 'none' : 'auto',
               }}
             >
-              <div style={{ pointerEvents: 'none', background: 'white', opacity: slide.isHidden ? 0.5 : 1, }}>
-                <SlideThumbnail
-                  htmlContent={slide.html}
-                  slideSize={slideSize}
-                  className={slide.className}
-                  isActive={false}
-                  onClick={() => setCurrentSlideIndex(index)}
-                  isCover={slide.isCover}
-                  isHidden={slide.isHidden}
-                  pageNumber={slide.pageNumber}
-                  header={slide.header}
-                  footer={slide.footer}
-                />
+              <div style={{ pointerEvents: 'none', background: 'white', opacity: slide.isHidden ? 0.5 : 1, width: '100%', aspectRatio: `${slideSize.width} / ${slideSize.height}` }}>
+                <SlideScaler width={slideSize.width} height={slideSize.height}>
+                  <SlideView
+                    html={slide.html}
+                    pageNumber={slide.pageNumber}
+                    className={slide.className}
+                    isActive={true}
+                    slideSize={slideSize}
+                    isEnabledPointerEvents={false}
+                    header={slide.header}
+                    footer={slide.footer}
+                  />
+                </SlideScaler>
+              </div>
+              <div style={{ padding: '8px', textAlign: 'center', color: '#ccc', fontSize: '0.9rem', backgroundColor: '#2a2a2a' }}>
+                  Slide {index + 1}
               </div>
             </div>
           ))}
@@ -1049,25 +1107,10 @@ function App() {
                   </CustomTabPanel>
                   <CustomTabPanel value={leftTabIndex} index={1}>
                     <Stack direction="row" spacing={1} sx={{ p: 1, borderBottom: '1px solid #555', bgcolor: 'white' }}>
-                      
-                      <Tooltip title="Refresh List">
-                        <Button variant="outlined" size="small" onClick={handleManualRefresh} sx={{ minWidth: '30px', px: 1, color: '#000', borderColor: '#555' }}>
-                          <RefreshIcon fontSize="small" />
-                        </Button>
-                      </Tooltip>
-
-                      <Tooltip title="New File">
-                        <Button variant="outlined" size="small" onClick={() => handleCreate('file')} sx={{ minWidth: '30px', px: 1, color: '#000', borderColor: '#555' }}>
-                          <NoteAddIcon fontSize="small" />
-                        </Button>
-                      </Tooltip>
-
-                      <Tooltip title="New Folder">
-                        <Button variant="outlined" size="small" onClick={() => handleCreate('directory')} sx={{ minWidth: '30px', px: 1, color: '#000', borderColor: '#555' }}>
-                          <CreateNewFolderIcon fontSize="small" />
-                        </Button>
-                      </Tooltip>
-
+                      <Tooltip title="Refresh List"><Button variant="outlined" size="small" onClick={handleManualRefresh} sx={{ minWidth: '30px', px: 1, color: '#000', borderColor: '#555' }}><RefreshIcon fontSize="small" /></Button></Tooltip>
+                      <Button variant="outlined" size="small" onClick={() => handleCreate('file')} sx={{ minWidth: '30px', px: 1, color: '#000', borderColor: '#555' }}><NoteAddIcon fontSize="small" /></Button>
+                      <Button variant="outlined" size="small" onClick={() => handleCreate('directory')} sx={{ minWidth: '30px', px: 1, color: '#000', borderColor: '#555' }}><CreateNewFolderIcon fontSize="small" /></Button>
+                      <Tooltip title="Add New Diagram"><Button variant="outlined" size="small" onClick={handleCreateDrawio} disabled={!currentFileName || currentFileType !== 'markdown'} sx={{ minWidth: '30px', px: 1, color: '#000', borderColor: '#555' }}><AddPhotoAlternateIcon fontSize="small" /></Button></Tooltip>
                     </Stack>
                     <Box sx={{ p: 1, color: '#e0e0e0', fontSize: '0.9rem', overflowY: 'auto', overflowX: 'hidden' }}>
                       {fileTree.length > 0 ? (
@@ -1162,7 +1205,7 @@ function App() {
                                   onChange={onChangeEditor}
                                   onUpdate={onEditorUpdate}
                                   theme="dark"
-                                  basicSetup={{ lineNumbers: true, foldGutter: true, highlightActiveLine: true }}
+                                  basicSetup={CODEMIRROR_BASIC_SETUP}
                                 />
                               </Panel>
                               <Separator className="resize-handle" />
@@ -1181,6 +1224,13 @@ function App() {
                                                 onClick={() => handleInsertText(item.text)}
                                                 sx={{ py: 0.5 }}
                                               >
+                                                {/* アイコン表示エリア */}
+                                                {item.icon && (
+                                                  <div 
+                                                    style={{ marginRight: '8px', display: 'flex', alignItems: 'center', width: '20px', height: '20px', fill: 'currentColor' }}
+                                                    dangerouslySetInnerHTML={{ __html: item.icon }}
+                                                  />
+                                                )}
                                                 <ListItemText 
                                                   primary={item.label} 
                                                   primaryTypographyProps={{ fontSize: '0.85rem' }}
@@ -1217,4 +1267,9 @@ function App() {
   );
 }
 
-export default App;
+export default function AppRouter() {
+  const path = window.location.pathname;
+  if (path === '/presenter') return <PresenterTool />;
+  if (path === '/remote') return <RemoteControl />;
+  return <MainEditor />;
+}

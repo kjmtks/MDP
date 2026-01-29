@@ -1,10 +1,16 @@
-﻿import React, { useState, useEffect, useRef } from 'react';
+﻿import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { SlideView } from './SlideView';
 import { SlideScaler } from './SlideScaler';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import PauseIcon from '@mui/icons-material/Pause';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import ArrowBackIosIcon from '@mui/icons-material/ArrowBackIos'; 
+import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos'; 
 import { Panel, Group, Separator } from 'react-resizable-panels';
+
+import { useSync, type SyncMessage } from '../hooks/useSync';
+
+import '../App.css';
 
 interface SyncData {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -16,8 +22,10 @@ interface SyncData {
 }
 
 export const PresenterTool: React.FC = () => {
-  const params = new URLSearchParams(window.location.search);
-  const channelId = params.get('channel');
+  const [channelId] = useState<string | null>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('channel');
+  });
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [slides, setSlides] = useState<any[]>([]);
@@ -33,28 +41,20 @@ export const PresenterTool: React.FC = () => {
   const timerStartRef = useRef<number | null>(null);
   const accumulatedTimeRef = useRef<number>(0);
   const animationFrameRef = useRef<number>(0);
-  const channelRef = useRef<BroadcastChannel | null>(null);
-
-  useEffect(() => {
-    if (!channelId) return;
-    const ch = new BroadcastChannel(channelId);
-    channelRef.current = ch;
-    ch.onmessage = (event) => {
-      const { type, payload } = event.data;
-      if (type === 'SYNC_STATE') {
-        const data = payload as SyncData;
-        setSlides(data.slides);
-        setCurrentIndex(data.index);
+  
+  const { send } = useSync(channelId, (msg: SyncMessage) => {
+    switch (msg.type) {
+      case 'SYNC_STATE': {
+        const data = msg.payload as SyncData;
+        if (data.slides) setSlides(data.slides);
+        if (typeof data.index === 'number') setCurrentIndex(data.index);
         if (data.slideSize) setSlideSize(data.slideSize);
         setThemeCssUrl(data.themeCssUrl);
         setLastUpdated(data.lastUpdated);
+        break;
       }
-    };
-    ch.postMessage({ type: 'PRESENTER_READY' });
-    return () => {
-      ch.close();
-    };
-  }, [channelId]);
+    }
+  });
 
   useEffect(() => {
     const linkId = 'mdp-presenter-theme';
@@ -67,15 +67,15 @@ export const PresenterTool: React.FC = () => {
         document.head.appendChild(link);
       }
       const separator = themeCssUrl.includes('?') ? '&' : '?';
-      const href = `${themeCssUrl}${separator}t=${lastUpdated}`;
-
-      if (link.getAttribute('href') !== href) {
-        link.href = href;
-      }
-    } else {
-      if (link) document.head.removeChild(link);
+      link.href = `${themeCssUrl}${separator}t=${lastUpdated}`;
     }
   }, [themeCssUrl, lastUpdated]);
+
+  const slideStyles = useMemo(() => ({
+    '--slide-width': `${slideSize.width}px`,
+    '--slide-height': `${slideSize.height}px`,
+    '--slide-aspect-ratio': `${slideSize.width}/${slideSize.height}`,
+  } as React.CSSProperties), [slideSize]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -123,9 +123,11 @@ export const PresenterTool: React.FC = () => {
     return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
-  const sendNav = (direction: number) => {
-    channelRef.current?.postMessage({ type: 'NAV', direction });
-  };
+  const sendNav = useCallback((direction: number) => {
+    if (channelId) {
+      send({ type: 'NAV', direction, channelId });
+    }
+  }, [channelId, send]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -139,7 +141,7 @@ export const PresenterTool: React.FC = () => {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [sendNav]);
 
   const currentSlide = slides[currentIndex];
   let nextIndex = currentIndex + 1;
@@ -147,6 +149,7 @@ export const PresenterTool: React.FC = () => {
     nextIndex++;
   }
   const nextSlide = slides[nextIndex];
+
   if (!channelId) return <div style={{padding:20, color:'white'}}>Invalid Channel ID</div>;
   if (slides.length === 0) return <div style={{padding:20, color:'white'}}>Waiting for connection...</div>;
 
@@ -157,78 +160,70 @@ export const PresenterTool: React.FC = () => {
         <div style={{fontSize:'1.5rem'}}>{currentTime.toLocaleTimeString()}</div>
       </div>
       <div style={{ flex: 1, overflow: 'hidden' }}>
-        <Group orientation="horizontal">
-          
-          <Panel>
-            <Group orientation="vertical">
-              <Panel defaultSize={400} minSize={200}>
-                <div className="presenter-main-view" style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: '#000', position: 'relative' }}>
-                  <span className="presenter-label" style={{position:'absolute', top:10, left:20, zIndex:10}}>
-                    CURRENT: {currentIndex + 1} / {slides.length}
-                  </span>
-                  <SlideScaler width={slideSize.width} height={slideSize.height}>
-                    {currentSlide && (
-                      <SlideView 
-                          html={currentSlide.html} 
-                          pageNumber={currentSlide.pageNumber}
-                          isActive={true}
-                          className={currentSlide.className}
-                          isEnabledPointerEvents={false}
-                          slideSize={slideSize}
-                      />
-                    )}
-                  </SlideScaler>
-                </div>
-              </Panel>
-
-              <Separator className="resize-handle-row" />
-
-              <Panel defaultSize={100} minSize={100}>
-                <div className="presenter-next-preview" style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', backgroundColor: '#2a2a2a', padding: '15px', boxSizing: 'border-box' }}>
-                  <span className="presenter-label">NEXT SLIDE</span>
-                  <div style={{ flex: 1, position: 'relative', background: '#000', borderRadius:'4px', overflow:'hidden' }}>
-                    <SlideScaler width={slideSize.width} height={slideSize.height}>
-                      {nextSlide ? (
-                        <SlideView 
-                            html={nextSlide.html} 
-                            pageNumber={nextSlide.pageNumber}
-                            isActive={true}
-                            className={nextSlide.className}
-                            isEnabledPointerEvents={false}
-                            slideSize={slideSize}
-                        />
-                      ) : (
-                        <div style={{color:'#666', display:'flex', alignItems:'center', justifyContent:'center', height:'100%'}}>End of Slides</div>
-                      )}
-                    </SlideScaler>
-                  </div>
-                </div>
-              </Panel>
-            </Group>
-          </Panel>
-          
-          <Separator className="resize-handle" />
-
-          <Panel minSize={10}>
-            <div className="presenter-notes" style={{ width: '100%', height: '100%', padding: '15px', boxSizing: 'border-box', overflowY: 'auto', backgroundColor: '#1e1e1e', color: '#ddd' }}>
-              <span className="presenter-label" style={{ display: 'block', marginBottom: '8px' }}>NOTES</span>
-              {currentSlide?.noteHtml ? (
-                <div className="markdown-body" dangerouslySetInnerHTML={{ __html: currentSlide.noteHtml }} />
-              ) : (
-                <div style={{
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'center', 
-                  height: '80%', 
-                  color: '#666', 
-                  fontStyle: 'italic',
-                  border: '1px dashed #444',
-                  borderRadius: '4px'
-                }}>
-                  No notes for this slide.
-                </div>
-              )}
+        <Group orientation="horizontal" style={{ height: '100%', width: '100%' }}>
+          <Panel defaultSize={65} minSize={20}>
+            <div className="presenter-main-view" style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: '#000', position: 'relative' }}>
+              <span className="presenter-label" style={{position:'absolute', top:10, left:20, zIndex:10}}>
+                CURRENT: {currentIndex + 1} / {slides.length}
+              </span>
+              <SlideScaler width={slideSize.width} height={slideSize.height}>
+                {currentSlide && (
+                  <SlideView 
+                      html={currentSlide.html} 
+                      pageNumber={currentSlide.pageNumber}
+                      isActive={true}
+                      className={currentSlide.className}
+                      style={slideStyles}
+                      isEnabledPointerEvents={false}
+                      slideSize={slideSize}
+                      header={currentSlide.header}
+                      footer={currentSlide.footer}
+                  />
+                )}
+              </SlideScaler>
             </div>
+          </Panel>
+          <Separator className="resize-handle" />
+          <Panel defaultSize={35} minSize={20}>
+             <Group orientation="vertical" style={{ height: '100%' }}>
+                <Panel defaultSize={40} minSize={10}>
+                  <div className="presenter-next-preview" style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', backgroundColor: '#2a2a2a', padding: '15px', boxSizing: 'border-box' }}>
+                    <span className="presenter-label">NEXT SLIDE</span>
+                    <div style={{ flex: 1, position: 'relative', background: '#000', borderRadius:'4px', overflow:'hidden' }}>
+                      <SlideScaler width={slideSize.width} height={slideSize.height}>
+                        {nextSlide ? (
+                          <SlideView 
+                              html={nextSlide.html} 
+                              pageNumber={nextSlide.pageNumber}
+                              isActive={true}
+                              className={nextSlide.className}
+                              style={slideStyles}
+                              isEnabledPointerEvents={false}
+                              slideSize={slideSize}
+                              header={nextSlide.header}
+                              footer={nextSlide.footer}
+                          />
+                        ) : (
+                          <div style={{color:'#666', display:'flex', alignItems:'center', justifyContent:'center', height:'100%'}}>End of Slides</div>
+                        )}
+                      </SlideScaler>
+                    </div>
+                  </div>
+                </Panel>
+                <Separator className="resize-handle" />
+                <Panel defaultSize={60} minSize={10}>
+                  <div className="presenter-notes" style={{ width: '100%', height: '100%', padding: '15px', boxSizing: 'border-box', overflowY: 'auto', backgroundColor: '#1e1e1e', color: '#ddd' }}>
+                    <span className="presenter-label" style={{ display: 'block', marginBottom: '8px' }}>NOTES</span>
+                    {currentSlide?.noteHtml ? (
+                      <div className="markdown-body" dangerouslySetInnerHTML={{ __html: currentSlide.noteHtml }} />
+                    ) : (
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '80%', color: '#666', fontStyle: 'italic', border: '1px dashed #444', borderRadius: '4px' }}>
+                        No notes for this slide.
+                      </div>
+                    )}
+                  </div>
+                </Panel>
+             </Group>
           </Panel>
         </Group>
       </div>
@@ -245,8 +240,12 @@ export const PresenterTool: React.FC = () => {
           </button>
         </div>
         <div style={{display:'flex', gap:'10px'}}>
-           <button className="presenter-nav-button" onClick={() => sendNav(-1)}>◀ Prev</button>
-           <button className="presenter-nav-button" onClick={() => sendNav(1)}>Next ▶</button>
+           <button className="presenter-nav-button" onClick={() => sendNav(-1)}>
+             <ArrowBackIosIcon fontSize="small" /> Prev
+           </button>
+           <button className="presenter-nav-button" onClick={() => sendNav(1)}>
+             Next <ArrowForwardIosIcon fontSize="small" />
+           </button>
         </div>
       </div>
     </div>
