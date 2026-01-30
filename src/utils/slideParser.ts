@@ -3,6 +3,7 @@ import { slideRenderer } from './markedExtensions';
 import { parseCommand } from './slideCommands';
 import { createDefaultContext } from './SlideContext';
 import type { SlideContext } from './SlideContext';
+import type { Stroke } from '../components/DrawingOverlay';
 import markedKatex from "marked-katex-extension";
 marked.use(markedKatex({
   throwOnError: false,
@@ -25,6 +26,7 @@ export interface SlideData {
   range: { startLine: number; endLine: number };
   header?: string;
   footer?: string;
+  drawingData?: Stroke[];
 }
 
 export const splitMarkdownToBlocks = (markdown: string): RawBlock[] => {
@@ -80,6 +82,22 @@ export const renderSlideHTML = (block: RawBlock, globalContext: SlideContext, pa
   let pageClassName = "normal";
   let localHeader: string | undefined = undefined;
   let localFooter: string | undefined = undefined;
+  let drawingData: Stroke[] = [];
+
+  const drawRegex = /<!--\s*@draw:\s*([\s\S]*?)\s*-->/;
+  const drawMatch = slideMarkdown.match(drawRegex);
+  if (drawMatch) {
+    try {
+      const base64 = drawMatch[1].trim();
+      if (base64) {
+        const json = decodeURIComponent(escape(atob(base64)));
+        drawingData = JSON.parse(json);
+      }
+    } catch (e) {
+      console.error("Failed to parse drawing data", e);
+    }
+    slideMarkdown = slideMarkdown.replace(drawMatch[0], "");
+  }
 
   const noteRegex = /<!--\s*@note:\s*([\s\S]*?)\s*-->/g;
   slideMarkdown = slideMarkdown.replace(noteRegex, (_, noteContent) => {
@@ -145,7 +163,8 @@ export const renderSlideHTML = (block: RawBlock, globalContext: SlideContext, pa
     range: { startLine: block.startLine, endLine: block.endLine },
     className: pageClassName,
     header: finalHeader,
-    footer: finalFooter
+    footer: finalFooter,
+    drawingData,
   };
 };
 

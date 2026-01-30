@@ -10,6 +10,7 @@ import AddPhotoAlternateIcon from '@mui/icons-material/AddPhotoAlternate';
 import GridViewIcon from '@mui/icons-material/GridView';
 import PresentToAllIcon from '@mui/icons-material/PresentToAll';
 import DevicesIcon from '@mui/icons-material/Devices'; 
+import SaveIcon from '@mui/icons-material/Save';
 
 import { Panel, Group, Separator } from 'react-resizable-panels';
 import { Box, Tabs, Tab, Typography, Button, Stack, Tooltip, List, ListItem, ListItemButton, ListItemText, ListSubheader, Divider } from '@mui/material';
@@ -28,7 +29,7 @@ import { SlideThumbnail } from './components/SlideThumbnail';
 import { SlideScaler } from './components/SlideScaler';
 
 import { PresenterTool } from './components/PresenterTool';
-import { DrawingOverlay } from './components/DrawingOverlay';
+import { DrawingOverlay, type Stroke } from './components/DrawingOverlay';
 import { DrawingPalette } from './components/DrawingPalette';
 import { useDrawing } from './hooks/useDrawing';
 import { RemoteControl } from './components/RemoteControl';
@@ -73,9 +74,62 @@ interface TabPanelProps {
 type FileType = 'markdown' | 'image' | 'text' | 'binary' | 'limit-exceeded';
 
 
+// --- ★追加: 描画データ省略ウィジェット ---
+class DrawDataCollapseWidget extends WidgetType {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  eq(_other: DrawDataCollapseWidget) { return true; }
+  ignoreEvent() { return false; } // 編集可能にするためfalseでもいいが、中身は触らせないならtrue
+  toDOM() {
+    const span = document.createElement("span");
+    span.textContent = "🖌️ Drawing Data (...)";
+    span.style.cssText = `
+      background-color: #333;
+      color: #aaa;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 0.85em;
+      user-select: none;
+      border: 1px dashed #666;
+      margin: 0 4px;
+    `;
+    return span;
+  }
+}
+
+const drawingCollapsePlugin = ViewPlugin.fromClass(class {
+  decorations: DecorationSet;
+  constructor(view: EditorView) {
+    this.decorations = this.build(view);
+  }
+  update(update: ViewUpdate) {
+    if (update.docChanged || update.viewportChanged) {
+      this.decorations = this.build(update.view);
+    }
+  }
+  build(view: EditorView) {
+    const builder = new RangeSetBuilder<Decoration>();
+    const text = view.state.doc.toString();
+    const regex = /<!--\s*@draw:([\s\S]*?)-->/g;
+    let match;
+    while ((match = regex.exec(text))) {
+      const start = match.index;
+      const end = start + match[0].length;
+      const { from, to } = view.state.selection.main;
+      const isCursorInside = (from >= start && from <= end) || (to >= start && to <= end);
+      if (!isCursorInside) {
+        builder.add(start, end, Decoration.replace({
+          widget: new DrawDataCollapseWidget(),
+        }));
+      }
+    }
+    return builder.finish();
+  }
+}, {
+  decorations: v => v.decorations
+});
+
 class CollapseWidget extends WidgetType {
   readonly base64: string;
-
   constructor(base64: string) {
     super();
     this.base64 = base64;
@@ -274,7 +328,7 @@ function MainEditor() {
   const [drawioButtonPos, setDrawioButtonPos] = useState<{ top: number, left: number } | null>(null);
   const [syncRequestToken, setSyncRequestToken] = useState(0);
   const [isConnectDialogOpen, setIsConnectDialogOpen] = useState(false);
-  const { drawings, addStroke, undo, redo, clear, canUndo, canRedo } = useDrawing();
+  const { drawings, addStroke, syncDrawings, undo, redo, clear, canUndo, canRedo } = useDrawing();
   const [isPaletteVisible, setIsPaletteVisible] = useState(false);
   const [toolType, setToolType] = useState<'pen' | 'eraser'>('pen');
   const [penColor, setPenColor] = useState('#FF0000');
@@ -485,6 +539,48 @@ function MainEditor() {
     setLastUpdated(Date.now());
   }, [fetchFileTree]);
 
+  const handleSaveDrawingsToMarkdown = useCallback(() => {
+    if (!currentFileName || !markdown) return;
+    const blocks = splitMarkdownToBlocks(markdown);
+    const content = blocks.map((block, index) => {
+      const slideIndex = index - 1; 
+      if (slideIndex < 0) return block.rawContent;
+
+      const strokes = drawings[slideIndex];
+      const drawTagRegex = /<!--\s*@draw:([\s\S]*?)-->/;
+      let text = block.rawContent;
+
+      if (strokes && strokes.length > 0) {
+        const json = JSON.stringify(strokes);
+        const base64 = btoa(unescape(encodeURIComponent(json)));
+        const drawTag = `<!-- @draw: ${base64} -->`;
+        if (drawTagRegex.test(text)) {
+          text = text.replace(drawTagRegex, drawTag);
+        } else {
+          text = text.trimEnd() + '\n\n' + drawTag + '\n';
+        }
+      } else {
+        text = text.replace(drawTagRegex, '');
+      }
+      return text;
+    }).join('\n---\n');
+    if (editorRef.current?.view) {
+      const view = editorRef.current.view;
+      view.dispatch({
+        changes: {
+          from: 0,
+          to: view.state.doc.length,
+          insert: content
+        }
+      });
+    }
+    setMarkdown(content);
+    markdownRef.current = content;
+    const originalTitle = document.title;
+    document.title = "✅ Editor Updated with Drawings!";
+    setTimeout(() => document.title = originalTitle, 2000);
+  }, [currentFileName, markdown, drawings]);
+
   const loadFile = useCallback((fileName: string, isBinaryFromServer?: boolean, initialPage: number = 0) => {
     if (fileName.startsWith('http://') || fileName.startsWith('https://')) {
       alert("外部URLの読み込みはサポートしていません。");
@@ -527,6 +623,18 @@ function MainEditor() {
         markdownRef.current = text;
         setLastUpdated(Date.now());
         prevSlideIndexRef.current = -1;
+        const loadedBlocks = splitMarkdownToBlocks(text);
+        const newDrawings: Record<number, Stroke[]> = {};
+        loadedBlocks.slice(1).forEach((block, idx) => {
+            const match = block.rawContent.match(/<!--\s*@draw:\s*([\s\S]*?)\s*-->/);
+            if (match) {
+                try {
+                    const json = decodeURIComponent(escape(atob(match[1].trim())));
+                    newDrawings[idx] = JSON.parse(json);
+                } catch (e) { console.error("Drawing parse error", e); }
+            }
+        });
+        syncDrawings(newDrawings);
         setTimeout(() => {
             isLoadingFile.current = false;
         }, 1000);
@@ -790,6 +898,7 @@ function MainEditor() {
       EditorView.lineWrapping, 
       saveKeymap,
       drawioCollapsePlugin,
+      drawingCollapsePlugin,
   ], [saveKeymap]);
 
   useEffect(() => {
@@ -997,7 +1106,23 @@ function MainEditor() {
               </Button>
             </span>
           </Tooltip>
-
+          <Tooltip title="Save Drawings to Markdown">
+            <span>
+              <Button 
+                variant="text" 
+                size="small" 
+                onClick={handleSaveDrawingsToMarkdown}
+                disabled={!currentFileName || currentFileType !== 'markdown'}
+                sx={{ 
+                  color: '#eee', 
+                  minWidth: '40px',
+                  '&.Mui-disabled': { color: 'rgba(255, 255, 255, 0.3)' } 
+                }}
+              >
+                <SaveIcon />
+              </Button>
+            </span>
+          </Tooltip>
           <Tooltip title="Open Presenter View">
             <span>
               <Button 
@@ -1015,7 +1140,6 @@ function MainEditor() {
               </Button>
             </span>
           </Tooltip>
-
           <Tooltip title="Start Slideshow (F5)"><Button variant="text" size="small" onClick={toggleSlideshow} disabled={!currentFileName || currentFileType !== 'markdown'} sx={{ color: '#eee', minWidth: '40px', '&.Mui-disabled': { color: 'rgba(255, 255, 255, 0.3)' } }}><PlayArrowIcon /></Button></Tooltip>
           <Tooltip title="Print / Export PDF"><Button variant="text" size="small" onClick={handlePrint} disabled={!currentFileName || currentFileType !== 'markdown'} sx={{ color: '#eee', minWidth: '40px', '&.Mui-disabled': { color: 'rgba(255, 255, 255, 0.3)' } }}><PrintIcon /></Button></Tooltip>
           
