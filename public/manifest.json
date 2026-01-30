@@ -1,0 +1,18 @@
+{
+  "name": "MDP",
+  "short_name": "MDP Remote",
+  "start_url": "/remote",
+  "display": "standalone",
+  "background_color": "#222222",
+  "theme_color": "#222222",
+  "orientation": "landscape",
+  "icons": [
+    {
+      "src": "/vite.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
+
+
