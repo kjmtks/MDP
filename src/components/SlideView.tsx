@@ -13,6 +13,11 @@ interface SlideViewProps {
   header?: string;
   footer?: string;
   drawings?: Stroke[];
+  onAddStroke?: (stroke: Stroke) => void;
+  isInteracting?: boolean;
+  toolType?: 'pen' | 'eraser';
+  color?: string;
+  lineWidth?: number;
 }
 
 export const SlideView: React.FC<SlideViewProps> = memo(({ 
@@ -26,6 +31,11 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
   header,
   footer,
   drawings = [],
+  onAddStroke,
+  isInteracting = false,
+  toolType,
+  color,
+  lineWidth
 }) => {
   const [containerEl, setContainerEl] = useState<HTMLDivElement | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -112,7 +122,11 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
           width={slideSize.width}
           height={slideSize.height}
           data={drawings}
-          isInteracting={false}
+          isInteracting={isInteracting}
+          onAddStroke={onAddStroke}
+          toolType={toolType}
+          color={color}
+          lineWidth={lineWidth}
         />
       )}
       {footer && (

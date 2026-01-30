@@ -36,6 +36,7 @@ import { RemoteControl } from './components/RemoteControl';
 import { ConnectDialog } from './components/ConnectDialog';
 import { useSync, type SyncMessage } from './hooks/useSync';
 
+
 import './App.css';
 
 const INITIAL_MARKDOWN = "";
@@ -967,6 +968,21 @@ function MainEditor() {
     }
   }, [slides, currentSlideIndex, currentFileType]);
 
+  useEffect(() => {
+    if (isSlideshow) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+        return;
+      }
+      if (e.key === 'p') {
+        setIsPaletteVisible(prev => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isSlideshow]);
+
   const EmptyState = () => (
     <Box sx={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', bgcolor: '#202020', color: '#888', gap: 2 }}>
       <Typography variant="h5" color="#ccc">No File Selected</Typography>
@@ -1061,7 +1077,15 @@ function MainEditor() {
                       isEnabledPointerEvents={!isLaserPointer && !isPaletteVisible} 
                       header={slides[currentSlideIndex].header}
                       footer={slides[currentSlideIndex].footer}
-                      drawings={[]}
+                      drawings={drawings[currentSlideIndex] || []}
+                      onAddStroke={(stroke) => {
+                        addStroke(currentSlideIndex, stroke);
+                        send({ type: 'DRAW_STROKE', channelId, pageIndex: currentSlideIndex, stroke });
+                      }}
+                      isInteracting={isPaletteVisible}
+                      toolType={toolType}
+                      color={penColor}
+                      lineWidth={penWidth}
                     />
                     
                     <DrawingOverlay 
@@ -1277,18 +1301,46 @@ function MainEditor() {
                       ) : currentFileType === 'markdown' ? (
                         <SlideScaler width={slideSize.width} height={slideSize.height}>
                           {slides.map((slide, index) => (
-                          <SlideView
-                              key={index}
-                              html={slide.html}
-                              pageNumber={slide.pageNumber}
-                              className={slide.className}
-                              isActive={index === currentSlideIndex}
-                              slideSize={slideSize}
-                              isEnabledPointerEvents={true}
-                              header={slide.header}
-                              footer={slide.footer}
-                              drawings={drawings[index]} 
-                            />
+                            index === currentSlideIndex && (
+                              <div key={index} style={{ position: 'relative', width: '100%', height: '100%' }}>
+                                  <SlideView
+                                    html={slide.html}
+                                    pageNumber={slide.pageNumber}
+                                    className={slide.className}
+                                    isActive={true}
+                                    slideSize={slideSize}
+                                    isEnabledPointerEvents={!isPaletteVisible}
+                                    header={slide.header}
+                                    footer={slide.footer}
+                                    drawings={drawings[index] || []}
+                                    onAddStroke={(stroke) => {
+                                      addStroke(index, stroke);
+                                      send({ type: 'DRAW_STROKE', channelId, pageIndex: index, stroke });
+                                    }}
+                                    isInteracting={!isSlideshow && isPaletteVisible}
+                                    toolType={toolType}
+                                    color={penColor}
+                                    lineWidth={penWidth}
+                                  />
+                                  {!isSlideshow && isPaletteVisible && (
+                                    <div style={{ position: 'absolute', bottom: 20, left: '50%', transform: 'translateX(-50%)', zIndex: 100 }}>
+                                      <DrawingPalette 
+                                        toolType={toolType} setToolType={setToolType}
+                                        color={penColor} setColor={setPenColor}
+                                        lineWidth={penWidth} setLineWidth={setPenWidth}
+                                        canUndo={canUndo(currentSlideIndex)}
+                                        canRedo={canRedo(currentSlideIndex)}
+                                        onUndo={() => undo(currentSlideIndex)}
+                                        onRedo={() => redo(currentSlideIndex)}
+                                        onClear={() => {
+                                          clear(currentSlideIndex);
+                                          send({ type: 'CLEAR_DRAWING', channelId, pageIndex: currentSlideIndex });
+                                        }}
+                                      />
+                                    </div>
+                                  )}
+                              </div>
+                            )
                           ))}
                         </SlideScaler>
                       ) : currentFileType === 'image' ? (

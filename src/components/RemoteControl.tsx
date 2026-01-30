@@ -2,7 +2,7 @@
 import { useSync, type SyncMessage } from '../hooks/useSync';
 import { SlideView } from './SlideView';
 import { SlideScaler } from './SlideScaler';
-import { DrawingOverlay, type Stroke } from './DrawingOverlay';
+import type { Stroke } from './DrawingOverlay';
 import { DrawingPalette } from './DrawingPalette'; 
 import { useDrawing } from '../hooks/useDrawing'; 
 
@@ -246,17 +246,12 @@ export const RemoteControl: React.FC = () => {
                   header={currentSlide.header}
                   footer={currentSlide.footer}
                   isEnabledPointerEvents={false}
-                />
-                
-                <DrawingOverlay 
-                  width={slideSize.width} 
-                  height={slideSize.height}
-                  data={drawings[index] || []}
+                  drawings={drawings[index] || []}
                   onAddStroke={handleAddStroke}
+                  isInteracting={isDrawingMode}
+                  toolType={toolType}
                   color={penColor}
                   lineWidth={penWidth}
-                  toolType={toolType}
-                  isInteracting={isDrawingMode}
                 />
              </div>
          </SlideScaler>
