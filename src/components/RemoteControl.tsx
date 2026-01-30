@@ -12,8 +12,7 @@ import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
 import LinkIcon from '@mui/icons-material/Link';
-import FullscreenIcon from '@mui/icons-material/Fullscreen';
-import FullscreenExitIcon from '@mui/icons-material/FullscreenExit';
+import LinkOffIcon from '@mui/icons-material/LinkOff';
 import QrCodeScannerIcon from '@mui/icons-material/QrCodeScanner';
 import CloseIcon from '@mui/icons-material/Close';
 
@@ -57,7 +56,6 @@ export const RemoteControl: React.FC = () => {
   
   const [themeCssUrl, setThemeCssUrl] = useState<string | undefined>();
   const [lastUpdated, setLastUpdated] = useState(0);
-  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const { send } = useSync(channelId, (msg: SyncMessage) => {
     switch (msg.type) {
@@ -94,12 +92,6 @@ export const RemoteControl: React.FC = () => {
       link.href = `${themeCssUrl}?t=${lastUpdated}`;
     }
   }, [themeCssUrl, lastUpdated]);
-
-  useEffect(() => {
-    const handleFsChange = () => setIsFullscreen(!!document.fullscreenElement);
-    document.addEventListener('fullscreenchange', handleFsChange);
-    return () => document.removeEventListener('fullscreenchange', handleFsChange);
-  }, []);
 
   useEffect(() => {
     const preventDefault = (e: TouchEvent) => {
@@ -219,11 +211,6 @@ export const RemoteControl: React.FC = () => {
 
   const handleUndo = () => { if (channelId) send({ type: 'UNDO', pageIndex: index, channelId }); };
   const handleRedo = () => { if (channelId) send({ type: 'REDO', pageIndex: index, channelId }); };
-  
-  const toggleFullscreen = () => {
-    if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(console.error);
-    else document.exitFullscreen();
-  };
 
   if (!channelId) {
     return (
@@ -283,8 +270,8 @@ export const RemoteControl: React.FC = () => {
       <div style={{ height: 60, background: '#333', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px', color: 'white', flexShrink: 0 }}>
         <div style={{ fontWeight: 'bold' }}>Remote</div>
         <div style={{ display: 'flex', gap: 10 }}>
-          <IconButton onClick={toggleFullscreen} style={{ color: 'white' }}>
-            {isFullscreen ? <FullscreenExitIcon /> : <FullscreenIcon />}
+          <IconButton onClick={() => setChannelId(null)} style={{ color: 'white' }} title="Disconnect">
+            <LinkOffIcon />
           </IconButton>
 
           <Button 
