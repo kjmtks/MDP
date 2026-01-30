@@ -11,7 +11,9 @@ export const useDrawing = () => {
   const [history, setHistory] = useState<Record<number, HistoryState>>({});
 
   const addStroke = useCallback((pageIndex: number, stroke: Stroke, addToHistory: boolean = true) => {
-    if (stroke.points.length < 2) return;
+    if (stroke.points.length === 0) {
+      return;
+    }
 
     setDrawings(prev => {
       const currentStrokes = prev[pageIndex] || [];

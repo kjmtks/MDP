@@ -31,7 +31,6 @@ import { SlideScaler } from './components/SlideScaler';
 
 import { PresenterTool } from './components/PresenterTool';
 import { type Stroke } from './components/DrawingOverlay';
-import { DrawingPalette } from './components/DrawingPalette';
 import { useDrawing } from './hooks/useDrawing';
 import { RemoteControl } from './components/RemoteControl';
 import { ConnectDialog } from './components/ConnectDialog';
@@ -337,7 +336,7 @@ function MainEditor() {
   
   const [mode, setMode] = useState<AppMode>('view');
   const [isTouchDevice, setIsTouchDevice] = useState(false);
-  const [isControlsVisible, setIsControlsVisible] = useState(false);
+  const [showControls, setShowControls] = useState(false);
 
   const lastWheelTime = useRef(0);
   const editorRef = useRef<ReactCodeMirrorRef>(null);
@@ -352,8 +351,10 @@ function MainEditor() {
   })());
 
   useEffect(() => {
-    setIsTouchDevice(navigator.maxTouchPoints > 0);
-    if (navigator.maxTouchPoints > 0) setIsControlsVisible(true);
+    const isTouch = navigator.maxTouchPoints > 0;
+    setIsTouchDevice(isTouch);
+    // タッチデバイスならデフォルトでコントロールを表示
+    if (isTouch) setShowControls(true);
   }, []);
 
   const baseUrl = useMemo(() => {
@@ -518,17 +519,26 @@ function MainEditor() {
     window.location.href = '/remote';
   }, []);
 
-  const toggleSlideshow = useCallback(() => {
+    const toggleSlideshow = useCallback(() => {
     if (!document.fullscreenElement) {
       setIsSlideshow(true);
       setMode('view');
-      setIsControlsVisible(isTouchDevice);
+      setShowControls(isTouchDevice);
       if (slides[currentSlideIndex]?.isHidden) {
         let nextIndex = currentSlideIndex + 1;
-        while (nextIndex < slides.length && slides[nextIndex].isHidden) nextIndex++;
-        if (nextIndex < slides.length) setCurrentSlideIndex(nextIndex);
+        while (nextIndex < slides.length && slides[nextIndex].isHidden) {
+          nextIndex++;
+        }
+        if (nextIndex < slides.length) {
+          setCurrentSlideIndex(nextIndex);
+        }
       }
-      setTimeout(() => { slideshowRef.current?.requestFullscreen().catch(err => { console.error(`Error attempting to enable full-screen mode: ${err.message}`); setIsSlideshow(false); }); }, 10);
+      setTimeout(() => {
+        slideshowRef.current?.requestFullscreen().catch(err => {
+          console.error(`Error attempting to enable full-screen mode: ${err.message}`);
+          setIsSlideshow(false);
+        });
+      }, 10);
     } else {
       document.exitFullscreen();
       setMode('view');
@@ -762,29 +772,29 @@ function MainEditor() {
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
   }, []);
 
+  // キーボードイベントハンドラ
   useEffect(() => {
-    if (!isSlideshow) return;
     const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
       if (e.key === 'p') {
-         setIsControlsVisible(prev => !prev);
+          setShowControls(prev => !prev);
       }
-      if (e.key === 'v') setMode('view');
-      if (e.key === 'l') setMode('laser');
-      if (e.key === 'd') setMode('pen');
       if ((e.metaKey || e.ctrlKey) && e.key === 'z') { e.preventDefault(); undo(currentSlideIndex); }
       if ((e.metaKey || e.ctrlKey) && e.key === 'y') { e.preventDefault(); redo(currentSlideIndex); }
-      if (e.key === 'c') {
-          clear(currentSlideIndex);
-          send({ type: 'CLEAR_DRAWING', channelId, pageIndex: currentSlideIndex });
+      if (showControls) {
+          if (e.key === 'c') {
+              clear(currentSlideIndex);
+              send({ type: 'CLEAR_DRAWING', channelId, pageIndex: currentSlideIndex });
+          }
+          if (e.key === 'n') handleAddBlankSlide(currentSlideIndex);
       }
-      if (e.key === 'n') handleAddBlankSlide(currentSlideIndex);
-
       if (['ArrowRight', 'ArrowDown', ' ', 'Enter', 'PageDown'].includes(e.key)) { e.preventDefault(); moveSlide(1); }
       else if (['ArrowLeft', 'ArrowUp', 'PageUp'].includes(e.key)) { e.preventDefault(); moveSlide(-1); }
     };
     const handleWheel = (e: WheelEvent) => {
       const now = Date.now();
-      if (now - lastWheelTime.current < 0) return;
+      if (now - lastWheelTime.current < 50) return;
       if (e.deltaY > 0) { lastWheelTime.current = now; moveSlide(1); }
       else if (e.deltaY < 0) { lastWheelTime.current = now; moveSlide(-1); }
     };
@@ -800,7 +810,8 @@ function MainEditor() {
       window.removeEventListener('wheel', handleWheel);
       window.removeEventListener('mousedown', handleClick);
     };
-  }, [isSlideshow, moveSlide, undo, redo, currentSlideIndex, mode, clear, send, channelId, handleAddBlankSlide]);
+  }, [isSlideshow, moveSlide, undo, redo, currentSlideIndex, mode, clear, send, channelId, handleAddBlankSlide, showControls]);
+
 
   useEffect(() => {
     if (isSlideshow) return;
@@ -1049,24 +1060,21 @@ function MainEditor() {
       {isSlideshow && (
         <div ref={slideshowRef} className={`slideshow-overlay ${mode === 'laser' ? 'laser-mode' : ''}`}>
           
-          <SlideControls
-            mode={mode} setMode={setMode}
-            pageIndex={currentSlideIndex} totalSlides={slides.length}
-            visible={isControlsVisible}
-            onNav={moveSlide}
-            onAddSlide={() => handleAddBlankSlide(currentSlideIndex)}
-            onSave={handleSaveDrawingsToMarkdown}
-            onClearDrawing={() => {
-                clear(currentSlideIndex);
-                send({ type: 'CLEAR_DRAWING', channelId, pageIndex: currentSlideIndex });
-            }}
-            onClose={() => { document.exitFullscreen(); setMode('view'); }}
-            
-            toolType={toolType} setToolType={setToolType}
-            penColor={penColor} setPenColor={setPenColor}
-            penWidth={penWidth} setPenWidth={setPenWidth}
-            canUndo={canUndo(currentSlideIndex)} canRedo={canRedo(currentSlideIndex)}
-            onUndo={() => undo(currentSlideIndex)} onRedo={() => redo(currentSlideIndex)}
+          <SlideControls 
+             mode={mode} setMode={setMode}
+             pageIndex={currentSlideIndex} totalSlides={slides.length}
+             visible={showControls}
+             onNav={moveSlide}
+             onAddSlide={() => handleAddBlankSlide(currentSlideIndex)}
+             onSave={handleSaveDrawingsToMarkdown}
+             onClearDrawing={() => { clear(currentSlideIndex); send({ type: 'CLEAR_DRAWING', channelId, pageIndex: currentSlideIndex }); }}
+             onClose={() => { document.exitFullscreen(); setMode('view'); }}
+             toolType={toolType} setToolType={setToolType}
+             penColor={penColor} setPenColor={setPenColor}
+             penWidth={penWidth} setPenWidth={setPenWidth}
+             canUndo={canUndo(currentSlideIndex)} canRedo={canRedo(currentSlideIndex)}
+             onUndo={() => undo(currentSlideIndex)} onRedo={() => redo(currentSlideIndex)}
+             useLaserPointerMode={true}
           />
 
           <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -1300,61 +1308,55 @@ function MainEditor() {
               <Group orientation="vertical">
                   <Panel minSize={30} className="preview-panel">
                     <div className="preview-pane" style={{ backgroundColor: '#333', display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-                      {!currentFileName ? (
-                        <EmptyState />
-                      ) : currentFileType === 'markdown' ? (
-                        <SlideScaler width={slideSize.width} height={slideSize.height}>
-                          {slides.map((slide, index) => (
-                            index === currentSlideIndex && (
-                              <div key={index} style={{ position: 'relative', width: '100%', height: '100%' }}>
-                                  <SlideView
-                                    html={slide.html}
-                                    pageNumber={slide.pageNumber}
-                                    className={slide.className}
-                                    isActive={true}
-                                    slideSize={slideSize}
-                                    isEnabledPointerEvents={!isPaletteVisible}
-                                    header={slide.header}
-                                    footer={slide.footer}
-                                    drawings={drawings[index] || []}
-                                    onAddStroke={(stroke) => {
-                                      addStroke(index, stroke);
-                                      send({ type: 'DRAW_STROKE', channelId, pageIndex: index, stroke });
-                                    }}
-                                    isInteracting={!isSlideshow && isPaletteVisible}
-                                    toolType={toolType}
-                                    color={penColor}
-                                    lineWidth={penWidth}
-                                  />
-                                  {!isSlideshow && isPaletteVisible && (
-                                    <div style={{ position: 'absolute', bottom: 20, left: '50%', transform: 'translateX(-50%)', zIndex: 100 }}>
-                                      <DrawingPalette 
-                                        toolType={toolType} setToolType={setToolType}
-                                        color={penColor} setColor={setPenColor}
-                                        lineWidth={penWidth} setLineWidth={setPenWidth}
-                                        canUndo={canUndo(currentSlideIndex)}
-                                        canRedo={canRedo(currentSlideIndex)}
-                                        onUndo={() => undo(currentSlideIndex)}
-                                        onRedo={() => redo(currentSlideIndex)}
-                                        onClear={() => {
-                                          clear(currentSlideIndex);
-                                          send({ type: 'CLEAR_DRAWING', channelId, pageIndex: currentSlideIndex });
-                                        }}
-                                      />
-                                    </div>
-                                  )}
-                              </div>
-                            )
-                          ))}
-                        </SlideScaler>
-                      ) : currentFileType === 'image' ? (
-                        <img src={`/files/${currentFileName}`} alt={currentFileName} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
-                      ) : (
-                        <Typography variant="body1" sx={{ color: '#888' }}>
-                          {currentFileType === 'text' ? "No preview for text files" : 
-                          currentFileType === 'limit-exceeded' ? "File too large to preview" : "Preview not available"}
-                        </Typography>
-                      )}
+                      {!currentFileName ? ( <EmptyState /> ) : currentFileType === 'markdown' ? (
+                        <>
+                          <SlideControls 
+                             mode={mode} setMode={setMode}
+                             pageIndex={currentSlideIndex} totalSlides={slides.length}
+                             visible={showControls}
+                             onNav={moveSlide}
+                             onAddSlide={() => handleAddBlankSlide(currentSlideIndex)}
+                             onSave={handleSaveDrawingsToMarkdown}
+                             onClearDrawing={() => { clear(currentSlideIndex); send({ type: 'CLEAR_DRAWING', channelId, pageIndex: currentSlideIndex }); }}
+                             
+                             toolType={toolType} setToolType={setToolType}
+                             penColor={penColor} setPenColor={setPenColor}
+                             penWidth={penWidth} setPenWidth={setPenWidth}
+                             canUndo={canUndo(currentSlideIndex)} canRedo={canRedo(currentSlideIndex)}
+                             onUndo={() => undo(currentSlideIndex)} onRedo={() => redo(currentSlideIndex)}
+                             containerStyle={{ bottom: '20px' }} // 位置調整
+                          />
+
+                          <SlideScaler width={slideSize.width} height={slideSize.height}>
+                            {slides.map((slide, index) => (
+                              index === currentSlideIndex && (
+                                <div key={index} style={{ position: 'relative', width: '100%', height: '100%' }}>
+                                    <SlideView
+                                      html={slide.html}
+                                      pageNumber={slide.pageNumber}
+                                      className={slide.className}
+                                      isActive={true}
+                                      slideSize={slideSize}
+                                      isEnabledPointerEvents={mode === 'view'} 
+                                      header={slide.header}
+                                      footer={slide.footer}
+                                      
+                                      drawings={drawings[index] || []}
+                                      onAddStroke={(stroke) => {
+                                        addStroke(index, stroke);
+                                        send({ type: 'DRAW_STROKE', channelId, pageIndex: index, stroke });
+                                      }}
+                                      isInteracting={mode === 'pen'}
+                                      toolType={toolType}
+                                      color={penColor}
+                                      lineWidth={penWidth}
+                                    />
+                                </div>
+                              )
+                            ))}
+                          </SlideScaler>
+                        </>
+                      ) : ( <Typography variant="body1" sx={{ color: '#888' }}> {currentFileType === 'text' ? "No preview" : "Preview not available"} </Typography> )}
                     </div>
                   </Panel>
                   

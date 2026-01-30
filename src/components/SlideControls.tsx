@@ -35,6 +35,8 @@ interface SlideControlsProps {
   canRedo: boolean;
   onUndo: () => void;
   onRedo: () => void;
+  containerStyle?: React.CSSProperties;
+  useLaserPointerMode?: boolean;
 }
 
 export const SlideControls: React.FC<SlideControlsProps> = ({
@@ -42,7 +44,8 @@ export const SlideControls: React.FC<SlideControlsProps> = ({
   pageIndex, totalSlides, visible,
   onNav, onAddSlide, onSave, onClearDrawing, onClose,
   toolType, setToolType, penColor, setPenColor, penWidth, setPenWidth,
-  canUndo, canRedo, onUndo, onRedo
+  canUndo, canRedo, onUndo, onRedo,
+  containerStyle, useLaserPointerMode
 }) => {
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const isDragging = useRef(false);
@@ -139,6 +142,7 @@ export const SlideControls: React.FC<SlideControlsProps> = ({
         width: 'max-content',
         maxWidth: '98vw',
         cursor: 'move',
+        ...containerStyle
       }}
     >
       {mode === 'pen' && (
@@ -197,7 +201,9 @@ export const SlideControls: React.FC<SlideControlsProps> = ({
         >
           <ToggleButton value="view" title="View"><VisibilityIcon fontSize="small" sx={{color:'white'}} /></ToggleButton>
           <ToggleButton value="pen" title="Pen"><EditIcon fontSize="small" sx={{color:'white'}} /></ToggleButton>
-          <ToggleButton value="laser" title="Laser"><HighlightAltIcon fontSize="small" sx={{color:'white'}} /></ToggleButton>
+          { useLaserPointerMode && (
+            <ToggleButton value="laser" title="Laser"><HighlightAltIcon fontSize="small" sx={{color:'white'}} /></ToggleButton>
+          )}
         </ToggleButtonGroup>
 
         <Stack direction="row" spacing={0.5} alignItems="center">
