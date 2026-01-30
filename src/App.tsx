@@ -11,6 +11,7 @@ import GridViewIcon from '@mui/icons-material/GridView';
 import PresentToAllIcon from '@mui/icons-material/PresentToAll';
 import DevicesIcon from '@mui/icons-material/Devices'; 
 import SaveIcon from '@mui/icons-material/Save';
+import SmartphoneIcon from '@mui/icons-material/Smartphone';
 
 import { Panel, Group, Separator } from 'react-resizable-panels';
 import { Box, Tabs, Tab, Typography, Button, Stack, Tooltip, List, ListItem, ListItemButton, ListItemText, ListSubheader, Divider } from '@mui/material';
@@ -498,6 +499,9 @@ function MainEditor() {
     window.open(`/presenter?channel=${channelId}`, '_blank', 'width=1000,height=800');
   }, [channelId]);
 
+  const handleSwitchToRemote = useCallback(() => {
+    window.location.href = '/remote';
+  }, []);
 
   const toggleSlideshow = useCallback(() => {
     if (!document.fullscreenElement) {
@@ -1113,6 +1117,19 @@ function MainEditor() {
           MDP {currentFileName ? ` - ${currentFileName}` : ""}
         </div>
         <Stack direction="row" spacing={1} alignItems="center" sx={{ flexShrink: 0 }}>
+          
+           <Tooltip title="Switch to Remote Mode">
+            <span>
+              <Button 
+                variant="text" 
+                size="small" 
+                onClick={handleSwitchToRemote}
+                sx={{ color: '#eee', minWidth: '40px' }}
+              >
+                <SmartphoneIcon />
+              </Button>
+            </span>
+          </Tooltip>
           
           <Tooltip title="Connect Remote">
             <span>

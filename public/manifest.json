@@ -1,7 +1,7 @@
 {
   "name": "MDP",
-  "short_name": "MDP Remote",
-  "start_url": "/remote",
+  "short_name": "MDP",
+  "start_url": "/",
   "display": "standalone",
   "background_color": "#222222",
   "theme_color": "#222222",
