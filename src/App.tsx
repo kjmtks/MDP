@@ -330,7 +330,7 @@ function MainEditor() {
   const [drawioButtonPos, setDrawioButtonPos] = useState<{ top: number, left: number } | null>(null);
   const [syncRequestToken, setSyncRequestToken] = useState(0);
   const [isConnectDialogOpen, setIsConnectDialogOpen] = useState(false);
-  const { drawings, addStroke, syncDrawings, undo, redo, clear, canUndo, canRedo } = useDrawing();
+  const { drawings, addStroke, syncDrawings, insertPage, undo, redo, clear, canUndo, canRedo } = useDrawing();
   const [isPaletteVisible, setIsPaletteVisible] = useState(false);
   const [toolType, setToolType] = useState<'pen' | 'eraser'>('pen');
   const [penColor, setPenColor] = useState('#FF0000');
@@ -470,6 +470,7 @@ function MainEditor() {
 
   const handleAddBlankSlide = useCallback(async (insertAfterIndex: number) => {
     if (!currentFileName || !markdown) return;
+    insertPage(insertAfterIndex + 1);
     const blockList = splitMarkdownToBlocks(markdown);
     const spliceIndex = insertAfterIndex + 2;
     const contents = blockList.map(b => b.rawContent);
@@ -483,16 +484,8 @@ function MainEditor() {
             changes: { from: 0, to: view.state.doc.length, insert: newMarkdown }
         });
     }
-    try {
-      await fetch('/api/save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filename: currentFileName, content: newMarkdown })
-      });
-    } catch (e) {
-      console.error(e);
-    }
-  }, [currentFileName, markdown]);
+  }, [currentFileName, markdown, insertPage]);
+
 
 
   const { send } = useSync(channelId, useCallback((msg: SyncMessage) => {
@@ -849,7 +842,7 @@ function MainEditor() {
       window.removeEventListener('wheel', handleWheel);
       window.removeEventListener('mousedown', handleClick);
     };
-  }, [isSlideshow, moveSlide, undo, redo, currentSlideIndex, isLaserPointer, clear, send, channelId]);
+  }, [isSlideshow, moveSlide, undo, redo, currentSlideIndex, isLaserPointer, clear, send, channelId, handleAddBlankSlide]);
 
   useEffect(() => {
     fetchFileTree();

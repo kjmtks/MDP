@@ -117,11 +117,12 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
         dangerouslySetInnerHTML={{ __html: html }} 
         style={{ width: '100%', height: '100%' }}
       />
-      {drawings && drawings.length > 0 && (
+      
+      {((drawings && drawings.length > 0) || isInteracting) && (
         <DrawingOverlay
           width={slideSize.width}
           height={slideSize.height}
-          data={drawings}
+          data={drawings || []}
           isInteracting={isInteracting}
           onAddStroke={onAddStroke}
           toolType={toolType}
@@ -129,6 +130,7 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
           lineWidth={lineWidth}
         />
       )}
+      
       {footer && (
         <div className="slide-footer" dangerouslySetInnerHTML={{ __html: footer }} />
       )}
