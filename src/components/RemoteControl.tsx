@@ -15,6 +15,7 @@ import LinkIcon from '@mui/icons-material/Link';
 import LinkOffIcon from '@mui/icons-material/LinkOff';
 import QrCodeScannerIcon from '@mui/icons-material/QrCodeScanner';
 import CloseIcon from '@mui/icons-material/Close';
+import NoteAddIcon from '@mui/icons-material/NoteAdd';
 
 import jsQR from 'jsqr';
 
@@ -78,6 +79,12 @@ export const RemoteControl: React.FC = () => {
         break;
     }
   });
+
+  const handleAddBlankSlide = () => {
+    if (channelId) {
+      send({ type: 'ADD_BLANK_SLIDE', pageIndex: index, channelId });
+    }
+  };
 
   useEffect(() => {
     const linkId = 'mdp-remote-theme';
@@ -232,7 +239,6 @@ export const RemoteControl: React.FC = () => {
             Scan QR Code
           </Button>
         </Paper>
-
         <Dialog open={isScanning} onClose={stopScan} maxWidth="sm" fullWidth>
             <Box sx={{ position: 'relative', bgcolor: 'black', height: '400px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <video ref={videoRef} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -248,7 +254,6 @@ export const RemoteControl: React.FC = () => {
       </div>
     );
   }
-
   if (slides.length === 0) {
     return (
       <div style={{ width: '100vw', height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#222', color: 'white' }}>
@@ -257,9 +262,7 @@ export const RemoteControl: React.FC = () => {
       </div>
     );
   }
-
   const currentSlide = slides[index];
-
   return (
     <div style={{ 
       width: '100vw', height: '100vh', background: '#222', 
@@ -270,6 +273,9 @@ export const RemoteControl: React.FC = () => {
       <div style={{ height: 60, background: '#333', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px', color: 'white', flexShrink: 0 }}>
         <div style={{ fontWeight: 'bold' }}>Remote</div>
         <div style={{ display: 'flex', gap: 10 }}>
+          <IconButton onClick={handleAddBlankSlide} style={{ color: 'white' }}>
+            <NoteAddIcon />
+          </IconButton>
           <IconButton onClick={() => setChannelId(null)} style={{ color: 'white' }} title="Disconnect">
             <LinkOffIcon />
           </IconButton>

@@ -7,9 +7,10 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import ArrowBackIosIcon from '@mui/icons-material/ArrowBackIos'; 
 import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos'; 
 import { Panel, Group, Separator } from 'react-resizable-panels';
-import { Button, IconButton } from '@mui/material'; 
-import EditIcon from '@mui/icons-material/Edit'; 
-import DeleteIcon from '@mui/icons-material/Delete'; 
+import { Button, IconButton, Tooltip } from '@mui/material';
+import EditIcon from '@mui/icons-material/Edit';
+import DeleteIcon from '@mui/icons-material/Delete';
+import NoteAddIcon from '@mui/icons-material/NoteAdd';
 
 import { useSync, type SyncMessage } from '../hooks/useSync';
 import { DrawingPalette } from './DrawingPalette';
@@ -76,6 +77,12 @@ export const PresenterTool: React.FC = () => {
         break;
     }
   });
+
+  const handleAddBlankSlide = () => {
+    if (channelId) {
+      send({ type: 'ADD_BLANK_SLIDE', pageIndex: currentIndex, channelId });
+    }
+  };
 
   useEffect(() => {
     const linkId = 'mdp-presenter-theme';
@@ -206,6 +213,11 @@ export const PresenterTool: React.FC = () => {
         <div style={{fontWeight:'bold', fontSize:'1.2rem'}}>Presenter View</div>
         
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <Tooltip title="Add Blank Slide">
+            <IconButton onClick={handleAddBlankSlide} color="primary" size="small">
+              <NoteAddIcon />
+            </IconButton>
+          </Tooltip>
           <Button 
             variant={isDrawingMode ? "contained" : "outlined"} 
             color={isDrawingMode ? "primary" : "inherit"}

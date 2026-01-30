@@ -468,6 +468,33 @@ function MainEditor() {
     });
   }, [channelId, slides, currentSlideIndex, slideSize, globalContext.themeCss, baseUrl, lastUpdated, drawings]);
 
+  const handleAddBlankSlide = useCallback(async (insertAfterIndex: number) => {
+    if (!currentFileName || !markdown) return;
+    const blockList = splitMarkdownToBlocks(markdown);
+    const spliceIndex = insertAfterIndex + 2;
+    const contents = blockList.map(b => b.rawContent);
+    contents.splice(spliceIndex, 0, "\n\n");
+    const newMarkdown = contents.join('\n---\n');
+    setMarkdown(newMarkdown);
+    markdownRef.current = newMarkdown;
+    if (editorRef.current?.view) {
+        const view = editorRef.current.view;
+        view.dispatch({
+            changes: { from: 0, to: view.state.doc.length, insert: newMarkdown }
+        });
+    }
+    try {
+      await fetch('/api/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: currentFileName, content: newMarkdown })
+      });
+    } catch (e) {
+      console.error(e);
+    }
+  }, [currentFileName, markdown]);
+
+
   const { send } = useSync(channelId, useCallback((msg: SyncMessage) => {
     switch (msg.type) {
       case 'NAV':
@@ -488,8 +515,11 @@ function MainEditor() {
       case 'REDO':
         redo(msg.pageIndex);
         break;
+      case 'ADD_BLANK_SLIDE':
+        handleAddBlankSlide(msg.pageIndex);
+        break;
     }
-  }, [addStroke, clear, redo, undo]));
+  }, [addStroke, clear, handleAddBlankSlide, redo, undo]));
 
   useEffect(() => {
     sendSyncData(send);
@@ -783,6 +813,9 @@ function MainEditor() {
       if (e.key === 'c') {
           clear(currentSlideIndex);
           send({ type: 'CLEAR_DRAWING', channelId, pageIndex: currentSlideIndex });
+      }
+      if (e.key === 'n') {
+        handleAddBlankSlide(currentSlideIndex);
       }
       if (['ArrowRight', 'ArrowDown', ' ', 'Enter', 'PageDown'].includes(e.key)) {
         e.preventDefault();
@@ -1130,7 +1163,7 @@ function MainEditor() {
               </Button>
             </span>
           </Tooltip>
-          
+
           <Tooltip title="Connect Remote">
             <span>
               <Button 

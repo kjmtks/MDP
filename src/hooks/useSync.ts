@@ -9,7 +9,8 @@ export type SyncMessage =
   | { type: 'CLEAR_DRAWING'; pageIndex: number; channelId: string }
   | { type: 'REQUEST_SYNC'; channelId: string }
   | { type: 'UNDO'; pageIndex: number; channelId: string }
-  | { type: 'REDO'; pageIndex: number; channelId: string };
+  | { type: 'REDO'; pageIndex: number; channelId: string }
+  | { type: 'ADD_BLANK_SLIDE'; pageIndex: number; channelId: string };
 
 export type ConnectionStatus = 'connecting' | 'connected' | 'disconnected' | 'error';
 
