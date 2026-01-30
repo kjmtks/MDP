@@ -1,4 +1,5 @@
 ﻿import React, { memo, useEffect, useRef, useState } from 'react';
+import { DrawingOverlay, type Stroke } from './DrawingOverlay';
 import './SlideViewer.css';
 
 interface SlideViewProps {
@@ -11,6 +12,7 @@ interface SlideViewProps {
   className?: string;
   header?: string;
   footer?: string;
+  drawings?: Stroke[];
 }
 
 export const SlideView: React.FC<SlideViewProps> = memo(({ 
@@ -23,6 +25,7 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
   className = '',
   header,
   footer,
+  drawings = [],
 }) => {
   const [containerEl, setContainerEl] = useState<HTMLDivElement | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -104,6 +107,14 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
         dangerouslySetInnerHTML={{ __html: html }} 
         style={{ width: '100%', height: '100%' }}
       />
+      {drawings && drawings.length > 0 && (
+        <DrawingOverlay
+          width={slideSize.width}
+          height={slideSize.height}
+          data={drawings}
+          isInteracting={false}
+        />
+      )}
       {footer && (
         <div className="slide-footer" dangerouslySetInnerHTML={{ __html: footer }} />
       )}

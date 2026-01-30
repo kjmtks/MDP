@@ -652,7 +652,7 @@ function MainEditor() {
           alert(`ファイルの読み込みに失敗しました。\n(Error: ${err.message})`);
         }
       });
-  }, []);
+  }, [syncDrawings]);
 
   const handleCreate = useCallback(async (type: 'file' | 'directory') => {
     let name = prompt(type === 'file' ? "Enter new file name:" : "Enter new folder name:");
@@ -1022,7 +1022,7 @@ function MainEditor() {
         {slides.map((slide, index) => (
           !slide.isHidden && (
             <div key={index} className="print-slide-page">
-              <SlideView html={slide.html} pageNumber={slide.pageNumber} isActive={true} className={`print-slide-content ${slide.className || 'normal'}`} style={slideStyleVariables} slideSize={slideSize} />
+              <SlideView html={slide.html} pageNumber={slide.pageNumber} isActive={true} className={`print-slide-content ${slide.className || 'normal'}`} style={slideStyleVariables} slideSize={slideSize} header={slide.header} footer={slide.footer} drawings={drawings[index]} />
             </div>
           )
         ))}
@@ -1061,6 +1061,7 @@ function MainEditor() {
                       isEnabledPointerEvents={!isLaserPointer && !isPaletteVisible} 
                       header={slides[currentSlideIndex].header}
                       footer={slides[currentSlideIndex].footer}
+                      drawings={[]}
                     />
                     
                     <DrawingOverlay 
@@ -1192,6 +1193,7 @@ function MainEditor() {
                     isEnabledPointerEvents={false}
                     header={slide.header}
                     footer={slide.footer}
+                    drawings={drawings[index]} 
                   />
                 </SlideScaler>
               </div>
@@ -1229,6 +1231,7 @@ function MainEditor() {
                               pageNumber={slide.pageNumber}
                               header={slide.header}
                               footer={slide.footer}
+                              drawings={drawings[index]}
                             />
                           </div>
                         ))}
@@ -1284,6 +1287,7 @@ function MainEditor() {
                               isEnabledPointerEvents={true}
                               header={slide.header}
                               footer={slide.footer}
+                              drawings={drawings[index]} 
                             />
                           ))}
                         </SlideScaler>

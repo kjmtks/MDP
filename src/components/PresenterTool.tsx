@@ -1,6 +1,7 @@
 ﻿import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { SlideView } from './SlideView';
 import { SlideScaler } from './SlideScaler';
+import type { Stroke } from './DrawingOverlay';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import PauseIcon from '@mui/icons-material/Pause';
 import RefreshIcon from '@mui/icons-material/Refresh';
@@ -19,6 +20,7 @@ interface SyncData {
   slideSize: { width: number; height: number };
   themeCssUrl?: string;
   lastUpdated: number;
+  allDrawings?: Record<number, Stroke[]>;
 }
 
 export const PresenterTool: React.FC = () => {
@@ -37,11 +39,13 @@ export const PresenterTool: React.FC = () => {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [elapsedTime, setElapsedTime] = useState(0);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
+
+  const [allDrawings, setAllDrawings] = useState<Record<number, Stroke[]>>({});
   
   const timerStartRef = useRef<number | null>(null);
   const accumulatedTimeRef = useRef<number>(0);
   const animationFrameRef = useRef<number>(0);
-  
+
   const { send } = useSync(channelId, (msg: SyncMessage) => {
     switch (msg.type) {
       case 'SYNC_STATE': {
@@ -49,6 +53,7 @@ export const PresenterTool: React.FC = () => {
         if (data.slides) setSlides(data.slides);
         if (typeof data.index === 'number') setCurrentIndex(data.index);
         if (data.slideSize) setSlideSize(data.slideSize);
+        if (data.allDrawings) setAllDrawings(data.allDrawings);
         setThemeCssUrl(data.themeCssUrl);
         setLastUpdated(data.lastUpdated);
         break;
@@ -178,6 +183,7 @@ export const PresenterTool: React.FC = () => {
                       slideSize={slideSize}
                       header={currentSlide.header}
                       footer={currentSlide.footer}
+                      drawings={allDrawings[currentIndex]}
                   />
                 )}
               </SlideScaler>
@@ -202,6 +208,7 @@ export const PresenterTool: React.FC = () => {
                               slideSize={slideSize}
                               header={nextSlide.header}
                               footer={nextSlide.footer}
+                              drawings={allDrawings[currentIndex + 1]}
                           />
                         ) : (
                           <div style={{color:'#666', display:'flex', alignItems:'center', justifyContent:'center', height:'100%'}}>End of Slides</div>

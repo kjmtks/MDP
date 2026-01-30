@@ -11,10 +11,10 @@ interface DrawingOverlayProps {
   width: number;
   height: number;
   data: Stroke[];
-  onAddStroke: (stroke: Stroke) => void;
-  color: string;
-  lineWidth: number;
-  toolType: 'pen' | 'eraser';
+  onAddStroke?: (stroke: Stroke) => void;
+  color?: string;
+  lineWidth?: number;
+  toolType?: 'pen' | 'eraser';
   isInteracting: boolean;
 }
 
@@ -23,9 +23,9 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
   height,
   data,
   onAddStroke,
-  color,
-  lineWidth,
-  toolType,
+  color = 'red',
+  lineWidth = 3,
+  toolType = 'pen',
   isInteracting
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -39,7 +39,8 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
   }, [color, lineWidth, toolType, onAddStroke, isInteracting, width, height, data]);
 
   const draw = useCallback((ctx: CanvasRenderingContext2D, strokes: Stroke[]) => {
-    const { width, height } = propsRef.current;
+    if (width === 0 || height === 0) return;
+
     ctx.clearRect(0, 0, width, height);
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -71,7 +72,7 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
     });
     
     ctx.globalCompositeOperation = 'source-over';
-  }, []);
+  }, [width, height]);
 
   const drawRef = useRef(draw);
   useEffect(() => { drawRef.current = draw; }, [draw]);
@@ -87,13 +88,14 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
         strokesToDraw.push(currentStroke.current);
     }
     
-    requestAnimationFrame(() => draw(ctx, strokesToDraw));
-  }, [data, draw, width, height]);
+    requestAnimationFrame(() => drawRef.current(ctx, strokesToDraw));
+  }, [data, width, height]);
 
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    if (!isInteracting) return;
 
     const renderCurrentState = () => {
         const ctx = canvas.getContext('2d');
@@ -111,17 +113,20 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
         const rect = canvas.getBoundingClientRect();
         let clientX, clientY;
         
-        if (window.TouchEvent && e instanceof TouchEvent) {
-            clientX = e.touches[0].clientX;
-            clientY = e.touches[0].clientY;
+        const isTouch = typeof TouchEvent !== 'undefined' && e instanceof TouchEvent;
+
+        if (isTouch) {
+            const touch = (e as TouchEvent).touches[0] || (e as TouchEvent).changedTouches[0];
+            clientX = touch.clientX;
+            clientY = touch.clientY;
         } else {
             clientX = (e as MouseEvent).clientX;
             clientY = (e as MouseEvent).clientY;
         }
         
         const { width, height } = propsRef.current;
-        const scaleX = width / rect.width;
-        const scaleY = height / rect.height;
+        const scaleX = rect.width > 0 ? width / rect.width : 1;
+        const scaleY = rect.height > 0 ? height / rect.height : 1;
 
         return {
             x: (clientX - rect.left) * scaleX,
@@ -131,8 +136,9 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
 
     const start = (e: MouseEvent | TouchEvent) => {
         if (!propsRef.current.isInteracting) return;
-        
-        if (e instanceof MouseEvent && e.button !== 0) return;
+        if (!(typeof TouchEvent !== 'undefined' && e instanceof TouchEvent)) {
+            if ((e as MouseEvent).button !== 0) return;
+        }
         
         e.preventDefault();
         e.stopPropagation();
@@ -143,9 +149,9 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
         
         currentStroke.current = {
             points: [pos],
-            color: toolType === 'eraser' ? 'rgba(0,0,0,1)' : color,
-            width: lineWidth,
-            type: toolType
+            color: toolType === 'eraser' ? 'rgba(0,0,0,1)' : (color || 'red'),
+            width: lineWidth || 3,
+            type: toolType || 'pen'
         };
         
         renderCurrentState();
@@ -157,6 +163,9 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
         e.stopPropagation();
 
         const pos = getPos(e);
+        const lastPoint = currentStroke.current.points[currentStroke.current.points.length - 1];
+        if (lastPoint && lastPoint.x === pos.x && lastPoint.y === pos.y) return;
+
         currentStroke.current.points.push(pos);
         
         renderCurrentState();
@@ -166,13 +175,11 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
         if (!isDrawing.current) return;
         e.preventDefault();
         e.stopPropagation();
-        
         isDrawing.current = false;
-        
-        if (currentStroke.current) {
+        if (currentStroke.current && propsRef.current.onAddStroke) {
             propsRef.current.onAddStroke(currentStroke.current);
-            currentStroke.current = null;
         }
+        currentStroke.current = null;
     };
 
     canvas.addEventListener('mousedown', start);
@@ -194,7 +201,7 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
         canvas.removeEventListener('touchend', end);
         canvas.removeEventListener('touchcancel', end);
     };
-  }, []);
+  }, [isInteracting]);
 
   return (
     <canvas
