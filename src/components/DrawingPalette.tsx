@@ -1,11 +1,11 @@
 ﻿import React from 'react';
 import { IconButton, Tooltip, Popover } from '@mui/material';
-import CreateIcon from '@mui/icons-material/Create'; // Pen
-import AutoFixNormalIcon from '@mui/icons-material/AutoFixNormal'; // Eraser
+import CreateIcon from '@mui/icons-material/Create';
+import AutoFixNormalIcon from '@mui/icons-material/AutoFixNormal';
 import UndoIcon from '@mui/icons-material/Undo';
 import RedoIcon from '@mui/icons-material/Redo';
 import DeleteIcon from '@mui/icons-material/Delete';
-import LensIcon from '@mui/icons-material/Lens'; // Color circle
+import LensIcon from '@mui/icons-material/Lens';
 
 interface DrawingPaletteProps {
   toolType: 'pen' | 'eraser';
@@ -20,17 +20,21 @@ interface DrawingPaletteProps {
   onRedo: () => void;
   onClear: () => void;
   container?: HTMLElement | null;
+  style?: React.CSSProperties;
+  className?: string;
 }
 
-const COLORS = ['#FF0000', '#0000FF', '#000000', '#008000', '#FFA500', '#ff00cc', '#00ddff', '#FFFFFF'];
-const WIDTHS = [2, 4, 6, 12];
+const COLORS = ['#FF0000', '#0000FF', '#000000', '#008000', '#FFA500', '#b200b2', '#00b2b2', '#FFFFFF'];
+const WIDTHS = [3, 6, 12, 24];
 
 export const DrawingPalette: React.FC<DrawingPaletteProps> = ({
   toolType, setToolType,
   color, setColor,
   lineWidth, setLineWidth,
   canUndo, canRedo, onUndo, onRedo, onClear,
-  container
+  container,
+  style,
+  className
 }) => {
   const [anchorEl, setAnchorEl] = React.useState<HTMLButtonElement | null>(null);
 
@@ -49,7 +53,21 @@ export const DrawingPalette: React.FC<DrawingPaletteProps> = ({
   const targetContainer = container || document.fullscreenElement || document.body;
 
   return (
-    <div className="drawing-palette">
+    <div 
+      className={`drawing-palette ${className || ''}`}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        backgroundColor: 'rgba(30, 30, 30, 0.9)',
+        padding: '8px 16px',
+        borderRadius: '50px',
+        backdropFilter: 'blur(5px)',
+        border: '1px solid #444',
+        pointerEvents: 'auto',
+        ...style 
+      }}
+    >
       <Tooltip title="Pen">
         <IconButton 
           color={toolType === 'pen' ? "primary" : "default"} 
@@ -59,11 +77,13 @@ export const DrawingPalette: React.FC<DrawingPaletteProps> = ({
           <CreateIcon />
         </IconButton>
       </Tooltip>
+
       <Tooltip title="Color">
         <IconButton onClick={handleColorClick}>
           <LensIcon style={{ color: color, border: '1px solid #ccc', borderRadius: '50%' }} />
         </IconButton>
       </Tooltip>
+
       <Tooltip title="Eraser">
         <IconButton 
           color={toolType === 'eraser' ? "secondary" : "default"} 
@@ -74,28 +94,34 @@ export const DrawingPalette: React.FC<DrawingPaletteProps> = ({
         </IconButton>
       </Tooltip>
 
-      <div className="palette-separator" />
+      <div className="palette-separator" style={{ width: 1, height: 24, backgroundColor: '#555', margin: '0 4px' }} />
 
       <div className="width-selector" style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
         {WIDTHS.map(w => (
-          <div 
+          <button 
             key={w}
             onClick={() => setLineWidth(w)}
+            type="button"
+            className="palette-control"
             style={{
-              width: w + 4, height: w + 4,
+              width: w + 8, height: w + 8,
               borderRadius: '50%',
               backgroundColor: lineWidth === w ? '#1976d2' : '#999',
               cursor: 'pointer',
-              margin: '0 4px',
+              margin: '0 2px',
               border: lineWidth === w ? '2px solid white' : 'none',
-              boxShadow: lineWidth === w ? '0 0 0 1px #1976d2' : 'none'
+              boxShadow: lineWidth === w ? '0 0 0 1px #1976d2' : 'none',
+              padding: 0,
+              outline: 'none',
+              appearance: 'none',
+              WebkitAppearance: 'none',
             }}
             title={`Width: ${w}px`}
           />
         ))}
       </div>
 
-      <div className="palette-separator" />
+      <div className="palette-separator" style={{ width: 1, height: 24, backgroundColor: '#555', margin: '0 4px' }} />
 
       <Tooltip title="Undo (Ctrl+Z)">
         <span>
@@ -131,14 +157,14 @@ export const DrawingPalette: React.FC<DrawingPaletteProps> = ({
             <div 
               key={c} 
               onClick={() => selectColor(c)}
-              style={{ width: 24, height: 24, backgroundColor: c, borderRadius: '50%', cursor: 'pointer', border: '1px solid #666' }}
+              style={{ width: 32, height: 32, backgroundColor: c, borderRadius: '50%', cursor: 'pointer', border: '1px solid #666' }}
             />
           ))}
           <input 
             type="color" 
             value={color} 
             onChange={(e) => { setColor(e.target.value); setToolType('pen'); }}
-            style={{ width: 24, height: 24, padding: 0, border: 'none', background: 'none', cursor: 'pointer' }} 
+            style={{ width: 32, height: 32, padding: 0, border: 'none', background: 'none', cursor: 'pointer' }} 
           />
         </div>
       </Popover>

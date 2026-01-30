@@ -4,17 +4,11 @@ import { SlideScaler } from './SlideScaler';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import PauseIcon from '@mui/icons-material/Pause';
 import RefreshIcon from '@mui/icons-material/Refresh';
-import ArrowBackIosIcon from '@mui/icons-material/ArrowBackIos'; 
-import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos'; 
 import { Panel, Group, Separator } from 'react-resizable-panels';
-import { Button, IconButton, Tooltip } from '@mui/material';
-import EditIcon from '@mui/icons-material/Edit';
-import DeleteIcon from '@mui/icons-material/Delete';
-import NoteAddIcon from '@mui/icons-material/NoteAdd';
 
 import { useSync, type SyncMessage } from '../hooks/useSync';
-import { DrawingPalette } from './DrawingPalette';
 import { useDrawing } from '../hooks/useDrawing';
+import { SlideControls, type AppMode } from './SlideControls';
 import type { Stroke } from './DrawingOverlay';
 
 import '../App.css';
@@ -46,8 +40,8 @@ export const PresenterTool: React.FC = () => {
   const [elapsedTime, setElapsedTime] = useState(0);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
   
-  const { drawings, addStroke, syncDrawings, clear, canUndo, canRedo } = useDrawing();
-  const [isDrawingMode, setIsDrawingMode] = useState(false);
+  const [mode, setMode] = useState<AppMode>('view');
+  const { drawings, addStroke, syncDrawings, clear } = useDrawing();
   const [toolType, setToolType] = useState<'pen' | 'eraser'>('pen');
   const [penColor, setPenColor] = useState('#FF0000');
   const [penWidth, setPenWidth] = useState(3);
@@ -78,12 +72,6 @@ export const PresenterTool: React.FC = () => {
     }
   });
 
-  const handleAddBlankSlide = () => {
-    if (channelId) {
-      send({ type: 'ADD_BLANK_SLIDE', pageIndex: currentIndex, channelId });
-    }
-  };
-
   useEffect(() => {
     const linkId = 'mdp-presenter-theme';
     let link = document.getElementById(linkId) as HTMLLinkElement;
@@ -95,13 +83,7 @@ export const PresenterTool: React.FC = () => {
         document.head.appendChild(link);
       }
       const separator = themeCssUrl.includes('?') ? '&' : '?';
-      const href = `${themeCssUrl}${separator}t=${lastUpdated}`;
-
-      if (link.getAttribute('href') !== href) {
-        link.href = href;
-      }
-    } else {
-      if (link) document.head.removeChild(link);
+      link.href = `${themeCssUrl}${separator}t=${lastUpdated}`;
     }
   }, [themeCssUrl, lastUpdated]);
 
@@ -174,16 +156,21 @@ export const PresenterTool: React.FC = () => {
     clear(currentIndex);
     send({ type: 'CLEAR_DRAWING', pageIndex: currentIndex, channelId });
   }, [channelId, currentIndex, clear, send]);
+  
+  const handleAddSlide = useCallback(() => {
+    if (channelId) send({ type: 'ADD_BLANK_SLIDE', pageIndex: currentIndex, channelId });
+  }, [channelId, currentIndex, send]);
 
   const handleUndo = useCallback(() => { if (channelId) send({ type: 'UNDO', pageIndex: currentIndex, channelId }); }, [channelId, currentIndex, send]);
   const handleRedo = useCallback(() => { if (channelId) send({ type: 'REDO', pageIndex: currentIndex, channelId }); }, [channelId, currentIndex, send]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'p') setIsDrawingMode(prev => !prev);
+      if (e.key === 'p') setMode(prev => prev === 'pen' ? 'view' : 'pen');
       if ((e.metaKey || e.ctrlKey) && e.key === 'z') { e.preventDefault(); handleUndo(); }
       if ((e.metaKey || e.ctrlKey) && e.key === 'y') { e.preventDefault(); handleRedo(); }
       if (e.key === 'c') handleClear();
+      if (e.key === 'n') handleAddSlide();
 
       if (['ArrowRight', 'ArrowDown', ' ', 'Enter', 'PageDown'].includes(e.key)) {
         e.preventDefault();
@@ -195,7 +182,7 @@ export const PresenterTool: React.FC = () => {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [sendNav, handleUndo, handleRedo, handleClear]);
+  }, [sendNav, handleUndo, handleRedo, handleClear, handleAddSlide]);
 
   const currentSlide = slides[currentIndex];
   let nextIndex = currentIndex + 1;
@@ -208,46 +195,27 @@ export const PresenterTool: React.FC = () => {
   if (slides.length === 0) return <div style={{padding:20, color:'white'}}>Waiting for connection...</div>;
 
   return (
-    <div className="presenter-container" style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100vw', overflow: 'hidden' }}>
+    <div className="presenter-container" style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100vw', overflow: 'hidden', touchAction: 'none' }}>
       <div className="presenter-header" style={{ flexShrink: 0 }}>
         <div style={{fontWeight:'bold', fontSize:'1.2rem'}}>Presenter View</div>
-        
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          <Tooltip title="Add Blank Slide">
-            <IconButton onClick={handleAddBlankSlide} color="primary" size="small">
-              <NoteAddIcon />
-            </IconButton>
-          </Tooltip>
-          <Button 
-            variant={isDrawingMode ? "contained" : "outlined"} 
-            color={isDrawingMode ? "primary" : "inherit"}
-            onClick={() => setIsDrawingMode(!isDrawingMode)}
-            startIcon={<EditIcon />}
-            size="small"
-            sx={{ color: isDrawingMode ? undefined : 'white', borderColor: isDrawingMode ? undefined : 'rgba(255,255,255,0.5)' }}
-          >
-            {isDrawingMode ? "Drawing" : "View"}
-          </Button>
-          <IconButton onClick={handleClear} color="error" size="small">
-            <DeleteIcon />
-          </IconButton>
-          <div style={{ width: 20 }}></div>
-          <div style={{fontSize:'1.5rem'}}>{currentTime.toLocaleTimeString()}</div>
-        </div>
+        <div style={{fontSize:'1.5rem'}}>{currentTime.toLocaleTimeString()}</div>
       </div>
-
       <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
         
-        {isDrawingMode && (
-          <DrawingPalette 
-            toolType={toolType} setToolType={setToolType}
-            color={penColor} setColor={setPenColor}
-            lineWidth={penWidth} setLineWidth={setPenWidth}
-            canUndo={canUndo(currentIndex)} canRedo={canRedo(currentIndex)}
-            onUndo={handleUndo} onRedo={handleRedo} onClear={handleClear}
-            container={document.body}
-          />
-        )}
+        <SlideControls 
+           mode={mode} setMode={setMode}
+           pageIndex={currentIndex} totalSlides={slides.length}
+           visible={true}
+           onNav={sendNav}
+           onAddSlide={handleAddSlide}
+           onClearDrawing={handleClear}
+           
+           toolType={toolType} setToolType={setToolType}
+           penColor={penColor} setPenColor={setPenColor}
+           penWidth={penWidth} setPenWidth={setPenWidth}
+           canUndo={true} canRedo={true}
+           onUndo={handleUndo} onRedo={handleRedo}
+        />
 
         <Group orientation="horizontal">
           
@@ -264,13 +232,13 @@ export const PresenterTool: React.FC = () => {
                       isActive={true}
                       className={currentSlide.className}
                       style={slideStyles}
-                      isEnabledPointerEvents={!isDrawingMode}
+                      isEnabledPointerEvents={mode === 'view'}
                       slideSize={slideSize}
                       header={currentSlide.header}
                       footer={currentSlide.footer}
                       drawings={drawings[currentIndex]}
                       onAddStroke={handleAddStroke}
-                      isInteracting={isDrawingMode}
+                      isInteracting={mode === 'pen'}
                       toolType={toolType}
                       color={penColor}
                       lineWidth={penWidth}
@@ -318,16 +286,7 @@ export const PresenterTool: React.FC = () => {
                     {currentSlide?.noteHtml ? (
                       <div className="markdown-body" dangerouslySetInnerHTML={{ __html: currentSlide.noteHtml }} />
                     ) : (
-                      <div style={{
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        justifyContent: 'center', 
-                        height: '80%', 
-                        color: '#666', 
-                        fontStyle: 'italic',
-                        border: '1px dashed #444',
-                        borderRadius: '4px'
-                      }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '80%', color: '#666', fontStyle: 'italic', border: '1px dashed #444', borderRadius: '4px' }}>
                         No notes for this slide.
                       </div>
                     )}
@@ -348,14 +307,6 @@ export const PresenterTool: React.FC = () => {
           <button onClick={resetTimer} title="Reset">
             <RefreshIcon />
           </button>
-        </div>
-        <div style={{display:'flex', gap:'10px'}}>
-           <button className="presenter-nav-button" onClick={() => sendNav(-1)}>
-             <ArrowBackIosIcon fontSize="small" /> Prev
-           </button>
-           <button className="presenter-nav-button" onClick={() => sendNav(1)}>
-             Next <ArrowForwardIosIcon fontSize="small" />
-           </button>
         </div>
       </div>
     </div>

@@ -2,20 +2,14 @@
 import { useSync, type SyncMessage } from '../hooks/useSync';
 import { SlideView } from './SlideView';
 import { SlideScaler } from './SlideScaler';
-import { DrawingOverlay, type Stroke } from './DrawingOverlay';
-import { DrawingPalette } from './DrawingPalette'; 
+import { type Stroke } from './DrawingOverlay';
 import { useDrawing } from '../hooks/useDrawing'; 
+import { SlideControls, type AppMode } from './SlideControls';
 
-import { Button, IconButton, TextField, Paper, Typography, Box, Dialog, Divider } from '@mui/material';
-import ArrowBackIosIcon from '@mui/icons-material/ArrowBackIos';
-import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos';
-import DeleteIcon from '@mui/icons-material/Delete';
-import EditIcon from '@mui/icons-material/Edit';
+import { Button, TextField, Paper, Typography, Box, Dialog, IconButton } from '@mui/material';
 import LinkIcon from '@mui/icons-material/Link';
-import LinkOffIcon from '@mui/icons-material/LinkOff';
 import QrCodeScannerIcon from '@mui/icons-material/QrCodeScanner';
 import CloseIcon from '@mui/icons-material/Close';
-import NoteAddIcon from '@mui/icons-material/NoteAdd';
 
 import jsQR from 'jsqr';
 
@@ -50,14 +44,15 @@ export const RemoteControl: React.FC = () => {
   
   const { drawings, addStroke, syncDrawings, clear } = useDrawing();
   
-  const [isDrawingMode, setIsDrawingMode] = useState(false);
+  const [mode, setMode] = useState<AppMode>('view');
+  
   const [toolType, setToolType] = useState<'pen' | 'eraser'>('pen');
   const [penColor, setPenColor] = useState('#FF0000');
   const [penWidth, setPenWidth] = useState(3);
   
   const [themeCssUrl, setThemeCssUrl] = useState<string | undefined>();
   const [lastUpdated, setLastUpdated] = useState(0);
-
+  
   const { send } = useSync(channelId, (msg: SyncMessage) => {
     switch (msg.type) {
       case 'SYNC_STATE': {
@@ -80,12 +75,6 @@ export const RemoteControl: React.FC = () => {
     }
   });
 
-  const handleAddBlankSlide = () => {
-    if (channelId) {
-      send({ type: 'ADD_BLANK_SLIDE', pageIndex: index, channelId });
-    }
-  };
-
   useEffect(() => {
     const linkId = 'mdp-remote-theme';
     let link = document.getElementById(linkId) as HTMLLinkElement;
@@ -102,9 +91,14 @@ export const RemoteControl: React.FC = () => {
 
   useEffect(() => {
     const preventDefault = (e: TouchEvent) => {
-      if (isDrawingMode) {
+      if (mode === 'pen' || mode === 'laser') {
         const target = e.target as HTMLElement;
-        const isControl = target.tagName === 'BUTTON' || target.tagName === 'INPUT' || target.closest('button');
+        const isControl = 
+          target.tagName === 'BUTTON' || 
+          target.tagName === 'INPUT' || 
+          target.closest('button') || 
+          target.closest('.drawing-palette') ||  
+          target.closest('.MuiPopover-root');    
         if (!isControl) e.preventDefault();
       }
     };
@@ -116,7 +110,7 @@ export const RemoteControl: React.FC = () => {
       document.body.removeEventListener('touchstart', preventDefault);
       document.body.removeEventListener('touchend', preventDefault);
     };
-  }, [isDrawingMode]);
+  }, [mode]);
 
   const startScan = () => {
     setIsScanning(true);
@@ -190,7 +184,6 @@ export const RemoteControl: React.FC = () => {
     };
   }, []);
 
-
   const handleConnect = () => {
     if (inputToken.trim()) setChannelId(inputToken.trim());
   };
@@ -215,45 +208,50 @@ export const RemoteControl: React.FC = () => {
     clear(index);
     send({ type: 'CLEAR_DRAWING', pageIndex: index, channelId });
   };
+  
+  const handleAddSlide = () => {
+    if (channelId) send({ type: 'ADD_BLANK_SLIDE', pageIndex: index, channelId });
+  };
 
   const handleUndo = () => { if (channelId) send({ type: 'UNDO', pageIndex: index, channelId }); };
   const handleRedo = () => { if (channelId) send({ type: 'REDO', pageIndex: index, channelId }); };
+  
+  const touchStartPos = useRef<{ x: number, y: number } | null>(null);
+  const onTouchStart = (e: React.TouchEvent) => {
+    if (mode !== 'view') return; 
+    if (e.touches.length > 1) return;
+    touchStartPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+  };
+  const onTouchEnd = (e: React.TouchEvent) => {
+    if (!touchStartPos.current || mode !== 'view') return;
+    const diffX = e.changedTouches[0].clientX - touchStartPos.current.x;
+    const diffY = e.changedTouches[0].clientY - touchStartPos.current.y;
+    if (Math.abs(diffX) > 50 && Math.abs(diffY) < 100) handleNav(diffX > 0 ? -1 : 1);
+    touchStartPos.current = null;
+  };
 
   if (!channelId) {
     return (
       <div style={{ width: '100vw', height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#222' }}>
         <Paper sx={{ p: 4, width: '90%', maxWidth: 400, display: 'flex', flexDirection: 'column', gap: 3 }}>
           <Typography variant="h5" align="center">Remote Control</Typography>
-          <TextField 
-            label="Connection Token" 
-            value={inputToken} 
-            onChange={e => setInputToken(e.target.value)} 
-            variant="outlined" 
-            fullWidth
-          />
-          <Button variant="contained" size="large" onClick={handleConnect} startIcon={<LinkIcon />}>
-            Connect
-          </Button>
-          <Divider>OR</Divider>
-          <Button variant="outlined" size="large" onClick={startScan} startIcon={<QrCodeScannerIcon />}>
-            Scan QR Code
-          </Button>
+          <TextField label="Connection Token" value={inputToken} onChange={e => setInputToken(e.target.value)} variant="outlined" fullWidth />
+          <Button variant="contained" size="large" onClick={handleConnect} startIcon={<LinkIcon />}>Connect</Button>
+          <Button variant="outlined" size="large" onClick={startScan} startIcon={<QrCodeScannerIcon />}>Scan QR Code</Button>
         </Paper>
+        
         <Dialog open={isScanning} onClose={stopScan} maxWidth="sm" fullWidth>
             <Box sx={{ position: 'relative', bgcolor: 'black', height: '400px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <video ref={videoRef} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 <canvas ref={canvasRef} style={{ display: 'none' }} />
-                <IconButton onClick={stopScan} sx={{ position: 'absolute', top: 10, right: 10, color: 'white', bgcolor: 'rgba(0,0,0,0.5)' }}>
-                    <CloseIcon />
-                </IconButton>
-                <Typography sx={{ position: 'absolute', bottom: 20, color: 'white', bgcolor: 'rgba(0,0,0,0.5)', px: 2, borderRadius: 1 }}>
-                    Scanning...
-                </Typography>
+                <IconButton onClick={stopScan} sx={{ position: 'absolute', top: 10, right: 10, color: 'white', bgcolor: 'rgba(0,0,0,0.5)' }}><CloseIcon /></IconButton>
+                <Typography sx={{ position: 'absolute', bottom: 20, color: 'white', bgcolor: 'rgba(0,0,0,0.5)', px: 2, borderRadius: 1 }}>Scanning...</Typography>
             </Box>
         </Dialog>
       </div>
     );
   }
+
   if (slides.length === 0) {
     return (
       <div style={{ width: '100vw', height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#222', color: 'white' }}>
@@ -262,7 +260,9 @@ export const RemoteControl: React.FC = () => {
       </div>
     );
   }
+
   const currentSlide = slides[index];
+
   return (
     <div style={{ 
       width: '100vw', height: '100vh', background: '#222', 
@@ -270,42 +270,30 @@ export const RemoteControl: React.FC = () => {
       touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none', overscrollBehavior: 'none' 
     }}>
       
-      <div style={{ height: 60, background: '#333', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px', color: 'white', flexShrink: 0 }}>
+      <div style={{ height: 40, background: '#333', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px', color: 'white', flexShrink: 0 }}>
         <div style={{ fontWeight: 'bold' }}>Remote</div>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <IconButton onClick={handleAddBlankSlide} style={{ color: 'white' }}>
-            <NoteAddIcon />
-          </IconButton>
-          <IconButton onClick={() => setChannelId(null)} style={{ color: 'white' }} title="Disconnect">
-            <LinkOffIcon />
-          </IconButton>
-
-          <Button 
-            variant={isDrawingMode ? "contained" : "outlined"} 
-            color={isDrawingMode ? "primary" : "inherit"}
-            onClick={() => setIsDrawingMode(!isDrawingMode)}
-            startIcon={<EditIcon />}
-          >
-            {isDrawingMode ? "Drawing" : "View"}
-          </Button>
-          
-          <IconButton onClick={handleClear} color="error">
-            <DeleteIcon />
-          </IconButton>
-        </div>
+        <Button size="small" onClick={() => setChannelId(null)} sx={{ color: 'white' }}>Disconnect</Button>
       </div>
 
-      <div style={{ flex: 1, position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000', touchAction: 'none' }}>
-         {isDrawingMode && (
-            <DrawingPalette 
-              toolType={toolType} setToolType={setToolType}
-              color={penColor} setColor={setPenColor}
-              lineWidth={penWidth} setLineWidth={setPenWidth}
-              canUndo={true} canRedo={true}
-              onUndo={handleUndo} onRedo={handleRedo} onClear={handleClear}
-              container={document.body}
-            />
-         )}
+      <div 
+        style={{ flex: 1, position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000', touchAction: 'none' }}
+        onTouchStart={onTouchStart}
+        onTouchEnd={onTouchEnd}
+      >
+         <SlideControls 
+            mode={mode} setMode={setMode}
+            pageIndex={index} totalSlides={slides.length}
+            visible={true}
+            onNav={handleNav}
+            onAddSlide={handleAddSlide}
+            onClearDrawing={handleClear}
+            
+            toolType={toolType} setToolType={setToolType}
+            penColor={penColor} setPenColor={setPenColor}
+            penWidth={penWidth} setPenWidth={setPenWidth}
+            canUndo={true} canRedo={true}
+            onUndo={handleUndo} onRedo={handleRedo}
+         />
 
          <SlideScaler width={slideSize.width} height={slideSize.height}>
              <div style={{ position: 'relative', width: '100%', height: '100%' }}>
@@ -316,27 +304,17 @@ export const RemoteControl: React.FC = () => {
                   className={currentSlide.className}
                   header={currentSlide.header}
                   footer={currentSlide.footer}
-                  isEnabledPointerEvents={false}
-                />
-                
-                <DrawingOverlay 
-                  width={slideSize.width} 
-                  height={slideSize.height}
-                  data={drawings[index] || []}
+                  isEnabledPointerEvents={mode === 'view'}
+                  
+                  drawings={drawings[index] || []}
                   onAddStroke={handleAddStroke}
+                  isInteracting={mode === 'pen'}
+                  toolType={toolType}
                   color={penColor}
                   lineWidth={penWidth}
-                  toolType={toolType}
-                  isInteracting={isDrawingMode}
                 />
              </div>
          </SlideScaler>
-      </div>
-
-      <div style={{ height: 80, background: '#333', display: 'flex', alignItems: 'center', justifyContent: 'space-around', padding: '10px', flexShrink: 0 }}>
-          <Button variant="contained" sx={{ height: '100%', flex: 1, mr: 1, fontSize: '1.2rem' }} onClick={() => handleNav(-1)}><ArrowBackIosIcon /></Button>
-          <Typography color="white" sx={{ mx: 2 }}>{index + 1} / {slides.length}</Typography>
-          <Button variant="contained" sx={{ height: '100%', flex: 1, ml: 1, fontSize: '1.2rem' }} onClick={() => handleNav(1)}><ArrowForwardIosIcon /></Button>
       </div>
     </div>
   );
