@@ -18,6 +18,7 @@ interface SlideViewProps {
   toolType?: 'pen' | 'eraser';
   color?: string;
   lineWidth?: number;
+  penOnly?: boolean;
 }
 
 export const SlideView: React.FC<SlideViewProps> = memo(({ 
@@ -35,7 +36,8 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
   isInteracting = false,
   toolType,
   color,
-  lineWidth
+  lineWidth,
+  penOnly
 }) => {
   const [containerEl, setContainerEl] = useState<HTMLDivElement | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -128,6 +130,7 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
           toolType={toolType}
           color={color}
           lineWidth={lineWidth}
+          penOnly={penOnly}
         />
       )}
       

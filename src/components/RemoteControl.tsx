@@ -45,6 +45,7 @@ export const RemoteControl: React.FC = () => {
   const { drawings, addStroke, syncDrawings, clear } = useDrawing();
   
   const [mode, setMode] = useState<AppMode>('view');
+  const [stylusOnly, setStylusOnly] = useState(false);
   
   const [toolType, setToolType] = useState<'pen' | 'eraser'>('pen');
   const [penColor, setPenColor] = useState('#FF0000');
@@ -91,6 +92,10 @@ export const RemoteControl: React.FC = () => {
 
   useEffect(() => {
     const preventDefault = (e: TouchEvent) => {
+      if (mode === 'pen' && stylusOnly) {
+         e.preventDefault();
+         return;
+      }
       if (mode === 'pen' || mode === 'laser') {
         const target = e.target as HTMLElement;
         const isControl = 
@@ -98,7 +103,8 @@ export const RemoteControl: React.FC = () => {
           target.tagName === 'INPUT' || 
           target.closest('button') || 
           target.closest('.drawing-palette') ||  
-          target.closest('.MuiPopover-root');    
+          target.closest('.MuiPopover-root') ||
+          target.closest('.slide-controls-container');    
         if (!isControl) e.preventDefault();
       }
     };
@@ -110,7 +116,7 @@ export const RemoteControl: React.FC = () => {
       document.body.removeEventListener('touchstart', preventDefault);
       document.body.removeEventListener('touchend', preventDefault);
     };
-  }, [mode]);
+  }, [mode, stylusOnly]);
 
   const startScan = () => {
     setIsScanning(true);
@@ -223,10 +229,16 @@ export const RemoteControl: React.FC = () => {
     touchStartPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
   };
   const onTouchEnd = (e: React.TouchEvent) => {
-    if (!touchStartPos.current || mode !== 'view') return;
-    const diffX = e.changedTouches[0].clientX - touchStartPos.current.x;
-    const diffY = e.changedTouches[0].clientY - touchStartPos.current.y;
-    if (Math.abs(diffX) > 50 && Math.abs(diffY) < 100) handleNav(diffX > 0 ? -1 : 1);
+    if (!touchStartPos.current) return;
+    if (mode !== 'view' && !(mode === 'pen' && stylusOnly)) return;
+    const endX = e.changedTouches[0].clientX;
+    const endY = e.changedTouches[0].clientY;
+    const diffX = endX - touchStartPos.current.x;
+    const diffY = endY - touchStartPos.current.y;
+    if (Math.abs(diffX) > 50 && Math.abs(diffY) < 100) {
+      if (diffX > 0) handleNav(-1);
+      else handleNav(1);
+    }
     touchStartPos.current = null;
   };
 
@@ -293,6 +305,10 @@ export const RemoteControl: React.FC = () => {
             penWidth={penWidth} setPenWidth={setPenWidth}
             canUndo={true} canRedo={true}
             onUndo={handleUndo} onRedo={handleRedo}
+
+            stylusOnly={stylusOnly}
+            setStylusOnly={setStylusOnly}
+            containerStyle={{ bottom: 30 }}
          />
 
          <SlideScaler width={slideSize.width} height={slideSize.height}>
@@ -312,6 +328,7 @@ export const RemoteControl: React.FC = () => {
                   toolType={toolType}
                   color={penColor}
                   lineWidth={penWidth}
+                  penOnly={stylusOnly}
                 />
              </div>
          </SlideScaler>

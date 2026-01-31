@@ -333,6 +333,7 @@ function MainEditor() {
   const [toolType, setToolType] = useState<'pen' | 'eraser'>('pen');
   const [penColor, setPenColor] = useState('#FF0000');
   const [penWidth, setPenWidth] = useState(3);
+  const [stylusOnly, setStylusOnly] = useState(false);
   
   const [mode, setMode] = useState<AppMode>('view');
   const [isTouchDevice, setIsTouchDevice] = useState(false);
@@ -1061,20 +1062,23 @@ function MainEditor() {
         <div ref={slideshowRef} className={`slideshow-overlay ${mode === 'laser' ? 'laser-mode' : ''}`}>
           
           <SlideControls 
-             mode={mode} setMode={setMode}
-             pageIndex={currentSlideIndex} totalSlides={slides.length}
-             visible={showControls}
-             onNav={moveSlide}
-             onAddSlide={() => handleAddBlankSlide(currentSlideIndex)}
-             onSave={handleSaveDrawingsToMarkdown}
-             onClearDrawing={() => { clear(currentSlideIndex); send({ type: 'CLEAR_DRAWING', channelId, pageIndex: currentSlideIndex }); }}
-             onClose={() => { document.exitFullscreen(); setMode('view'); }}
-             toolType={toolType} setToolType={setToolType}
-             penColor={penColor} setPenColor={setPenColor}
-             penWidth={penWidth} setPenWidth={setPenWidth}
-             canUndo={canUndo(currentSlideIndex)} canRedo={canRedo(currentSlideIndex)}
-             onUndo={() => undo(currentSlideIndex)} onRedo={() => redo(currentSlideIndex)}
-             useLaserPointerMode={true}
+            mode={mode} setMode={setMode}
+            pageIndex={currentSlideIndex} totalSlides={slides.length}
+            visible={showControls}
+            onNav={moveSlide}
+            onAddSlide={() => handleAddBlankSlide(currentSlideIndex)}
+            onSave={handleSaveDrawingsToMarkdown}
+            onClearDrawing={() => { clear(currentSlideIndex); send({ type: 'CLEAR_DRAWING', channelId, pageIndex: currentSlideIndex }); }}
+            onClose={() => { document.exitFullscreen(); setMode('view'); }}
+            toolType={toolType} setToolType={setToolType}
+            penColor={penColor} setPenColor={setPenColor}
+            penWidth={penWidth} setPenWidth={setPenWidth}
+            canUndo={canUndo(currentSlideIndex)} canRedo={canRedo(currentSlideIndex)}
+            onUndo={() => undo(currentSlideIndex)} onRedo={() => redo(currentSlideIndex)}
+            useLaserPointerMode={true}
+            stylusOnly={stylusOnly}
+            setStylusOnly={setStylusOnly}
+            containerStyle={{ bottom: '20px' }}
           />
 
           <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -1099,6 +1103,7 @@ function MainEditor() {
                       toolType={toolType}
                       color={penColor}
                       lineWidth={penWidth}
+                      penOnly={stylusOnly}
                     />
                 </div>
               )}
@@ -1311,20 +1316,22 @@ function MainEditor() {
                       {!currentFileName ? ( <EmptyState /> ) : currentFileType === 'markdown' ? (
                         <>
                           <SlideControls 
-                             mode={mode} setMode={setMode}
-                             pageIndex={currentSlideIndex} totalSlides={slides.length}
-                             visible={showControls}
-                             onNav={moveSlide}
-                             onAddSlide={() => handleAddBlankSlide(currentSlideIndex)}
-                             onSave={handleSaveDrawingsToMarkdown}
-                             onClearDrawing={() => { clear(currentSlideIndex); send({ type: 'CLEAR_DRAWING', channelId, pageIndex: currentSlideIndex }); }}
-                             
-                             toolType={toolType} setToolType={setToolType}
-                             penColor={penColor} setPenColor={setPenColor}
-                             penWidth={penWidth} setPenWidth={setPenWidth}
-                             canUndo={canUndo(currentSlideIndex)} canRedo={canRedo(currentSlideIndex)}
-                             onUndo={() => undo(currentSlideIndex)} onRedo={() => redo(currentSlideIndex)}
-                             containerStyle={{ bottom: '20px' }} // 位置調整
+                            mode={mode} setMode={setMode}
+                            pageIndex={currentSlideIndex} totalSlides={slides.length}
+                            visible={showControls}
+                            onNav={moveSlide}
+                            onAddSlide={() => handleAddBlankSlide(currentSlideIndex)}
+                            onSave={handleSaveDrawingsToMarkdown}
+                            onClearDrawing={() => { clear(currentSlideIndex); send({ type: 'CLEAR_DRAWING', channelId, pageIndex: currentSlideIndex }); }}
+                            
+                            toolType={toolType} setToolType={setToolType}
+                            penColor={penColor} setPenColor={setPenColor}
+                            penWidth={penWidth} setPenWidth={setPenWidth}
+                            canUndo={canUndo(currentSlideIndex)} canRedo={canRedo(currentSlideIndex)}
+                            onUndo={() => undo(currentSlideIndex)} onRedo={() => redo(currentSlideIndex)}
+                            containerStyle={{ bottom: '20px' }}
+                             stylusOnly={stylusOnly}
+                             setStylusOnly={setStylusOnly}
                           />
 
                           <SlideScaler width={slideSize.width} height={slideSize.height}>
@@ -1350,6 +1357,7 @@ function MainEditor() {
                                       toolType={toolType}
                                       color={penColor}
                                       lineWidth={penWidth}
+                                      penOnly={stylusOnly}
                                     />
                                 </div>
                               )

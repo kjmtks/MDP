@@ -37,6 +37,8 @@ interface SlideControlsProps {
   onRedo: () => void;
   containerStyle?: React.CSSProperties;
   useLaserPointerMode?: boolean;
+  stylusOnly?: boolean;
+  setStylusOnly?: (val: boolean) => void;
 }
 
 export const SlideControls: React.FC<SlideControlsProps> = ({
@@ -45,7 +47,8 @@ export const SlideControls: React.FC<SlideControlsProps> = ({
   onNav, onAddSlide, onSave, onClearDrawing, onClose,
   toolType, setToolType, penColor, setPenColor, penWidth, setPenWidth,
   canUndo, canRedo, onUndo, onRedo,
-  containerStyle, useLaserPointerMode
+  containerStyle, useLaserPointerMode,
+  stylusOnly, setStylusOnly
 }) => {
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const isDragging = useRef(false);
@@ -154,6 +157,8 @@ export const SlideControls: React.FC<SlideControlsProps> = ({
             canUndo={canUndo} canRedo={canRedo}
             onUndo={onUndo} onRedo={onRedo}
             onClear={onClearDrawing || (() => {})}
+            stylusOnly={stylusOnly}
+            setStylusOnly={setStylusOnly}
             style={{ 
               pointerEvents: 'auto',
               backgroundColor: 'rgba(30, 30, 30, 0.9)',

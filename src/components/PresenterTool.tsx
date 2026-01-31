@@ -45,6 +45,7 @@ export const PresenterTool: React.FC = () => {
   const [toolType, setToolType] = useState<'pen' | 'eraser'>('pen');
   const [penColor, setPenColor] = useState('#FF0000');
   const [penWidth, setPenWidth] = useState(3);
+  const [stylusOnly, setStylusOnly] = useState(false);
   
   const timerStartRef = useRef<number | null>(null);
   const accumulatedTimeRef = useRef<number>(0);
@@ -203,18 +204,21 @@ export const PresenterTool: React.FC = () => {
       <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
         
         <SlideControls 
-           mode={mode} setMode={setMode}
-           pageIndex={currentIndex} totalSlides={slides.length}
-           visible={true}
-           onNav={sendNav}
-           onAddSlide={handleAddSlide}
-           onClearDrawing={handleClear}
-           
-           toolType={toolType} setToolType={setToolType}
-           penColor={penColor} setPenColor={setPenColor}
-           penWidth={penWidth} setPenWidth={setPenWidth}
-           canUndo={true} canRedo={true}
-           onUndo={handleUndo} onRedo={handleRedo}
+          mode={mode} setMode={setMode}
+          pageIndex={currentIndex} totalSlides={slides.length}
+          visible={true}
+          onNav={sendNav}
+          onAddSlide={handleAddSlide}
+          onClearDrawing={handleClear}
+          
+          toolType={toolType} setToolType={setToolType}
+          penColor={penColor} setPenColor={setPenColor}
+          penWidth={penWidth} setPenWidth={setPenWidth}
+          canUndo={true} canRedo={true}
+          onUndo={handleUndo} onRedo={handleRedo}
+          containerStyle={{ bottom: 30 }}
+          stylusOnly={stylusOnly}
+          setStylusOnly={setStylusOnly}
         />
 
         <Group orientation="horizontal">
@@ -242,6 +246,7 @@ export const PresenterTool: React.FC = () => {
                       toolType={toolType}
                       color={penColor}
                       lineWidth={penWidth}
+                      penOnly={stylusOnly}
                   />
                 )}
               </SlideScaler>

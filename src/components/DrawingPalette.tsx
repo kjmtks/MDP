@@ -6,6 +6,8 @@ import UndoIcon from '@mui/icons-material/Undo';
 import RedoIcon from '@mui/icons-material/Redo';
 import DeleteIcon from '@mui/icons-material/Delete';
 import LensIcon from '@mui/icons-material/Lens';
+import FingerprintIcon from '@mui/icons-material/Fingerprint';
+import DoNotTouchIcon from '@mui/icons-material/DoNotTouch';
 
 interface DrawingPaletteProps {
   toolType: 'pen' | 'eraser';
@@ -22,10 +24,12 @@ interface DrawingPaletteProps {
   container?: HTMLElement | null;
   style?: React.CSSProperties;
   className?: string;
+  stylusOnly?: boolean;
+  setStylusOnly?: (val: boolean) => void;
 }
 
 const COLORS = ['#FF0000', '#0000FF', '#000000', '#008000', '#FFA500', '#b200b2', '#00b2b2', '#FFFFFF'];
-const WIDTHS = [3, 6, 12, 24];
+const WIDTHS = [2, 4, 8, 12];
 
 export const DrawingPalette: React.FC<DrawingPaletteProps> = ({
   toolType, setToolType,
@@ -34,7 +38,9 @@ export const DrawingPalette: React.FC<DrawingPaletteProps> = ({
   canUndo, canRedo, onUndo, onRedo, onClear,
   container,
   style,
-  className
+  className,
+  stylusOnly,
+  setStylusOnly
 }) => {
   const [anchorEl, setAnchorEl] = React.useState<HTMLButtonElement | null>(null);
 
@@ -95,6 +101,20 @@ export const DrawingPalette: React.FC<DrawingPaletteProps> = ({
       </Tooltip>
 
       <div className="palette-separator" style={{ width: 1, height: 24, backgroundColor: '#555', margin: '0 4px' }} />
+      
+      {setStylusOnly && (
+        <>
+          <Tooltip title={stylusOnly ? "Stylus Only (Touch disabled)" : "Touch Drawing Enabled"}>
+            <IconButton 
+              onClick={() => setStylusOnly(!stylusOnly)}
+              color={stylusOnly ? "warning" : "default"}
+            >
+              {stylusOnly ? <DoNotTouchIcon /> : <FingerprintIcon />}
+            </IconButton>
+          </Tooltip>
+          <div className="palette-separator" style={{ width: 1, height: 24, backgroundColor: '#555', margin: '0 4px' }} />
+        </>
+      )}
 
       <div className="width-selector" style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
         {WIDTHS.map(w => (

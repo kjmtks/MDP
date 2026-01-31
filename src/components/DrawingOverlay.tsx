@@ -16,6 +16,7 @@ interface DrawingOverlayProps {
   lineWidth?: number;
   toolType?: 'pen' | 'eraser';
   isInteracting: boolean;
+  penOnly?: boolean;
 }
 
 export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
@@ -26,17 +27,19 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
   color = 'red',
   lineWidth = 3,
   toolType = 'pen',
-  isInteracting
+  isInteracting,
+  penOnly = false
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   
   const isDrawing = useRef(false);
   const currentStroke = useRef<Stroke | null>(null);
+  const currentPointerId = useRef<number | null>(null);
   
-  const propsRef = useRef({ color, lineWidth, toolType, onAddStroke, isInteracting, width, height, data });
+  const propsRef = useRef({ color, lineWidth, toolType, onAddStroke, isInteracting, width, height, data, penOnly });
   useEffect(() => {
-    propsRef.current = { color, lineWidth, toolType, onAddStroke, isInteracting, width, height, data };
-  }, [color, lineWidth, toolType, onAddStroke, isInteracting, width, height, data]);
+    propsRef.current = { color, lineWidth, toolType, onAddStroke, isInteracting, width, height, data, penOnly };
+  }, [color, lineWidth, toolType, onAddStroke, isInteracting, width, height, data, penOnly]);
 
   const draw = useCallback((ctx: CanvasRenderingContext2D, strokes: Stroke[]) => {
     if (width === 0 || height === 0) return;
@@ -91,7 +94,6 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
     requestAnimationFrame(() => drawRef.current(ctx, strokesToDraw));
   }, [data, width, height]);
 
-
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -100,48 +102,34 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
     const renderCurrentState = () => {
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
-        
         const strokes = [...propsRef.current.data];
         if (currentStroke.current) {
             strokes.push(currentStroke.current);
         }
-        
         requestAnimationFrame(() => drawRef.current(ctx, strokes));
     };
 
-    const getPos = (e: MouseEvent | TouchEvent) => {
+    const getPos = (e: PointerEvent) => {
         const rect = canvas.getBoundingClientRect();
-        let clientX, clientY;
-        
-        const isTouch = typeof TouchEvent !== 'undefined' && e instanceof TouchEvent;
-
-        if (isTouch) {
-            const touch = (e as TouchEvent).touches[0] || (e as TouchEvent).changedTouches[0];
-            clientX = touch.clientX;
-            clientY = touch.clientY;
-        } else {
-            clientX = (e as MouseEvent).clientX;
-            clientY = (e as MouseEvent).clientY;
-        }
-        
         const { width, height } = propsRef.current;
         const scaleX = rect.width > 0 ? width / rect.width : 1;
         const scaleY = rect.height > 0 ? height / rect.height : 1;
 
         return {
-            x: (clientX - rect.left) * scaleX,
-            y: (clientY - rect.top) * scaleY
+            x: (e.clientX - rect.left) * scaleX,
+            y: (e.clientY - rect.top) * scaleY
         };
     };
 
-    const start = (e: MouseEvent | TouchEvent) => {
+    const start = (e: PointerEvent) => {
         if (!propsRef.current.isInteracting) return;
-        if (!(typeof TouchEvent !== 'undefined' && e instanceof TouchEvent)) {
-            if ((e as MouseEvent).button !== 0) return;
-        }
+        if (e.button !== 0) return;
+        if (propsRef.current.penOnly && e.pointerType !== 'pen') return;
         
         e.preventDefault();
         e.stopPropagation();
+        canvas.setPointerCapture(e.pointerId);
+        currentPointerId.current = e.pointerId;
 
         isDrawing.current = true;
         const pos = getPos(e);
@@ -157,49 +145,54 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
         renderCurrentState();
     };
 
-    const move = (e: MouseEvent | TouchEvent) => {
+    const move = (e: PointerEvent) => {
         if (!isDrawing.current || !currentStroke.current) return;
+        if (e.pointerId !== currentPointerId.current) return;
+
         e.preventDefault();
         e.stopPropagation();
 
-        const pos = getPos(e);
-        const lastPoint = currentStroke.current.points[currentStroke.current.points.length - 1];
-        if (lastPoint && lastPoint.x === pos.x && lastPoint.y === pos.y) return;
+        const events = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
 
-        currentStroke.current.points.push(pos);
+        events.forEach(ev => {
+            const pos = getPos(ev);
+            const lastPoint = currentStroke.current!.points[currentStroke.current!.points.length - 1];
+            if (lastPoint && Math.abs(lastPoint.x - pos.x) < 1 && Math.abs(lastPoint.y - pos.y) < 1) return;
+            currentStroke.current!.points.push(pos);
+        });
         
         renderCurrentState();
     };
 
-    const end = (e: MouseEvent | TouchEvent) => {
+    const end = (e: PointerEvent) => {
         if (!isDrawing.current) return;
+        if (e.pointerId !== currentPointerId.current) return;
+
         e.preventDefault();
         e.stopPropagation();
+        canvas.releasePointerCapture(e.pointerId);
+        
         isDrawing.current = false;
+        currentPointerId.current = null;
+        
         if (currentStroke.current && propsRef.current.onAddStroke) {
             propsRef.current.onAddStroke(currentStroke.current);
         }
         currentStroke.current = null;
     };
 
-    canvas.addEventListener('mousedown', start);
-    document.addEventListener('mousemove', move);
-    document.addEventListener('mouseup', end);
-    
-    canvas.addEventListener('touchstart', start, { passive: false });
-    canvas.addEventListener('touchmove', move, { passive: false });
-    canvas.addEventListener('touchend', end, { passive: false });
-    canvas.addEventListener('touchcancel', end, { passive: false });
+    canvas.addEventListener('pointerdown', start);
+    canvas.addEventListener('pointermove', move);
+    canvas.addEventListener('pointerup', end);
+    canvas.addEventListener('pointercancel', end);
+    canvas.addEventListener('pointerleave', end);
 
     return () => {
-        canvas.removeEventListener('mousedown', start);
-        document.removeEventListener('mousemove', move);
-        document.removeEventListener('mouseup', end);
-        
-        canvas.removeEventListener('touchstart', start);
-        canvas.removeEventListener('touchmove', move);
-        canvas.removeEventListener('touchend', end);
-        canvas.removeEventListener('touchcancel', end);
+        canvas.removeEventListener('pointerdown', start);
+        canvas.removeEventListener('pointermove', move);
+        canvas.removeEventListener('pointerup', end);
+        canvas.removeEventListener('pointercancel', end);
+        canvas.removeEventListener('pointerleave', end);
     };
   }, [isInteracting]);
 
@@ -217,7 +210,7 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
         pointerEvents: isInteracting ? 'auto' : 'none',
         zIndex: 50,
         cursor: isInteracting ? (toolType === 'eraser' ? 'cell' : 'crosshair') : 'default',
-        touchAction: 'none'
+        touchAction: penOnly ? 'auto' : 'none'
       }}
     />
   );
