@@ -111,9 +111,21 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
         };
     };
 
+    const preventTouch = (e: TouchEvent) => {
+        if (propsRef.current.isInteracting) {
+            if (!propsRef.current.penOnly) {
+                e.preventDefault();
+            } else {
+                if (e.touches.length === 1) { 
+                    e.preventDefault(); 
+                }
+            }
+        }
+    };
+
     const start = (e: PointerEvent) => {
         if (!propsRef.current.isInteracting) return;
-        if (e.button !== 0) return;
+        if (e.button !== 0) return; 
         if (propsRef.current.penOnly && e.pointerType !== 'pen') {
             return;
         }
@@ -171,7 +183,7 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
             } catch { /* ignore */ }
         }
     };
-
+    
     const cancel = (e: PointerEvent) => {
         if (e.pointerId === currentPointerId.current) {
              end(e);
@@ -183,6 +195,7 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
     canvas.addEventListener('pointerup', end);
     canvas.addEventListener('pointercancel', cancel);
     canvas.addEventListener('pointerleave', cancel);
+    canvas.addEventListener('touchstart', preventTouch, { passive: false });
 
     return () => {
         canvas.removeEventListener('pointerdown', start);
@@ -190,8 +203,9 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
         canvas.removeEventListener('pointerup', end);
         canvas.removeEventListener('pointercancel', cancel);
         canvas.removeEventListener('pointerleave', cancel);
+        canvas.removeEventListener('touchstart', preventTouch);
     };
-  }, []);
+  }, [isInteracting]);
 
   return (
     <canvas
