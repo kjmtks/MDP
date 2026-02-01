@@ -790,6 +790,8 @@ function MainEditor() {
       else if (['ArrowLeft', 'ArrowUp', 'PageUp'].includes(e.key)) { e.preventDefault(); moveSlide(-1); }
     };
     const handleWheel = (e: WheelEvent) => {
+      if (!isSlideshow) return;
+      if ((e.target as HTMLElement).closest('.cm-editor')) return;
       const now = Date.now();
       if (now - lastWheelTime.current < 50) return;
       if (e.deltaY > 0) { lastWheelTime.current = now; moveSlide(1); }
