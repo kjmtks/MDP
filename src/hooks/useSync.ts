@@ -21,6 +21,9 @@ export const useSync = (
   const wsRef = useRef<WebSocket | null>(null);
   const [status, setStatus] = useState<ConnectionStatus>('disconnected');
   
+  const reconnectTimeoutRef = useRef<number | null>(null);
+  const isUnmountingRef = useRef(false);
+
   const onMessageRef = useRef(onMessage);
   useEffect(() => {
     onMessageRef.current = onMessage;
@@ -34,64 +37,92 @@ export const useSync = (
   }
 
   useEffect(() => {
-    if (!channelId) return; 
+    isUnmountingRef.current = false;
 
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    let wsUrl = '';
-    if (window.location.port === '5173') {
-      wsUrl = `${protocol}//${window.location.host}/ws`;
-    } else {
-      wsUrl = `${protocol}//${window.location.host}`;
-    }
-    
-    if (wsRef.current) {
-      wsRef.current.close();
-    }
-
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      console.log(`WS Connected (Channel: ${channelId})`);
-      setStatus('connected');
-      
-      if (ws.readyState === WebSocket.OPEN) {
-        const req: SyncMessage = { type: 'REQUEST_SYNC', channelId };
-        ws.send(JSON.stringify({ type: 'BROADCAST', payload: req }));
-      }
-    };
-
-    ws.onclose = (event) => {
-      console.log('WS Closed', event.code);
-      setStatus('disconnected');
-    };
-
-    ws.onerror = (error) => {
-      console.error('WS Error', error);
-      setStatus('error');
-    };
-
-    ws.onmessage = (event) => {
-      if (event.data === 'file-change') return;
-      try {
-        const msg = JSON.parse(event.data) as SyncMessage;
-        if (msg.channelId === channelId) {
-          onMessageRef.current(msg);
+    if (!channelId) {
+        if (wsRef.current) {
+            wsRef.current.close();
+            wsRef.current = null;
         }
-      } catch {
-        // ignore
-      }
+        return;
+    }
+
+    const connect = () => {
+        if (isUnmountingRef.current) return;
+
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        let wsUrl = '';
+        if (window.location.port === '5173') {
+            wsUrl = `${protocol}//${window.location.host}/ws`;
+        } else {
+            wsUrl = `${protocol}//${window.location.host}`;
+        }
+        
+        if (wsRef.current) {
+            wsRef.current.onclose = null;
+            wsRef.current.onerror = null;
+            wsRef.current.close();
+        }
+
+        const ws = new WebSocket(wsUrl);
+        wsRef.current = ws;
+        setStatus('connecting');
+
+        ws.onopen = () => {
+            console.log(`WS Connected (Channel: ${channelId})`);
+            setStatus('connected');
+            
+            if (ws.readyState === WebSocket.OPEN) {
+                const req: SyncMessage = { type: 'REQUEST_SYNC', channelId };
+                ws.send(JSON.stringify({ type: 'BROADCAST', payload: req }));
+            }
+        };
+
+        ws.onclose = (event) => {
+            if (isUnmountingRef.current) return;
+            console.log('WS Closed', event.code, 'Retrying in 3s...');
+            setStatus('disconnected');
+            wsRef.current = null;
+
+            if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
+            reconnectTimeoutRef.current = window.setTimeout(connect, 3000);
+        };
+
+        ws.onerror = (error) => {
+            if (isUnmountingRef.current) return;
+            console.error('WS Error', error);
+            setStatus('error');
+            ws.close(); 
+        };
+
+        ws.onmessage = (event) => {
+            if (event.data === 'file-change') return;
+            try {
+                const msg = JSON.parse(event.data) as SyncMessage;
+                if (msg.channelId === channelId) {
+                    onMessageRef.current(msg);
+                }
+            } catch {
+                // ignore
+            }
+        };
     };
+
+    connect();
 
     return () => {
-      if (wsRef.current === ws) {
-          ws.onclose = null;
-          ws.onerror = null;
-          ws.onmessage = null;
-          ws.onopen = null;
-          ws.close();
-          wsRef.current = null;
-      }
+        isUnmountingRef.current = true;
+        if (reconnectTimeoutRef.current) {
+            clearTimeout(reconnectTimeoutRef.current);
+        }
+        if (wsRef.current) {
+            wsRef.current.onclose = null;
+            wsRef.current.onerror = null;
+            wsRef.current.onmessage = null;
+            wsRef.current.onopen = null;
+            wsRef.current.close();
+            wsRef.current = null;
+        }
     };
   }, [channelId]); 
 

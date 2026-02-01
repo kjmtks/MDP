@@ -453,7 +453,15 @@ function MainEditor() {
   const moveSlideRef = useRef(moveSlide);
   useEffect(() => { moveSlideRef.current = moveSlide; }, [moveSlide]);
 
-  const channelId = useMemo(() => `mdp-${Math.random().toString(36).slice(2, 8)}`, []);
+  const channelId = useMemo(() => {
+    const key = 'mdp-channel-id';
+    let id = sessionStorage.getItem(key);
+    if (!id) {
+      id = `mdp-${Math.random().toString(36).slice(2, 8)}`;
+      sessionStorage.setItem(key, id);
+    }
+    return id;
+  }, []);
   
   const sendSyncData = useCallback((sendFn: (msg: SyncMessage) => void) => {
     let themeCssUrl = globalContext.themeCss;
