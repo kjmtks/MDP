@@ -75,11 +75,10 @@ interface TabPanelProps {
 type FileType = 'markdown' | 'image' | 'text' | 'binary' | 'limit-exceeded';
 
 
-// --- ★追加: 描画データ省略ウィジェット ---
 class DrawDataCollapseWidget extends WidgetType {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   eq(_other: DrawDataCollapseWidget) { return true; }
-  ignoreEvent() { return false; } // 編集可能にするためfalseでもいいが、中身は触らせないならtrue
+  ignoreEvent() { return false; }
   toDOM() {
     const span = document.createElement("span");
     span.textContent = "🖌️ Drawing Data (...)";
@@ -353,7 +352,6 @@ function MainEditor() {
   useEffect(() => {
     const isTouch = navigator.maxTouchPoints > 0;
     setIsTouchDevice(isTouch);
-    // タッチデバイスならデフォルトでコントロールを表示
     if (isTouch) setShowControls(true);
   }, []);
 
