@@ -43,24 +43,19 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
 
   const draw = useCallback((ctx: CanvasRenderingContext2D, strokes: Stroke[]) => {
     if (width === 0 || height === 0) return;
-
     ctx.clearRect(0, 0, width, height);
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-
     strokes.forEach(stroke => {
       if (stroke.points.length === 0) return;
-      
       ctx.beginPath();
       ctx.strokeStyle = stroke.color;
       ctx.lineWidth = stroke.width;
-      
       if (stroke.type === 'eraser') {
         ctx.globalCompositeOperation = 'destination-out';
       } else {
         ctx.globalCompositeOperation = 'source-over';
       }
-      
       if (stroke.points.length === 1) {
           ctx.fillStyle = stroke.color;
           ctx.arc(stroke.points[0].x, stroke.points[0].y, stroke.width / 2, 0, Math.PI * 2);
@@ -95,7 +90,6 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    if (!isInteracting) return;
     const renderCurrentState = () => {
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
@@ -177,8 +171,7 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
             } catch { /* ignore */ }
         }
     };
-    
-    // 画面外に出た場合などのキャンセル処理
+
     const cancel = (e: PointerEvent) => {
         if (e.pointerId === currentPointerId.current) {
              end(e);
@@ -198,7 +191,7 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
         canvas.removeEventListener('pointercancel', cancel);
         canvas.removeEventListener('pointerleave', cancel);
     };
-  }, [isInteracting]); 
+  }, []);
 
   return (
     <canvas
