@@ -56,6 +56,7 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
       } else {
         ctx.globalCompositeOperation = 'source-over';
       }
+      
       if (stroke.points.length === 1) {
           ctx.fillStyle = stroke.color;
           ctx.arc(stroke.points[0].x, stroke.points[0].y, stroke.width / 2, 0, Math.PI * 2);
@@ -68,6 +69,7 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
           ctx.stroke();
       }
     });
+    
     ctx.globalCompositeOperation = 'source-over';
   }, [width, height]);
 
@@ -86,11 +88,10 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
     requestAnimationFrame(() => drawRef.current(ctx, strokesToDraw));
   }, [data, width, height]);
 
-
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    if (!propsRef.current.isInteracting) return;
+    if (!isInteracting) return;
     const renderCurrentState = () => {
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
@@ -122,8 +123,8 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
         e.stopPropagation();
         try {
           canvas.setPointerCapture(e.pointerId);
-        } catch (e) {
-          console.warn("Failed to capture pointer", e);
+        } catch (err) {
+          console.warn("Failed to capture pointer", err);
         }
         currentPointerId.current = e.pointerId;
         isDrawing.current = true;
@@ -154,27 +155,29 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
     };
 
     const end = (e: PointerEvent) => {
-        if (isDrawing.current && e.pointerId === currentPointerId.current) {
+        if (e.pointerId === currentPointerId.current) {
             e.preventDefault();
             e.stopPropagation();
-            try {
-              if (canvas.hasPointerCapture(e.pointerId)) {
-                canvas.releasePointerCapture(e.pointerId);
-              }
-            } catch { /* ignore */ }
-            if (currentStroke.current && propsRef.current.onAddStroke) {
-                propsRef.current.onAddStroke(currentStroke.current);
+            if (isDrawing.current) {
+                if (currentStroke.current && propsRef.current.onAddStroke) {
+                    propsRef.current.onAddStroke(currentStroke.current);
+                }
             }
-        }
-        if (e.pointerId === currentPointerId.current) {
             isDrawing.current = false;
-            currentPointerId.current = null;
             currentStroke.current = null;
+            currentPointerId.current = null;
+            try {
+               if (canvas.hasPointerCapture(e.pointerId)) {
+                   canvas.releasePointerCapture(e.pointerId);
+               }
+            } catch { /* ignore */ }
         }
     };
     
     const cancel = (e: PointerEvent) => {
-        end(e);
+        if (e.pointerId === currentPointerId.current) {
+             end(e);
+        }
     };
 
     canvas.addEventListener('pointerdown', start);
@@ -206,7 +209,7 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
         pointerEvents: isInteracting ? 'auto' : 'none',
         zIndex: 50,
         cursor: isInteracting ? (toolType === 'eraser' ? 'cell' : 'crosshair') : 'default',
-        touchAction: penOnly ? 'auto' : 'none'
+        touchAction: 'none' 
       }}
     />
   );
