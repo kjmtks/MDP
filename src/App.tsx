@@ -329,7 +329,6 @@ function MainEditor() {
   const [syncRequestToken, setSyncRequestToken] = useState(0);
   const [isConnectDialogOpen, setIsConnectDialogOpen] = useState(false);
   const { drawings, addStroke, syncDrawings, insertPage, undo, redo, clear, canUndo, canRedo } = useDrawing();
-  const [isPaletteVisible, setIsPaletteVisible] = useState(false);
   const [toolType, setToolType] = useState<'pen' | 'eraser'>('pen');
   const [penColor, setPenColor] = useState('#FF0000');
   const [penWidth, setPenWidth] = useState(3);
@@ -773,7 +772,6 @@ function MainEditor() {
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
   }, []);
 
-  // キーボードイベントハンドラ
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
@@ -813,20 +811,6 @@ function MainEditor() {
     };
   }, [isSlideshow, moveSlide, undo, redo, currentSlideIndex, mode, clear, send, channelId, handleAddBlankSlide, showControls]);
 
-
-  useEffect(() => {
-    if (isSlideshow) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement;
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
-      if (e.key === 'p') {
-         setIsPaletteVisible(prev => !prev);
-         if (!isPaletteVisible) setMode('pen'); else setMode('view');
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isSlideshow, isPaletteVisible]);
 
   useEffect(() => {
     fetchFileTree();
@@ -985,21 +969,6 @@ function MainEditor() {
       }
     }
   }, [slides, currentSlideIndex, currentFileType]);
-
-  useEffect(() => {
-    if (isSlideshow) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement;
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
-        return;
-      }
-      if (e.key === 'p') {
-        setIsPaletteVisible(prev => !prev);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isSlideshow]);
 
   const EmptyState = () => (
     <Box sx={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', bgcolor: '#202020', color: '#888', gap: 2 }}>

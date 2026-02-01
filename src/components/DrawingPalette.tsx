@@ -78,7 +78,9 @@ export const DrawingPalette: React.FC<DrawingPaletteProps> = ({
         <IconButton 
           color={toolType === 'pen' ? "primary" : "default"} 
           onClick={() => setToolType('pen')}
-          style={{ backgroundColor: toolType === 'pen' ? 'rgba(25, 118, 210, 0.2)' : 'transparent' }}
+          style={{
+            backgroundColor: toolType === 'pen' ? 'rgba(25, 118, 210, 0.2)' : 'transparent'
+          }}
         >
           <CreateIcon />
         </IconButton>
@@ -94,7 +96,9 @@ export const DrawingPalette: React.FC<DrawingPaletteProps> = ({
         <IconButton 
           color={toolType === 'eraser' ? "secondary" : "default"} 
           onClick={() => setToolType('eraser')}
-          style={{ backgroundColor: toolType === 'eraser' ? 'rgba(156, 39, 176, 0.2)' : 'transparent' }}
+          style={{
+            backgroundColor: toolType === 'eraser' ? 'rgba(156, 39, 176, 0.2)' : 'transparent'
+          }}
         >
           <AutoFixNormalIcon />
         </IconButton>
@@ -134,7 +138,7 @@ export const DrawingPalette: React.FC<DrawingPaletteProps> = ({
           <Tooltip title={stylusOnly ? "Stylus Only (Touch disabled)" : "Touch Drawing Enabled"}>
             <IconButton 
               onClick={() => setStylusOnly(!stylusOnly)}
-              color={stylusOnly ? "warning" : "default"}
+              style={{ color: stylusOnly ? '#ff6600' : '#888' }}
             >
               {stylusOnly ? <DoNotTouchIcon /> : <FingerprintIcon />}
             </IconButton>
@@ -145,14 +149,14 @@ export const DrawingPalette: React.FC<DrawingPaletteProps> = ({
 
       <Tooltip title="Undo (Ctrl+Z)">
         <span>
-          <IconButton disabled={!canUndo} onClick={onUndo}>
+          <IconButton disabled={!canUndo} onClick={onUndo} style={{ color: '#888' }} >
             <UndoIcon />
           </IconButton>
         </span>
       </Tooltip>
       <Tooltip title="Redo (Ctrl+Y)">
         <span>
-          <IconButton disabled={!canRedo} onClick={onRedo}>
+          <IconButton disabled={!canRedo} onClick={onRedo} style={{ color: '#888' }}>
             <RedoIcon />
           </IconButton>
         </span>
