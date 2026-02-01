@@ -771,9 +771,9 @@ function MainEditor() {
   }, []);
 
   useEffect(() => {
+    if (!isSlideshow) return;
     const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement;
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
+      if (!isSlideshow) return;
       if (e.key === 'p') {
           setShowControls(prev => !prev);
       }
@@ -790,14 +790,15 @@ function MainEditor() {
       else if (['ArrowLeft', 'ArrowUp', 'PageUp'].includes(e.key)) { e.preventDefault(); moveSlide(-1); }
     };
     const handleWheel = (e: WheelEvent) => {
-      if (!isSlideshow) return;
+      if (!isSlideshow) return; 
       if ((e.target as HTMLElement).closest('.cm-editor')) return;
       const now = Date.now();
-      if (now - lastWheelTime.current < 50) return;
+      if (now - lastWheelTime.current < 500) return;
       if (e.deltaY > 0) { lastWheelTime.current = now; moveSlide(1); }
       else if (e.deltaY < 0) { lastWheelTime.current = now; moveSlide(-1); }
     };
     const handleClick = (e: MouseEvent) => {
+      if (!isSlideshow) return;
       if ((e.target as HTMLElement).closest('.slide-controls-container')) return;
       if (e.button === 0 && mode === 'view') { moveSlide(1); }
     };
@@ -913,14 +914,12 @@ function MainEditor() {
     }
     if (currentSlideIndex === prevSlideIndexRef.current) return;
     if (!editorRef.current?.view || !slides[currentSlideIndex]) return;
-    
     const view = editorRef.current.view;
     const lineNo = slides[currentSlideIndex].range.startLine;
     if (lineNo > view.state.doc.lines) return;
     const linePos = view.state.doc.line(lineNo);
     view.dispatch({ selection: { anchor: linePos.from, head: linePos.from }, scrollIntoView: true });
     prevSlideIndexRef.current = currentSlideIndex;
-
     if (isLoadingFile.current) {
         setTimeout(() => { isLoadingFile.current = false; }, 150);
     }
@@ -938,7 +937,6 @@ function MainEditor() {
     if (currentFileType !== 'markdown') return;
     if (isLoadingFile.current) return;
     if (!viewUpdate.view.hasFocus) return;
-    if (slides.length === 0) return;
     if (viewUpdate.selectionSet || viewUpdate.docChanged || viewUpdate.viewportChanged) {
         const state = viewUpdate.state;
         const head = state.selection.main.head;
@@ -951,18 +949,18 @@ function MainEditor() {
                 setDrawioButtonPos({ top: coords.top, left: coords.right + 20 });
                 setDrawioEditTarget({ base64: match[1], lineNo: line.number });
             }
-        } else {
-            setDrawioButtonPos(null);
-            setDrawioEditTarget(null);
-        }
+        } else { setDrawioButtonPos(null); setDrawioEditTarget(null); }
     }
-    if (viewUpdate.selectionSet) {
+    if (viewUpdate.docChanged) return;
+    if (viewUpdate.selectionSet && slides.length > 0) {
       const state = viewUpdate.state;
       const head = state.selection.main.head;
       const line = state.doc.lineAt(head).number;
+      
       const foundIndex = slides.findIndex(slide => 
         line >= slide.range.startLine && line <= slide.range.endLine
       );
+
       if (foundIndex !== -1 && foundIndex !== currentSlideIndex) {
         isSyncingFromEditor.current = true;
         setCurrentSlideIndex(foundIndex);
@@ -1401,7 +1399,6 @@ function MainEditor() {
                                                 onClick={() => handleInsertText(item.text)}
                                                 sx={{ py: 0.5 }}
                                               >
-                                                {/* アイコン表示エリア */}
                                                 {item.icon && (
                                                   <div 
                                                     style={{ marginRight: '8px', display: 'flex', alignItems: 'center', width: '20px', height: '20px', fill: 'currentColor' }}
