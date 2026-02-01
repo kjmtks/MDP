@@ -923,6 +923,10 @@ function MainEditor() {
       prevSlideIndexRef.current = currentSlideIndex;
       return;
     }
+    if (editorRef.current?.view?.hasFocus) {
+        prevSlideIndexRef.current = currentSlideIndex;
+        return;
+    }
     if (currentSlideIndex === prevSlideIndexRef.current) return;
     if (!editorRef.current?.view || !slides[currentSlideIndex]) return;
     
