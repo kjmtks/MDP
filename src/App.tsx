@@ -801,7 +801,7 @@ function MainEditor() {
       if (!isSlideshow) return; 
       if ((e.target as HTMLElement).closest('.cm-editor')) return;
       const now = Date.now();
-      if (now - lastWheelTime.current < 500) return;
+      if (now - lastWheelTime.current < 10) return;
       if (e.deltaY > 0) { lastWheelTime.current = now; moveSlide(1); }
       else if (e.deltaY < 0) { lastWheelTime.current = now; moveSlide(-1); }
     };
@@ -932,6 +932,20 @@ function MainEditor() {
         setTimeout(() => { isLoadingFile.current = false; }, 150);
     }
   }, [currentSlideIndex, slides, currentFileType]);
+
+  useEffect(() => {
+    if (isSlideshow) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
+      if (e.key === 'p') {
+          setShowControls(prev => !prev);
+          setMode(prev => prev === 'pen' ? 'view' : 'pen');
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isSlideshow]);
 
   const handleLeftTabChange = (_: React.SyntheticEvent, newValue: number) => setLeftTabIndex(newValue);
   const handleBottomTabChange = (_: React.SyntheticEvent, newValue: number) => setBottomTabIndex(newValue);
