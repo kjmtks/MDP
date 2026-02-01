@@ -28,7 +28,7 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
   lineWidth = 3,
   toolType = 'pen',
   isInteracting,
-  penOnly = false
+  penOnly = false 
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   
@@ -43,24 +43,19 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
 
   const draw = useCallback((ctx: CanvasRenderingContext2D, strokes: Stroke[]) => {
     if (width === 0 || height === 0) return;
-
     ctx.clearRect(0, 0, width, height);
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-
     strokes.forEach(stroke => {
       if (stroke.points.length === 0) return;
-      
       ctx.beginPath();
       ctx.strokeStyle = stroke.color;
       ctx.lineWidth = stroke.width;
-      
       if (stroke.type === 'eraser') {
         ctx.globalCompositeOperation = 'destination-out';
       } else {
         ctx.globalCompositeOperation = 'source-over';
       }
-      
       if (stroke.points.length === 1) {
           ctx.fillStyle = stroke.color;
           ctx.arc(stroke.points[0].x, stroke.points[0].y, stroke.width / 2, 0, Math.PI * 2);
@@ -73,7 +68,6 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
           ctx.stroke();
       }
     });
-    
     ctx.globalCompositeOperation = 'source-over';
   }, [width, height]);
 
@@ -85,20 +79,18 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-
     const strokesToDraw = [...data];
     if (currentStroke.current) {
         strokesToDraw.push(currentStroke.current);
     }
-    
     requestAnimationFrame(() => drawRef.current(ctx, strokesToDraw));
   }, [data, width, height]);
+
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    if (!isInteracting) return;
-
+    if (!propsRef.current.isInteracting) return;
     const renderCurrentState = () => {
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
@@ -114,7 +106,6 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
         const { width, height } = propsRef.current;
         const scaleX = rect.width > 0 ? width / rect.width : 1;
         const scaleY = rect.height > 0 ? height / rect.height : 1;
-
         return {
             x: (e.clientX - rect.left) * scaleX,
             y: (e.clientY - rect.top) * scaleY
@@ -124,75 +115,80 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
     const start = (e: PointerEvent) => {
         if (!propsRef.current.isInteracting) return;
         if (e.button !== 0) return;
-        if (propsRef.current.penOnly && e.pointerType !== 'pen') return;
-        
+        if (propsRef.current.penOnly && e.pointerType !== 'pen') {
+            return;
+        }
         e.preventDefault();
         e.stopPropagation();
-        canvas.setPointerCapture(e.pointerId);
+        try {
+          canvas.setPointerCapture(e.pointerId);
+        } catch (e) {
+          console.warn("Failed to capture pointer", e);
+        }
         currentPointerId.current = e.pointerId;
-
         isDrawing.current = true;
         const pos = getPos(e);
         const { color, lineWidth, toolType } = propsRef.current;
-        
         currentStroke.current = {
             points: [pos],
             color: toolType === 'eraser' ? 'rgba(0,0,0,1)' : (color || 'red'),
             width: lineWidth || 3,
             type: toolType || 'pen'
         };
-        
         renderCurrentState();
     };
 
     const move = (e: PointerEvent) => {
         if (!isDrawing.current || !currentStroke.current) return;
         if (e.pointerId !== currentPointerId.current) return;
-
         e.preventDefault();
         e.stopPropagation();
-
         const events = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
-
         events.forEach(ev => {
             const pos = getPos(ev);
             const lastPoint = currentStroke.current!.points[currentStroke.current!.points.length - 1];
-            if (lastPoint && Math.abs(lastPoint.x - pos.x) < 1 && Math.abs(lastPoint.y - pos.y) < 1) return;
+            if (lastPoint && Math.abs(lastPoint.x - pos.x) < 0.1 && Math.abs(lastPoint.y - pos.y) < 0.1) return;
             currentStroke.current!.points.push(pos);
         });
-        
         renderCurrentState();
     };
 
     const end = (e: PointerEvent) => {
-        if (!isDrawing.current) return;
-        if (e.pointerId !== currentPointerId.current) return;
-
-        e.preventDefault();
-        e.stopPropagation();
-        canvas.releasePointerCapture(e.pointerId);
-        
-        isDrawing.current = false;
-        currentPointerId.current = null;
-        
-        if (currentStroke.current && propsRef.current.onAddStroke) {
-            propsRef.current.onAddStroke(currentStroke.current);
+        if (isDrawing.current && e.pointerId === currentPointerId.current) {
+            e.preventDefault();
+            e.stopPropagation();
+            try {
+              if (canvas.hasPointerCapture(e.pointerId)) {
+                canvas.releasePointerCapture(e.pointerId);
+              }
+            } catch { /* ignore */ }
+            if (currentStroke.current && propsRef.current.onAddStroke) {
+                propsRef.current.onAddStroke(currentStroke.current);
+            }
         }
-        currentStroke.current = null;
+        if (e.pointerId === currentPointerId.current) {
+            isDrawing.current = false;
+            currentPointerId.current = null;
+            currentStroke.current = null;
+        }
+    };
+    
+    const cancel = (e: PointerEvent) => {
+        end(e);
     };
 
     canvas.addEventListener('pointerdown', start);
     canvas.addEventListener('pointermove', move);
     canvas.addEventListener('pointerup', end);
-    canvas.addEventListener('pointercancel', end);
-    canvas.addEventListener('pointerleave', end);
+    canvas.addEventListener('pointercancel', cancel);
+    canvas.addEventListener('pointerleave', cancel);
 
     return () => {
         canvas.removeEventListener('pointerdown', start);
         canvas.removeEventListener('pointermove', move);
         canvas.removeEventListener('pointerup', end);
-        canvas.removeEventListener('pointercancel', end);
-        canvas.removeEventListener('pointerleave', end);
+        canvas.removeEventListener('pointercancel', cancel);
+        canvas.removeEventListener('pointerleave', cancel);
     };
   }, [isInteracting]);
 

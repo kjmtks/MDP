@@ -101,20 +101,6 @@ export const DrawingPalette: React.FC<DrawingPaletteProps> = ({
       </Tooltip>
 
       <div className="palette-separator" style={{ width: 1, height: 24, backgroundColor: '#555', margin: '0 4px' }} />
-      
-      {setStylusOnly && (
-        <>
-          <Tooltip title={stylusOnly ? "Stylus Only (Touch disabled)" : "Touch Drawing Enabled"}>
-            <IconButton 
-              onClick={() => setStylusOnly(!stylusOnly)}
-              color={stylusOnly ? "warning" : "default"}
-            >
-              {stylusOnly ? <DoNotTouchIcon /> : <FingerprintIcon />}
-            </IconButton>
-          </Tooltip>
-          <div className="palette-separator" style={{ width: 1, height: 24, backgroundColor: '#555', margin: '0 4px' }} />
-        </>
-      )}
 
       <div className="width-selector" style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
         {WIDTHS.map(w => (
@@ -142,6 +128,20 @@ export const DrawingPalette: React.FC<DrawingPaletteProps> = ({
       </div>
 
       <div className="palette-separator" style={{ width: 1, height: 24, backgroundColor: '#555', margin: '0 4px' }} />
+
+      {setStylusOnly && (
+        <>
+          <Tooltip title={stylusOnly ? "Stylus Only (Touch disabled)" : "Touch Drawing Enabled"}>
+            <IconButton 
+              onClick={() => setStylusOnly(!stylusOnly)}
+              color={stylusOnly ? "warning" : "default"}
+            >
+              {stylusOnly ? <DoNotTouchIcon /> : <FingerprintIcon />}
+            </IconButton>
+          </Tooltip>
+          <div className="palette-separator" style={{ width: 1, height: 24, backgroundColor: '#555', margin: '0 4px' }} />
+        </>
+      )}
 
       <Tooltip title="Undo (Ctrl+Z)">
         <span>
@@ -172,12 +172,24 @@ export const DrawingPalette: React.FC<DrawingPaletteProps> = ({
         container={targetContainer}
         sx={{ zIndex: 11000 }}
       >
-        <div style={{ padding: 10, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, backgroundColor: '#333' }}>
+        <div className="palette-popover-content" style={{ padding: 10, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, backgroundColor: '#333' }}>
           {COLORS.map(c => (
-            <div 
+            <button
               key={c} 
               onClick={() => selectColor(c)}
-              style={{ width: 32, height: 32, backgroundColor: c, borderRadius: '50%', cursor: 'pointer', border: '1px solid #666' }}
+              type="button"
+              className="palette-control"
+              style={{ 
+                width: 32, height: 32, 
+                backgroundColor: c, 
+                borderRadius: '50%', 
+                cursor: 'pointer', 
+                border: '1px solid #666',
+                padding: 0,
+                outline: 'none',
+                appearance: 'none',
+                WebkitAppearance: 'none',
+              }}
             />
           ))}
           <input 
