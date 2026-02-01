@@ -43,14 +43,18 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
 
   const draw = useCallback((ctx: CanvasRenderingContext2D, strokes: Stroke[]) => {
     if (width === 0 || height === 0) return;
+
     ctx.clearRect(0, 0, width, height);
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
+
     strokes.forEach(stroke => {
       if (stroke.points.length === 0) return;
+      
       ctx.beginPath();
       ctx.strokeStyle = stroke.color;
       ctx.lineWidth = stroke.width;
+      
       if (stroke.type === 'eraser') {
         ctx.globalCompositeOperation = 'destination-out';
       } else {
@@ -174,6 +178,7 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
         }
     };
     
+    // 画面外に出た場合などのキャンセル処理
     const cancel = (e: PointerEvent) => {
         if (e.pointerId === currentPointerId.current) {
              end(e);
@@ -193,7 +198,7 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
         canvas.removeEventListener('pointercancel', cancel);
         canvas.removeEventListener('pointerleave', cancel);
     };
-  }, [isInteracting]);
+  }, [isInteracting]); 
 
   return (
     <canvas
@@ -209,7 +214,7 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
         pointerEvents: isInteracting ? 'auto' : 'none',
         zIndex: 50,
         cursor: isInteracting ? (toolType === 'eraser' ? 'cell' : 'crosshair') : 'default',
-        touchAction: 'none' 
+        touchAction: 'none'
       }}
     />
   );
