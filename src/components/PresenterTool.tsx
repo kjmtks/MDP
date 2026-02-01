@@ -185,6 +185,30 @@ export const PresenterTool: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [sendNav, handleUndo, handleRedo, handleClear, handleAddSlide]);
 
+  useEffect(() => {
+    const handleTouch = (e: TouchEvent) => {
+      const target = e.target as HTMLElement;
+      if (
+        target.closest('button') || 
+        target.closest('input') || 
+        target.closest('.drawing-palette') || 
+        target.closest('.slide-controls-container') ||
+        target.closest('.MuiPopover-root')
+      ) {
+        return;
+      }
+      if (mode === 'laser') e.preventDefault();
+      if (mode === 'pen' && !stylusOnly) e.preventDefault();
+    };
+    
+    document.body.addEventListener('touchmove', handleTouch, { passive: false });
+    document.body.addEventListener('touchstart', handleTouch, { passive: false });
+    return () => {
+      document.body.removeEventListener('touchmove', handleTouch);
+      document.body.removeEventListener('touchstart', handleTouch);
+    };
+  }, [mode, stylusOnly]);
+
   const currentSlide = slides[currentIndex];
   let nextIndex = currentIndex + 1;
   while (nextIndex < slides.length && slides[nextIndex]?.isHidden) {

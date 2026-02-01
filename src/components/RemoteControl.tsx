@@ -91,30 +91,35 @@ export const RemoteControl: React.FC = () => {
   }, [themeCssUrl, lastUpdated]);
 
   useEffect(() => {
-    const preventDefault = (e: TouchEvent) => {
-      if (mode === 'pen' && stylusOnly) {
-         e.preventDefault();
-         return;
+    const handleTouch = (e: TouchEvent) => {
+      const target = e.target as HTMLElement;
+      if (
+        target.closest('button') || 
+        target.closest('a') || 
+        target.closest('input') || 
+        target.closest('.drawing-palette') || 
+        target.closest('.slide-controls-container') ||
+        target.closest('.MuiPopover-root') || 
+        target.closest('.MuiModal-root')
+      ) {
+        return;
       }
-      if (mode === 'pen' || mode === 'laser') {
-        const target = e.target as HTMLElement;
-        const isControl = 
-          target.tagName === 'BUTTON' || 
-          target.tagName === 'INPUT' || 
-          target.closest('button') || 
-          target.closest('.drawing-palette') ||  
-          target.closest('.MuiPopover-root') ||
-          target.closest('.slide-controls-container');    
-        if (!isControl) e.preventDefault();
+
+      if (mode === 'laser') {
+        e.preventDefault();
+      } else if (mode === 'pen') {
+        if (!stylusOnly) {
+          e.preventDefault();
+        }
+      } else if (mode === 'view') {
+         e.preventDefault()
       }
     };
-    document.body.addEventListener('touchmove', preventDefault, { passive: false });
-    document.body.addEventListener('touchstart', preventDefault, { passive: false });
-    document.body.addEventListener('touchend', preventDefault, { passive: false });
+    document.body.addEventListener('touchmove', handleTouch, { passive: false });
+    document.body.addEventListener('touchstart', handleTouch, { passive: false });
     return () => {
-      document.body.removeEventListener('touchmove', preventDefault);
-      document.body.removeEventListener('touchstart', preventDefault);
-      document.body.removeEventListener('touchend', preventDefault);
+      document.body.removeEventListener('touchmove', handleTouch);
+      document.body.removeEventListener('touchstart', handleTouch);
     };
   }, [mode, stylusOnly]);
 
@@ -279,7 +284,8 @@ export const RemoteControl: React.FC = () => {
     <div style={{ 
       width: '100vw', height: '100vh', background: '#222', 
       display: 'flex', flexDirection: 'column',
-      touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none', overscrollBehavior: 'none' 
+      touchAction: (mode === 'pen' && stylusOnly) ? 'pan-x pan-y' : 'none',
+      userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none', overscrollBehavior: 'none' 
     }}>
       
       <div style={{ height: 40, background: '#333', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px', color: 'white', flexShrink: 0 }}>

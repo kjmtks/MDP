@@ -104,7 +104,13 @@ export const SlideControls: React.FC<SlideControlsProps> = ({
 
   const handleDragStart = (e: React.MouseEvent | React.TouchEvent) => {
     const target = e.target as HTMLElement;
-    if (target.closest('button') || target.closest('input') || target.closest('.MuiSlider-root') || target.closest('.drawing-palette')) {
+    if (
+        target.closest('button') || 
+        target.closest('input') || 
+        target.closest('.MuiSlider-root') || 
+        target.closest('.drawing-palette') ||
+        target.closest('.MuiToggleButton-root')
+    ) {
       return;
     }
     
