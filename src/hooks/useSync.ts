@@ -1,11 +1,11 @@
 ﻿import { useEffect, useRef, useCallback, useState } from 'react';
+import { type Stroke } from '../components/DrawingOverlay';
 
 export type SyncMessage = 
   | { type: 'NAV'; direction: number; channelId: string }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   | { type: 'SYNC_STATE'; payload: any; channelId: string }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  | { type: 'DRAW_STROKE'; stroke: any; pageIndex: number; channelId: string }
+  | { type: 'DRAW_STROKE'; stroke: Stroke; pageIndex: number; channelId: string }
   | { type: 'CLEAR_DRAWING'; pageIndex: number; channelId: string }
   | { type: 'REQUEST_SYNC'; channelId: string }
   | { type: 'UNDO'; pageIndex: number; channelId: string }
