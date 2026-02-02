@@ -973,22 +973,26 @@ function MainEditor() {
             }
         } else { setDrawioButtonPos(null); setDrawioEditTarget(null); }
     }
-    if (viewUpdate.docChanged) return;
-    if (viewUpdate.selectionSet && slides.length > 0) {
+    if (viewUpdate.selectionSet || viewUpdate.docChanged) {
       const state = viewUpdate.state;
       const head = state.selection.main.head;
-      const line = state.doc.lineAt(head).number;
-      
-      const foundIndex = slides.findIndex(slide => 
-        line >= slide.range.startLine && line <= slide.range.endLine
-      );
-
-      if (foundIndex !== -1 && foundIndex !== currentSlideIndex) {
+      const currentLine = state.doc.lineAt(head).number;
+      let separatorCount = 0;
+      let inCodeBlock = false;
+      if (currentLine > 1) {
+        for (const line of state.doc.iterLines(1, currentLine - 1)) {
+            const text = line.trim();
+            if (text.startsWith('```')) inCodeBlock = !inCodeBlock;
+            if (!inCodeBlock && /^---$/.test(text)) separatorCount++;
+        }
+      }
+      const newIndex = Math.max(0, separatorCount - 1);
+      if (newIndex !== currentSlideIndex) {
         isSyncingFromEditor.current = true;
-        setCurrentSlideIndex(foundIndex);
+        setCurrentSlideIndex(newIndex);
       }
     }
-  }, [slides, currentSlideIndex, currentFileType]);
+  }, [currentSlideIndex, currentFileType]);
 
   const EmptyState = () => (
     <Box sx={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', bgcolor: '#202020', color: '#888', gap: 2 }}>
