@@ -1,0 +1,132 @@
+<module>
+  <name>balloon</name>
+  <type>block</type>
+  <description>Creates an interactive chat balloon UI with optional avatar image.</description>
+  <parameters>
+    <param name="direction" default="left" required="false" />
+    <param name="name" default="User" required="false" />
+    <param name="image" default="" required="false" />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Presentation UI</category>
+      <label>Speech Balloon</label>
+      <text><![CDATA[<!-- @balloon direction: left, name: Client -->
+Is it really possible to implement this requirement by this week?
+<!-- @end -->]]></text>
+      <description>Interactive speech balloon with adjustable left/right direction.</description>
+    </snippet>
+    <snippet>
+      <category>Presentation UI</category>
+      <label>Speech Balloon (Image)</label>
+      <text><![CDATA[<!-- @balloon direction: right, name: Support, image: https://via.placeholder.com/150 -->
+Yes, we can absolutely meet that deadline.
+<!-- @end -->]]></text>
+      <description>Speech balloon with a custom avatar image.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const direction = args.direction === 'right' ? 'right' : 'left';
+    const name = args.name || '';
+    const image = args.image || '';
+    const contentStr = sections[0] ? sections[0].trim() : '';
+    
+    const avatarHtml = image 
+      ? `<img src="${image}" class="mdp-avatar-image" alt="${name}" />`
+      : `<div class="mdp-avatar-circle">${name ? name.charAt(0).toUpperCase() : 'U'}</div>`;
+
+    return `\n\n<div class="mdp-mod-balloon mdp-balloon-${direction}">
+<div class="mdp-balloon-avatar">
+${avatarHtml}
+${name ? `<div class="mdp-avatar-name">${name}</div>` : ''}
+</div>
+<div class="mdp-balloon-bubble">
+
+${contentStr}
+
+</div>
+</div>\n\n`;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-balloon {
+      display: flex;
+      margin: 1rem 0;
+      align-items: flex-start;
+      gap: 15px;
+    }
+    .mdp-balloon-right {
+      flex-direction: row-reverse;
+    }
+    .mdp-balloon-avatar {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 60px;
+    }
+    
+    .mdp-avatar-image {
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      object-fit: cover;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .mdp-avatar-circle {
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      background: var(--accent-color);
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5em;
+      font-weight: bold;
+    }
+    .mdp-balloon-right .mdp-avatar-circle {
+      background: #2ecc71;
+    }
+
+    .mdp-avatar-name {
+      margin-top: 5px;
+      font-size: 0.8em;
+      color: #666;
+      text-align: center;
+      white-space: nowrap;
+    }
+    .mdp-balloon-bubble {
+      position: relative;
+      background: #f1f0f0;
+      padding: 1em 1.5em;
+      border-radius: 15px;
+      max-width: 70%;
+      font-size: 1em;
+      color: #333;
+    }
+    .mdp-balloon-right .mdp-balloon-bubble {
+      background: #eafaf1;
+    }
+    .mdp-balloon-bubble::before {
+      content: '';
+      position: absolute;
+      top: 15px;
+      width: 0;
+      height: 0;
+    }
+    .mdp-balloon-left .mdp-balloon-bubble::before {
+      left: -10px;
+      border-top: 10px solid transparent;
+      border-bottom: 10px solid transparent;
+      border-right: 10px solid #f1f0f0;
+    }
+    .mdp-balloon-right .mdp-balloon-bubble::before {
+      right: -10px;
+      border-top: 10px solid transparent;
+      border-bottom: 10px solid transparent;
+      border-left: 10px solid #eafaf1;
+    }
+    .mdp-balloon-bubble > *:first-child { margin-top: 0; }
+    .mdp-balloon-bubble > *:last-child { margin-bottom: 0; }
+  ]]></style>
+</module>

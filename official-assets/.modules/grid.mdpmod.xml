@@ -1,0 +1,66 @@
+<module>
+  <name>grid</name>
+  <type>block</type>
+  <description>Responsive equal card grid</description>
+
+  <parameters>
+    <param name="columns" default="3" required="false" />
+    <param name="gap" default="1rem" required="false" />
+  </parameters>
+
+  <snippets>
+    <snippet>
+      <category>Layout</category>
+      <label>Grid (3 cards)</label>
+      <text><![CDATA[<!-- @grid columns: 3 -->
+**First**
+Content of the first card.
+<!-- @ -->
+**Second**
+Content of the second card.
+<!-- @ -->
+**Third**
+Content of the third card.
+<!-- @end -->]]></text>
+      <description>Equal-width content card grid</description>
+    </snippet>
+  </snippets>
+
+  <render><![CDATA[
+    const columns = parseInt(args.columns, 10) || 3;
+    const gap = args.gap || '1rem';
+    let html = `\n\n<div class="mdp-mod-grid" style="grid-template-columns: repeat(${columns}, minmax(0, 1fr)); gap: ${gap};">\n`;
+    sections.forEach((section) => {
+      const contentStr = section.trim();
+      if (!contentStr) return;
+      html += `<div class="mdp-mod-grid-card">\n\n${contentStr}\n\n</div>`;
+    });
+    html += `</div>\n\n`;
+    return html;
+  ]]></render>
+
+  <style><![CDATA[
+    .mdp-mod-grid {
+      display: grid;
+      width: 100%;
+      margin: 1rem 0;
+    }
+    @media (max-width: 700px) {
+      .mdp-mod-grid { grid-template-columns: 1fr !important; }
+    }
+    .mdp-mod-grid-card {
+      background-color: var(--panel-bg, #ffffff);
+      border: 1px solid var(--panel-border, var(--border-color, #e5e7eb));
+      border-radius: var(--radius-sm, 8px);
+      box-shadow: var(--shadow-sm, 0 1px 4px rgba(0,0,0,0.08));
+      padding: 14px 16px;
+      min-width: 0;
+      color: var(--panel-text, var(--text-color, #1f2937));
+      font-size: 0.95em;
+    }
+    .mdp-mod-grid-card > :first-child { margin-top: 0; }
+    .mdp-mod-grid-card > :last-child { margin-bottom: 0; }
+  ]]></style>
+
+  <script></script>
+</module>

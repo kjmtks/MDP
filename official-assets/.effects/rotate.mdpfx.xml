@@ -1,0 +1,31 @@
+<effect>
+  <name>rotate</name>
+  <description>Rotate and scale in. The element spins slightly and grows into place while fading in. Works as a slide transition and as a build (enter/exit).</description>
+  <parameters>
+    <param name="duration" default="400" />
+    <param name="easing" default="ease" />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Transitions</category>
+      <label>Transition: rotate</label>
+      <text><![CDATA[<!-- @transition rotate -->]]></text>
+      <description>Rotate and scale into this slide.</description>
+    </snippet>
+    <snippet>
+      <category>Builds</category>
+      <label>Build: rotate (step)</label>
+      <text><![CDATA[<!-- @build step: 1, effect: rotate -->
+content
+<!-- @end -->]]></text>
+      <description>Reveal a range at a build step with a rotate-in.</description>
+    </snippet>
+  </snippets>
+  <style><![CDATA[
+    .mdp-effect.rotate[data-mdp-phase="enter"]        { opacity: 0; transform: rotate(-8deg) scale(0.9); }
+    .mdp-effect.rotate[data-mdp-phase="enter-active"] { opacity: 1; transform: rotate(0deg) scale(1); transition: opacity var(--mdp-fx-duration) var(--mdp-fx-easing), transform var(--mdp-fx-duration) var(--mdp-fx-easing); }
+    .mdp-effect.rotate[data-mdp-phase="leave"]        { opacity: 1; transform: rotate(0deg) scale(1); }
+    .mdp-effect.rotate[data-mdp-phase="leave-active"] { opacity: 0; transform: rotate(-8deg) scale(0.9); transition: opacity var(--mdp-fx-duration) var(--mdp-fx-easing), transform var(--mdp-fx-duration) var(--mdp-fx-easing); }
+  ]]></style>
+  <script><![CDATA[]]></script>
+</effect>

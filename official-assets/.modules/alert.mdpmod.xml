@@ -1,0 +1,87 @@
+<module>
+  <name>alert</name>
+  <type>block</type>
+  <description>Colored alert banner with a leading glyph</description>
+
+  <parameters>
+    <param name="type" default="info" required="false" />
+  </parameters>
+
+  <snippets>
+    <snippet>
+      <category>Structure</category>
+      <label>Alert (info)</label>
+      <text><![CDATA[<!-- @alert type: info -->
+This is an informational message.
+<!-- @end -->]]></text>
+      <description>Info alert banner</description>
+    </snippet>
+    <snippet>
+      <category>Structure</category>
+      <label>Alert (success)</label>
+      <text><![CDATA[<!-- @alert type: success -->
+The operation completed successfully.
+<!-- @end -->]]></text>
+      <description>Success alert banner</description>
+    </snippet>
+    <snippet>
+      <category>Structure</category>
+      <label>Alert (warning)</label>
+      <text><![CDATA[<!-- @alert type: warning -->
+Be careful with this action.
+<!-- @end -->]]></text>
+      <description>Warning alert banner</description>
+    </snippet>
+    <snippet>
+      <category>Structure</category>
+      <label>Alert (danger)</label>
+      <text><![CDATA[<!-- @alert type: danger -->
+This action is destructive and cannot be undone.
+<!-- @end -->]]></text>
+      <description>Danger alert banner</description>
+    </snippet>
+  </snippets>
+
+  <render><![CDATA[
+    const type = (args.type || 'info').toLowerCase();
+    const map = {
+      info: { color: 'var(--info-color, #3b82f6)', glyph: 'ℹ️' },
+      success: { color: 'var(--success-color, #22c55e)', glyph: '✅' },
+      warning: { color: 'var(--warning-color, #f59e0b)', glyph: '⚠️' },
+      danger: { color: 'var(--danger-color, #ef4444)', glyph: '⛔' }
+    };
+    const conf = map[type] || map.info;
+    const msgStr = sections[0] ? sections[0].trim() : '';
+    return `\n\n<div class="mdp-mod-alert" style="border-left-color: ${conf.color};"><span class="alert-glyph">${conf.glyph}</span><div class="alert-body">\n\n${msgStr}\n\n</div></div>\n\n`;
+  ]]></render>
+
+  <style><![CDATA[
+    .mdp-mod-alert {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      background-color: var(--panel-bg, #f8fafc);
+      border: 1px solid var(--panel-border, #e5e7eb);
+      border-left: 6px solid;
+      border-radius: var(--radius-sm, 8px);
+      box-shadow: var(--shadow-sm, 0 1px 4px rgba(0,0,0,0.08));
+      margin: 1rem 0;
+      padding: 12px 16px;
+    }
+    .mdp-mod-alert .alert-glyph {
+      font-size: 1.3em;
+      line-height: 1.4;
+      flex-shrink: 0;
+    }
+    .mdp-mod-alert .alert-body {
+      color: var(--panel-text, var(--text-color, #1f2937));
+      font-size: 0.95em;
+      flex: 1;
+      min-width: 0;
+    }
+    .mdp-mod-alert .alert-body > :first-child { margin-top: 0; }
+    .mdp-mod-alert .alert-body > :last-child { margin-bottom: 0; }
+  ]]></style>
+
+  <script></script>
+</module>

@@ -1,0 +1,71 @@
+<module>
+  <name>quote</name>
+  <type>block</type>
+  <description>Beautifully displays quotes from papers or books.</description>
+  <parameters>
+    <param name="author" default="" required="false" />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Presentation UI</category>
+      <label>Rich Quote</label>
+      <text><![CDATA[<!-- @quote author: Alan Kay -->
+The best way to predict the future is to invent it.
+<!-- @end -->]]></text>
+      <description>A quote block with a large quotation mark in the background.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const author = args.author || '';
+    const contentStr = sections[0] ? sections[0].trim() : '';
+    return `\n\n
+<div class="mdp-mod-quote">
+<div class="mdp-quote-icon">“</div>
+<div class="mdp-quote-content">
+
+${contentStr}
+
+</div>
+${author ? `<div class="mdp-quote-author">— ${author}</div>` : ''}
+</div>
+\n\n`;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-quote {
+      position: relative;
+      margin: 1rem 2rem;
+      padding: 1.5em 2em;
+      background: #f4f6f7;
+      border-left: 4px solid var(--accent-color);
+      border-radius: 4px 8px 8px 4px;
+      font-style: italic;
+    }
+    .mdp-quote-icon {
+      position: absolute;
+      top: -10px;
+      left: 10px;
+      font-size: 6em;
+      color: rgba(0,0,0,0.05);
+      line-height: 1;
+      font-family: serif;
+      user-select: none;
+    }
+    .mdp-quote-content {
+      position: relative;
+      z-index: 1;
+      font-size: 1.2em;
+      color: #34495e;
+      line-height: 1.6;
+    }
+    .mdp-quote-content > *:first-child { margin-top: 0; }
+    .mdp-quote-content > *:last-child { margin-bottom: 0; }
+    .mdp-quote-author {
+      margin-top: 1em;
+      text-align: right;
+      font-weight: bold;
+      color: #7f8c8d;
+      font-style: normal;
+      font-size: 0.95em;
+    }
+  ]]></style>
+</module>

@@ -1,0 +1,80 @@
+<module>
+  <name>faq</name>
+  <type>block</type>
+  <description>Displays a set of Questions (Q) and Answers (A) beautifully.</description>
+  <parameters>
+    <param name="color" default="var(--accent-color)" required="false" />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Presentation UI</category>
+      <label>Q&amp;A (FAQ)</label>
+      <text><![CDATA[<!-- @faq -->
+What is the biggest advantage of this system?
+<!-- @ -->
+**Development speed is significantly faster.**
+You can build prototypes in half the time compared to conventional methods.
+<!-- @end -->]]></text>
+      <description>Displays questions and answers in a set.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const color = args.color || 'var(--accent-color)';
+    const qStr = sections[0] ? sections[0].trim() : '';
+    const aStr = sections[1] ? sections[1].trim() : '';
+    return `\n\n
+<div class="mdp-mod-faq" style="--faq-color: ${color};">
+<div class="mdp-faq-item mdp-faq-q">
+<div class="mdp-faq-icon">Q</div>
+<div class="mdp-faq-text">
+
+${qStr}
+
+</div>
+</div>
+<div class="mdp-faq-item mdp-faq-a">
+<div class="mdp-faq-icon">A</div>
+<div class="mdp-faq-text">
+
+${aStr}
+
+</div>
+</div>
+</div>
+\n\n`;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-faq {
+      margin: 1rem 0;
+      background: #fdfdfd;
+      border: 1px solid #eaeaea;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    }
+    .mdp-faq-item {
+      display: flex;
+      padding: 1em 1.5em;
+    }
+    .mdp-faq-q {
+      background: #f8f9fa;
+      border-bottom: 1px dashed #ddd;
+    }
+    .mdp-faq-icon {
+      font-size: 1.5em;
+      font-weight: 900;
+      margin-right: 15px;
+      line-height: 1;
+    }
+    .mdp-faq-q .mdp-faq-icon { color: var(--faq-color); }
+    .mdp-faq-a .mdp-faq-icon { color: #e74c3c; }
+    .mdp-faq-text {
+      flex: 1;
+      font-size: 1.05em;
+      color: #333;
+    }
+    .mdp-faq-q .mdp-faq-text { font-weight: bold; }
+    .mdp-faq-text > *:first-child { margin-top: 0; }
+    .mdp-faq-text > *:last-child { margin-bottom: 0; }
+  ]]></style>
+</module>

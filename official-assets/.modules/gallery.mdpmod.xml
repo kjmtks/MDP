@@ -1,0 +1,71 @@
+<module>
+  <name>gallery</name>
+  <type>block</type>
+  <description>Beautifully arranges a set of images and captions in a grid.</description>
+  <parameters>
+    <param name="columns" default="2" required="false" />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Presentation UI</category>
+      <label>Image Gallery</label>
+      <text><![CDATA[<!-- @gallery columns: 2 -->
+![Result 1](https://via.placeholder.com/400x200)
+Plot result with the proposed method
+<!-- @ -->
+![Result 2](https://via.placeholder.com/400x200)
+Plot result with the conventional method
+<!-- @end -->]]></text>
+      <description>Arranges images in an even grid.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const columns = args.columns || '2';
+    let html = `\n\n<div class="mdp-mod-gallery" style="grid-template-columns: repeat(${columns}, 1fr);">\n`;
+    sections.forEach((section) => {
+      const contentStr = section.trim();
+      if (!contentStr) return;
+      html += `
+<div class="mdp-gallery-item">
+
+${contentStr}
+
+</div>
+`;
+    });
+    html += `</div>\n\n`;
+    return html;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-gallery {
+      display: grid;
+      gap: 1.5em;
+      margin: 1rem 0;
+    }
+    .mdp-gallery-item {
+      background: #fff;
+      border: 1px solid #eaeaea;
+      border-radius: 8px;
+      padding: 10px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .mdp-gallery-item img {
+      max-width: 100%;
+      height: auto;
+      border-radius: 4px;
+      margin-bottom: 10px;
+    }
+    .mdp-gallery-item p {
+      margin: 0;
+      font-size: 0.9em;
+      color: #555;
+    }
+    @media (max-width: 600px) {
+      .mdp-mod-gallery { grid-template-columns: 1fr !important; }
+    }
+  ]]></style>
+</module>

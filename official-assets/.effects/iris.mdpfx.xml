@@ -1,0 +1,31 @@
+<effect>
+  <name>iris</name>
+  <description>Circular iris open from the center using a clip-path. The content expands from a point. Works as a slide transition and as a build (enter/exit).</description>
+  <parameters>
+    <param name="duration" default="400" />
+    <param name="easing" default="ease" />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Transitions</category>
+      <label>Transition: iris</label>
+      <text><![CDATA[<!-- @transition iris -->]]></text>
+      <description>Open this slide with a circular iris from the center.</description>
+    </snippet>
+    <snippet>
+      <category>Builds</category>
+      <label>Build: iris (step)</label>
+      <text><![CDATA[<!-- @build step: 1, effect: iris -->
+content
+<!-- @end -->]]></text>
+      <description>Reveal a range at a build step with a circular iris.</description>
+    </snippet>
+  </snippets>
+  <style><![CDATA[
+    .mdp-effect.iris[data-mdp-phase="enter"]        { clip-path: circle(0% at 50% 50%); }
+    .mdp-effect.iris[data-mdp-phase="enter-active"] { clip-path: circle(75% at 50% 50%); transition: clip-path var(--mdp-fx-duration) var(--mdp-fx-easing); }
+    .mdp-effect.iris[data-mdp-phase="leave"]        { clip-path: circle(75% at 50% 50%); }
+    .mdp-effect.iris[data-mdp-phase="leave-active"] { clip-path: circle(0% at 50% 50%); transition: clip-path var(--mdp-fx-duration) var(--mdp-fx-easing); }
+  ]]></style>
+  <script><![CDATA[]]></script>
+</effect>

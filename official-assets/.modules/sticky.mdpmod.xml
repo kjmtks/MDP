@@ -1,0 +1,63 @@
+<module>
+  <name>sticky</name>
+  <type>block</type>
+  <description>Places a sticky note memo on the screen.</description>
+  <parameters>
+    <param name="color" default="#fef08a" required="false" />
+    <param name="rotate" default="-2" required="false" />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Presentation UI</category>
+      <label>Sticky Note</label>
+      <text><![CDATA[<!-- @sticky rotate: 3 -->
+**Memo**
+Please update these figures by the meeting next week!
+<!-- @end -->]]></text>
+      <description>A sticky note-style memo placed diagonally.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const color = args.color || '#fef08a';
+    const rotate = args.rotate || '-2';
+    const contentStr = sections[0] ? sections[0].trim() : '';
+    return `\n\n
+<div class="mdp-mod-sticky-wrap">
+  <div class="mdp-mod-sticky" style="--sticky-color: ${color}; transform: rotate(${rotate}deg);">
+
+${contentStr}
+
+  </div>
+</div>
+\n\n`;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-sticky-wrap {
+      display: flex;
+      justify-content: flex-end;
+      margin: 1rem 0;
+    }
+    .mdp-mod-sticky {
+      background: var(--sticky-color);
+      padding: 1.5em;
+      width: 250px;
+      box-shadow: 2px 4px 10px rgba(0,0,0,0.15);
+      font-family: "Comic Sans MS", "Marker Felt", sans-serif;
+      color: #333;
+      position: relative;
+    }
+    .mdp-mod-sticky::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      right: 0;
+      width: 100%;
+      height: 20px;
+      box-shadow: 0 10px 10px rgba(0,0,0,0.2);
+      z-index: -1;
+      transform: rotate(2deg);
+    }
+    .mdp-mod-sticky > *:first-child { margin-top: 0; }
+    .mdp-mod-sticky > *:last-child { margin-bottom: 0; }
+  ]]></style>
+</module>

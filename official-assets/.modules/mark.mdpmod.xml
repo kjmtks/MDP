@@ -1,0 +1,36 @@
+<module>
+  <name>mark</name>
+  <type>inline</type>
+  <description>Highlighted text</description>
+
+  <parameters>
+    <param name="text" required="true" />
+    <param name="color" default="#fde68a" required="false" />
+  </parameters>
+
+  <snippets>
+    <snippet>
+      <category>UI Parts</category>
+      <label>Highlight</label>
+      <text><![CDATA[<!-- @mark text: Important text, color: #fde68a -->]]></text>
+      <description>Highlighted (marked) text</description>
+    </snippet>
+  </snippets>
+
+  <render><![CDATA[
+    const color = args.color || '#fde68a';
+    return `<span class="mdp-mod-mark" style="background-color: ${color};">${args.text}</span>`;
+  ]]></render>
+
+  <style><![CDATA[
+    .mdp-mod-mark {
+      padding: 0.1em 0.3em;
+      border-radius: 3px;
+      color: var(--text-color, #1f2937);
+      box-decoration-break: clone;
+      -webkit-box-decoration-break: clone;
+    }
+  ]]></style>
+
+  <script></script>
+</module>

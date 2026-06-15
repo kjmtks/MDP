@@ -1,0 +1,25 @@
+<effect>
+  <name>fly</name>
+  <description>Slide up + fade. Good as a build for revealing list items / paragraphs.</description>
+  <parameters>
+    <param name="duration" default="420" />
+    <param name="easing" default="ease" />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Builds</category>
+      <label>Build: fly (up)</label>
+      <text><![CDATA[<!-- @build step: 1, effect: fly -->
+content
+<!-- @end -->]]></text>
+      <description>Reveal a range flying up with a fade.</description>
+    </snippet>
+  </snippets>
+  <style><![CDATA[
+    .mdp-effect.fly[data-mdp-phase="enter"]        { opacity: 0; transform: translateY(30px); }
+    .mdp-effect.fly[data-mdp-phase="enter-active"] { opacity: 1; transform: translateY(0); transition: opacity var(--mdp-fx-duration) var(--mdp-fx-easing), transform var(--mdp-fx-duration) var(--mdp-fx-easing); }
+    .mdp-effect.fly[data-mdp-phase="leave"]        { opacity: 1; transform: translateY(0); }
+    .mdp-effect.fly[data-mdp-phase="leave-active"] { opacity: 0; transform: translateY(-30px); transition: opacity var(--mdp-fx-duration) var(--mdp-fx-easing), transform var(--mdp-fx-duration) var(--mdp-fx-easing); }
+  ]]></style>
+  <script><![CDATA[]]></script>
+</effect>

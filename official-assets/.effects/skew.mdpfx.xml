@@ -1,0 +1,31 @@
+<effect>
+  <name>skew</name>
+  <description>Skew in. The element slides in with a horizontal skew that straightens as it settles. Works as a slide transition and as a build (enter/exit).</description>
+  <parameters>
+    <param name="duration" default="400" />
+    <param name="easing" default="ease" />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Transitions</category>
+      <label>Transition: skew</label>
+      <text><![CDATA[<!-- @transition skew -->]]></text>
+      <description>Skew into this slide.</description>
+    </snippet>
+    <snippet>
+      <category>Builds</category>
+      <label>Build: skew (step)</label>
+      <text><![CDATA[<!-- @build step: 1, effect: skew -->
+content
+<!-- @end -->]]></text>
+      <description>Reveal a range at a build step with a skew-in.</description>
+    </snippet>
+  </snippets>
+  <style><![CDATA[
+    .mdp-effect.skew[data-mdp-phase="enter"]        { opacity: 0; transform: skewX(12deg) translateX(30px); }
+    .mdp-effect.skew[data-mdp-phase="enter-active"] { opacity: 1; transform: skewX(0deg) translateX(0); transition: opacity var(--mdp-fx-duration) var(--mdp-fx-easing), transform var(--mdp-fx-duration) var(--mdp-fx-easing); }
+    .mdp-effect.skew[data-mdp-phase="leave"]        { opacity: 1; transform: skewX(0deg) translateX(0); }
+    .mdp-effect.skew[data-mdp-phase="leave-active"] { opacity: 0; transform: skewX(12deg) translateX(30px); transition: opacity var(--mdp-fx-duration) var(--mdp-fx-easing), transform var(--mdp-fx-duration) var(--mdp-fx-easing); }
+  ]]></style>
+  <script><![CDATA[]]></script>
+</effect>

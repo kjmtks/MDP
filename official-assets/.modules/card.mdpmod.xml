@@ -1,0 +1,57 @@
+<module>
+  <name>card</name>
+  <type>block</type>
+  <description>Elevated card with a title bar and body</description>
+
+  <parameters>
+    <param name="color" default="var(--accent-color)" required="false" />
+  </parameters>
+
+  <snippets>
+    <snippet>
+      <category>Structure</category>
+      <label>Card</label>
+      <text><![CDATA[<!-- @card color: var(--accent-color) -->
+Card Title
+<!-- @ -->
+Card body content goes here.
+<!-- @end -->]]></text>
+      <description>Elevated card with header bar</description>
+    </snippet>
+  </snippets>
+
+  <render><![CDATA[
+    const color = args.color || 'var(--accent-color)';
+    const titleStr = sections[0] ? sections[0].trim() : '';
+    const bodyStr = sections[1] ? sections[1].trim() : '';
+    return `\n\n<div class="mdp-mod-card"><div class="card-header" style="background-color: ${color};">\n\n${titleStr}\n\n</div><div class="card-body">\n\n${bodyStr}\n\n</div></div>\n\n`;
+  ]]></render>
+
+  <style><![CDATA[
+    .mdp-mod-card {
+      background-color: var(--panel-bg, #ffffff);
+      border: 1px solid var(--panel-border, #e5e7eb);
+      border-radius: var(--radius-sm, 8px);
+      box-shadow: var(--shadow-sm, 0 2px 8px rgba(0,0,0,0.12));
+      margin: 1rem 0;
+      overflow: hidden;
+    }
+    .mdp-mod-card .card-header {
+      color: #ffffff;
+      padding: 10px 16px;
+      font-weight: 700;
+      font-size: 1.1em;
+    }
+    .mdp-mod-card .card-header > :first-child { margin-top: 0; }
+    .mdp-mod-card .card-header > :last-child { margin-bottom: 0; }
+    .mdp-mod-card .card-body {
+      padding: 14px 16px;
+      color: var(--panel-text, var(--text-color, #1f2937));
+      font-size: 0.95em;
+    }
+    .mdp-mod-card .card-body > :first-child { margin-top: 0; }
+    .mdp-mod-card .card-body > :last-child { margin-bottom: 0; }
+  ]]></style>
+
+  <script></script>
+</module>

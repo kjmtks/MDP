@@ -1,0 +1,76 @@
+<module>
+  <name>module_name</name>
+  <type>block</type> <!-- block or inline -->
+  <description>...</description>
+  
+  <parameters>
+    <param name="title" default="Information" />
+    <param name="color" default="#10b981" />
+  </parameters>
+
+  <snippets>
+    <snippet>
+      <category>Category</category>
+      <label>Label</label>
+      <text>
+        <![CDATA[
+<!-- @module_name title: Information, color: #10b981 -->
+Describe information, here
+<!-- @endmodule_name -->
+]]>
+      </text>
+      <description>Green colored inofbox</description>
+    </snippet>
+  </snippets>
+
+  <render>
+  <![CDATA[
+    const color = args.color || 'var(--accent-color)';
+    const titleStr = sections[0] ? sections[0].trim() : '';
+    const contentStr = sections[1] ? sections[1].trim() : '';
+    return `<div class="mdp-mod-infobox" style="border-left-color: ${color};"><div class="infobox-header" style="color: ${color};">
+
+${titleStr}
+
+</div><div class="infobox-body">
+
+${contentStr}
+
+</div></div>`;
+  ]]>
+  </render>
+
+  <style>
+    <![CDATA[
+      .mdp-mod-infobox {
+        background-color: #f8fafc;
+        border-left: 6px solid #10b981;
+        border-radius: 6px;
+        margin: 1rem 0;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        overflow: hidden;
+      }
+      .mdp-mod-infobox .infobox-header {
+        padding: 0 16px;
+        font-weight: 600;
+        font-size: 1.1em;
+        background-color: rgba(0, 0, 0, 0.03);
+        border-bottom: 1px solid rgba(0,0,0,0.05);
+      }
+      .mdp-mod-infobox .infobox-body {
+        padding: 0 16px;
+        font-size: 0.95em;
+        color: #334155;
+      }
+    
+      .mdp-mod-infobox .infobox-header p {
+        margin: 0;
+      }
+      .mdp-mod-infobox .infobox-body p {
+        margin: 0.5rem 0;
+      }
+    ]]>
+  </style>
+
+  <script></script>
+</module>

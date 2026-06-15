@@ -1,0 +1,108 @@
+<module>
+  <name>process</name>
+  <type>block</type>
+  <description>Displays a horizontal chevron-style process flow.</description>
+  <parameters>
+    <param name="color" default="var(--accent-color)" required="false" />
+    <param name="active" default="[]" required="false" />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Presentation UI</category>
+      <label>Process Flow</label>
+      <text><![CDATA[<!-- @process color: var(--accent-color), active: [1] -->
+Data Collection
+<!-- @ -->
+Preprocessing
+<!-- @ -->
+Model Training
+<!-- @ -->
+Evaluation
+<!-- @end -->]]></text>
+      <description>Represents pipelines or workflows with horizontal arrows.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const color = args.color || 'var(--accent-color)';
+    const activeArr = Array.isArray(args.active) ? args.active.map(Number) : [];
+    let html = `\n\n<div class="mdp-mod-process" style="--proc-color: ${color};">\n`;
+    sections.forEach((section, index) => {
+      const contentStr = section.trim();
+      if (!contentStr) return;
+      const currentNum = index + 1;
+      const isActive = activeArr.length === 0 || activeArr.includes(currentNum);
+      const stepBg = isActive ? 'var(--proc-color)' : '#e2e8f0';
+      const stepText = isActive ? 'white' : '#718096';
+      html += `
+<div class="mdp-process-step" style="--step-bg: ${stepBg}; --step-text: ${stepText};">
+<div class="mdp-process-content">
+
+${contentStr}
+
+</div>
+</div>
+      `;
+    });
+    
+    html += `</div>\n\n`;
+    return html;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-process {
+      display: flex;
+      flex-direction: row;
+      justify-content: space-between;
+      margin: 1rem 0;
+      gap: 5px;
+    }
+    .mdp-process-step {
+      flex: 1;
+      position: relative;
+      background: var(--step-bg);
+      color: var(--step-text);
+      padding: 1em 1em 1em 2em;
+      text-align: center;
+      font-weight: bold;
+      min-height: 3em;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background-color 0.3s, color 0.3s;
+    }
+    .mdp-process-step:first-child {
+      padding-left: 1em;
+      border-top-left-radius: 4px;
+      border-bottom-left-radius: 4px;
+    }
+    .mdp-process-step:last-child {
+      border-top-right-radius: 4px;
+      border-bottom-right-radius: 4px;
+    }
+    .mdp-process-step:not(:last-child)::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      right: -1.5em;
+      width: 0;
+      height: 0;
+      border-top: 1.5em solid transparent;
+      border-bottom: 1.5em solid transparent;
+      border-left: 1.55em solid var(--step-bg);
+      z-index: 2;
+    }
+    .mdp-process-step:not(:first-child)::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 0;
+      height: 0;
+      border-top: 1.5em solid transparent;
+      border-bottom: 1.5em solid transparent;
+      border-left: 1.5em solid var(--bg-color);
+      z-index: 1;
+    }
+    .mdp-process-content > *:first-child { margin-top: 0; }
+    .mdp-process-content > *:last-child { margin-bottom: 0; }
+  ]]></style>
+</module>

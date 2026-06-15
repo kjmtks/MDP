@@ -1,0 +1,63 @@
+<module>
+  <name>checklist</name>
+  <type>block</type>
+  <description>A markdown list rendered as a styled checklist</description>
+
+  <parameters>
+    <param name="color" default="var(--accent-color)" required="false" />
+  </parameters>
+
+  <snippets>
+    <snippet>
+      <category>Structure</category>
+      <label>Checklist</label>
+      <text><![CDATA[<!-- @checklist color: var(--accent-color) -->
+- Define the goal
+- Gather the requirements
+- Build the prototype
+- Review and ship
+<!-- @end -->]]></text>
+      <description>Styled checklist from a markdown list</description>
+    </snippet>
+  </snippets>
+
+  <render><![CDATA[
+    const color = args.color || 'var(--accent-color)';
+    const contentStr = sections[0] ? sections[0].trim() : '';
+    return `\n\n<div class="mdp-mod-checklist" style="--checklist-mark: ${color};">\n\n${contentStr}\n\n</div>\n\n`;
+  ]]></render>
+
+  <style><![CDATA[
+    .mdp-mod-checklist {
+      margin: 1rem 0;
+    }
+    .mdp-mod-checklist ul {
+      list-style: none;
+      padding-left: 0;
+      margin: 0;
+    }
+    .mdp-mod-checklist ul li {
+      position: relative;
+      padding-left: 1.9em;
+      margin: 0.4em 0;
+      color: var(--text-color, #1f2937);
+    }
+    .mdp-mod-checklist ul li::before {
+      content: "\2713";
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 1.3em;
+      height: 1.3em;
+      line-height: 1.3em;
+      text-align: center;
+      font-weight: 700;
+      color: #ffffff;
+      background-color: var(--checklist-mark, var(--accent-color, #3b82f6));
+      border-radius: 4px;
+      font-size: 0.85em;
+    }
+  ]]></style>
+
+  <script></script>
+</module>

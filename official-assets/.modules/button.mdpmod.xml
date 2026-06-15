@@ -1,0 +1,46 @@
+<module>
+  <name>button</name>
+  <type>inline</type>
+  <description>A styled pseudo-button link</description>
+
+  <parameters>
+    <param name="text" required="true" />
+    <param name="href" default="#" required="false" />
+    <param name="color" default="var(--accent-color)" required="false" />
+  </parameters>
+
+  <snippets>
+    <snippet>
+      <category>UI Parts</category>
+      <label>Button</label>
+      <text><![CDATA[<!-- @button text: Get Started, href: #, color: var(--accent-color) -->]]></text>
+      <description>Styled button-like link</description>
+    </snippet>
+  </snippets>
+
+  <render><![CDATA[
+    const href = args.href || '#';
+    const color = args.color || 'var(--accent-color)';
+    return `<a class="mdp-mod-button" href="${href}" style="background-color: ${color};">${args.text}</a>`;
+  ]]></render>
+
+  <style><![CDATA[
+    .mdp-mod-button {
+      display: inline-block;
+      padding: 8px 18px;
+      color: #ffffff !important;
+      font-weight: 600;
+      font-size: 0.95em;
+      line-height: 1.2;
+      text-decoration: none !important;
+      border-radius: var(--radius-sm, 6px);
+      box-shadow: var(--shadow-sm, 0 2px 6px rgba(0,0,0,0.18));
+      vertical-align: middle;
+    }
+    .mdp-mod-button:hover {
+      filter: brightness(0.92);
+    }
+  ]]></style>
+
+  <script></script>
+</module>

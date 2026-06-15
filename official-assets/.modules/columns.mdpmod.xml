@@ -1,0 +1,59 @@
+<module>
+  <name>columns</name>
+  <type>block</type>
+  <description>A simple even N-column text layout</description>
+
+  <parameters>
+    <param name="count" default="2" required="false" />
+    <param name="gap" default="1.5rem" required="false" />
+  </parameters>
+
+  <snippets>
+    <snippet>
+      <category>Layout</category>
+      <label>Even Columns</label>
+      <text><![CDATA[<!-- @columns count: 2 -->
+Left column content.
+<!-- @ -->
+Right column content.
+<!-- @end -->]]></text>
+      <description>Evenly sized columns</description>
+    </snippet>
+  </snippets>
+
+  <render><![CDATA[
+    const gap = args.gap || '1.5rem';
+    const items = sections.filter(function (s) { return s.trim().length > 0; });
+    const count = parseInt(args.count, 10) || items.length || 2;
+    const basis = (100 / count);
+    let html = `\n\n<div class="mdp-mod-columns" style="gap: ${gap};">\n`;
+    items.forEach(function (section) {
+      const contentStr = section.trim();
+      html += `<div class="mdp-mod-columns-col" style="flex: 0 0 calc(${basis}% - ${gap}); max-width: calc(${basis}% - ${gap});">\n\n${contentStr}\n\n</div>`;
+    });
+    html += `</div>\n\n`;
+    return html;
+  ]]></render>
+
+  <style><![CDATA[
+    .mdp-mod-columns {
+      display: flex;
+      flex-wrap: wrap;
+      width: 100%;
+      margin: 1rem 0;
+    }
+    .mdp-mod-columns-col {
+      min-width: 0;
+    }
+    .mdp-mod-columns-col > :first-child { margin-top: 0; }
+    .mdp-mod-columns-col > :last-child { margin-bottom: 0; }
+    @media (max-width: 700px) {
+      .mdp-mod-columns-col {
+        flex: 0 0 100% !important;
+        max-width: 100% !important;
+      }
+    }
+  ]]></style>
+
+  <script></script>
+</module>

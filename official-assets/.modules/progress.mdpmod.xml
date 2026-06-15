@@ -1,0 +1,66 @@
+<module>
+  <name>progress</name>
+  <type>inline</type>
+  <description>Visually displays a percentage as a progress bar.</description>
+  <parameters>
+    <param name="percent" default="50" required="true" />
+    <param name="label" default="" required="false" />
+    <param name="color" default="var(--accent-color)" required="false" />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Presentation UI</category>
+      <label>Progress Bar</label>
+      <text><![CDATA[<!-- @progress percent: 85, label: Overall Project Progress, color: #2ecc71 -->]]></text>
+      <description>Displays a bar graph based on numbers.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const percent = args.percent || '0';
+    const label = args.label || '';
+    const color = args.color || 'var(--accent-color)';
+    let html = `\n\n<div class="mdp-mod-progress" style="--prog-color: ${color};">
+<div class="mdp-progress-info">`;
+    if (label) {
+      html += `<span class="mdp-progress-label">${label}</span>`;
+    }
+    html += `<span class="mdp-progress-percent">${percent}%</span>
+</div>
+<div class="mdp-progress-bar-bg">
+<div class="mdp-progress-bar-fill" style="width: ${percent}%;"></div>
+</div>
+</div>\n\n`;
+    return html;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-progress {
+      margin: 1rem 0;
+      width: 100%;
+    }
+    .mdp-progress-info {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 0.5em;
+      font-weight: bold;
+    }
+    .mdp-progress-label {
+      color: #555;
+    }
+    .mdp-progress-percent {
+      color: var(--prog-color);
+    }
+    .mdp-progress-bar-bg {
+      width: 100%;
+      height: 12px;
+      background-color: #eee;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    .mdp-progress-bar-fill {
+      height: 100%;
+      background-color: var(--prog-color);
+      border-radius: 6px;
+      transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+  ]]></style>
+</module>

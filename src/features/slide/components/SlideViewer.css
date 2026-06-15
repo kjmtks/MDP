@@ -1,0 +1,171 @@
+/* =========================================
+ * SlideView Core CSS (Layout & Structure)
+ * ========================================= */
+
+.slide-content-wrapper {
+  position: relative;
+}
+
+/* In-slide builds: only active in the slideshow (container gets
+ * `mdp-build-active`). Builds are hidden by default and revealed by the build
+ * runtime adding `mdp-build-shown`. Outside the slideshow (preview/thumbnails)
+ * builds are always visible. visibility:hidden keeps layout stable. */
+.mdp-build-active .mdp-build { visibility: hidden; }
+.mdp-build-active .mdp-build.mdp-build-shown { visibility: visible; }
+
+.slide-content {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  position: relative;
+  text-align: left;
+  box-sizing: border-box;
+  padding: 15px 18px;
+}
+
+.slide-content p:empty {
+  display: none;
+}
+
+.slide-content img,
+.slide-content object {
+  object-fit: contain;
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+.slide-content blockquote {
+  margin: 20px 0;
+}
+.slide-content ul, 
+.slide-content ol {
+  margin: 0.5em 0;
+}
+
+.slide-content p {
+  margin: 1rem 0;
+}
+
+.slide-content.newsection {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+}
+.slide-content.newsection ul {
+  list-style: none;
+}
+
+.slide-content.cover {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  height: 100%;
+  padding: 0 80px;
+  box-sizing: border-box;
+}
+
+.cover-title-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+}
+
+.slide-content-wrapper figure {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 0;
+  margin: 0;
+}
+.slide-content-wrapper table {
+  border-collapse: collapse;
+  margin: 0.5em auto 1em auto;
+  overflow: hidden;
+}
+.slide-content-wrapper table caption {
+  caption-side: top; 
+}
+.slide-content-wrapper th {
+  text-align: left;
+}
+.slide-content-wrapper td {
+  vertical-align: top;
+}
+
+.slide-header {
+  position: absolute;
+  top: 25px;
+  right: 25px;
+  z-index: 20;
+  pointer-events: none;
+}
+.slide-footer {
+  position: absolute;
+  bottom: 12px;
+  left: 40px;
+  right: 80px;
+  z-index: 20;
+  white-space: pre-wrap; 
+  word-wrap: break-word;
+  text-align: left;
+}
+.slide-page-number {
+  position: absolute;
+  bottom: 0.5em;
+  right: 0.8em;
+  z-index: 10;
+  pointer-events: none;
+}
+
+
+.code-block-wrapper {
+  position: relative;
+  margin: 1.5rem 0;
+  overflow: hidden;
+}
+.code-block-wrapper pre {
+  position: relative;
+  z-index: 10;
+  margin: 0 !important;
+  overflow-x: auto;
+  box-sizing: border-box; 
+  white-space: pre;
+  display: block;
+}
+.code-background {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+.code-bg-row {
+  width: 100%;
+  box-sizing: border-box;
+  position: relative;
+}
+.code-bg-row::before {
+  content: attr(data-line-number);
+  position: absolute;
+  left: 0; top: 0;
+  height: 100%;
+  text-align: right;
+  box-sizing: border-box;
+}
+.code-filename {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 20;
+  user-select: none;
+  pointer-events: none;
+}

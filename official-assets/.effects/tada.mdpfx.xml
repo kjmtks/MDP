@@ -1,0 +1,45 @@
+<effect>
+  <name>tada</name>
+  <description>Celebratory scale-and-rotate wobble for emphasis. Falls back to a fade when used as a transition. Works as an emphasis, a slide transition, and a build (enter/exit).</description>
+  <parameters>
+    <param name="duration" default="400" />
+    <param name="easing" default="ease" />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Transitions</category>
+      <label>Transition: tada</label>
+      <text><![CDATA[<!-- @transition tada -->]]></text>
+      <description>Fade into this slide (tada is best used as an emphasis).</description>
+    </snippet>
+    <snippet>
+      <category>Builds</category>
+      <label>Build: tada (step)</label>
+      <text><![CDATA[<!-- @build step: 1, effect: tada -->
+content
+<!-- @end -->]]></text>
+      <description>Emphasize a range at a build step with a celebratory tada.</description>
+    </snippet>
+  </snippets>
+  <style><![CDATA[
+    .mdp-effect.tada[data-mdp-phase="enter"]        { opacity: 0; }
+    .mdp-effect.tada[data-mdp-phase="enter-active"] { opacity: 1; transition: opacity var(--mdp-fx-duration) var(--mdp-fx-easing); }
+    .mdp-effect.tada[data-mdp-phase="leave"]        { opacity: 1; }
+    .mdp-effect.tada[data-mdp-phase="leave-active"] { opacity: 0; transition: opacity var(--mdp-fx-duration) var(--mdp-fx-easing); }
+    .mdp-effect.tada[data-mdp-phase="emphasis-active"] { animation: mdp-tada var(--mdp-fx-duration) var(--mdp-fx-easing); }
+    @keyframes mdp-tada {
+      0%   { transform: scale(1) rotate(0deg); }
+      10%  { transform: scale(0.9) rotate(-3deg); }
+      20%  { transform: scale(0.9) rotate(-3deg); }
+      30%  { transform: scale(1.1) rotate(3deg); }
+      40%  { transform: scale(1.1) rotate(-3deg); }
+      50%  { transform: scale(1.1) rotate(3deg); }
+      60%  { transform: scale(1.1) rotate(-3deg); }
+      70%  { transform: scale(1.1) rotate(3deg); }
+      80%  { transform: scale(1.1) rotate(-3deg); }
+      90%  { transform: scale(1.1) rotate(3deg); }
+      100% { transform: scale(1) rotate(0deg); }
+    }
+  ]]></style>
+  <script><![CDATA[]]></script>
+</effect>

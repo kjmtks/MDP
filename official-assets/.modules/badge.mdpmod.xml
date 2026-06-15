@@ -1,0 +1,39 @@
+<module>
+  <name>badge</name>
+  <type>inline</type>
+  <description>Badge</description>
+
+  <parameters>
+    <param name="text" required="true" />
+    <param name="color" default="var(--accent-color)" required="false" />
+  </parameters>
+
+  <snippets>
+    <snippet>
+      <category>UI Parts</category>
+      <label>Badge</label>
+      <text><![CDATA[<!-- @badge text: Text, color: var(--accent-color) -->]]></text>
+      <description>Badge</description>
+    </snippet>
+  </snippets>
+
+  <render>
+  return `<![CDATA[<span class="mdp-mod-badge" style="background-color: ${args.color};">${args.text}</span>]]>`;
+  </render>
+  <style>
+    <![CDATA[
+      .mdp-mod-badge {
+        color: white;
+        padding: 2px 8px;
+        border-radius: 9999px;
+        font-size: 0.85em;
+        font-weight: 600;
+        display: inline-block;
+        line-height: 1.2;
+      }
+    ]]>
+  </style>
+
+  <script>
+  </script>
+</module>

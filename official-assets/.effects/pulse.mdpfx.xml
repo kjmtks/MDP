@@ -1,0 +1,27 @@
+<effect>
+  <name>pulse</name>
+  <description>A one-shot scale pulse — intended for build emphasis.</description>
+  <parameters>
+    <param name="duration" default="500" />
+    <param name="easing" default="ease-in-out" />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Builds</category>
+      <label>Build: emphasis pulse</label>
+      <text><![CDATA[<!-- @build enter: 1, emphasis: 2, emphasisEffect: pulse -->
+content
+<!-- @end -->]]></text>
+      <description>Reveal at step 1, then pulse for emphasis at step 2.</description>
+    </snippet>
+  </snippets>
+  <style><![CDATA[
+    @keyframes mdp-effect-pulse {
+      0%   { transform: scale(1); }
+      50%  { transform: scale(1.08); }
+      100% { transform: scale(1); }
+    }
+    .mdp-effect.pulse[data-mdp-phase="emphasis-active"] { animation: mdp-effect-pulse var(--mdp-fx-duration) var(--mdp-fx-easing); }
+  ]]></style>
+  <script><![CDATA[]]></script>
+</effect>

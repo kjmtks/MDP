@@ -1,0 +1,52 @@
+<module>
+  <name>definition</name>
+  <type>block</type>
+  <description>Dictionary-style term and definition entry</description>
+
+  <parameters>
+    <param name="color" default="var(--accent-color)" required="false" />
+  </parameters>
+
+  <snippets>
+    <snippet>
+      <category>Structure</category>
+      <label>Definition</label>
+      <text><![CDATA[<!-- @definition color: var(--accent-color) -->
+Markdown
+<!-- @ -->
+A lightweight markup language for creating formatted text using a plain-text editor.
+<!-- @end -->]]></text>
+      <description>Term and its definition</description>
+    </snippet>
+  </snippets>
+
+  <render><![CDATA[
+    const color = args.color || 'var(--accent-color)';
+    const termStr = sections[0] ? sections[0].trim() : '';
+    const defStr = sections[1] ? sections[1].trim() : '';
+    return `\n\n<div class="mdp-mod-definition"><div class="definition-term" style="color: ${color};">\n\n${termStr}\n\n</div><div class="definition-body" style="border-left-color: ${color};">\n\n${defStr}\n\n</div></div>\n\n`;
+  ]]></render>
+
+  <style><![CDATA[
+    .mdp-mod-definition {
+      margin: 1rem 0;
+    }
+    .mdp-mod-definition .definition-term {
+      font-weight: 700;
+      font-size: 1.15em;
+    }
+    .mdp-mod-definition .definition-term > :first-child { margin-top: 0; }
+    .mdp-mod-definition .definition-term > :last-child { margin-bottom: 0; }
+    .mdp-mod-definition .definition-body {
+      margin-top: 0.35rem;
+      padding-left: 1rem;
+      border-left: 3px solid;
+      color: var(--text-color, #374151);
+      font-size: 0.95em;
+    }
+    .mdp-mod-definition .definition-body > :first-child { margin-top: 0; }
+    .mdp-mod-definition .definition-body > :last-child { margin-bottom: 0; }
+  ]]></style>
+
+  <script></script>
+</module>

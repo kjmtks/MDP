@@ -1,0 +1,51 @@
+<module>
+  <name>arrow</name>
+  <type>inline</type>
+  <description>Arrows connecting elements</description>
+  <parameters>
+    <param name="direction" default="down" required="false" />
+    <param name="size" default="40px" required="false" />
+    <param name="margin" default="1rem 0 0 0" required="false" />
+    <param name="color" default="var(--accent-color)" required="false" />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>UI Parts</category>
+      <label>Down arrow</label>
+      <text><![CDATA[<!-- @arrow direction: down, size: 40px, color: var(--accent-color) -->]]></text>
+      <description>A down-pointing arrow connecting elements</description>
+    </snippet>
+    <snippet>
+      <category>UI Parts</category>
+      <label>Right arrow</label>
+      <text><![CDATA[<!-- @arrow direction: right, size: 40px, color: var(--accent-color) -->]]></text>
+      <description>A right-pointing arrow connecting elements</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const size = args.size || '40px';
+    const color = args.color || 'var(--accent-color)';
+    const margin = args.margin || '10px 0';
+    const direction = args.direction || 'down';
+    return `\n\n<div class="mdp-mod-arrow-wrap" style="--arr-size: ${size}; --arr-color: ${color}; --margin: ${margin};"><div class="mdp-mod-arrow mdp-mod-arrow-${direction}"></div></div>\n\n`;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-arrow-wrap {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      margin: var(--margin, 0);
+    }
+    .mdp-mod-arrow {
+      width: 0; height: 0; border-style: solid;
+    }
+    .mdp-mod-arrow-down {
+      border-width: calc(var(--arr-size) * 0.8) calc(var(--arr-size) * 0.5) 0 calc(var(--arr-size) * 0.5);
+      border-color: var(--arr-color) transparent transparent transparent;
+    }
+    .mdp-mod-arrow-right {
+      border-width: calc(var(--arr-size) * 0.5) 0 calc(var(--arr-size) * 0.5) calc(var(--arr-size) * 0.8);
+      border-color: transparent transparent transparent var(--arr-color);
+    }
+  ]]></style>
+</module>

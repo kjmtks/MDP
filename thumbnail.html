@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>MDP GitHub Thumbnail</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #0d1117;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+
+    .thumbnail-container {
+      width: 1280px;
+      height: 640px;
+      background: linear-gradient(135deg, #1e1e1e 0%, #111418 100%);
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      font-family: 'Inter', sans-serif;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+    }
+
+    .left-content {
+      flex: 1;
+      padding: 100px 80px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      z-index: 2;
+    }
+
+    .app-icon {
+      width: 160px;
+      height: 160px;
+      filter: drop-shadow(0 10px 20px rgba(59, 130, 246, 0.4));
+      margin-bottom: 30px;
+    }
+
+    .title {
+      font-size: 80px;
+      font-weight: 900;
+      color: #ffffff;
+      margin: 0;
+      letter-spacing: 2px;
+      line-height: 1;
+    }
+
+    .subtitle {
+      font-size: 32px;
+      font-weight: 400;
+      color: #8ba0b2;
+      margin: 15px 0 40px 0;
+    }
+
+    .badges { display: flex; gap: 16px; }
+
+    .badge {
+      background: rgba(59, 130, 246, 0.15);
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      color: #60a5fa;
+      padding: 10px 24px;
+      border-radius: 30px;
+      font-size: 20px;
+      font-weight: 700;
+    }
+
+    /* 右側：実アプリ（ダークUI＋スライド）を模したモックアップ */
+    .right-content { flex: 1.2; position: relative; }
+
+    .editor-mockup {
+      position: absolute;
+      top: 110px;
+      right: -60px;
+      width: 820px;
+      height: 520px;
+      background: #1e1e1e;
+      border-radius: 14px;
+      box-shadow: -10px 20px 45px rgba(0,0,0,0.65);
+      border: 1px solid #333;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      transform: rotate(-2deg);
+    }
+
+    /* タイトルバー（アプリのヘッダー: #202225） */
+    .mockup-titlebar {
+      height: 34px;
+      background: #202225;
+      display: flex;
+      align-items: center;
+      padding: 0 14px;
+      gap: 8px;
+      position: relative;
+      flex-shrink: 0;
+    }
+    .dot { width: 11px; height: 11px; border-radius: 50%; }
+    .dot.red { background: #ff5f56; }
+    .dot.yellow { background: #ffbd2e; }
+    .dot.green { background: #27c93f; }
+    .titlebar-brand {
+      position: absolute; left: 50%; transform: translateX(-50%);
+      color: #e6e6e6; font-weight: 800; font-size: 13px; letter-spacing: 1px;
+    }
+
+    /* タブストリップ（アクティブタブは青い上ボーダー） */
+    .mockup-tabs { height: 34px; background: #252526; display: flex; align-items: stretch; flex-shrink: 0; }
+    .tab {
+      display: flex; align-items: center; gap: 8px;
+      padding: 0 16px; font-size: 12.5px; color: #8ba0b2;
+      background: #2d2d2d; border-right: 1px solid #1e1e1e;
+      border-top: 2px solid transparent;
+    }
+    .tab.active { background: #1e1e1e; color: #ffffff; border-top: 2px solid #3b82f6; }
+    .tab .file-dot { width: 8px; height: 8px; border-radius: 2px; background: #519aba; }
+
+    .mockup-body { display: flex; flex: 1; min-height: 0; }
+
+    /* 左：プレビュー（暗い背景に白いスライド） */
+    .pane-preview {
+      flex: 1.05;
+      background: #232323;
+      display: flex; align-items: center; justify-content: center;
+      padding: 26px;
+      border-right: 1px solid #000;
+    }
+    .slide {
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      background: #ffffff;
+      border-radius: 6px;
+      box-shadow: 0 12px 30px rgba(0,0,0,0.45);
+      padding: 34px 40px;
+      box-sizing: border-box;
+      display: flex; flex-direction: column;
+      position: relative;
+      font-family: 'Inter', sans-serif;
+    }
+    .slide h1 { margin: 0; font-size: 30px; font-weight: 900; color: #1e293b; line-height: 1.15; }
+    .slide .accent-bar { width: 64px; height: 6px; background: #3b82f6; border-radius: 3px; margin: 12px 0 20px; }
+    .slide ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 12px; }
+    .slide li { font-size: 17px; color: #334155; display: flex; align-items: center; gap: 10px; }
+    .slide li::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: #3b82f6; flex-shrink: 0; }
+    .slide .formula { font-family: 'Cambria', 'Georgia', serif; font-style: italic; color: #0f172a; }
+    .slide .formula sup { font-style: normal; }
+    .slide .page-no {
+      position: absolute; right: 18px; bottom: 14px;
+      font-size: 13px; color: #94a3b8; font-weight: 700;
+    }
+
+    /* 右：Markdown エディタ（行番号 + 構文色） */
+    .pane-editor {
+      flex: 0.95;
+      background: #1e1e1e;
+      padding: 18px 0;
+      font-family: 'Consolas', 'Menlo', 'Monaco', monospace;
+      font-size: 15px;
+      line-height: 1.9;
+      overflow: hidden;
+    }
+    .code-row { display: flex; }
+    .gutter { width: 40px; text-align: right; padding-right: 14px; color: #5a6473; user-select: none; flex-shrink: 0; }
+    .code { white-space: pre; }
+
+    .tok-h    { color: #4ec9b0; font-weight: 700; }   /* heading text */
+    .tok-hash { color: #569cd6; }                      /* # markers */
+    .tok-mark { color: #6b7785; }                      /* ** _ markers */
+    .tok-bold { color: #e6e6e6; font-weight: 700; }
+    .tok-list { color: #3b82f6; }                      /* - bullet */
+    .tok-math { color: #b5cea8; }                      /* $...$ */
+    .tok-hr   { color: #c586c0; }                      /* --- */
+    .tok-txt  { color: #d4d4d4; }
+    .tok-com  { color: #6a9955; }                      /* comments / directives */
+
+    .glow {
+      position: absolute;
+      width: 600px; height: 600px;
+      background: radial-gradient(circle, rgba(59,130,246,0.12) 0%, rgba(0,0,0,0) 70%);
+      top: -120px; left: -120px;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="thumbnail-container" id="capture-area">
+    <div class="glow"></div>
+
+    <div class="left-content">
+      <img src="build/icon.png" alt="MDP Icon" class="app-icon" />
+
+      <h1 class="title">MDP</h1>
+      <p class="subtitle">Markdown Presentation Tool</p>
+
+      <div class="badges">
+        <span class="badge">Markdown</span>
+        <span class="badge">KaTeX</span>
+        <span class="badge">Draw.io</span>
+      </div>
+    </div>
+
+    <div class="right-content">
+      <div class="editor-mockup">
+        <div class="mockup-titlebar">
+          <div class="dot red"></div>
+          <div class="dot yellow"></div>
+          <div class="dot green"></div>
+          <div class="titlebar-brand">MDP</div>
+        </div>
+
+        <div class="mockup-tabs">
+          <div class="tab active"><span class="file-dot"></span>welcome.slide.md</div>
+          <div class="tab"><span class="file-dot"></span>theme.css</div>
+        </div>
+
+        <div class="mockup-body">
+          <!-- 左: レンダリングされたスライド -->
+          <div class="pane-preview">
+            <div class="slide">
+              <h1>Welcome to MDP</h1>
+              <div class="accent-bar"></div>
+              <ul>
+                <li>Write slides in <b>Markdown</b></li>
+                <li>Math with KaTeX: <span class="formula">E = mc<sup>2</sup></span></li>
+                <li>Diagrams via Mermaid &amp; Draw.io</li>
+              </ul>
+              <div class="page-no">1 / 8</div>
+            </div>
+          </div>
+
+          <!-- 右: Markdown ソース -->
+          <div class="pane-editor">
+            <div class="code-row"><span class="gutter">1</span><span class="code"><span class="tok-com">&lt;!-- @theme default --&gt;</span></span></div>
+            <div class="code-row"><span class="gutter">2</span><span class="code"><span class="tok-hash"># </span><span class="tok-h">Welcome to MDP</span></span></div>
+            <div class="code-row"><span class="gutter">3</span><span class="code"></span></div>
+            <div class="code-row"><span class="gutter">4</span><span class="code"><span class="tok-list">- </span><span class="tok-txt">Write slides in </span><span class="tok-mark">**</span><span class="tok-bold">Markdown</span><span class="tok-mark">**</span></span></div>
+            <div class="code-row"><span class="gutter">5</span><span class="code"><span class="tok-list">- </span><span class="tok-txt">Math: </span><span class="tok-math">$E = mc^2$</span></span></div>
+            <div class="code-row"><span class="gutter">6</span><span class="code"><span class="tok-list">- </span><span class="tok-txt">Diagrams &amp; Draw.io</span></span></div>
+            <div class="code-row"><span class="gutter">7</span><span class="code"></span></div>
+            <div class="code-row"><span class="gutter">8</span><span class="code"><span class="tok-hr">---</span></span></div>
+            <div class="code-row"><span class="gutter">9</span><span class="code"></span></div>
+            <div class="code-row"><span class="gutter">10</span><span class="code"><span class="tok-hash">## </span><span class="tok-h">Next slide</span></span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>

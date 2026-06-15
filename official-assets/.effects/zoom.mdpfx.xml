@@ -1,0 +1,23 @@
+<effect>
+  <name>zoom</name>
+  <description>Scale + fade. Works as a slide transition and as a build.</description>
+  <parameters>
+    <param name="duration" default="400" />
+    <param name="easing" default="ease" />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Transitions</category>
+      <label>Transition: zoom</label>
+      <text><![CDATA[<!-- @transition zoom -->]]></text>
+      <description>Zoom into this slide.</description>
+    </snippet>
+  </snippets>
+  <style><![CDATA[
+    .mdp-effect.zoom[data-mdp-phase="enter"]        { opacity: 0; transform: scale(0.8); }
+    .mdp-effect.zoom[data-mdp-phase="enter-active"] { opacity: 1; transform: scale(1); transition: opacity var(--mdp-fx-duration) var(--mdp-fx-easing), transform var(--mdp-fx-duration) var(--mdp-fx-easing); }
+    .mdp-effect.zoom[data-mdp-phase="leave"]        { opacity: 1; transform: scale(1); }
+    .mdp-effect.zoom[data-mdp-phase="leave-active"] { opacity: 0; transform: scale(1.2); transition: opacity var(--mdp-fx-duration) var(--mdp-fx-easing), transform var(--mdp-fx-duration) var(--mdp-fx-easing); }
+  ]]></style>
+  <script><![CDATA[]]></script>
+</effect>

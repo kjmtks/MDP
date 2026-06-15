@@ -1,0 +1,49 @@
+<effect>
+  <name>bounce</name>
+  <description>JavaScript-driven bounce (Web Animations API). Tests the JS-hook path. Best as a build.</description>
+  <parameters>
+    <param name="duration" default="750" />
+    <param name="easing" default="ease-out" />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Builds</category>
+      <label>Build: bounce (JS)</label>
+      <text><![CDATA[<!-- @build step: 1, effect: bounce -->
+content
+<!-- @end -->]]></text>
+      <description>Reveal a range with a JS-driven bounce.</description>
+    </snippet>
+  </snippets>
+  <!-- No CSS: this effect is fully JavaScript-driven. -->
+  <style><![CDATA[]]></style>
+  <script><![CDATA[
+    export default {
+      enter(el, ctx) {
+        return el.animate([
+          { transform: 'translateY(-48px)', opacity: 0, offset: 0 },
+          { transform: 'translateY(0)',     opacity: 1, offset: 0.55 },
+          { transform: 'translateY(-16px)',             offset: 0.72 },
+          { transform: 'translateY(0)',                 offset: 0.84 },
+          { transform: 'translateY(-7px)',              offset: 0.92 },
+          { transform: 'translateY(0)',                 offset: 1 }
+        ], { duration: ctx.duration, easing: 'ease-out', fill: 'backwards' }).finished;
+      },
+      emphasis(el, ctx) {
+        return el.animate([
+          { transform: 'translateY(0)' },
+          { transform: 'translateY(-16px)' },
+          { transform: 'translateY(0)' },
+          { transform: 'translateY(-6px)' },
+          { transform: 'translateY(0)' }
+        ], { duration: ctx.duration, easing: 'ease-out' }).finished;
+      },
+      leave(el, ctx) {
+        return el.animate([
+          { transform: 'translateY(0)',  opacity: 1 },
+          { transform: 'translateY(48px)', opacity: 0 }
+        ], { duration: ctx.duration, easing: 'ease-in', fill: 'forwards' }).finished;
+      }
+    }
+  ]]></script>
+</effect>

@@ -1,0 +1,63 @@
+<module>
+  <name>bignumber</name>
+  <type>block</type>
+  <description>A single large highlighted statistic</description>
+
+  <parameters>
+    <param name="color" default="var(--accent-color)" required="false" />
+  </parameters>
+
+  <snippets>
+    <snippet>
+      <category>Data</category>
+      <label>Big Number</label>
+      <text><![CDATA[<!-- @bignumber color: var(--accent-color) -->
+98%
+<!-- @ -->
+Customer satisfaction
+<!-- @ -->
+Measured across 1,200 responses
+<!-- @end -->]]></text>
+      <description>Large statistic with label and caption</description>
+    </snippet>
+  </snippets>
+
+  <render><![CDATA[
+    const color = args.color || 'var(--accent-color)';
+    const numberStr = sections[0] ? sections[0].trim() : '';
+    const labelStr = sections[1] ? sections[1].trim() : '';
+    const captionStr = sections[2] ? sections[2].trim() : '';
+    let html = `\n\n<div class="mdp-mod-bignumber">`;
+    html += `<div class="bignumber-value" style="color: ${color};">${numberStr}</div>`;
+    if (labelStr) html += `<div class="bignumber-label">${labelStr}</div>`;
+    if (captionStr) html += `<div class="bignumber-caption">${captionStr}</div>`;
+    html += `</div>\n\n`;
+    return html;
+  ]]></render>
+
+  <style><![CDATA[
+    .mdp-mod-bignumber {
+      text-align: center;
+      margin: 1rem 0;
+      padding: 1rem;
+    }
+    .mdp-mod-bignumber .bignumber-value {
+      font-size: 3.5em;
+      font-weight: 800;
+      line-height: 1.05;
+    }
+    .mdp-mod-bignumber .bignumber-label {
+      font-size: 1.1em;
+      font-weight: 600;
+      color: var(--text-color, #1f2937);
+      margin-top: 0.25rem;
+    }
+    .mdp-mod-bignumber .bignumber-caption {
+      font-size: 0.85em;
+      color: var(--muted-color, #6b7280);
+      margin-top: 0.25rem;
+    }
+  ]]></style>
+
+  <script></script>
+</module>

@@ -1,0 +1,39 @@
+﻿{
+  "appId": "jp.ac.kagawa-u.eng.kj.mdp",
+  "productName": "MDP",
+  "disableDefaultIgnoredFiles": true,
+  "directories": {
+    "app": ".",
+    "output": "dist-electron"
+  },
+  "files": [
+    "dist/**/*",
+    "app/main.cjs",
+    "app/preload.cjs",
+    "app/remoteRelay.cjs",
+    "app/remoteServer.cjs",
+    "node_modules/ws/**/*",
+    "../server.cjs",
+    "build/icon.*"
+  ],
+  "win": {
+    "target": ["nsis", "portable"],
+    "icon": "build/icon.png"
+  },
+  "nsis": {
+    "uninstallDisplayName": "MDP"
+  },
+  "mac": {
+    "target": ["dmg", "zip"],
+    "icon": "build/icon.png",
+    "category": "public.app-category.productivity"
+  },
+  "dmg": {
+    "title": "MDP Install",
+    "iconSize": 128,
+    "contents": [
+      { "x": 130, "y": 220 },
+      { "x": 410, "y": 220, "type": "link", "path": "/Applications" }
+    ]
+  }
+}

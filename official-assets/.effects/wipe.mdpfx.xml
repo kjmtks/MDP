@@ -1,0 +1,23 @@
+<effect>
+  <name>wipe</name>
+  <description>Reveal with a left-to-right clip wipe.</description>
+  <parameters>
+    <param name="duration" default="450" />
+    <param name="easing" default="ease" />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Transitions</category>
+      <label>Transition: wipe</label>
+      <text><![CDATA[<!-- @transition wipe -->]]></text>
+      <description>Wipe into this slide.</description>
+    </snippet>
+  </snippets>
+  <style><![CDATA[
+    .mdp-effect.wipe[data-mdp-phase="enter"]        { clip-path: inset(0 100% 0 0); }
+    .mdp-effect.wipe[data-mdp-phase="enter-active"] { clip-path: inset(0 0 0 0); transition: clip-path var(--mdp-fx-duration) var(--mdp-fx-easing); }
+    .mdp-effect.wipe[data-mdp-phase="leave"]        { clip-path: inset(0 0 0 0); }
+    .mdp-effect.wipe[data-mdp-phase="leave-active"] { clip-path: inset(0 0 0 100%); transition: clip-path var(--mdp-fx-duration) var(--mdp-fx-easing); }
+  ]]></style>
+  <script><![CDATA[]]></script>
+</effect>

@@ -1,0 +1,166 @@
+<module>
+  <name>timeline</name>
+  <type>block</type>
+  <description>Displays multiple contents beautifully as a vertical timeline (steps).</description>
+  <parameters>
+    <param name="color" default="var(--accent-color)" required="false" />
+    <param name="active_index" default="0" required="false" />
+    <param name="indexes" default="[]" required="false" />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Layout</category>
+      <label>Timeline</label>
+      <text><![CDATA[<!-- @timeline active_index: 2, indexes: [Phase1, Phase2, Phase3] -->
+### Phase 1: Requirements & Research
+Identify issues through user interviews.
+<!-- @ -->
+### Phase 2: System Design & Prototyping
+Create screen mockups and gather feedback.
+<!-- @ -->
+### Phase 3: Development & QA
+Proceed with agile development and conduct integration testing.
+<!-- @end -->]]></text>
+      <description>Converts multiple sections into a vertical step display with sequential numbers (or custom labels). Markdown is supported inside.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const color = args.color || 'var(--accent-color)';
+    const activeIndex = parseInt(args.active_index, 10) || 0;
+    
+    const indexesArr = Array.isArray(args.indexes) ? args.indexes : [];
+    
+    let html = `\n\n<div class="mdp-mod-timeline" style="--timeline-color: ${color};">\n`;
+    
+    sections.forEach((section, index) => {
+       const contentStr = section.trim();
+       if (!contentStr) return;
+       
+       const currentNum = index + 1;
+       const label = indexesArr[index] !== undefined && indexesArr[index] !== '' ? indexesArr[index] : currentNum;
+       const isActive = currentNum === activeIndex;
+       const activeClass = isActive ? ' active' : '';
+       
+       html += `
+<div class="mdp-timeline-item${activeClass}">
+  <div class="mdp-timeline-marker${activeClass}">${label}</div>
+  <div class="mdp-timeline-content${activeClass}">
+
+${contentStr}
+
+  </div>
+</div>
+`;
+    });
+    
+    html += `</div>\n\n`;
+    return html;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-timeline {
+      position: relative;
+      margin: 1rem 0;
+      padding-left: 10px;
+    }
+    
+    .mdp-mod-timeline::before {
+      content: '';
+      position: absolute;
+      top: 15px;
+      bottom: -15px;
+      left: 32px;
+      width: 4px;
+      background: linear-gradient(to bottom, var(--timeline-color) 80%, transparent);
+      opacity: 0.3;
+      border-radius: 2px;
+      z-index: 0;
+    }
+
+    .mdp-timeline-item {
+      position: relative;
+      margin-bottom: 2rem;
+      display: flex;
+      align-items: flex-start;
+      z-index: 1;
+    }
+
+    .mdp-timeline-item:last-child {
+      margin-bottom: 0;
+    }
+
+    .mdp-timeline-marker {
+      height: 44px;
+      min-width: 44px;
+      padding: 0 1rem;
+      background-color: white;
+      color: var(--timeline-color);
+      border: 3px solid var(--timeline-color);
+      border-radius: 22px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+      z-index: 2;
+      margin-right: 24px;
+      margin-top: 4px;
+      white-space: nowrap;
+      transition: transform 0.3s ease, background-color 0.3s, color 0.3s;
+    }
+
+    .mdp-timeline-marker.active {
+      background-color: var(--timeline-color);
+      color: white;
+      transform: scale(1.1);
+      box-shadow: 0 6px 12px rgba(0,0,0,0.2);
+    }
+
+    .mdp-timeline-content {
+      background: #ffffff;
+      padding: 1.2rem 1.5rem;
+      border-radius: 12px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+      border: 1px solid #f0f0f0;
+      width: 100%;
+      color: #555;
+      position: relative;
+    }
+
+    .mdp-timeline-content.active {
+      color: #333;
+      border-color: var(--timeline-color);
+      box-shadow: 0 6px 15px rgba(0,0,0,0.1);
+    }
+
+    .mdp-timeline-content > *:first-child { margin-top: 0; }
+    .mdp-timeline-content > *:last-child { margin-bottom: 0; }
+    .mdp-timeline-content h1, 
+    .mdp-timeline-content h2, 
+    .mdp-timeline-content h3 {
+      color: var(--timeline-color);
+      margin-top: 0;
+      font-size: 1.3rem;
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+
+    .mdp-timeline-content::before {
+      content: '';
+      position: absolute;
+      left: -8px;
+      top: 20px;
+      width: 16px;
+      height: 16px;
+      background: #ffffff;
+      border-left: 1px solid #f0f0f0;
+      border-bottom: 1px solid #f0f0f0;
+      transform: rotate(45deg);
+      transition: border-color 0.3s ease;
+    }
+
+    .mdp-timeline-content.active::before {
+      border-left-color: var(--timeline-color);
+      border-bottom-color: var(--timeline-color);
+    }
+  ]]></style>
+</module>

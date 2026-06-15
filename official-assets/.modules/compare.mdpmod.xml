@@ -1,0 +1,102 @@
+<module>
+  <name>compare</name>
+  <type>block</type>
+  <description>Layout to compare two elements (e.g., Plan A vs Plan B) side by side.</description>
+  <parameters>
+    <param name="left_title" default="Conventional Method" required="false" />
+    <param name="right_title" default="Proposed Method" required="false" />
+    <param name="color_left" default="#95a5a6" required="false" />
+    <param name="color_right" default="var(--accent-color)" required="false" />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Presentation UI</category>
+      <label>Compare Board</label>
+      <text><![CDATA[<!-- @compare left_title: Plan A, right_title: Plan B -->
+Low cost but takes time.
+<!-- @ -->
+High initial cost but highly efficient in the long run.
+<!-- @end -->]]></text>
+      <description>Compares two elements with a VS badge in the center.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const leftTitle = args.left_title || 'A';
+    const rightTitle = args.right_title || 'B';
+    const colorLeft = args.color_left || '#95a5a6';
+    const colorRight = args.color_right || 'var(--accent-color)';
+    const leftContent = sections[0] ? sections[0].trim() : '';
+    const rightContent = sections[1] ? sections[1].trim() : '';
+    return `\n\n
+<div class="mdp-mod-compare">
+<div class="mdp-compare-col mdp-compare-left" style="--comp-color: ${colorLeft};">
+<div class="mdp-compare-header">${leftTitle}</div>
+<div class="mdp-compare-body">
+
+${leftContent}
+
+</div>
+</div>
+<div class="mdp-compare-vs">VS</div>
+<div class="mdp-compare-col mdp-compare-right" style="--comp-color: ${colorRight};">
+<div class="mdp-compare-header">${rightTitle}</div>
+<div class="mdp-compare-body">
+
+${rightContent}
+
+</div>
+</div>
+</div>
+\n\n`;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-compare {
+      display: flex;
+      flex-direction: row;
+      position: relative;
+      margin: 1rem 0;
+      gap: 1em;
+    }
+    .mdp-compare-col {
+      flex: 1;
+      border: 2px solid var(--comp-color);
+      border-radius: 8px;
+      background: var(--bg-color);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .mdp-compare-header {
+      background: var(--comp-color);
+      color: #fff;
+      padding: 0.8rem 1rem;
+      text-align: center;
+      font-weight: bold;
+      font-size: 1.1em;
+    }
+    .mdp-compare-body {
+      padding: 1.5rem;
+      flex: 1;
+    }
+    .mdp-compare-body > *:first-child { margin-top: 0; }
+    .mdp-compare-body > *:last-child { margin-bottom: 0; }
+    .mdp-compare-vs {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      background: #333;
+      color: #fff;
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      border: 3px solid #fff;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      z-index: 10;
+    }
+  ]]></style>
+</module>

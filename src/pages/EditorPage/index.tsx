@@ -1,0 +1,1322 @@
+import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
+import { Typography, Button, Menu, MenuItem, Divider, Dialog, DialogTitle, DialogContent, DialogActions } from '@mui/material';
+import FolderOpenIcon from '@mui/icons-material/FolderOpen';
+
+import { type SnippetsCategory, type ThemeOption, type FileType, getCustomItemStyle } from '../../types';
+
+import { MainHeader } from '../../components/layout/MainHeader';
+import { DrawioEditor } from '../../features/drawio/components/DrawioEditor';
+import { ConnectDialog } from '../../features/remote/components/ConnectDialog';
+import { PrintContainer } from '../../features/slide/components/PrintContainer';
+import { SlideOverviewGrid } from '../../features/slide/components/SlideOverviewGrid';
+
+import { SlideView } from '../../features/slide/components/SlideView';
+import { SlideEffectLayer } from '../../features/slide/components/SlideEffectLayer';
+import { SlideScaler } from '../../features/slide/components/SlideScaler';
+import { SlideControls } from '../../features/drawing/components/SlideControls';
+
+import { useDrawing } from '../../features/drawing/hooks/useDrawing';
+import { usePresentation } from '../../features/slide/hooks/usePresentation';
+import { useFileManager } from '../../features/fileTree/hooks/useFileManager';
+import { useAppInit } from './hooks/useAppInit';
+import { usePresentationSync } from '../../features/remote/hooks/usePresentationSync';
+import { useShortcuts } from './hooks/useShortcuts';
+import { useSlideProcessor } from '../../features/slide/hooks/useSlideProcessor';
+import { useDrawio } from '../../features/drawio/hooks/useDrawio';
+import { useAppActions } from './hooks/useAppActions';
+import { useEditorIntegration } from '../../features/editor/hooks/useEditorIntegration';
+import { apiClient, isElectron } from '../../api/apiClient';
+import { clearAllModules, registerModule, getAllModuleSnippets } from '../../features/modules/moduleManager';
+import { clearAllEffects, registerEffect, getAllEffectSnippets } from '../../features/effects/effectManager';
+import { applyModulesToMarkdown } from '../../features/modules/moduleProcessor';
+import { resolveImages, setLibraryImages, clearLibraryImages, parseInFileImageDefs, type ImageEntry } from '../../features/images/imageRegistry';
+import { addFileImageDef, editFileImageDef, deleteFileImageDef } from '../../features/images/imageDocEdits';
+import { storeLibraryImage, inlineLibraryImage, saveRegistry, deleteLibraryFile } from '../../features/images/imageLibraryStore';
+import { useBookmarks } from './hooks/useBookmarks';
+import { useCatalogSync } from '../../features/catalog/hooks/useCatalogSync';
+import { syncOfficialCatalog } from '../../features/catalog/syncService';
+import { useSlideRasterizer } from '../../features/remote/capture/useSlideRasterizer';
+import { DockProvider } from './dock/DockProvider';
+import type { SidebarSharedProps, PreviewSharedProps, SnippetsShared, ImagesShared, HeaderActions, EditorSharedProps } from './dock/DockContext';
+import { EditorDock } from './dock/EditorDock';
+import { RESET_LAYOUT_EVENT, SHOW_PANEL_EVENT } from './dock/dockShared';
+import { BASE_HEIGHT } from '../../constants';
+import { reportError, notify, confirmDialog, choiceDialog } from '../../components/error/errorReporter';
+
+import '../../App.css';
+import './EditorPage.css';
+
+const blobUrlCache = new Map<string, string>();
+
+function getBlobUrlFromBase64(dataUrl: string) {
+  if (blobUrlCache.has(dataUrl)) return blobUrlCache.get(dataUrl)!;
+  try {
+    const match = dataUrl.match(/^data:(image\/[^;]+);base64,(.*)$/);
+    if (!match) return dataUrl;
+    const bstr = atob(match[2]);
+    let n = bstr.length;
+    const u8arr = new Uint8Array(n);
+    while (n--) u8arr[n] = bstr.charCodeAt(n);
+    const url = URL.createObjectURL(new Blob([u8arr], { type: match[1] }));
+    blobUrlCache.set(dataUrl, url);
+    return url;
+  } catch (e) {
+    console.error("Blob URL conversion failed:", e);
+    return dataUrl;
+  }
+}
+
+export default function EditorPage() {
+  const [currentSlideIndex, setCurrentSlideIndex] = useState<number>(0);
+  const [prevSlidesLength, setPrevSlidesLength] = useState<number>(0);
+  const [snipets, setSnipets] = useState<SnippetsCategory[]>([]);
+  const [themes, setThemes] = useState<ThemeOption[]>([]);
+  const [isConnectDialogOpen, setIsConnectDialogOpen] = useState(false);
+  const [directDrawio, setDirectDrawio] = useState<{path: string, content: string} | null>(null);
+  const [themeMenuAnchor, setThemeMenuAnchor] = useState<HTMLElement | null>(null);
+
+  const [hasSelectedFolder, setHasSelectedFolder] = useState<boolean>(() => {
+    return !!localStorage.getItem('mdp_root_path');
+  });
+
+  const { drawings, addStroke, updateStrokes, syncDrawings, insertPage, undo, redo, clear, canUndo, canRedo } = useDrawing();
+  const [toolType, setToolType] = useState<'pen' | 'eraser' | 'select'>('pen');
+  const [penColor, setPenColor] = useState('#FF0000');
+  const [penWidth, setPenWidth] = useState(3);
+  const [stylusOnly, setStylusOnly] = useState(false);
+
+  const prevSlideIndexRef = useRef(0);
+  // Holds the latest active slide index so tab switches can save it back onto
+  // the outgoing tab (and restore it when that tab is reactivated).
+  const currentSlideIndexRef = useRef(currentSlideIndex);
+  useEffect(() => { currentSlideIndexRef.current = currentSlideIndex; }, [currentSlideIndex]);
+
+  const {
+    markdown, setMarkdown, debouncedMarkdown,
+    fileTree, fetchFileTree, handleManualRefresh,
+    lastUpdated, currentFileName, currentFileType,
+    setTemplateContent, markdownRef, isLoadingFile,
+    loadFile, handleSave, handleOpenFolder, isModified,
+    tabs, activeTabIndex, closeTab, switchTab, updateTabContent,
+    renameTab, closeTabsByPaths, reorderTabs, closeOtherTabs, closeAllTabs,
+    persistDrafts, clearDrafts
+  } = useFileManager({
+    setCurrentSlideIndex, syncDrawings,
+    onFileLoaded: useCallback(() => { prevSlideIndexRef.current = -1; }, []),
+    drawings, currentSlideIndexRef
+  });
+
+  const tabsRef = useRef(tabs);
+  const activeTabIndexRef = useRef(activeTabIndex);
+  useEffect(() => { tabsRef.current = tabs; activeTabIndexRef.current = activeTabIndex; }, [tabs, activeTabIndex]);
+
+  const editorRef = useMemo(() => ({
+    get current() {
+      const activeTab = tabsRef.current[activeTabIndexRef.current];
+      return activeTab?.editorRef?.current || null;
+    }
+  }), []);
+
+  const [tabToClose, setTabToClose] = useState<number | null>(null);
+
+  const isSyncingRef = useRef(false);
+
+  const handleTabCloseClick = useCallback((e: React.MouseEvent, index: number) => {
+    e.stopPropagation();
+    if (tabs[index].isModified) {
+      setTabToClose(index);
+    } else {
+      closeTab(index);
+    }
+  }, [tabs, closeTab]);
+
+  const handleConfirmCloseTab = async (save: boolean) => {
+    if (tabToClose === null) return;
+    const targetIndex = tabToClose;
+    const targetTab = tabs[targetIndex];
+    setTabToClose(null);
+
+    if (save) {
+      try {
+        let textToSave = targetTab.content;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const map = (window as any).__drawingMap as Map<string, string>;
+        if (map) {
+          const drawRegex = new RegExp('<' + '!--\\s*@drawing:\\s*([a-zA-Z0-9]+)\\s*--' + '>', 'g');
+          textToSave = textToSave.replace(drawRegex, (match, id) => {
+            const base64 = map.get(id);
+            return base64 ? '<' + '!-- @draw: ' + base64 + ' --' + '>' : match;
+          });
+        }
+        await apiClient.saveFile(targetTab.path, textToSave);
+      } catch (err) {
+        reportError('Failed to save the file.', { detail: err });
+        return;
+      }
+    }
+    closeTab(targetIndex);
+  };
+
+  useCatalogSync(fileTree, handleManualRefresh);
+
+  useEffect(() => {
+    const handleSyncStart = () => {
+      isSyncingRef.current = true;
+    };
+    const handleSyncEnd = () => {
+      isSyncingRef.current = false;
+      handleManualRefresh();
+    };
+
+    window.addEventListener('mdp-sync-start', handleSyncStart);
+    window.addEventListener('mdp-sync-end', handleSyncEnd);
+
+    return () => {
+      window.removeEventListener('mdp-sync-start', handleSyncStart);
+      window.removeEventListener('mdp-sync-end', handleSyncEnd);
+    };
+  }, [handleManualRefresh]);
+
+  const handleManualSync = useCallback(async () => {
+    const wantsToSync = await confirmDialog(
+      'Download and update to the latest official assets (modules, themes, templates, snippets) from GitHub?',
+      { title: 'Sync Official Assets', confirmText: 'Download', cancelText: 'Cancel' }
+    );
+    if (!wantsToSync) return;
+    try {
+      await syncOfficialCatalog();
+      notify('MDP official assets updated successfully.');
+      handleManualRefresh();
+    } catch (err) {
+      reportError('Sync failed. Please check your network connection.', { detail: err });
+    }
+  }, [handleManualRefresh]);
+
+  useEffect(() => {
+    if (isElectron()) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (window as any).electronAPI?.setModified?.(isModified);
+    }
+  }, [isModified]);
+
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isModified && !isElectron()) {
+        // Keep the unsaved work so it can be restored on the next visit.
+        persistDrafts();
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isModified, persistDrafts]);
+
+  useEffect(() => {
+    if (!isElectron()) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const api = (window as any).electronAPI;
+    if (!api?.onAppCloseRequest) return;
+    return api.onAppCloseRequest(async () => {
+      const choice = await choiceDialog(
+        'You have unsaved changes. Keep them as drafts so they are restored next time, or discard them?',
+        {
+          title: 'Unsaved Changes',
+          severity: 'warning',
+          options: [
+            { value: 'keep', label: 'Keep Drafts & Quit', variant: 'contained', color: 'primary' },
+            { value: 'discard', label: 'Discard & Quit', color: 'error' },
+            { value: 'cancel', label: 'Cancel' },
+          ],
+        },
+      );
+      if (choice === 'keep') {
+        persistDrafts();
+        api.confirmAppClose();
+      } else if (choice === 'discard') {
+        clearDrafts();
+        api.confirmAppClose();
+      }
+    });
+  }, [persistDrafts, clearDrafts]);
+
+  const modulePathsString = useMemo(() => {
+    const modulesDir = fileTree.find(node => node.name === '.modules');
+    const paths = modulesDir?.children
+      ?.filter(file => file.name.endsWith('.mdpmod.xml'))
+      ?.map(file => file.path) || [];
+    return paths.sort().join(',');
+  }, [fileTree]);
+
+  const effectPathsString = useMemo(() => {
+    // `.effects` is canonical; `.effect` is the legacy folder (still loaded).
+    const dirs = fileTree.filter(node => node.name === '.effects' || node.name === '.effect');
+    const paths = dirs.flatMap(d => d.children
+      ?.filter(file => file.name.endsWith('.mdpfx.xml'))
+      ?.map(file => file.path) || []);
+    return paths.sort().join(',');
+  }, [fileTree]);
+
+  // Incremented whenever modules/effects finish (re)loading. Threaded into slide
+  // generation so slides parsed before registration are re-parsed once their
+  // markdown transforms (and CSS) are available — otherwise they stay raw.
+  const [moduleEpoch, setModuleEpoch] = useState(0);
+
+  // Workspace-shared image-alias library (.images/registry.json). In-file `@image`
+  // defs override these on alias conflict (see resolveImages).
+  const [imageLibrary, setImageLibrary] = useState<Record<string, string>>({});
+  // Optional human descriptions for library aliases (alias → text).
+  const [imageLibraryDesc, setImageLibraryDesc] = useState<Record<string, string>>({});
+  // Optional tags for library aliases (alias → tag list), for search/filter.
+  const [imageLibraryTags, setImageLibraryTags] = useState<Record<string, string[]>>({});
+  // Image shown in the Preview panel instead of the slides (library preview).
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+
+  // A library-image preview overlays the slides in the Preview panel. Dismiss it
+  // when the active file changes, otherwise switching to a slide/image tab keeps
+  // showing the lingering image (the slide preview never appears until the user
+  // clicks "Back to slides").
+  useEffect(() => { setPreviewImage(null); }, [currentFileName]);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    const loadAllModules = async () => {
+      if (isSyncingRef.current) return;
+
+      clearAllModules();
+      clearAllEffects();
+
+      try {
+        const defaultModules = await apiClient.getModules();
+        for (const mod of defaultModules) {
+          if (!mod.isCustom) {
+            const content = await apiClient.getModuleContent(mod.path);
+            if (content && !isCancelled) {
+              registerModule(content);
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load default modules", err);
+      }
+
+      if (modulePathsString) {
+        const pathsToLoad = modulePathsString.split(',');
+        for (const path of pathsToLoad) {
+          if (isCancelled) return;
+          try {
+            const content = await apiClient.readFileText(path);
+            registerModule(content);
+          } catch (err) {
+            console.error(`Failed to load workspace module: ${path}`, err);
+          }
+        }
+      }
+
+      // Effects (.effect folder + bundled defaults) — registered separately from
+      // modules; they never transform markdown, only provide transition/build CSS+JS.
+      try {
+        const defaultEffects = await apiClient.getEffects();
+        for (const fx of defaultEffects) {
+          if (!fx.isCustom) {
+            const content = await apiClient.getEffectContent(fx.path);
+            if (content && !isCancelled) {
+              registerEffect(content);
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load default effects", err);
+      }
+
+      if (effectPathsString) {
+        const pathsToLoad = effectPathsString.split(',');
+        for (const path of pathsToLoad) {
+          if (isCancelled) return;
+          try {
+            const content = await apiClient.readFileText(path);
+            registerEffect(content);
+          } catch (err) {
+            console.error(`Failed to load workspace effect: ${path}`, err);
+          }
+        }
+      }
+
+      if (!isCancelled) {
+        const allModSnips = [...getAllModuleSnippets(), ...getAllEffectSnippets()];
+        setSnipets(prev => {
+          const cleanPrev = prev.map(c => ({
+            ...c,
+            items: c.items.filter(item => !item.isModule)
+          })).filter(c => c.items.length > 0);
+
+          allModSnips.forEach(snip => {
+            const catName = snip.category || 'Custom Modules';
+            const cat = cleanPrev.find(c => c.category === catName);
+            if (cat) cat.items.push(snip);
+            else cleanPrev.push({ category: catName, items: [snip] });
+          });
+
+          return cleanPrev;
+        });
+        // Modules + effects are now registered (markdown transforms + CSS ready):
+        // force a slide re-parse so anything rendered raw beforehand is fixed.
+        setModuleEpoch((e) => e + 1);
+      }
+    };
+
+    const timerId = setTimeout(() => {
+      if (modulePathsString !== '' || effectPathsString !== '' || !hasSelectedFolder) {
+        loadAllModules();
+      }
+    }, 300);
+
+    return () => {
+      isCancelled = true;
+      clearTimeout(timerId);
+    };
+  }, [modulePathsString, effectPathsString, hasSelectedFolder]);
+
+  const handleOpenFolderWithFlag = useCallback(async () => {
+    await handleOpenFolder();
+    setHasSelectedFolder(!!localStorage.getItem('mdp_root_path'));
+  }, [handleOpenFolder]);
+
+  const isImageFile = currentFileName?.match(/\.(png|jpe?g|gif|svg|webp)$/i);
+  const isSlideFile = currentFileName?.endsWith('.slide.md');
+
+  let effectiveFileType = currentFileType;
+  if (!currentFileName && markdown) {
+    effectiveFileType = 'markdown';
+  } else if (isImageFile) {
+    effectiveFileType = 'image';
+  } else if (isSlideFile) {
+    effectiveFileType = 'markdown';
+  } else if (currentFileName?.endsWith('.md') || currentFileType === 'markdown') {
+    effectiveFileType = 'text';
+  }
+
+  // --- Pinned preview source -------------------------------------------------
+  // The preview (and everything derived from `slides`: thumbnails, slideshow,
+  // presenter, remote, print) follows ONLY slide and image files. While a
+  // non-previewable text file is active — e.g. a theme `.css`, a `*.mdpmod.xml`
+  // module or a `*.mdpfx.xml` effect — the preview keeps rendering the last
+  // slide/image so theme/module/effect edits can be previewed live against a
+  // real deck. The editor pane still follows the active tab; saving the
+  // edited asset bumps `lastUpdated` / reloads modules (`moduleEpoch`), which
+  // re-runs the live pipeline below against the pinned source.
+  const isPreviewableActive = effectiveFileType === 'image' || effectiveFileType === 'markdown';
+  const [previewSource, setPreviewSource] = useState<{ fileName: string | null; fileType: FileType; md: string }>(
+    () => (effectiveFileType === 'image' || effectiveFileType === 'markdown')
+      ? { fileName: currentFileName, fileType: effectiveFileType, md: debouncedMarkdown }
+      : { fileName: null, fileType: 'markdown', md: '' }
+  );
+  // Adjust during render (React-recommended) so switching to a slide updates the
+  // preview without a one-frame lag; a non-previewable active tab leaves it frozen.
+  if (isPreviewableActive && (previewSource.fileName !== currentFileName || previewSource.fileType !== effectiveFileType || previewSource.md !== debouncedMarkdown)) {
+    setPreviewSource({ fileName: currentFileName, fileType: effectiveFileType, md: debouncedMarkdown });
+  }
+  const previewFileName = previewSource.fileName;
+  const previewFileType = previewSource.fileType;
+  const previewMarkdown = previewSource.md;
+
+  const basePath = useMemo(() => {
+    if (!previewFileName) return '';
+    const parts = previewFileName.split('/');
+    parts.pop();
+    return parts.join('/');
+  }, [previewFileName]);
+
+  const {
+    isDrawioModalOpen, setIsDrawioModalOpen, drawioEditTarget,
+    setDrawioButtonPos, setDrawioEditTarget, handleDrawioSave
+  } = useDrawio(editorRef, setMarkdown, markdownRef);
+
+  const processedMarkdown = useMemo(() => {
+    if (!previewMarkdown) return '';
+    // Resolve image aliases FIRST: strip `@image` def blocks and expand
+    // `![alt](@alias)` references to real urls/data. Done before everything else
+    // so modules, builds, marked, print and the remote rasterizer are all
+    // alias-aware, and resolved data URIs get the data:→blob: optimization below.
+    const imgPrefix = isElectron() ? 'mdp-file://' : '/files/';
+    let md = resolveImages(previewMarkdown, imageLibrary, (p) => `${imgPrefix}${p.replace(/^\//, '')}`).markdown;
+    md = applyModulesToMarkdown(md);
+    md = md.replace(/([，．、。])\$/g, '$1 $');
+    md = md.replace(/\$([^\x20-\x7E\s])/g, '$ $1');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return md.replace(/!\[([^\]]*)\]\((data:image\/[^)]+)\)/g, (_: any, alt: any, dataUrl: any) => {
+      const blobUrl = getBlobUrlFromBase64(dataUrl);
+      return `![${alt}](${blobUrl})`;
+    });
+  }, [previewMarkdown, imageLibrary]);
+
+  const { baseUrl, globalContext, slides: mdSlides, slideSize: mdSlideSize, slideStyleVariables, themeCssUrl } = useSlideProcessor(
+    previewFileName, previewFileType, processedMarkdown, lastUpdated, themes, moduleEpoch
+  );
+
+  const imageSlides = useMemo(() => {
+    if (previewFileType !== 'image' || !previewFileName) return null;
+    const src = `${isElectron() ? 'mdp-file://' : '/files/'}${previewFileName.split('/').map(encodeURIComponent).join('/')}?t=${lastUpdated}`;
+    const html = `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#ffffff;"><img src="${src}" style="max-width:100%;max-height:100%;object-fit:contain;" /></div>`;
+    return [{ html, raw: '', isHidden: false, isCover: false, pageNumber: 1, className: '', header: '', footer: '' }];
+  }, [previewFileType, previewFileName, lastUpdated]);
+
+  const slides = imageSlides ?? mdSlides;
+  const slideSize = useMemo(
+    () => (imageSlides ? { width: (BASE_HEIGHT * 16) / 9, height: BASE_HEIGHT } : mdSlideSize),
+    [imageSlides, mdSlideSize],
+  );
+
+  if (slides.length !== prevSlidesLength) {
+    setPrevSlidesLength(slides.length);
+    if (slides.length > 0 && currentSlideIndex >= slides.length) {
+      setCurrentSlideIndex(slides.length - 1);
+    } else if (slides.length === 0 && currentSlideIndex > 0) {
+      setCurrentSlideIndex(0);
+    }
+  }
+
+  useAppInit(fetchFileTree, loadFile, setTemplateContent, setSnipets, setThemes);
+
+  // Re-fetch the theme list whenever the file tree changes (after sync, create,
+  // rename, delete, or manual refresh) so newly added themes show up in the
+  // @theme selector and their CSS resolves and applies.
+  useEffect(() => {
+    apiClient.getThemes().then(setThemes).catch(err => console.error('Failed to load themes', err));
+  }, [fileTree]);
+
+  // Load the workspace-shared image-alias library (.images/registry.json). It is
+  // async like modules, so bump moduleEpoch to force a slide re-parse once ready.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const text = await apiClient.readFileText('.images/registry.json');
+        const parsed = JSON.parse(text);
+        const map: Record<string, string> = (parsed && parsed.images) || {};
+        const desc: Record<string, string> = (parsed && parsed.descriptions) || {};
+        const tags: Record<string, string[]> = (parsed && parsed.tags) || {};
+        if (cancelled) return;
+        setImageLibrary(map);
+        setImageLibraryDesc(desc);
+        setImageLibraryTags(tags);
+        setLibraryImages(map);
+        setModuleEpoch((e) => e + 1);
+      } catch {
+        // No library file yet (or unreadable) — leave the library empty.
+        if (cancelled) return;
+        setImageLibrary({});
+        setImageLibraryDesc({});
+        setImageLibraryTags({});
+        clearLibraryImages();
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [fileTree]);
+
+  const {
+    isSlideshow, setIsSlideshow, slideshowRef, isSlideOverview, setIsSlideOverview,
+    toggleSlideOverview, mode, setMode, showControls, setShowControls, moveSlide, toggleSlideshow,
+    step, setStep
+  } = usePresentation(slides, currentSlideIndex, setCurrentSlideIndex);
+
+  const { handleAddBlankSlide, handleSaveDrawingsToMarkdown } = useAppActions({
+    currentFileName, markdown, setMarkdown, markdownRef, editorRef, drawings, insertPage, syncDrawings
+  });
+
+  const { bookmarks, toggleBookmark, isBookmarked, reorderBookmarks, updateBookmark } = useBookmarks();
+  const isInitialMount = useRef(true);
+  const autoSaveTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    let refreshTimer: number | null = null;
+    const scheduleRefresh = () => {
+      if (isSyncingRef.current) return;
+      if (refreshTimer) window.clearTimeout(refreshTimer);
+      refreshTimer = window.setTimeout(() => {
+        fetchFileTree();
+      }, 500);
+    };
+
+    const handleFileSaved = async (e: Event) => {
+      if (isSyncingRef.current) return;
+
+      const { path, content } = (e as CustomEvent).detail;
+
+      if (path.includes('.modules/') && path.endsWith('.mdpmod.xml')) {
+        const mod = registerModule(content);
+        if (mod) {
+          const allModSnips = getAllModuleSnippets();
+          setSnipets(prev => {
+            const cleanPrev = prev.map(c => ({
+              ...c,
+              items: c.items.filter(item => !item.isModule)
+            })).filter(c => c.items.length > 0);
+
+            allModSnips.forEach(snip => {
+              const catName = snip.category || 'Custom Modules';
+              const cat = cleanPrev.find(c => c.category === catName);
+              if (cat) cat.items.push(snip);
+              else cleanPrev.push({ category: catName, items: [snip] });
+            });
+            return cleanPrev;
+          });
+        }
+      } else if ((path.includes('.effects/') || path.includes('.effect/')) && path.endsWith('.mdpfx.xml')) {
+        // Re-register the edited effect so its CSS/JS updates live, then refresh
+        // snippets (effect snippets share the isModule flag).
+        registerEffect(content);
+        const allModSnips = [...getAllModuleSnippets(), ...getAllEffectSnippets()];
+        setSnipets(prev => {
+          const cleanPrev = prev.map(c => ({
+            ...c,
+            items: c.items.filter(item => !item.isModule)
+          })).filter(c => c.items.length > 0);
+          allModSnips.forEach(snip => {
+            const catName = snip.category || 'Custom Modules';
+            const cat = cleanPrev.find(c => c.category === catName);
+            if (cat) cat.items.push(snip);
+            else cleanPrev.push({ category: catName, items: [snip] });
+          });
+          return cleanPrev;
+        });
+      } else if (path === '.images/registry.json' || path.endsWith('/.images/registry.json')) {
+        // The shared image-alias library changed (panel write or hand-edit):
+        // reload it and force a slide re-parse.
+        try {
+          const parsed = JSON.parse(content);
+          const map: Record<string, string> = (parsed && parsed.images) || {};
+          const desc: Record<string, string> = (parsed && parsed.descriptions) || {};
+          const tags: Record<string, string[]> = (parsed && parsed.tags) || {};
+          setImageLibrary(map);
+          setImageLibraryDesc(desc);
+          setImageLibraryTags(tags);
+          setLibraryImages(map);
+          setModuleEpoch((e) => e + 1);
+        } catch { /* ignore malformed registry */ }
+      } else if (path.includes('.snippets/') || path.includes('.templates/') || path.includes('.themes/')) {
+        scheduleRefresh();
+      }
+    };
+
+    window.addEventListener('mdp-file-saved', handleFileSaved);
+    return () => {
+      window.removeEventListener('mdp-file-saved', handleFileSaved);
+      if (refreshTimer) window.clearTimeout(refreshTimer);
+    };
+  }, [fetchFileTree, setSnipets]);
+
+  useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
+    if (autoSaveTimerRef.current) {
+      window.clearTimeout(autoSaveTimerRef.current);
+    }
+    autoSaveTimerRef.current = window.setTimeout(() => {
+      handleSaveDrawingsToMarkdown();
+      console.log("Drawings auto-saved!");
+    }, 2000);
+    return () => {
+      if (autoSaveTimerRef.current) {
+        window.clearTimeout(autoSaveTimerRef.current);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drawings]);
+
+  const handleUpdateNote = useCallback((pageIndex: number, newNote: string) => {
+    const view = editorRef.current?.view;
+    if (!view) return;
+
+    const doc = view.state.doc;
+    let startLine = 1;
+    let endLine = doc.lines;
+    let currentBlock = 0;
+    let inCodeBlock = false;
+    const targetBlock = pageIndex + 1;
+
+    for (let i = 1; i <= doc.lines; i++) {
+      const text = doc.line(i).text.trim();
+      if (text.startsWith('```')) inCodeBlock = !inCodeBlock;
+      if (!inCodeBlock && /^---$/.test(text)) {
+        if (currentBlock === targetBlock) { endLine = i - 1; break; }
+        currentBlock++;
+        if (currentBlock === targetBlock) { startLine = i + 1; }
+      }
+    }
+
+    const startPos = doc.line(startLine).from;
+    const endPos = Math.max(startPos, doc.line(endLine).to);
+    const slideText = doc.sliceString(startPos, endPos);
+
+    let newSlideText = slideText;
+
+    const noteRegex = new RegExp('<' + '!--\\s*@note:([\\s\\S]*?)--' + '>', 'g');
+    const match = slideText.match(noteRegex);
+
+    const prefix = '<' + '!-- @note:\n';
+    const suffix = '\n--' + '>';
+
+    if (match) {
+      const lastMatch = match[match.length - 1];
+      const replaceIndex = slideText.lastIndexOf(lastMatch);
+      const replacement = prefix + newNote + suffix;
+      newSlideText = slideText.substring(0, replaceIndex) + replacement + slideText.substring(replaceIndex + lastMatch.length);
+    } else {
+      const appended = '\n\n' + prefix + newNote + suffix + '\n';
+      newSlideText = slideText.trimEnd() + appended;
+    }
+
+    view.dispatch({ changes: { from: startPos, to: endPos, insert: newSlideText } });
+  }, [editorRef]);
+
+  const { rasterize, host: rasterHost } = useSlideRasterizer();
+
+  const [remoteActive, setRemoteActive] = useState(false);
+  const [remotePort, setRemotePort] = useState<number | null>(null);
+  const [remoteIps, setRemoteIps] = useState<{ name: string; address: string }[]>([]);
+
+  const activateRemote = useCallback(async () => {
+    setRemoteActive(true);
+    if (isElectron()) {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const info = await (window as any).electronAPI?.startRemoteServer?.();
+        if (info) { setRemotePort(info.port); setRemoteIps(info.ips || []); }
+      } catch (e) {
+        reportError('Failed to start the remote server.', { detail: e });
+      }
+    }
+  }, []);
+
+  // For remote/rasterization, inline-data images are converted to blob: in the editor
+  // for performance; rewrite them back to data: so they resolve off the editor document.
+  const syncSlides = useMemo(() => {
+    const reverse = new Map<string, string>();
+    blobUrlCache.forEach((blob, data) => reverse.set(blob, data));
+    if (reverse.size === 0) return slides;
+    return slides.map((s) => {
+      if (!s.html || !s.html.includes('blob:')) return s;
+      return { ...s, html: s.html.replace(/blob:[^"')\s]+/g, (m: string) => reverse.get(m) || m) };
+    });
+  }, [slides]);
+
+  const selectSlideFromOverview = useCallback((idx: number) => {
+    setStep(0);
+    setCurrentSlideIndex(idx);
+    setIsSlideOverview(false);
+  }, [setIsSlideOverview, setStep, setCurrentSlideIndex]);
+
+  const { channelId, token, send, imagePrep } = usePresentationSync(
+    syncSlides, currentSlideIndex, slideSize, globalContext, baseUrl, themeCssUrl, lastUpdated, drawings,
+    moveSlide, addStroke, clear, undo, redo, handleAddBlankSlide, updateStrokes, handleUpdateNote,
+    remotePort, rasterize, remoteActive, basePath, isSlideOverview, toggleSlideOverview, selectSlideFromOverview,
+    step
+  );
+
+  const handleUpdateStrokes = useCallback((pageIndex: number, indices: number[], dx: number, dy: number) => {
+    if (updateStrokes) updateStrokes(pageIndex, indices, dx, dy);
+    if (channelId) send({ type: 'UPDATE_STROKES', pageIndex, indices, dx, dy, channelId });
+  }, [updateStrokes, channelId, send]);
+
+  const handleEditDirectDrawio = useCallback(async () => {
+    if (!currentFileName) return;
+    try {
+      const text = await apiClient.readFileText(currentFileName);
+      const bytes = new TextEncoder().encode(text);
+      const binString = Array.from(bytes, (byte) => String.fromCodePoint(byte)).join("");
+      const base64 = btoa(binString);
+
+      setDirectDrawio({ path: currentFileName, content: base64 });
+    } catch (e) {
+      reportError('Failed to open the diagram for editing.', { detail: e });
+    }
+  }, [currentFileName]);
+
+  const openConnectDialog = useCallback(() => {
+    activateRemote();
+    setIsConnectDialogOpen(true);
+  }, [activateRemote]);
+
+  const handleDirectDrawioSave = async (dataUri: string) => {
+    if (!directDrawio) return;
+    try {
+      let svgText = dataUri;
+      if (dataUri.startsWith('data:image/svg+xml;base64,')) {
+        const base64 = dataUri.split(',')[1];
+        const binStr = atob(base64);
+        const bytes = new Uint8Array(binStr.length);
+        for (let i = 0; i < binStr.length; i++) bytes[i] = binStr.charCodeAt(i);
+        svgText = new TextDecoder('utf-8').decode(bytes);
+      }
+      await apiClient.saveFile(directDrawio.path, svgText);
+      setDirectDrawio(null);
+      handleManualRefresh();
+      loadFile(directDrawio.path, true);
+    } catch (e) {
+      reportError('Failed to save the diagram.', { detail: e });
+    }
+  };
+
+  useShortcuts(
+    isSlideshow, setIsSlideshow, mode, setMode, showControls, setShowControls,
+    currentSlideIndex, moveSlide, undo, redo, clear, handleAddBlankSlide, send, channelId
+  );
+
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'F5') {
+        e.preventDefault();
+        if (!isSlideshow) {
+          toggleSlideshow();
+        }
+      } else if (e.key === 'Escape' && isSlideOverview) {
+        e.preventDefault();
+        setIsSlideOverview(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown, { passive: false });
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [isSlideshow, toggleSlideshow, isSlideOverview, setIsSlideOverview]);
+
+  const { onEditorUpdate, extensions, handleInsertText } = useEditorIntegration({
+    editorRef, currentFileName,
+    currentFileType: effectiveFileType, currentSlideIndex, setCurrentSlideIndex, slides,
+    isLoadingFile, prevSlideIndexRef, setDrawioButtonPos, setDrawioEditTarget,
+    handleSave, setMarkdown, markdownRef
+  });
+
+  const openPresenterTool = useCallback(() => {
+    const baseUrl = window.location.href.split('#')[0];
+    window.open(`${baseUrl}#/presenter?channel=${channelId}&token=${encodeURIComponent(token)}`, '_blank', 'width=1000,height=800');
+  }, [channelId, token]);
+
+  const handleSwitchToRemote = useCallback(() => {
+    const baseUrl = window.location.href.split('#')[0];
+    window.location.href = `${baseUrl}#/remote`;
+  }, []);
+
+  const handlePrint = useCallback(async () => {
+    const originalTitle = document.title;
+    let baseName = 'MDP_Presentation';
+    if (currentFileName) {
+      baseName = currentFileName.split('/').pop() || 'MDP_Presentation';
+      baseName = baseName.replace(/\.slide\.md$/i, '').replace(/\.md$/i, '');
+    }
+    const safeTitle = baseName.replace(/[\\/:*?"<>|\n\r\t]/g, '_').trim() || 'MDP_Presentation';
+    document.title = safeTitle;
+
+    // Defensive: clear any print styles a previous (interrupted) print may have
+    // left behind, so the off-screen print container can never get stuck visible.
+    document.getElementById('preload-print-style')?.remove();
+    document.getElementById('dynamic-print-size')?.remove();
+
+    const preloadStyle = document.createElement('style');
+    preloadStyle.id = 'preload-print-style';
+    preloadStyle.innerHTML = `
+      @media screen {
+        .print-container {
+          display: block !important;
+          position: absolute !important;
+          top: 0; left: 0;
+          width: 100vw !important;
+          height: 100vh !important;
+          opacity: 0.01 !important;
+          z-index: -9999 !important;
+          pointer-events: none !important;
+          overflow: hidden !important;
+        }
+      }
+    `;
+    document.head.appendChild(preloadStyle);
+
+    await document.fonts.ready;
+
+    const printImages = Array.from(document.querySelectorAll('.print-container img')) as HTMLImageElement[];
+    await Promise.all(printImages.map(img => {
+      if (img.complete && img.naturalHeight !== 0) return Promise.resolve();
+      return new Promise(resolve => {
+        img.addEventListener('load', resolve, { once: true });
+        img.addEventListener('error', resolve, { once: true });
+      });
+    }));
+
+    await new Promise(resolve => setTimeout(resolve, 800));
+
+    const currentText = markdown || '';
+    const aspectRegex = new RegExp("<" + "!--\\s*@aspect\\s+([0-9.]+:[0-9.]+)\\s*--" + ">");
+    const aspectMatch = currentText.match(aspectRegex);
+    const ratioStr = aspectMatch ? aspectMatch[1] : '16:9';
+
+    const pageWidth = 1920;
+    let pageHeight = 1080;
+
+    const ratioParts = ratioStr.split(':');
+    if (ratioParts.length === 2) {
+      const rw = parseFloat(ratioParts[0]);
+      const rh = parseFloat(ratioParts[1]);
+      if (!isNaN(rw) && !isNaN(rh) && rw > 0) {
+        pageHeight = Math.round((pageWidth / rw) * rh);
+      }
+    }
+
+    const dynamicPrintStyle = document.createElement('style');
+    dynamicPrintStyle.id = 'dynamic-print-size';
+    dynamicPrintStyle.innerHTML = `
+      @media print {
+        @page {
+          size: ${pageWidth}px ${pageHeight}px !important;
+          margin: 0 !important;
+        }
+        * {
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+        }
+        .print-container {
+          opacity: 1 !important;
+          display: block !important;
+          visibility: visible !important;
+        }
+      }
+    `;
+    document.head.appendChild(dynamicPrintStyle);
+
+    const cleanup = () => {
+      document.title = originalTitle;
+      document.getElementById('dynamic-print-size')?.remove();
+      document.getElementById('preload-print-style')?.remove();
+    };
+    try {
+      if (isElectron()) {
+        await apiClient.exportPdf(safeTitle);
+      } else {
+        window.print();
+      }
+    } finally {
+      // Always restore — even if export throws — so the off-screen print
+      // container never stays mounted (a stuck giant blank area).
+      setTimeout(cleanup, 1500);
+      // Hard safety net in case the timer is ever lost.
+      setTimeout(cleanup, 8000);
+    }
+  }, [currentFileName, markdown]);
+
+  const handleFileSelect = useCallback((path: string, isBinary?: boolean) => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.has('url')) {
+      url.searchParams.delete('url');
+      window.history.replaceState({}, '', url.toString() || window.location.pathname);
+    }
+    loadFile(path, isBinary);
+  }, [loadFile]);
+
+  useEffect(() => {
+    const handleOpenThemeSelector = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      setThemeMenuAnchor(customEvent.detail.target);
+    };
+    document.addEventListener('open-theme-selector', handleOpenThemeSelector);
+    return () => document.removeEventListener('open-theme-selector', handleOpenThemeSelector);
+  }, []);
+
+  const handleThemeChange = (newThemeName: string) => {
+    if (editorRef.current?.view) {
+      const view = editorRef.current.view;
+      const text = view.state.doc.toString();
+      const themeRegex = new RegExp("<" + "!--\\s*@theme\\s+([^>]+?)\\s*--" + ">");
+      const match = text.match(themeRegex);
+      const newThemeTag = "<" + "!-- @theme " + newThemeName + " --" + ">";
+
+      if (match && match.index !== undefined) {
+         view.dispatch({
+           changes: { from: match.index, to: match.index + match[0].length, insert: newThemeTag }
+         });
+      } else {
+         view.dispatch({
+           changes: { from: 0, insert: newThemeTag + "\n" }
+         });
+      }
+    }
+    setThemeMenuAnchor(null);
+  };
+
+  const onEditDrawio = currentFileName?.match(/\.drawio\.svg$/i) ? handleEditDirectDrawio : undefined;
+
+  const sidebarSlice = useMemo<SidebarSharedProps>(() => ({
+    currentFileName, currentFileType: previewFileType, slides, currentSlideIndex, slideSize,
+    drawings, fileTree, onSlideSelect: setCurrentSlideIndex, onFileSelect: handleFileSelect,
+    onManualRefresh: handleManualRefresh, onNav: moveSlide, handleOpenFolder,
+    bookmarks, isBookmarked, onToggleBookmark: toggleBookmark,
+    onReorderBookmark: reorderBookmarks, onUpdateBookmark: updateBookmark,
+    onRenameFile: renameTab, onDeleteFiles: closeTabsByPaths,
+  }), [currentFileName, previewFileType, slides, currentSlideIndex, slideSize, drawings, fileTree,
+    setCurrentSlideIndex, handleFileSelect, handleManualRefresh, moveSlide, handleOpenFolder,
+    bookmarks, isBookmarked, toggleBookmark, reorderBookmarks, updateBookmark, renameTab, closeTabsByPaths]);
+
+  const previewSlice = useMemo<PreviewSharedProps>(() => ({
+    effectiveFileType: previewFileType, slides, currentSlideIndex, slideSize, basePath, drawings,
+    mode, setMode, showControls, moveSlide, handleAddBlankSlide, clear, send, channelId,
+    toolType, setToolType, penColor, setPenColor, penWidth, setPenWidth,
+    canUndo, canRedo, undo, redo, stylusOnly, setStylusOnly, addStroke, handleUpdateStrokes,
+    // While the fullscreen slideshow is active it owns interactive-module logic,
+    // so the (hidden) editor preview must mirror to avoid double-running it.
+    moduleRole: isSlideshow ? 'mirror' : 'owner',
+    previewImage,
+    onClosePreviewImage: () => setPreviewImage(null),
+    onEditDrawio,
+  }), [previewFileType, slides, currentSlideIndex, slideSize, basePath, drawings, mode, setMode,
+    showControls, moveSlide, handleAddBlankSlide, clear, send, channelId, toolType, setToolType,
+    penColor, setPenColor, penWidth, setPenWidth, canUndo, canRedo, undo, redo, stylusOnly,
+    setStylusOnly, addStroke, handleUpdateStrokes, isSlideshow, onEditDrawio, previewImage]);
+
+  const snippetsSlice = useMemo<SnippetsShared>(() => ({
+    snippets: snipets, onInsertText: handleInsertText,
+  }), [snipets, handleInsertText]);
+
+  // --- Image-alias panel ---
+  const [imageFocusAlias, setImageFocusAlias] = useState<string | null>(null);
+  // A request to open the edit dialog for an alias (from the editor's @image
+  // [edit] widget). A fresh object each click; cleared once the panel handles it.
+  const [imageEditRequest, setImageEditRequest] = useState<{ alias: string } | null>(null);
+
+  // Commit a new library map to memory (state + registry singleton) and force a
+  // slide re-parse. Persisting the small registry.json is the caller's job (it
+  // also writes per-image binary files via the imageLibraryStore helpers).
+  const commitLibrary = useCallback((map: Record<string, string>, desc: Record<string, string>, tags: Record<string, string[]>) => {
+    setImageLibrary(map);
+    setImageLibraryDesc(desc);
+    setImageLibraryTags(tags);
+    setLibraryImages(map);
+    setModuleEpoch((e) => e + 1);
+  }, []);
+
+  const imageLibraryRef = useRef(imageLibrary);
+  useEffect(() => { imageLibraryRef.current = imageLibrary; }, [imageLibrary]);
+  const imageLibraryDescRef = useRef(imageLibraryDesc);
+  useEffect(() => { imageLibraryDescRef.current = imageLibraryDesc; }, [imageLibraryDesc]);
+  const imageLibraryTagsRef = useRef(imageLibraryTags);
+  useEffect(() => { imageLibraryTagsRef.current = imageLibraryTags; }, [imageLibraryTags]);
+
+  // Editing an existing SVG (drawio) image alias in the drawio editor.
+  const [drawioImageEdit, setDrawioImageEdit] = useState<{ alias: string; scope: 'file' | 'library'; base64Xml: string } | null>(null);
+  // Creating/editing a drawio diagram from the Images panel's Add/Edit dialog.
+  // `initial` is the existing SVG (data URI) to load, or '' for a blank diagram.
+  const [drawioForAdd, setDrawioForAdd] = useState<{ initial: string } | null>(null);
+
+  const handleEditImageDrawio = useCallback(async (entry: ImageEntry) => {
+    try {
+      const svg = entry.value.startsWith('data:') ? entry.value : await inlineLibraryImage(entry.value);
+      setDrawioImageEdit({ alias: entry.alias, scope: entry.scope, base64Xml: svg });
+    } catch (e) {
+      reportError('Failed to open the diagram for editing.', { detail: e });
+    }
+  }, []);
+
+  const handleDrawioImageSave = useCallback(async (dataUri: string) => {
+    const cur = drawioImageEdit;
+    setDrawioImageEdit(null);
+    if (!cur) return;
+    try {
+      if (cur.scope === 'file') {
+        const v = editorRef.current?.view; if (v) editFileImageDef(v, cur.alias, dataUri);
+      } else {
+        const stored = await storeLibraryImage(cur.alias, dataUri);
+        const next = { ...imageLibraryRef.current, [cur.alias]: stored };
+        commitLibrary(next, imageLibraryDescRef.current, imageLibraryTagsRef.current);
+        await saveRegistry(next, imageLibraryDescRef.current, imageLibraryTagsRef.current);
+      }
+    } catch (e) {
+      reportError('Failed to save the diagram.', { detail: e });
+    }
+  }, [drawioImageEdit, commitLibrary, editorRef]);
+
+  // The Add dialog asked to create/edit a diagram; hand the saved SVG back to it.
+  const handleDrawioForAddSave = useCallback((dataUri: string) => {
+    setDrawioForAdd(null);
+    window.dispatchEvent(new CustomEvent('mdp-drawio-image-result', { detail: { value: dataUri } }));
+  }, []);
+
+  useEffect(() => {
+    const open = (e: Event) => {
+      const value = (e as CustomEvent).detail?.value as string | undefined;
+      // If the dialog already holds an SVG (editing an existing diagram), open it
+      // in drawio instead of a blank canvas; resolve a library path to its data.
+      (async () => {
+        let initial = '';
+        if (value && (value.startsWith('data:image/svg+xml') || /\.svg(\?|$)/i.test(value))) {
+          initial = value.startsWith('data:') ? value : await inlineLibraryImage(value);
+        }
+        setDrawioForAdd({ initial });
+      })();
+    };
+    window.addEventListener('mdp-open-drawio-for-image', open);
+    return () => window.removeEventListener('mdp-open-drawio-for-image', open);
+  }, []);
+
+  // Open the Images panel (if hidden) and focus the alias clicked in the editor.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const alias = (e as CustomEvent).detail?.alias ?? null;
+      setImageFocusAlias(alias);
+      // Request the panel open the edit dialog for this alias (handled on mount,
+      // so it works even when the panel was closed). New object → re-clickable.
+      if (alias) setImageEditRequest({ alias });
+      window.dispatchEvent(new CustomEvent(SHOW_PANEL_EVENT, { detail: { id: 'images' } }));
+    };
+    document.addEventListener('open-image-manager', handler);
+    return () => document.removeEventListener('open-image-manager', handler);
+  }, []);
+
+  const imagesSlice = useMemo<ImagesShared>(() => {
+    const fileImages: ImageEntry[] = parseInFileImageDefs(markdown).ranges.map(
+      (r) => ({ alias: r.alias, value: r.value, scope: 'file' as const, description: r.description, tags: r.tags }),
+    );
+    const libraryImagesArr: ImageEntry[] = Object.entries(imageLibrary).map(
+      ([alias, value]) => ({ alias, value, scope: 'library' as const, description: imageLibraryDesc[alias], tags: imageLibraryTags[alias] }),
+    );
+    const view = () => editorRef.current?.view;
+    const resolveThumb = (value: string) => {
+      if (/^(data:|https?:|blob:)/.test(value)) return value;
+      const prefix = isElectron() ? 'mdp-file://' : '/files/';
+      return value.startsWith('/') ? `${prefix}${value.slice(1)}` : `${baseUrl}${value}`;
+    };
+
+    return {
+      fileImages,
+      libraryImages: libraryImagesArr,
+      focusAlias: imageFocusAlias,
+      editRequest: imageEditRequest,
+      onEditHandled: () => setImageEditRequest(null),
+      onEditDrawio: handleEditImageDrawio,
+      onPreview: (entry) => { setPreviewImage(resolveThumb(entry.value)); window.dispatchEvent(new CustomEvent(SHOW_PANEL_EVENT, { detail: { id: 'preview' } })); },
+      onInsertReference: (alias) => handleInsertText(`![image](@${alias})`),
+      resolveThumb,
+      // --- library writes go through imageLibraryStore: data images become
+      //     individual .images/<alias>.<ext> files, registry.json stays small ---
+      onAddImage: (scope, alias, value, description, tags) => {
+        if (scope === 'file') { const v = view(); if (v) addFileImageDef(v, alias, value, description, tags); return; }
+        (async () => {
+          try {
+            const stored = await storeLibraryImage(alias, value);
+            const next = { ...imageLibraryRef.current, [alias]: stored };
+            const nextDesc = { ...imageLibraryDescRef.current };
+            if (description) nextDesc[alias] = description; else delete nextDesc[alias];
+            const nextTags = { ...imageLibraryTagsRef.current };
+            if (tags && tags.length) nextTags[alias] = tags; else delete nextTags[alias];
+            commitLibrary(next, nextDesc, nextTags);
+            await saveRegistry(next, nextDesc, nextTags);
+          } catch (e) { reportError('Failed to add the image to the library.', { detail: e }); }
+        })();
+      },
+      onEditImage: (scope, alias, value, description, tags) => {
+        if (scope === 'file') { const v = view(); if (v) editFileImageDef(v, alias, value, description, tags); return; }
+        (async () => {
+          try {
+            const stored = await storeLibraryImage(alias, value);
+            const next = { ...imageLibraryRef.current, [alias]: stored };
+            const nextDesc = { ...imageLibraryDescRef.current };
+            if (description) nextDesc[alias] = description; else delete nextDesc[alias];
+            const nextTags = { ...imageLibraryTagsRef.current };
+            if (tags && tags.length) nextTags[alias] = tags; else delete nextTags[alias];
+            commitLibrary(next, nextDesc, nextTags);
+            await saveRegistry(next, nextDesc, nextTags);
+          } catch (e) { reportError('Failed to update the library image.', { detail: e }); }
+        })();
+      },
+      onDeleteImage: async (scope, alias) => {
+        const ok = await confirmDialog(`Delete image alias “${alias}”? References to it will stop resolving.`, { severity: 'warning', confirmText: 'Delete' });
+        if (!ok) return;
+        if (scope === 'file') { const v = view(); if (v) deleteFileImageDef(v, alias); return; }
+        try {
+          const old = imageLibraryRef.current[alias];
+          const next = { ...imageLibraryRef.current }; delete next[alias];
+          const nextDesc = { ...imageLibraryDescRef.current }; delete nextDesc[alias];
+          const nextTags = { ...imageLibraryTagsRef.current }; delete nextTags[alias];
+          commitLibrary(next, nextDesc, nextTags);
+          await saveRegistry(next, nextDesc, nextTags);
+          if (old) await deleteLibraryFile(old);
+        } catch (e) { reportError('Failed to delete the library image.', { detail: e }); }
+      },
+      onMove: (alias, to) => {
+        const v = view();
+        if (to === 'library') {
+          const entry = fileImages.find((e) => e.alias === alias);
+          if (!entry) return;
+          (async () => {
+            try {
+              const stored = await storeLibraryImage(alias, entry.value); // write dest first
+              const next = { ...imageLibraryRef.current, [alias]: stored };
+              const nextDesc = { ...imageLibraryDescRef.current };
+              if (entry.description) nextDesc[alias] = entry.description; else delete nextDesc[alias];
+              const nextTags = { ...imageLibraryTagsRef.current };
+              if (entry.tags && entry.tags.length) nextTags[alias] = entry.tags; else delete nextTags[alias];
+              commitLibrary(next, nextDesc, nextTags);
+              await saveRegistry(next, nextDesc, nextTags);
+              if (v) deleteFileImageDef(v, alias); // then remove source
+            } catch (e) { reportError('Failed to move the image to the library.', { detail: e }); }
+          })();
+        } else {
+          const value = imageLibraryRef.current[alias];
+          if (value == null) return;
+          (async () => {
+            try {
+              const inlined = await inlineLibraryImage(value); // self-contained data/URL
+              if (v) addFileImageDef(v, alias, inlined, imageLibraryDescRef.current[alias], imageLibraryTagsRef.current[alias]); // write dest first
+              const next = { ...imageLibraryRef.current }; delete next[alias];
+              const nextDesc = { ...imageLibraryDescRef.current }; delete nextDesc[alias];
+              const nextTags = { ...imageLibraryTagsRef.current }; delete nextTags[alias];
+              commitLibrary(next, nextDesc, nextTags);
+              await saveRegistry(next, nextDesc, nextTags);
+            } catch (e) { reportError('Failed to move the image to the file.', { detail: e }); }
+          })();
+        }
+      },
+    };
+  }, [markdown, imageLibrary, imageLibraryDesc, imageLibraryTags, imageFocusAlias, imageEditRequest, handleInsertText, baseUrl, commitLibrary, handleEditImageDrawio, editorRef]);
+
+  const headerSlice = useMemo<HeaderActions>(() => ({
+    onOpenFolder: isElectron() ? handleOpenFolderWithFlag : undefined,
+    onSyncCatalog: handleManualSync,
+    onSwitchToRemote: handleSwitchToRemote,
+    onOpenConnectDialog: openConnectDialog,
+    onOpenPresenter: openPresenterTool,
+    onToggleSlideshow: toggleSlideshow,
+    onPrint: handlePrint,
+    onToggleOverview: toggleSlideOverview,
+    isSlideOverview,
+    canPresent: slides.length > 0,
+  }), [handleOpenFolderWithFlag, handleManualSync, handleSwitchToRemote, openConnectDialog,
+    openPresenterTool, toggleSlideshow, handlePrint, toggleSlideOverview, isSlideOverview, slides.length]);
+
+  const editorSlice: EditorSharedProps = {
+    tabs, activeTabIndex, currentFileName, effectiveFileType, markdown, lastUpdated,
+    extensions, switchTab, onTabClose: handleTabCloseClick,
+    reorderTabs, closeOtherTabs, closeAllTabs, updateTabContent, onEditorUpdate,
+    onInsertText: handleInsertText, onSave: handleSave, moveSlide,
+    isBookmarked, toggleBookmark, bookmarks, updateBookmark, handleEditDirectDrawio,
+  };
+
+  return (
+    <div className="container">
+      <DrawioEditor open={isDrawioModalOpen} onClose={() => setIsDrawioModalOpen(false)} initialBase64Xml={drawioEditTarget?.base64} onSave={handleDrawioSave} />
+      <DrawioEditor open={!!directDrawio} onClose={() => setDirectDrawio(null)} initialBase64Xml={directDrawio?.content} onSave={handleDirectDrawioSave} />
+      <DrawioEditor open={!!drawioImageEdit} onClose={() => setDrawioImageEdit(null)} initialBase64Xml={drawioImageEdit?.base64Xml} onSave={handleDrawioImageSave} />
+      <DrawioEditor open={!!drawioForAdd} onClose={() => setDrawioForAdd(null)} initialBase64Xml={drawioForAdd?.initial || undefined} onSave={handleDrawioForAddSave} />
+
+      <ConnectDialog open={isConnectDialogOpen} onClose={() => setIsConnectDialogOpen(false)} channelId={channelId} token={token} ipCandidates={remoteIps} port={remotePort} />
+
+      {rasterHost}
+
+      {imagePrep && (
+        <div style={{ position: 'fixed', bottom: 20, left: '50%', transform: 'translateX(-50%)', zIndex: 2000, background: 'rgba(30,30,30,0.92)', color: '#fff', padding: '10px 18px', borderRadius: 8, fontSize: '0.85rem', boxShadow: '0 4px 16px rgba(0,0,0,0.4)' }}>
+          Preparing remote slides… {imagePrep.done}/{imagePrep.total}
+        </div>
+      )}
+
+      <Menu
+        anchorEl={themeMenuAnchor}
+        open={Boolean(themeMenuAnchor)}
+        onClose={() => setThemeMenuAnchor(null)}
+      >
+        <MenuItem disabled sx={{ opacity: 1, fontWeight: 'bold', color: 'primary.main', fontSize: '0.85rem' }}>
+          Select Theme
+        </MenuItem>
+        <Divider />
+        {themes.map(t => (
+          <MenuItem
+            key={t.path}
+            onClick={() => handleThemeChange(t.name)}
+            sx={getCustomItemStyle(t.isCustom)}
+          >
+            {t.name}
+          </MenuItem>
+        ))}
+      </Menu>
+      <PrintContainer slides={slides} slideSize={slideSize} slideStyleVariables={slideStyleVariables} drawings={drawings} />
+
+      {isSlideshow && (
+        <div ref={slideshowRef} className={`slideshow-overlay ${mode === 'laser' ? 'laser-mode' : ''}`}>
+          {isSlideOverview ? (
+            // Overview during the presentation: fill the overlay with the slide
+            // grid so it shows on top of the slideshow; selecting jumps to a slide.
+            <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
+              <SlideOverviewGrid slides={slides} currentSlideIndex={currentSlideIndex} slideSize={slideSize} drawings={drawings} onSelectSlide={selectSlideFromOverview} />
+            </div>
+          ) : (
+            <>
+              <SlideControls
+                mode={mode} setMode={setMode} pageIndex={currentSlideIndex} totalSlides={slides.length} visible={showControls} onNav={moveSlide} onAddSlide={() => handleAddBlankSlide(currentSlideIndex)} onClearDrawing={() => { clear(currentSlideIndex); send({ type: 'CLEAR_DRAWING', channelId, pageIndex: currentSlideIndex }); }} onClose={() => { document.exitFullscreen(); setMode('view'); }} toolType={toolType} setToolType={setToolType} penColor={penColor} setPenColor={setPenColor} penWidth={penWidth} setPenWidth={setPenWidth} canUndo={canUndo(currentSlideIndex)} canRedo={canRedo(currentSlideIndex)} onUndo={() => undo(currentSlideIndex)} onRedo={() => redo(currentSlideIndex)} useLaserPointerMode={true} stylusOnly={stylusOnly} setStylusOnly={setStylusOnly} containerStyle={{ bottom: '20px' }}
+              />
+              <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <SlideEffectLayer
+                  slides={slides}
+                  index={currentSlideIndex}
+                  step={step}
+                  globalTransition={globalContext.transition}
+                  onStepAutoAdvance={() => {
+                    // Auto-advance to the NEXT BUILD only — don't cross the slide
+                    // boundary (the last build stops; cross slides manually).
+                    const sc = (slides[currentSlideIndex] as { stepCount?: number })?.stepCount || 0;
+                    if (step < sc) moveSlide(1);
+                  }}
+                  renderSlide={(slide, idx, opts) => (
+                    <SlideScaler width={slideSize.width} height={slideSize.height} marginRate={1}>
+                      {slide && !slide.isHidden && (
+                        <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+                          <SlideView
+                            html={slide.html} raw={slide.raw} basePath={basePath} pageNumber={slide.pageNumber} className={slide.className} isActive={true} slideSize={slideSize} isEnabledPointerEvents={opts.interactive && mode === 'view'} header={slide.header} footer={slide.footer} drawings={drawings[idx] || []} buildStep={opts.buildStep} onStepAutoAdvance={opts.onStepAutoAdvance} presenting={opts.interactive} slideIndex={idx} moduleRole="owner"
+                            onAddStroke={opts.interactive ? (stroke) => { addStroke(idx, stroke); send({ type: 'DRAW_STROKE', channelId, pageIndex: idx, stroke }); } : undefined}
+                            isInteracting={opts.interactive && mode === 'pen'} toolType={toolType} color={penColor} lineWidth={penWidth} penOnly={stylusOnly}
+                            onUpdateStrokes={opts.interactive ? (indices, dx, dy) => handleUpdateStrokes(idx, indices, dx, dy) : undefined}
+                          />
+                        </div>
+                      )}
+                    </SlideScaler>
+                  )}
+                />
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      <MainHeader onResetLayout={() => window.dispatchEvent(new Event(RESET_LAYOUT_EVENT))} isSlideOverview={isSlideOverview} onCloseOverview={() => setIsSlideOverview(false)} />
+
+      {isElectron() && !hasSelectedFolder ? (
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: '#222', color: 'white' }}>
+          <Typography variant="h4" gutterBottom>Welcome to MDP</Typography>
+          <Typography variant="body1" sx={{ color: '#888', mb: 4 }}>Select a workspace folder to start editing.</Typography>
+          <Button variant="contained" size="large" startIcon={<FolderOpenIcon />} onClick={handleOpenFolderWithFlag}>
+            Open Folder
+          </Button>
+        </div>
+      ) : isSlideOverview && !isSlideshow ? (
+        <SlideOverviewGrid slides={slides} currentSlideIndex={currentSlideIndex} slideSize={slideSize} drawings={drawings} onSelectSlide={selectSlideFromOverview} />
+      ) : (
+        <DockProvider sidebar={sidebarSlice} preview={previewSlice} editor={editorSlice} snippets={snippetsSlice} images={imagesSlice} headerActions={headerSlice}>
+          <div className="content">
+            <EditorDock />
+          </div>
+        </DockProvider>
+      )}
+
+      <Dialog open={tabToClose !== null} onClose={() => setTabToClose(null)}>
+        <DialogTitle>Unsaved Changes</DialogTitle>
+        <DialogContent>
+          <Typography>
+            "{tabToClose !== null ? tabs[tabToClose]?.path.split('/').pop() : ''}" has unsaved changes. Do you want to save it before closing?
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setTabToClose(null)}>Cancel</Button>
+          <Button onClick={() => handleConfirmCloseTab(false)} color="error">Don't Save</Button>
+          <Button onClick={() => handleConfirmCloseTab(true)} variant="contained" color="primary">Save</Button>
+        </DialogActions>
+      </Dialog>
+    </div>
+  );
+}

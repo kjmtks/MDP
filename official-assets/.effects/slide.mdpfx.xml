@@ -1,0 +1,26 @@
+<effect>
+  <name>slide</name>
+  <description>Horizontal slide. As a transition it follows the navigation direction (forward/back).</description>
+  <parameters>
+    <param name="duration" default="450" />
+    <param name="easing" default="ease" />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Transitions</category>
+      <label>Transition: slide</label>
+      <text><![CDATA[<!-- @transition slide -->]]></text>
+      <description>Slide horizontally into this slide.</description>
+    </snippet>
+  </snippets>
+  <style><![CDATA[
+    .mdp-effect.slide[data-mdp-phase="enter"][data-mdp-dir="back"]    { transform: translateX(-100%); }
+    .mdp-effect.slide[data-mdp-phase="enter"]                         { transform: translateX(100%); }
+    .mdp-effect.slide[data-mdp-phase="enter-active"]                  { transform: translateX(0); transition: transform var(--mdp-fx-duration) var(--mdp-fx-easing); }
+
+    .mdp-effect.slide[data-mdp-phase="leave"]                         { transform: translateX(0); }
+    .mdp-effect.slide[data-mdp-phase="leave-active"][data-mdp-dir="back"] { transform: translateX(100%);  transition: transform var(--mdp-fx-duration) var(--mdp-fx-easing); }
+    .mdp-effect.slide[data-mdp-phase="leave-active"]                  { transform: translateX(-100%); transition: transform var(--mdp-fx-duration) var(--mdp-fx-easing); }
+  ]]></style>
+  <script><![CDATA[]]></script>
+</effect>

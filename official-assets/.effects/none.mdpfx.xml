@@ -1,0 +1,17 @@
+<effect>
+  <name>none</name>
+  <description>No animation — switch instantly. Use to disable a global transition on a single slide.</description>
+  <parameters>
+    <param name="duration" default="0" />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Transitions</category>
+      <label>Transition: none</label>
+      <text><![CDATA[<!-- @transition none -->]]></text>
+      <description>Disable the transition for this slide.</description>
+    </snippet>
+  </snippets>
+  <style><![CDATA[]]></style>
+  <script><![CDATA[]]></script>
+</effect>

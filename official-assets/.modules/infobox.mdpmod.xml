@@ -1,0 +1,104 @@
+<module>
+  <name>infobox</name>
+  <type>block</type>
+  <description>Information box</description>
+  
+  <parameters>
+    <param name="color" default="var(--success-color)" required="false" />
+  </parameters>
+
+  <snippets>
+    <snippet>
+      <category>Structure</category>
+      <label>InfoBox</label>
+      <text>
+        <![CDATA[
+<!-- @infobox color: var(--success-color) -->
+Information
+<!-- @ -->
+Describe information here
+<!-- @endinfobox -->
+]]>
+      </text>
+      <description>Standard inofbox</description>
+    </snippet>
+    <snippet>
+      <category>Layout</category>
+      <label>WarningBox</label>
+      <text>
+        <![CDATA[
+<!-- @infobox color: var(--warning-color) -->
+Warning
+<!-- @ -->
+Describe warning here
+<!-- @end -->
+]]>
+      </text>
+      <description>Warning inofbox</description>
+    </snippet>
+    <snippet>
+      <category>Layout</category>
+      <label>DangerBox</label>
+      <text>
+        <![CDATA[
+<!-- @infobox color: var(--danger-color) -->
+Danger
+<!-- @ -->
+Describe error here
+<!-- @end -->
+]]>
+      </text>
+      <description>Danger inofbox</description>
+    </snippet>
+  </snippets>
+
+  <render>
+  <![CDATA[
+    const color = args.color || 'var(--accent-color)';
+    const titleStr = sections[0] ? sections[0].trim() : '';
+    const contentStr = sections[1] ? sections[1].trim() : '';
+    return `\n\n<div class="mdp-mod-infobox" style="border-left-color: ${color};"><div class="infobox-header" style="color: ${color};">
+
+${titleStr}
+
+</div><div class="infobox-body">
+
+${contentStr}
+
+</div></div>\n\n`;
+  ]]>
+  </render>
+  <style>
+    <![CDATA[
+      .mdp-mod-infobox {
+        background-color: var(--panel-bg);
+        border-left: 6px solid;
+        border-radius: var(--radius-sm);
+        margin: 1rem 0;
+        box-shadow: var(--shadow-sm);
+        overflow: hidden;
+      }
+      .mdp-mod-infobox .infobox-header {
+        padding: 0 16px;
+        font-weight: 600;
+        font-size: 1.1em;
+        background-color: var(--panel-header-bg);
+        border-bottom: 1px solid var(--panel-border);
+      }
+      .mdp-mod-infobox .infobox-body {
+        padding: 0 16px;
+        font-size: 0.95em;
+        color: var(--panel-text);
+      }
+      .mdp-mod-infobox .infobox-header p {
+        margin: 0 0 0 0.25rem;
+        padding: 0.25rem 0;
+      }
+      .mdp-mod-infobox .infobox-body p {
+        margin: 0.5rem 0;
+      }
+    ]]>
+  </style>
+
+  <script></script>
+</module>

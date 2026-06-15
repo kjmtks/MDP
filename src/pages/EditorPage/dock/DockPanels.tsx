@@ -1,0 +1,652 @@
+import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { Box, Typography, Button, IconButton, Tooltip, Stack, List, ListItem, ListItemButton, ListItemText, ListSubheader, Divider, Menu, MenuItem, ListItemIcon, TextField, InputAdornment } from '@mui/material';
+import SearchIcon from '@mui/icons-material/Search';
+import EditIcon from '@mui/icons-material/Edit';
+import CloseIcon from '@mui/icons-material/Close';
+import CloseFullscreenIcon from '@mui/icons-material/CloseFullscreen';
+import ClearAllIcon from '@mui/icons-material/ClearAll';
+import FolderOpenIcon from '@mui/icons-material/FolderOpen';
+import CloudDownloadIcon from '@mui/icons-material/CloudDownload';
+import SmartphoneIcon from '@mui/icons-material/Smartphone';
+import DevicesIcon from '@mui/icons-material/Devices';
+import PresentToAllIcon from '@mui/icons-material/PresentToAll';
+import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+import PrintIcon from '@mui/icons-material/Print';
+import GridViewIcon from '@mui/icons-material/GridView';
+import type { IDockviewPanelProps, IDockviewPanelHeaderProps } from 'dockview';
+
+import { darkMenuSlotProps } from './darkMenu';
+
+import { Table, TableBody, TableRow, TableCell, Dialog, DialogTitle, DialogContent, DialogActions, ToggleButtonGroup, ToggleButton, Chip, Popover, Autocomplete } from '@mui/material';
+import VisibilityIcon from '@mui/icons-material/Visibility';
+import AddPhotoAlternateIcon from '@mui/icons-material/AddPhotoAlternate';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
+import InputIcon from '@mui/icons-material/Input';
+import UploadFileIcon from '@mui/icons-material/UploadFile';
+import BrokenImageIcon from '@mui/icons-material/BrokenImage';
+import InsertDriveFileOutlinedIcon from '@mui/icons-material/InsertDriveFileOutlined';
+import CollectionsBookmarkOutlinedIcon from '@mui/icons-material/CollectionsBookmarkOutlined';
+import AccountTreeIcon from '@mui/icons-material/AccountTree';
+
+import { Sidebar } from '../../../features/fileTree/components/Sidebar';
+import { EditorPanel } from '../../../features/editor/components/EditorPanel';
+import { SlideView } from '../../../features/slide/components/SlideView';
+import { SlideScaler } from '../../../features/slide/components/SlideScaler';
+import { SlideControls } from '../../../features/drawing/components/SlideControls';
+import { useSidebar, usePreview, useEditor, useSnippets, useImages, useHeaderActions } from './DockContext';
+import type { ImageEntry } from '../../../features/images/imageRegistry';
+import { compressImageToBase64 } from '../../../utils/imageUtils';
+
+
+import { isElectron } from '../../../api/apiClient';
+
+const toolbarSx = {
+  display: 'flex', alignItems: 'center', gap: 0.5, px: 0.5, py: 0.25,
+  bgcolor: '#1e1e1e', borderBottom: '1px solid #333', flexShrink: 0,
+};
+const toolBtnSx = { color: '#aaa', '&:hover': { color: '#fff' }, '&.Mui-disabled': { color: 'rgba(255,255,255,0.25)' } };
+
+export const ExplorerPanel: React.FC = () => {
+  const sidebar = useSidebar();
+  const h = useHeaderActions();
+  return (
+    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: '#252526' }}>
+      {(h.onOpenFolder || h.onSyncCatalog) && (
+        <Box sx={toolbarSx}>
+          {h.onOpenFolder && (
+            <Tooltip title="Open Folder"><IconButton size="small" sx={toolBtnSx} onClick={h.onOpenFolder}><FolderOpenIcon fontSize="small" /></IconButton></Tooltip>
+          )}
+          {h.onSyncCatalog && (
+            <Tooltip title="Sync Official Assets"><IconButton size="small" sx={toolBtnSx} onClick={h.onSyncCatalog}><CloudDownloadIcon fontSize="small" /></IconButton></Tooltip>
+          )}
+        </Box>
+      )}
+      <Box sx={{ flex: 1, minHeight: 0 }}>
+        <Sidebar {...sidebar} section="files" />
+      </Box>
+    </Box>
+  );
+};
+
+export const ThumbnailsPanel: React.FC = () => {
+  const sidebar = useSidebar();
+  return <Sidebar {...sidebar} section="thumbnail" />;
+};
+
+export const BookmarksPanel: React.FC = () => {
+  const sidebar = useSidebar();
+  return <Sidebar {...sidebar} section="bookmarks" />;
+};
+
+export const SnippetsPanel: React.FC = () => {
+  const { snippets, onInsertText } = useSnippets();
+  const [query, setQuery] = useState('');
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return snippets;
+    return snippets
+      .map((section) => ({
+        ...section,
+        items: section.items.filter((item) =>
+          item.label.toLowerCase().includes(q) ||
+          (item.description || '').toLowerCase().includes(q) ||
+          section.category.toLowerCase().includes(q),
+        ),
+      }))
+      .filter((section) => section.items.length > 0);
+  }, [snippets, query]);
+
+  return (
+    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: '#252526' }}>
+      <Box sx={{ p: 0.75, borderBottom: '1px solid #333' }}>
+        <TextField
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search snippets…"
+          size="small"
+          fullWidth
+          variant="outlined"
+          slotProps={{
+            input: {
+              startAdornment: (
+                <InputAdornment position="start"><SearchIcon fontSize="small" sx={{ color: '#8ba0b2' }} /></InputAdornment>
+              ),
+              sx: { color: '#ccc', fontSize: '0.8rem', bgcolor: '#1e1e1e', '& fieldset': { borderColor: '#3c3c3c' }, '&:hover fieldset': { borderColor: '#555' } },
+            },
+          }}
+        />
+      </Box>
+      <Box sx={{ flex: 1, overflowY: 'auto' }}>
+        {filtered.length === 0 ? (
+          <Typography variant="body2" sx={{ color: '#888', textAlign: 'center', p: 2 }}>No matching snippets.</Typography>
+        ) : (
+        <List subheader={<li />} sx={{ p: 0 }}>
+          {filtered.map((section) => (
+            <li key={section.category}>
+              <Box component="ul" sx={{ p: 0, m: 0 }}>
+                <ListSubheader sx={{ bgcolor: '#1e1e1e', color: '#cccccc', lineHeight: '30px', fontWeight: 'bold', borderBottom: '1px solid #333333' }}>
+                  {section.category}
+                </ListSubheader>
+                {section.items.map((item) => (
+                  <ListItem key={item.label} disablePadding>
+                    <ListItemButton onClick={() => onInsertText(item.text)} sx={{ py: 0.5, '&:hover': { bgcolor: '#2a2d2e' } }}>
+                      {item.icon && (
+                        <div style={{ marginRight: '8px', display: 'flex', alignItems: 'center', width: '20px', height: '20px', fill: '#cccccc' }} dangerouslySetInnerHTML={{ __html: item.icon }} />
+                      )}
+                      <ListItemText
+                        primary={item.label}
+                        slotProps={{
+                          primary: { fontSize: '0.85rem', color: '#cccccc', fontWeight: item.isCustom ? 'bold' : 'normal' },
+                          secondary: { fontSize: '0.7rem', color: '#8ba0b2' },
+                        }}
+                        secondary={item.description}
+                      />
+                    </ListItemButton>
+                  </ListItem>
+                ))}
+                <Divider sx={{ borderColor: '#333333' }} />
+              </Box>
+            </li>
+          ))}
+        </List>
+        )}
+      </Box>
+    </Box>
+  );
+};
+
+const isSvgValue = (value: string) =>
+  value.startsWith('data:image/svg+xml') || /\.svg(\?|$)/i.test(value);
+
+// Convert a file to an image value. SVGs (incl. drawio's editable .drawio.svg)
+// are read AS-IS so the embedded XML survives; raster images are compressed.
+function fileToImageValue(file: File): Promise<string> {
+  if (file.type === 'image/svg+xml' || /\.svg$/i.test(file.name)) {
+    return new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(r.result as string);
+      r.onerror = reject;
+      r.readAsDataURL(file);
+    });
+  }
+  return compressImageToBase64(file);
+}
+
+// Extract an image from a drop / paste: an image file → data URI (SVG preserved),
+// or pasted text that is an image URL / data URI.
+async function imageFromTransfer(dt: DataTransfer | null): Promise<string | null> {
+  if (!dt) return null;
+  const files: File[] = [
+    ...Array.from(dt.files || []),
+    ...Array.from(dt.items || [])
+      .filter((it) => it.kind === 'file')
+      .map((it) => it.getAsFile())
+      .filter((f): f is File => !!f),
+  ];
+  const imgFile = files.find((f) => f.type.startsWith('image/'));
+  if (imgFile) { try { return await fileToImageValue(imgFile); } catch { return null; } }
+  const text = (dt.getData('text/plain') || '').trim();
+  if (/^(https?:\/\/|data:image\/)/.test(text)) return text;
+  return null;
+}
+
+// True only for OS-file or image-URL drags — so Dockview tab drags (which carry
+// just an empty text/plain) aren't intercepted by the Images panel drop zone.
+const isImageDrag = (e: React.DragEvent) => {
+  const t = e.dataTransfer?.types;
+  return !!t && Array.from(t).some((x) => x === 'Files' || x === 'text/uri-list');
+};
+
+const scopeBtnSx = {
+  color: '#bbb', fontSize: '0.72rem', textTransform: 'none', py: 0.4,
+  '&.Mui-selected': { bgcolor: '#0ea5e9', color: '#fff', '&:hover': { bgcolor: '#0284c7' } },
+};
+
+const imgType = (value: string): string =>
+  value.startsWith('data:') ? 'data' : /^https?:/.test(value) ? 'url' : 'path';
+
+const imgSize = (value: string): string => {
+  if (!value.startsWith('data:')) return '—';
+  const b64 = value.split(',')[1] || '';
+  const bytes = Math.floor((b64.length * 3) / 4);
+  return bytes > 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+};
+
+const ImageRow: React.FC<{
+  entry: ImageEntry; overrides: boolean; highlight: boolean; resolveThumb: (v: string) => string;
+  onInsert: (alias: string) => void; onEdit: (e: ImageEntry) => void;
+  onDelete: (e: ImageEntry) => void; onMove: (alias: string, to: 'file' | 'library') => void;
+  onEditDrawio?: (e: ImageEntry) => void; onPreview?: (e: ImageEntry) => void;
+}> = ({ entry, overrides, highlight, resolveThumb, onInsert, onEdit, onDelete, onMove, onEditDrawio, onPreview }) => {
+  const [broken, setBroken] = useState(false);
+  const [hoverEl, setHoverEl] = useState<HTMLElement | null>(null);
+  const src = resolveThumb(entry.value);
+  // List detail: show size for inline data, otherwise the actual path/URL (so it
+  // matches the edit dialog instead of showing a meaningless "—").
+  const detail = entry.value.startsWith('data:') ? `${imgType(entry.value)} · ${imgSize(entry.value)}` : entry.value;
+  return (
+    <TableRow sx={{ bgcolor: highlight ? 'rgba(14,165,233,0.18)' : undefined, '&:hover': { bgcolor: '#2a2d2e' } }}>
+      <TableCell sx={{ border: 0, p: 0.5, width: 48 }}>
+        <Box onMouseEnter={(e) => setHoverEl(e.currentTarget)} onMouseLeave={() => setHoverEl(null)} sx={{ width: 40, height: 40 }}>
+          {broken
+            ? <BrokenImageIcon sx={{ color: '#777', width: 40, height: 40 }} />
+            : <img src={src} onError={() => setBroken(true)} alt={entry.alias}
+                style={{ width: 40, height: 40, objectFit: 'contain', background: '#fff', borderRadius: 4, cursor: 'zoom-in' }} />}
+        </Box>
+        {!broken && (
+          <Popover open={!!hoverEl} anchorEl={hoverEl} onClose={() => setHoverEl(null)} disableRestoreFocus
+            sx={{ pointerEvents: 'none' }} anchorOrigin={{ vertical: 'center', horizontal: 'right' }}
+            transformOrigin={{ vertical: 'center', horizontal: 'left' }}
+            slotProps={{ paper: { sx: { p: 0.5, ml: 1, bgcolor: '#1e1e1e', border: '1px solid #444' } } }}>
+            <img src={src} alt={entry.alias} style={{ maxWidth: 320, maxHeight: 320, objectFit: 'contain', background: '#fff', display: 'block' }} />
+          </Popover>
+        )}
+      </TableCell>
+      <TableCell sx={{ border: 0, p: 0.5 }}>
+        <div style={{ color: '#ddd', fontSize: '0.82rem', fontWeight: 'bold', wordBreak: 'break-all' }}>{entry.alias}</div>
+        <div style={{ color: '#8ba0b2', fontSize: '0.68rem', wordBreak: 'break-all' }}>{detail}</div>
+        {entry.description && <div style={{ color: '#9ca3af', fontSize: '0.66rem', fontStyle: 'italic', wordBreak: 'break-word' }}>{entry.description}</div>}
+        {entry.tags && entry.tags.length > 0 && (
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.25, mt: 0.25 }}>
+            {entry.tags.map((t) => (
+              <Chip key={t} label={t} size="small" sx={{ height: 16, fontSize: '0.6rem', color: '#93c5fd', bgcolor: 'rgba(59,130,246,0.15)' }} />
+            ))}
+          </Box>
+        )}
+        {overrides && <Chip label="overrides library" size="small" sx={{ height: 16, fontSize: '0.6rem', color: '#fbbf24', bgcolor: 'rgba(251,191,36,0.15)', mt: 0.25 }} />}
+      </TableCell>
+      <TableCell align="right" sx={{ border: 0, p: 0.25, whiteSpace: 'nowrap', width: '1%' }}>
+        {onPreview && (
+          <Tooltip title="Preview in panel"><IconButton size="small" sx={toolBtnSx} onClick={() => onPreview(entry)}><VisibilityIcon fontSize="small" /></IconButton></Tooltip>
+        )}
+        <Tooltip title="Insert reference"><IconButton size="small" sx={toolBtnSx} onClick={() => onInsert(entry.alias)}><InputIcon fontSize="small" /></IconButton></Tooltip>
+        {onEditDrawio && isSvgValue(entry.value) && (
+          <Tooltip title="Edit in drawio"><IconButton size="small" sx={toolBtnSx} onClick={() => onEditDrawio(entry)}><AccountTreeIcon fontSize="small" /></IconButton></Tooltip>
+        )}
+        <Tooltip title="Edit"><IconButton size="small" sx={toolBtnSx} onClick={() => onEdit(entry)}><EditIcon fontSize="small" /></IconButton></Tooltip>
+        <Tooltip title={entry.scope === 'file' ? 'Move to library' : 'Move to file'}><IconButton size="small" sx={toolBtnSx} onClick={() => onMove(entry.alias, entry.scope === 'file' ? 'library' : 'file')}><SwapHorizIcon fontSize="small" /></IconButton></Tooltip>
+        <Tooltip title="Delete"><IconButton size="small" sx={toolBtnSx} onClick={() => onDelete(entry)}><DeleteOutlineIcon fontSize="small" /></IconButton></Tooltip>
+      </TableCell>
+    </TableRow>
+  );
+};
+
+export const ImagesPanel: React.FC = () => {
+  const img = useImages();
+  const [dialog, setDialog] = useState<null | { mode: 'add' | 'edit'; scope: 'file' | 'library'; alias: string; value: string; description: string; tags: string[] }>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const [query, setQuery] = useState('');
+  const panelFocused = useRef(false);
+
+  const libAliases = useMemo(() => new Set(img.libraryImages.map((e) => e.alias)), [img.libraryImages]);
+  // All tags across file + library, for the dialog's tag autocomplete suggestions.
+  const allTags = useMemo(
+    () => Array.from(new Set([...img.fileImages, ...img.libraryImages].flatMap((e) => e.tags || []))).sort(),
+    [img.fileImages, img.libraryImages],
+  );
+
+  // Filter an entry by the search query against alias, description and tags.
+  const matchesQuery = (e: ImageEntry) => {
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    return e.alias.toLowerCase().includes(q)
+      || (e.description || '').toLowerCase().includes(q)
+      || (e.tags || []).some((t) => t.toLowerCase().includes(q));
+  };
+
+  const openAddWithValue = (value: string) => setDialog({ mode: 'add', scope: 'file', alias: '', value, description: '', tags: [] });
+
+  // Paste an image / image-URL anywhere on the (focused) panel → open the Add
+  // dialog pre-filled. Ignored while a field is focused or the dialog is open.
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      if (!panelFocused.current || dialog) return;
+      const ae = document.activeElement;
+      if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')) return;
+      imageFromTransfer(e.clipboardData).then((v) => { if (v) openAddWithValue(v); });
+    };
+    document.addEventListener('paste', onPaste);
+    return () => document.removeEventListener('paste', onPaste);
+  }, [dialog]);
+
+  // Receive the SVG of a diagram created via "Create with drawio" → fill the dialog.
+  useEffect(() => {
+    const onResult = (e: Event) => {
+      const value = (e as CustomEvent).detail?.value as string | undefined;
+      if (value) setDialog((d) => (d ? { ...d, value } : { mode: 'add', scope: 'file', alias: '', value, description: '', tags: [] }));
+    };
+    window.addEventListener('mdp-drawio-image-result', onResult);
+    return () => window.removeEventListener('mdp-drawio-image-result', onResult);
+  }, []);
+
+  // The editor's @image [edit] widget requested the edit dialog for an alias.
+  useEffect(() => {
+    const req = img.editRequest;
+    if (!req) return;
+    const entry = [...img.fileImages, ...img.libraryImages].find((e) => e.alias === req.alias);
+    img.onEditHandled?.();
+    if (entry) queueMicrotask(() => setDialog({ mode: 'edit', scope: entry.scope, alias: entry.alias, value: entry.value, description: entry.description || '', tags: entry.tags || [] }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [img.editRequest]);
+
+  const submit = () => {
+    if (!dialog) return;
+    const alias = dialog.alias.trim();
+    const value = dialog.value.trim();
+    if (!alias || !value) return;
+    const description = dialog.description.trim();
+    const tags = dialog.tags.map((t) => t.trim()).filter(Boolean);
+    if (dialog.mode === 'add') img.onAddImage(dialog.scope, alias, value, description, tags);
+    else img.onEditImage(dialog.scope, alias, value, description, tags);
+    setDialog(null);
+  };
+
+  const onUpload = async (file?: File) => {
+    if (!file || !dialog) return;
+    try { const data = await fileToImageValue(file); setDialog((d) => (d ? { ...d, value: data } : d)); } catch { /* ignore */ }
+  };
+
+  const renderSection = (title: string, entries: ImageEntry[], scope: 'file' | 'library') => {
+    const visible = entries.filter(matchesQuery);
+    return (
+    <Box>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', bgcolor: '#1e1e1e', px: 1, py: 0.25, borderBottom: '1px solid #333', position: 'sticky', top: 0, zIndex: 1 }}>
+        <Typography sx={{ color: '#ccc', fontSize: '0.75rem', fontWeight: 'bold' }}>{title} ({query ? `${visible.length}/${entries.length}` : entries.length})</Typography>
+        <Tooltip title={`Add image to ${scope === 'file' ? 'this file' : 'shared library'}`}>
+          <IconButton size="small" sx={toolBtnSx} onClick={() => setDialog({ mode: 'add', scope, alias: '', value: '', description: '', tags: [] })}><AddPhotoAlternateIcon fontSize="small" /></IconButton>
+        </Tooltip>
+      </Box>
+      {visible.length === 0
+        ? <Typography sx={{ color: '#777', fontSize: '0.72rem', p: 1 }}>{query ? 'No matching images.' : 'No images.'}</Typography>
+        : (
+          <Box sx={{ overflowX: 'auto' }}>
+          <Table size="small" sx={{ minWidth: 360 }}><TableBody>
+            {visible.map((e) => (
+              <ImageRow key={e.alias} entry={e} overrides={scope === 'file' && libAliases.has(e.alias)} highlight={img.focusAlias === e.alias}
+                resolveThumb={img.resolveThumb} onInsert={img.onInsertReference} onPreview={img.onPreview}
+                onEdit={(en) => setDialog({ mode: 'edit', scope: en.scope, alias: en.alias, value: en.value, description: en.description || '', tags: en.tags || [] })}
+                onDelete={(en) => img.onDeleteImage(en.scope, en.alias)} onMove={img.onMove} onEditDrawio={img.onEditDrawio} />
+            ))}
+          </TableBody></Table>
+          </Box>
+        )}
+    </Box>
+    );
+  };
+
+  const dialogIsData = !!dialog && dialog.value.startsWith('data:');
+
+  return (
+    <Box tabIndex={0}
+      onFocus={() => { panelFocused.current = true; }}
+      onBlur={() => { panelFocused.current = false; }}
+      onDragOver={(e) => { if (!isImageDrag(e)) return; e.preventDefault(); setDragOver(true); }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={(e) => { if (!isImageDrag(e)) return; e.preventDefault(); setDragOver(false); imageFromTransfer(e.dataTransfer).then((v) => { if (v) openAddWithValue(v); }); }}
+      sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: '#252526', overflowY: 'auto', outline: 'none', position: 'relative', ...(dragOver ? { boxShadow: 'inset 0 0 0 2px #0ea5e9' } : {}) }}>
+      <Box sx={{ p: 0.75, borderBottom: '1px solid #333', position: 'sticky', top: 0, zIndex: 2, bgcolor: '#252526' }}>
+        <TextField value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search name / description / tag…"
+          size="small" fullWidth variant="outlined"
+          slotProps={{ input: {
+            startAdornment: (<InputAdornment position="start"><SearchIcon fontSize="small" sx={{ color: '#8ba0b2' }} /></InputAdornment>),
+            sx: { color: '#ccc', fontSize: '0.8rem', bgcolor: '#1e1e1e', '& fieldset': { borderColor: '#3c3c3c' }, '&:hover fieldset': { borderColor: '#555' } },
+          } }} />
+      </Box>
+      {renderSection('In this file', img.fileImages, 'file')}
+      {renderSection('Shared library', img.libraryImages, 'library')}
+      <Typography sx={{ color: '#666', fontSize: '0.66rem', textAlign: 'center', p: 1 }}>
+        Drop or paste an image / image URL here to add it.
+      </Typography>
+
+      <Dialog open={!!dialog} onClose={() => setDialog(null)} maxWidth="xs" fullWidth
+        slotProps={{ paper: { sx: { bgcolor: '#252526', color: '#ccc', backgroundImage: 'none' } } }}>
+        <DialogTitle sx={{ fontSize: '0.95rem' }}>{dialog?.mode === 'add' ? 'Add image' : `Edit “${dialog?.alias}”`}</DialogTitle>
+        <DialogContent
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => { e.preventDefault(); imageFromTransfer(e.dataTransfer).then((v) => { if (v) setDialog((d) => (d ? { ...d, value: v } : d)); }); }}
+          onPaste={(e) => {
+            const items = Array.from(e.clipboardData?.items || []);
+            if (items.some((it) => it.kind === 'file' && it.type.startsWith('image/'))) {
+              e.preventDefault();
+              imageFromTransfer(e.clipboardData).then((v) => { if (v) setDialog((d) => (d ? { ...d, value: v } : d)); });
+            }
+          }}>
+          <Stack spacing={1.5} sx={{ pt: 0.5 }}>
+            {dialog?.mode === 'add' && (
+              <Box>
+                <Typography sx={{ color: '#8ba0b2', fontSize: '0.72rem', mb: 0.5 }}>Where to store this image</Typography>
+                <ToggleButtonGroup exclusive fullWidth size="small" value={dialog?.scope}
+                  onChange={(_e, v) => v && setDialog((d) => (d ? { ...d, scope: v } : d))}>
+                  <ToggleButton value="file" sx={scopeBtnSx}><InsertDriveFileOutlinedIcon fontSize="small" sx={{ mr: 0.5 }} />This file</ToggleButton>
+                  <ToggleButton value="library" sx={scopeBtnSx}><CollectionsBookmarkOutlinedIcon fontSize="small" sx={{ mr: 0.5 }} />Shared library</ToggleButton>
+                </ToggleButtonGroup>
+                <Typography sx={{ color: '#777', fontSize: '0.66rem', mt: 0.5 }}>
+                  {dialog?.scope === 'file' ? 'Embedded in this deck — travels with the file.' : 'Reusable across decks — saved under .images/.'}
+                </Typography>
+              </Box>
+            )}
+            <Box>
+              <TextField label="Alias" size="small" fullWidth value={dialog?.alias || ''} disabled={dialog?.mode === 'edit'}
+                onChange={(e) => setDialog((d) => (d ? { ...d, alias: e.target.value.replace(/[^\w-]/g, '') } : d))}
+                variant="outlined"
+                slotProps={{
+                  inputLabel: { sx: { color: '#8ba0b2', '&.Mui-disabled': { color: '#8ba0b2' } } },
+                  input: { sx: { color: '#ccc', '& .MuiInputBase-input.Mui-disabled': { WebkitTextFillColor: '#bbb' } } },
+                }} />
+              <Typography sx={{ color: '#8ba0b2', fontSize: '0.68rem', mt: 0.4, ml: 0.25 }}>
+                Reference as ![alt](@alias)
+              </Typography>
+            </Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              {dialog?.value
+                ? <img src={img.resolveThumb(dialog.value)} alt="preview" style={{ width: 48, height: 48, objectFit: 'contain', background: '#fff', borderRadius: 4 }} />
+                : <Box sx={{ width: 48, height: 48, bgcolor: '#1e1e1e', borderRadius: 1 }} />}
+              <Button component="label" size="small" startIcon={<UploadFileIcon />} sx={{ color: '#0ea5e9' }}>
+                Upload
+                <input hidden type="file" accept="image/*" onChange={(e) => onUpload(e.target.files?.[0])} />
+              </Button>
+              <Button size="small" startIcon={<AccountTreeIcon />} sx={{ color: '#0ea5e9' }}
+                onClick={() => window.dispatchEvent(new CustomEvent('mdp-open-drawio-for-image', { detail: { value: dialog?.value || '' } }))}>
+                Diagram
+              </Button>
+            </Box>
+            <TextField label="…or URL / path" size="small" value={dialogIsData ? '' : (dialog?.value || '')}
+              placeholder={dialogIsData ? 'Using uploaded image data' : 'https://… or relative/path.png'}
+              onChange={(e) => setDialog((d) => (d ? { ...d, value: e.target.value } : d))}
+              variant="outlined"
+              slotProps={{ inputLabel: { sx: { color: '#8ba0b2' } }, input: { sx: { color: '#ccc' } } }} />
+            <TextField label="Description (optional)" size="small" value={dialog?.description || ''}
+              onChange={(e) => setDialog((d) => (d ? { ...d, description: e.target.value } : d))}
+              multiline maxRows={3} variant="outlined"
+              slotProps={{ inputLabel: { sx: { color: '#8ba0b2' } }, input: { sx: { color: '#ccc' } } }} />
+            {(
+              <Autocomplete multiple freeSolo size="small" options={allTags} value={dialog?.tags || []}
+                onChange={(_e, v) => setDialog((d) => (d ? { ...d, tags: v as string[] } : d))}
+                renderTags={(value, getTagProps) => value.map((option, index) => (
+                  <Chip {...getTagProps({ index })} key={option} label={option} size="small"
+                    sx={{ color: '#93c5fd', bgcolor: 'rgba(59,130,246,0.2)' }} />
+                ))}
+                renderInput={(params) => (
+                  <TextField {...params} label="Tags (optional)" placeholder="Add tag + Enter" variant="outlined"
+                    slotProps={{ inputLabel: { sx: { color: '#8ba0b2' } } }} sx={{ '& .MuiInputBase-input': { color: '#ccc' } }} />
+                )} />
+            )}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDialog(null)} sx={{ color: '#aaa' }}>Cancel</Button>
+          <Button onClick={submit} disabled={!dialog?.alias.trim() || !dialog?.value.trim()} variant="contained">
+            {dialog?.mode === 'add' ? 'Add' : 'Save'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  );
+};
+
+export const PreviewPanel: React.FC = () => {
+  const p = usePreview();
+  const h = useHeaderActions();
+
+  return (
+    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <Stack direction="row" sx={toolbarSx} spacing={0.25}>
+        { isElectron() ? ( <></> ) : (
+          <Tooltip title="Switch to Remote Mode"><IconButton size="small" sx={toolBtnSx} onClick={h.onSwitchToRemote}><SmartphoneIcon fontSize="small" /></IconButton></Tooltip>
+        ) }
+        <Tooltip title="Connect Remote"><IconButton size="small" sx={toolBtnSx} onClick={h.onOpenConnectDialog}><DevicesIcon fontSize="small" /></IconButton></Tooltip>
+        <Box sx={{ flex: 1 }} />
+        <Tooltip title="Open Presenter View"><span><IconButton size="small" sx={toolBtnSx} disabled={!h.canPresent} onClick={h.onOpenPresenter}><PresentToAllIcon fontSize="small" /></IconButton></span></Tooltip>
+        <Tooltip title="Start Slideshow (F5)"><span><IconButton size="small" sx={toolBtnSx} disabled={!h.canPresent} onClick={h.onToggleSlideshow}><PlayArrowIcon fontSize="small" /></IconButton></span></Tooltip>
+        <Tooltip title="Slide Overview"><span><IconButton size="small" sx={{ ...toolBtnSx, color: h.isSlideOverview ? '#fff' : '#aaa' }} disabled={!h.canPresent} onClick={h.onToggleOverview}><GridViewIcon fontSize="small" /></IconButton></span></Tooltip>
+        <Tooltip title="Print / Export PDF"><span><IconButton size="small" sx={toolBtnSx} disabled={!h.canPresent} onClick={h.onPrint}><PrintIcon fontSize="small" /></IconButton></span></Tooltip>
+        {p.onEditDrawio && (
+          <Button variant="text" size="small" startIcon={<EditIcon fontSize="small" />} onClick={p.onEditDrawio} sx={{ ...toolBtnSx, ml: 1, textTransform: 'none', fontSize: '0.75rem' }}>Edit Diagram</Button>
+        )}
+      </Stack>
+
+      {p.previewImage ? (
+        <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', backgroundColor: '#222' }}>
+          {/* Dedicated bar so the control is never hidden behind a large image. */}
+          <Box sx={{ flexShrink: 0, display: 'flex', alignItems: 'center', px: 1, py: 0.5, bgcolor: '#1e1e1e', borderBottom: '1px solid #333' }}>
+            <Button size="small" startIcon={<CloseIcon fontSize="small" />} onClick={p.onClosePreviewImage}
+              sx={{ color: '#0ea5e9', textTransform: 'none', fontSize: '0.78rem' }}>Back to slides</Button>
+            <Typography sx={{ color: '#888', fontSize: '0.7rem', ml: 1 }}>Image preview</Typography>
+          </Box>
+          <Box sx={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', p: 2 }}>
+            <img src={p.previewImage} alt="preview" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', background: '#fff', borderRadius: 4 }} />
+          </Box>
+        </Box>
+      ) : p.slides.length === 0 ? (
+        <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#222' }}>
+          <Typography variant="body1" sx={{ color: '#888' }}>No slide preview for this file.</Typography>
+        </Box>
+      ) : (
+        <div
+          className="preview-pane"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if ((e.target as HTMLElement).closest?.('.mdp-interactive')) return;
+            if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); p.moveSlide(1); }
+            else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); p.moveSlide(-1); }
+          }}
+          style={{ flex: 1, minHeight: 0, backgroundColor: '#222', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', outline: 'none' }}
+        >
+          <SlideControls
+            mode={p.mode as 'view' | 'pen' | 'laser'} setMode={p.setMode} pageIndex={p.currentSlideIndex} totalSlides={p.slides.length}
+            visible={p.showControls} onNav={p.moveSlide} onAddSlide={() => p.handleAddBlankSlide(p.currentSlideIndex)}
+            onClearDrawing={() => { p.clear(p.currentSlideIndex); p.send({ type: 'CLEAR_DRAWING', channelId: p.channelId, pageIndex: p.currentSlideIndex }); }}
+            toolType={p.toolType} setToolType={p.setToolType} penColor={p.penColor} setPenColor={p.setPenColor}
+            penWidth={p.penWidth} setPenWidth={p.setPenWidth} canUndo={p.canUndo(p.currentSlideIndex)} canRedo={p.canRedo(p.currentSlideIndex)}
+            onUndo={() => p.undo(p.currentSlideIndex)} onRedo={() => p.redo(p.currentSlideIndex)} containerStyle={{ bottom: '20px' }}
+            stylusOnly={p.stylusOnly} setStylusOnly={p.setStylusOnly}
+          />
+          <SlideScaler width={p.slideSize.width} height={p.slideSize.height}>
+            {p.slides.map((slide, index) => (
+              index === p.currentSlideIndex && (
+                <div key={index} style={{ position: 'relative', width: '100%', height: '100%' }}>
+                  <SlideView
+                    html={slide.html} raw={slide.raw} basePath={p.basePath} pageNumber={slide.pageNumber} className={slide.className}
+                    isActive={true} slideSize={p.slideSize} isEnabledPointerEvents={p.mode === 'view'} header={slide.header} footer={slide.footer}
+                    drawings={p.drawings[index] || []}
+                    slideIndex={index} moduleRole={p.moduleRole}
+                    onAddStroke={(stroke) => { p.addStroke(index, stroke); p.send({ type: 'DRAW_STROKE', channelId: p.channelId, pageIndex: index, stroke }); }}
+                    isInteracting={p.mode === 'pen'} toolType={p.toolType} color={p.penColor} lineWidth={p.penWidth} penOnly={p.stylusOnly}
+                    onUpdateStrokes={(indices, dx, dy) => p.handleUpdateStrokes(index, indices, dx, dy)}
+                  />
+                </div>
+              )
+            ))}
+          </SlideScaler>
+        </div>
+      )}
+    </Box>
+  );
+};
+
+export const FileEditorPanel: React.FC<IDockviewPanelProps<{ tabId: string }>> = (props) => {
+  const e = useEditor();
+  const tab = e.tabs.find(t => t.id === props.params.tabId);
+
+  if (!tab) return <div style={{ height: '100%', backgroundColor: '#1e1e1e' }} />;
+
+  const isActive = tab.path === e.currentFileName;
+
+  return (
+    <div style={{ height: '100%', backgroundColor: '#1e1e1e' }}>
+      <EditorPanel
+        currentFileName={tab.path}
+        currentFileType={tab.type}
+        editorRef={tab.editorRef}
+        editorInitialValue={tab.content}
+        extensions={e.extensions}
+        onChangeEditor={(val) => e.updateTabContent(tab.path, val)}
+        onEditorUpdate={(vu) => { if (isActive) e.onEditorUpdate(vu); }}
+        onInsertText={e.onInsertText}
+        onSave={e.onSave}
+        onMoveSlide={e.moveSlide}
+        isBookmarked={e.isBookmarked(tab.path)}
+        onToggleBookmark={() => e.toggleBookmark(tab.path)}
+        bookmark={e.bookmarks.find((b) => b.path === tab.path)}
+        onUpdateBookmark={(changes) => e.updateBookmark(tab.path, changes)}
+      />
+    </div>
+  );
+};
+
+export const FileTab: React.FC<IDockviewPanelHeaderProps<{ tabId: string }>> = (props) => {
+  const e = useEditor();
+  const tabId = props.params.tabId;
+  const tab = e.tabs.find(t => t.id === tabId);
+  const fileName = tab ? (tab.path.split('/').pop() || tab.path) : props.api.title || '';
+  const isModified = tab?.isModified;
+
+  const [menu, setMenu] = useState<{ mouseX: number; mouseY: number } | null>(null);
+  const indexOf = () => e.tabs.findIndex(t => t.id === tabId);
+
+  const handleClose = (ev: React.MouseEvent) => {
+    ev.stopPropagation();
+    const idx = indexOf();
+    if (idx !== -1) e.onTabClose(ev, idx);
+  };
+
+  const handleContextMenu = (ev: React.MouseEvent) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    setMenu({ mouseX: ev.clientX, mouseY: ev.clientY });
+  };
+
+  const runAndClose = (fn: () => void) => { fn(); setMenu(null); };
+
+  return (
+    <div className="mdp-file-tab" onContextMenu={handleContextMenu} style={{ display: 'flex', alignItems: 'center', height: '100%', padding: '0 4px 0 8px', maxWidth: 240 }}>
+      <span style={{ fontSize: '0.8rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontStyle: isModified ? 'italic' : 'normal' }}>
+        {fileName}{isModified ? ' •' : ''}
+      </span>
+      <IconButton size="small" onClick={handleClose} sx={{ ml: 0.5, p: 0.25, color: 'inherit', '&:hover': { bgcolor: 'rgba(255,255,255,0.15)' } }}>
+        <CloseIcon sx={{ fontSize: '0.9rem' }} />
+      </IconButton>
+
+      <Menu
+        open={menu !== null}
+        onClose={() => setMenu(null)}
+        anchorReference="anchorPosition"
+        anchorPosition={menu ? { top: menu.mouseY, left: menu.mouseX } : undefined}
+        slotProps={darkMenuSlotProps}
+      >
+        <MenuItem onClick={(ev) => runAndClose(() => { const i = indexOf(); if (i !== -1) e.onTabClose(ev, i); })}>
+          <ListItemIcon><CloseIcon fontSize="small" /></ListItemIcon> Close
+        </MenuItem>
+        <Divider />
+        <MenuItem disabled={e.tabs.length <= 1} onClick={() => runAndClose(() => { const i = indexOf(); if (i !== -1) e.closeOtherTabs(i); })}>
+          <ListItemIcon><CloseFullscreenIcon fontSize="small" /></ListItemIcon> Close Others
+        </MenuItem>
+        <MenuItem onClick={() => runAndClose(() => e.closeAllTabs())} sx={{ color: '#ef4444' }}>
+          <ListItemIcon><ClearAllIcon fontSize="small" sx={{ color: '#ef4444' }} /></ListItemIcon> Close All
+        </MenuItem>
+      </Menu>
+    </div>
+  );
+};

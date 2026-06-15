@@ -1,0 +1,31 @@
+<effect>
+  <name>blur</name>
+  <description>Blur in/out. The element fades from a soft blur into focus. Works as a slide transition and as a build (enter/exit).</description>
+  <parameters>
+    <param name="duration" default="400" />
+    <param name="easing" default="ease" />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Transitions</category>
+      <label>Transition: blur</label>
+      <text><![CDATA[<!-- @transition blur -->]]></text>
+      <description>Blur into focus when entering this slide.</description>
+    </snippet>
+    <snippet>
+      <category>Builds</category>
+      <label>Build: blur (step)</label>
+      <text><![CDATA[<!-- @build step: 1, effect: blur -->
+content
+<!-- @end -->]]></text>
+      <description>Reveal a range at a build step with a blur-in.</description>
+    </snippet>
+  </snippets>
+  <style><![CDATA[
+    .mdp-effect.blur[data-mdp-phase="enter"]        { opacity: 0; filter: blur(12px); }
+    .mdp-effect.blur[data-mdp-phase="enter-active"] { opacity: 1; filter: blur(0); transition: opacity var(--mdp-fx-duration) var(--mdp-fx-easing), filter var(--mdp-fx-duration) var(--mdp-fx-easing); }
+    .mdp-effect.blur[data-mdp-phase="leave"]        { opacity: 1; filter: blur(0); }
+    .mdp-effect.blur[data-mdp-phase="leave-active"] { opacity: 0; filter: blur(12px); transition: opacity var(--mdp-fx-duration) var(--mdp-fx-easing), filter var(--mdp-fx-duration) var(--mdp-fx-easing); }
+  ]]></style>
+  <script><![CDATA[]]></script>
+</effect>

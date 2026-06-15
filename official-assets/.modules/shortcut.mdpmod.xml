@@ -1,0 +1,60 @@
+<module>
+  <name>shortcut</name>
+  <type>inline</type>
+  <description>A keyboard shortcut as a sequence of keys</description>
+
+  <parameters>
+    <param name="keys" required="true" />
+  </parameters>
+
+  <snippets>
+    <snippet>
+      <category>UI Parts</category>
+      <label>Shortcut</label>
+      <text><![CDATA[<!-- @shortcut keys: Ctrl+Shift+P -->]]></text>
+      <description>Key combination rendered as styled keys</description>
+    </snippet>
+  </snippets>
+
+  <render><![CDATA[
+    const raw = (args.keys || '').toString();
+    const parts = raw.split('+').map(function (k) { return k.trim(); }).filter(function (k) { return k.length > 0; });
+    let html = '<span class="mdp-mod-shortcut">';
+    parts.forEach(function (key, index) {
+      if (index > 0) html += '<span class="shortcut-plus">+</span>';
+      html += '<kbd class="shortcut-key">' + key + '</kbd>';
+    });
+    html += '</span>';
+    return html;
+  ]]></render>
+
+  <style><![CDATA[
+    .mdp-mod-shortcut {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      vertical-align: middle;
+    }
+    .mdp-mod-shortcut .shortcut-key {
+      display: inline-block;
+      font-family: ui-monospace, "Cascadia Code", "Segoe UI Mono", Menlo, Consolas, monospace;
+      font-size: 0.85em;
+      line-height: 1;
+      padding: 3px 7px;
+      color: var(--text-color, #1f2937);
+      background-color: var(--inline-code-bg, #f3f4f6);
+      border: 1px solid var(--border-color, #d1d5db);
+      border-bottom-width: 2px;
+      border-radius: 5px;
+      box-shadow: var(--shadow-sm, 0 1px 0 rgba(0,0,0,0.15));
+      white-space: nowrap;
+    }
+    .mdp-mod-shortcut .shortcut-plus {
+      color: var(--muted-color, #6b7280);
+      font-size: 0.85em;
+      font-weight: 600;
+    }
+  ]]></style>
+
+  <script></script>
+</module>

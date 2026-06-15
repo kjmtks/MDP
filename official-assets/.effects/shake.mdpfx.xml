@@ -1,0 +1,42 @@
+<effect>
+  <name>shake</name>
+  <description>Horizontal shake for emphasis. Falls back to a fade when used as a transition. Works as an emphasis, a slide transition, and a build (enter/exit).</description>
+  <parameters>
+    <param name="duration" default="400" />
+    <param name="easing" default="ease" />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Transitions</category>
+      <label>Transition: shake</label>
+      <text><![CDATA[<!-- @transition shake -->]]></text>
+      <description>Fade into this slide (shake is best used as an emphasis).</description>
+    </snippet>
+    <snippet>
+      <category>Builds</category>
+      <label>Build: shake (step)</label>
+      <text><![CDATA[<!-- @build step: 1, effect: shake -->
+content
+<!-- @end -->]]></text>
+      <description>Emphasize a range at a build step with a horizontal shake.</description>
+    </snippet>
+  </snippets>
+  <style><![CDATA[
+    .mdp-effect.shake[data-mdp-phase="enter"]        { opacity: 0; }
+    .mdp-effect.shake[data-mdp-phase="enter-active"] { opacity: 1; transition: opacity var(--mdp-fx-duration) var(--mdp-fx-easing); }
+    .mdp-effect.shake[data-mdp-phase="leave"]        { opacity: 1; }
+    .mdp-effect.shake[data-mdp-phase="leave-active"] { opacity: 0; transition: opacity var(--mdp-fx-duration) var(--mdp-fx-easing); }
+    .mdp-effect.shake[data-mdp-phase="emphasis-active"] { animation: mdp-shake var(--mdp-fx-duration) var(--mdp-fx-easing); }
+    @keyframes mdp-shake {
+      0%   { transform: translateX(0); }
+      15%  { transform: translateX(-8px); }
+      30%  { transform: translateX(8px); }
+      45%  { transform: translateX(-8px); }
+      60%  { transform: translateX(8px); }
+      75%  { transform: translateX(-4px); }
+      90%  { transform: translateX(4px); }
+      100% { transform: translateX(0); }
+    }
+  ]]></style>
+  <script><![CDATA[]]></script>
+</effect>

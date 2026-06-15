@@ -1,0 +1,31 @@
+<effect>
+  <name>fade</name>
+  <description>Cross-fade. Works as a slide transition and as a build (enter/exit).</description>
+  <parameters>
+    <param name="duration" default="400" />
+    <param name="easing" default="ease" />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Transitions</category>
+      <label>Transition: fade</label>
+      <text><![CDATA[<!-- @transition fade -->]]></text>
+      <description>Cross-fade into this slide.</description>
+    </snippet>
+    <snippet>
+      <category>Builds</category>
+      <label>Build: fade (step)</label>
+      <text><![CDATA[<!-- @build step: 1, effect: fade -->
+content
+<!-- @end -->]]></text>
+      <description>Reveal a range at a build step with a fade.</description>
+    </snippet>
+  </snippets>
+  <style><![CDATA[
+    .mdp-effect.fade[data-mdp-phase="enter"]        { opacity: 0; }
+    .mdp-effect.fade[data-mdp-phase="enter-active"] { opacity: 1; transition: opacity var(--mdp-fx-duration) var(--mdp-fx-easing); }
+    .mdp-effect.fade[data-mdp-phase="leave"]        { opacity: 1; }
+    .mdp-effect.fade[data-mdp-phase="leave-active"] { opacity: 0; transition: opacity var(--mdp-fx-duration) var(--mdp-fx-easing); }
+  ]]></style>
+  <script><![CDATA[]]></script>
+</effect>

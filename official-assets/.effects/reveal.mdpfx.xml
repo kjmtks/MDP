@@ -1,0 +1,31 @@
+<effect>
+  <name>reveal</name>
+  <description>Wipe-reveal from left to right using a clip-path. The content is uncovered progressively. Works as a slide transition and as a build (enter/exit).</description>
+  <parameters>
+    <param name="duration" default="400" />
+    <param name="easing" default="ease" />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Transitions</category>
+      <label>Transition: reveal</label>
+      <text><![CDATA[<!-- @transition reveal -->]]></text>
+      <description>Reveal this slide from left to right.</description>
+    </snippet>
+    <snippet>
+      <category>Builds</category>
+      <label>Build: reveal (step)</label>
+      <text><![CDATA[<!-- @build step: 1, effect: reveal -->
+content
+<!-- @end -->]]></text>
+      <description>Reveal a range at a build step with a left-to-right wipe.</description>
+    </snippet>
+  </snippets>
+  <style><![CDATA[
+    .mdp-effect.reveal[data-mdp-phase="enter"]        { clip-path: inset(0 100% 0 0); }
+    .mdp-effect.reveal[data-mdp-phase="enter-active"] { clip-path: inset(0 0 0 0); transition: clip-path var(--mdp-fx-duration) var(--mdp-fx-easing); }
+    .mdp-effect.reveal[data-mdp-phase="leave"]        { clip-path: inset(0 0 0 0); }
+    .mdp-effect.reveal[data-mdp-phase="leave-active"] { clip-path: inset(0 100% 0 0); transition: clip-path var(--mdp-fx-duration) var(--mdp-fx-easing); }
+  ]]></style>
+  <script><![CDATA[]]></script>
+</effect>

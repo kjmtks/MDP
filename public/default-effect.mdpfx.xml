@@ -1,0 +1,48 @@
+<effect>
+  <name>my-effect</name>
+  <description>A custom effect. Define enter / leave / emphasis phases below.</description>
+
+  <parameters>
+    <param name="duration" default="400" />
+    <param name="easing" default="ease" />
+  </parameters>
+
+  <snippets>
+    <snippet>
+      <category>Transitions</category>
+      <label>Transition: my-effect</label>
+      <text><![CDATA[<!-- @transition my-effect -->]]></text>
+      <description>Use this effect as a slide transition.</description>
+    </snippet>
+    <snippet>
+      <category>Builds</category>
+      <label>Build: my-effect (step)</label>
+      <text><![CDATA[<!-- @build step: 1, effect: my-effect -->
+content
+<!-- @end -->]]></text>
+      <description>Reveal a range at a build step with this effect.</description>
+    </snippet>
+  </snippets>
+
+  <!--
+    CSS phase-class convention. The runtime adds `.mdp-effect.<name>` plus
+    data-mdp-phase="enter|leave|emphasis" then "-active" on the next frame,
+    and sets the duration / easing CSS custom properties (see var(...) below).
+    For slide transitions, data-mdp-dir="forward|back" is also set.
+  -->
+  <style><![CDATA[
+    .mdp-effect.my-effect[data-mdp-phase="enter"]        { opacity: 0; }
+    .mdp-effect.my-effect[data-mdp-phase="enter-active"] { opacity: 1; transition: opacity var(--mdp-fx-duration) var(--mdp-fx-easing); }
+    .mdp-effect.my-effect[data-mdp-phase="leave"]        { opacity: 1; }
+    .mdp-effect.my-effect[data-mdp-phase="leave-active"] { opacity: 0; transition: opacity var(--mdp-fx-duration) var(--mdp-fx-easing); }
+  ]]></style>
+
+  <!--
+    Optional JS hooks. If present they take precedence over the CSS above.
+    export default {
+      enter(el, ctx) { return el.animate([{opacity:0},{opacity:1}], {duration: ctx.duration, easing: ctx.easing}).finished; },
+      leave(el, ctx) { return el.animate([{opacity:1},{opacity:0}], {duration: ctx.duration, easing: ctx.easing}).finished; }
+    }
+  -->
+  <script><![CDATA[]]></script>
+</effect>

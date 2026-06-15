@@ -1,0 +1,65 @@
+<module>
+  <name>metrics</name>
+  <type>block</type>
+  <description>Displays important numbers gigantically for a strong impact.</description>
+  <parameters>
+    <param name="value" default="100%" required="true" />
+    <param name="label" default="Achievement Rate" required="false" />
+    <param name="color" default="var(--accent-color)" required="false" />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Presentation UI</category>
+      <label>Big Metrics</label>
+      <text><![CDATA[<!-- @metrics value: 1/10, label: Execution Time Reduction, color: var(--accent-color) -->
+Achieved a dramatic performance improvement compared to the conventional system.
+<!-- @end -->]]></text>
+      <description>Appeals numbers largely.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const val = args.value || '0';
+    const label = args.label || '';
+    const color = args.color || 'var(--accent-color)';
+    const contentStr = sections[0] ? sections[0].trim() : '';
+    return `\n\n
+<div class="mdp-mod-metrics" style="--met-color: ${color};">
+  <div class="mdp-metrics-value">${val}</div>
+  ${label ? `<div class="mdp-metrics-label">${label}</div>` : ''}
+  ${contentStr ? `<div class="mdp-metrics-desc">\n\n${contentStr}\n\n</div>` : ''}
+</div>
+\n\n`;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-metrics {
+      text-align: center;
+      margin: 1rem 0;
+      padding: 2em;
+      background: #fafafa;
+      border-radius: 12px;
+    }
+    .mdp-metrics-value {
+      font-size: 5em;
+      font-weight: 900;
+      line-height: 1;
+      color: var(--met-color);
+      margin-bottom: 0.1em;
+      letter-spacing: -2px;
+    }
+    .mdp-metrics-label {
+      font-size: 1.2em;
+      font-weight: bold;
+      color: #555;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      margin-bottom: 1em;
+    }
+    .mdp-metrics-desc {
+      color: #666;
+      max-width: 80%;
+      margin: 0 auto;
+    }
+    .mdp-metrics-desc > *:first-child { margin-top: 0; }
+    .mdp-metrics-desc > *:last-child { margin-bottom: 0; }
+  ]]></style>
+</module>

@@ -1,0 +1,31 @@
+<effect>
+  <name>drop</name>
+  <description>Drop in from above with a slight overshoot, then settle. On leave it drops downward out of view. Works as a slide transition and as a build (enter/exit).</description>
+  <parameters>
+    <param name="duration" default="400" />
+    <param name="easing" default="ease" />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Transitions</category>
+      <label>Transition: drop</label>
+      <text><![CDATA[<!-- @transition drop -->]]></text>
+      <description>Drop into this slide from above.</description>
+    </snippet>
+    <snippet>
+      <category>Builds</category>
+      <label>Build: drop (step)</label>
+      <text><![CDATA[<!-- @build step: 1, effect: drop -->
+content
+<!-- @end -->]]></text>
+      <description>Reveal a range at a build step with a drop-in.</description>
+    </snippet>
+  </snippets>
+  <style><![CDATA[
+    .mdp-effect.drop[data-mdp-phase="enter"]        { opacity: 0; transform: translateY(-40px); }
+    .mdp-effect.drop[data-mdp-phase="enter-active"] { opacity: 1; transform: translateY(0); transition: opacity var(--mdp-fx-duration) var(--mdp-fx-easing), transform var(--mdp-fx-duration) var(--mdp-fx-easing); }
+    .mdp-effect.drop[data-mdp-phase="leave"]        { opacity: 1; transform: translateY(0); }
+    .mdp-effect.drop[data-mdp-phase="leave-active"] { opacity: 0; transform: translateY(40px); transition: opacity var(--mdp-fx-duration) var(--mdp-fx-easing), transform var(--mdp-fx-duration) var(--mdp-fx-easing); }
+  ]]></style>
+  <script><![CDATA[]]></script>
+</effect>

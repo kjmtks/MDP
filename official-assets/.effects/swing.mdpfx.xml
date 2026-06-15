@@ -1,0 +1,39 @@
+<effect>
+  <name>swing</name>
+  <description>Pendulum swing from the top for emphasis. Falls back to a fade when used as a transition. Works as an emphasis, a slide transition, and a build (enter/exit).</description>
+  <parameters>
+    <param name="duration" default="400" />
+    <param name="easing" default="ease" />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Transitions</category>
+      <label>Transition: swing</label>
+      <text><![CDATA[<!-- @transition swing -->]]></text>
+      <description>Fade into this slide (swing is best used as an emphasis).</description>
+    </snippet>
+    <snippet>
+      <category>Builds</category>
+      <label>Build: swing (step)</label>
+      <text><![CDATA[<!-- @build step: 1, effect: swing -->
+content
+<!-- @end -->]]></text>
+      <description>Emphasize a range at a build step with a pendulum swing.</description>
+    </snippet>
+  </snippets>
+  <style><![CDATA[
+    .mdp-effect.swing[data-mdp-phase="enter"]        { opacity: 0; }
+    .mdp-effect.swing[data-mdp-phase="enter-active"] { opacity: 1; transition: opacity var(--mdp-fx-duration) var(--mdp-fx-easing); }
+    .mdp-effect.swing[data-mdp-phase="leave"]        { opacity: 1; }
+    .mdp-effect.swing[data-mdp-phase="leave-active"] { opacity: 0; transition: opacity var(--mdp-fx-duration) var(--mdp-fx-easing); }
+    .mdp-effect.swing[data-mdp-phase="emphasis-active"] { transform-origin: top center; animation: mdp-swing var(--mdp-fx-duration) var(--mdp-fx-easing); }
+    @keyframes mdp-swing {
+      0%   { transform: rotate(0deg); }
+      25%  { transform: rotate(10deg); }
+      50%  { transform: rotate(-8deg); }
+      75%  { transform: rotate(4deg); }
+      100% { transform: rotate(0deg); }
+    }
+  ]]></style>
+  <script><![CDATA[]]></script>
+</effect>

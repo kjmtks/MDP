@@ -1,0 +1,31 @@
+<effect>
+  <name>glide</name>
+  <description>Gentle horizontal glide with a fade. The element eases in from the right and leaves to the left. Softer than the hard slide. Works as a slide transition and as a build (enter/exit).</description>
+  <parameters>
+    <param name="duration" default="400" />
+    <param name="easing" default="ease" />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Transitions</category>
+      <label>Transition: glide</label>
+      <text><![CDATA[<!-- @transition glide -->]]></text>
+      <description>Glide gently into this slide.</description>
+    </snippet>
+    <snippet>
+      <category>Builds</category>
+      <label>Build: glide (step)</label>
+      <text><![CDATA[<!-- @build step: 1, effect: glide -->
+content
+<!-- @end -->]]></text>
+      <description>Reveal a range at a build step with a gentle glide.</description>
+    </snippet>
+  </snippets>
+  <style><![CDATA[
+    .mdp-effect.glide[data-mdp-phase="enter"]        { opacity: 0; transform: translateX(60px); }
+    .mdp-effect.glide[data-mdp-phase="enter-active"] { opacity: 1; transform: translateX(0); transition: opacity var(--mdp-fx-duration) var(--mdp-fx-easing), transform var(--mdp-fx-duration) var(--mdp-fx-easing); }
+    .mdp-effect.glide[data-mdp-phase="leave"]        { opacity: 1; transform: translateX(0); }
+    .mdp-effect.glide[data-mdp-phase="leave-active"] { opacity: 0; transform: translateX(-60px); transition: opacity var(--mdp-fx-duration) var(--mdp-fx-easing), transform var(--mdp-fx-duration) var(--mdp-fx-easing); }
+  ]]></style>
+  <script><![CDATA[]]></script>
+</effect>

@@ -1,0 +1,76 @@
+<module>
+  <name>multicolumn</name>
+  <type>block</type>
+  <description>Multi-column</description>
+  
+  <parameters>
+    <param name="gap" default="1.5rem" required="false" />
+    <param name="align" default="flex-start" required="false" />
+    <param name="ratio" default="[]" required="false" />
+  </parameters>
+
+  <snippets>
+    <snippet>
+      <category>Layout</category>
+      <label>Two Columns</label>
+      <text><![CDATA[<!-- @multicolumn ratio: [1,1] -->
+Left
+<!-- @ -->
+Right
+<!-- @end -->]]></text>
+    </snippet>
+    <snippet>
+      <category>Layout</category>
+      <label>Full-custom multi-column</label>
+      <text><![CDATA[<!-- @multicolumn ratio: [1,2,1], gap: 1.5rem, align: flex-start -->
+Left
+<!-- @ -->
+Center
+<!-- @ -->
+Right
+<!-- @end -->]]></text>
+    </snippet>
+  </snippets>
+
+  <render><![CDATA[
+    const gap = args.gap || '1.5rem';
+    const align = args.align || 'flex-start';
+    const ratioArr = Array.isArray(args.ratio) ? args.ratio : [];
+    let html = `\n\n<div class="mdp-mod-multicolumn" style="gap: ${gap}; align-items: ${align};">\n`;
+    sections.forEach((section, index) => {
+       const contentStr = section.trim();
+       if (!contentStr) return;
+       
+       const flexRatio = ratioArr[index] !== undefined && ratioArr[index] !== '' ? ratioArr[index] : '1';
+       
+       html += `<div class="mdp-mod-column" style="flex: ${flexRatio};">
+
+${contentStr}
+
+</div>`;
+    });
+    html += `</div>\n\n`;
+    return html;
+  ]]></render>
+
+  <style><![CDATA[
+    .mdp-mod-multicolumn {
+      display: flex;
+      flex-direction: row;
+      width: 100%;
+      margin: 0;
+      padding: 0;
+    }
+    .mdp-mod-column {
+      flex: 1;
+      min-width: 0;
+      width: 100%;
+      margin: 0;
+      padding: 0;
+    }
+    .mdp-mod-column > :first-child { margin-top: 0; padding-top: 0; }
+    .mdp-mod-column > :last-child { margin-bottom: 0; padding-bottom: 0; }
+  ]]></style>
+  
+  <script></script>
+</module>

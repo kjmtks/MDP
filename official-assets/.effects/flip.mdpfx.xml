@@ -1,0 +1,23 @@
+<effect>
+  <name>flip</name>
+  <description>3D flip around the Y axis. Works as a slide transition or a build.</description>
+  <parameters>
+    <param name="duration" default="500" />
+    <param name="easing" default="ease-in-out" />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Transitions</category>
+      <label>Transition: flip</label>
+      <text><![CDATA[<!-- @transition flip -->]]></text>
+      <description>Flip into this slide.</description>
+    </snippet>
+  </snippets>
+  <style><![CDATA[
+    .mdp-effect.flip[data-mdp-phase="enter"]        { opacity: 0; transform: perspective(1200px) rotateY(90deg); }
+    .mdp-effect.flip[data-mdp-phase="enter-active"] { opacity: 1; transform: perspective(1200px) rotateY(0deg); transition: opacity var(--mdp-fx-duration) var(--mdp-fx-easing), transform var(--mdp-fx-duration) var(--mdp-fx-easing); }
+    .mdp-effect.flip[data-mdp-phase="leave"]        { opacity: 1; transform: perspective(1200px) rotateY(0deg); }
+    .mdp-effect.flip[data-mdp-phase="leave-active"] { opacity: 0; transform: perspective(1200px) rotateY(-90deg); transition: opacity var(--mdp-fx-duration) var(--mdp-fx-easing), transform var(--mdp-fx-duration) var(--mdp-fx-easing); }
+  ]]></style>
+  <script><![CDATA[]]></script>
+</effect>
