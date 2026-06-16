@@ -100,10 +100,24 @@ export const useFileManager = ({ setCurrentSlideIndex, syncDrawings, onFileLoade
 
   const [debouncedMarkdown, setDebouncedMarkdown] = useState<string>(markdown);
 
+  // A file SWITCH/CLOSE must reflect in the debounced value immediately, or
+  // `currentFileName` jumps to the new tab while `debouncedMarkdown` lingers on
+  // the previous tab's content for ~300ms — so the preview briefly renders the
+  // old file's slides (e.g. an unrelated image) under the new file's name.
+  // Adjust during render (React's recommended pattern, same as the preview-source
+  // adjustment in EditorPage) so the new content is in place before paint.
+  const debouncedPathRef = useRef(currentFileName);
+  if (debouncedPathRef.current !== currentFileName) {
+    debouncedPathRef.current = currentFileName;
+    setDebouncedMarkdown(markdown);
+  }
+
+  // Intra-file edits stay throttled (debounced re-parsing while typing).
   useEffect(() => {
+    if (debouncedMarkdown === markdown) return;
     const handler = setTimeout(() => { setDebouncedMarkdown(markdown); }, 300);
     return () => clearTimeout(handler);
-  }, [markdown]);
+  }, [markdown, debouncedMarkdown]);
 
   const setMarkdown = useCallback((newContent: string) => {
     setTabState(prev => {

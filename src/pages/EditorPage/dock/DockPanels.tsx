@@ -89,16 +89,17 @@ export const SnippetsPanel: React.FC = () => {
   const [query, setQuery] = useState('');
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return snippets;
+    // AND search: every whitespace-separated term must match (across label,
+    // description, category).
+    const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    if (!terms.length) return snippets;
     return snippets
       .map((section) => ({
         ...section,
-        items: section.items.filter((item) =>
-          item.label.toLowerCase().includes(q) ||
-          (item.description || '').toLowerCase().includes(q) ||
-          section.category.toLowerCase().includes(q),
-        ),
+        items: section.items.filter((item) => {
+          const hay = `${item.label} ${item.description || ''} ${section.category}`.toLowerCase();
+          return terms.every((t) => hay.includes(t));
+        }),
       }))
       .filter((section) => section.items.length > 0);
   }, [snippets, query]);
@@ -220,11 +221,11 @@ const imgSize = (value: string): string => {
 };
 
 const ImageRow: React.FC<{
-  entry: ImageEntry; overrides: boolean; highlight: boolean; resolveThumb: (v: string) => string;
+  entry: ImageEntry; overrides: boolean; moveDisabled?: boolean; highlight: boolean; resolveThumb: (v: string) => string;
   onInsert: (alias: string) => void; onEdit: (e: ImageEntry) => void;
   onDelete: (e: ImageEntry) => void; onMove: (alias: string, to: 'file' | 'library') => void;
   onEditDrawio?: (e: ImageEntry) => void; onPreview?: (e: ImageEntry) => void;
-}> = ({ entry, overrides, highlight, resolveThumb, onInsert, onEdit, onDelete, onMove, onEditDrawio, onPreview }) => {
+}> = ({ entry, overrides, moveDisabled, highlight, resolveThumb, onInsert, onEdit, onDelete, onMove, onEditDrawio, onPreview }) => {
   const [broken, setBroken] = useState(false);
   const [hoverEl, setHoverEl] = useState<HTMLElement | null>(null);
   const src = resolveThumb(entry.value);
@@ -271,7 +272,9 @@ const ImageRow: React.FC<{
           <Tooltip title="Edit in drawio"><IconButton size="small" sx={toolBtnSx} onClick={() => onEditDrawio(entry)}><AccountTreeIcon fontSize="small" /></IconButton></Tooltip>
         )}
         <Tooltip title="Edit"><IconButton size="small" sx={toolBtnSx} onClick={() => onEdit(entry)}><EditIcon fontSize="small" /></IconButton></Tooltip>
-        <Tooltip title={entry.scope === 'file' ? 'Move to library' : 'Move to file'}><IconButton size="small" sx={toolBtnSx} onClick={() => onMove(entry.alias, entry.scope === 'file' ? 'library' : 'file')}><SwapHorizIcon fontSize="small" /></IconButton></Tooltip>
+        <Tooltip title={moveDisabled ? 'Cannot move: this alias exists in both this file and the library' : (entry.scope === 'file' ? 'Move to library' : 'Move to file')}>
+          <span><IconButton size="small" sx={toolBtnSx} disabled={moveDisabled} onClick={() => onMove(entry.alias, entry.scope === 'file' ? 'library' : 'file')}><SwapHorizIcon fontSize="small" /></IconButton></span>
+        </Tooltip>
         <Tooltip title="Delete"><IconButton size="small" sx={toolBtnSx} onClick={() => onDelete(entry)}><DeleteOutlineIcon fontSize="small" /></IconButton></Tooltip>
       </TableCell>
     </TableRow>
@@ -286,6 +289,7 @@ export const ImagesPanel: React.FC = () => {
   const panelFocused = useRef(false);
 
   const libAliases = useMemo(() => new Set(img.libraryImages.map((e) => e.alias)), [img.libraryImages]);
+  const fileAliases = useMemo(() => new Set(img.fileImages.map((e) => e.alias)), [img.fileImages]);
   // All tags across file + library, for the dialog's tag autocomplete suggestions.
   const allTags = useMemo(
     () => Array.from(new Set([...img.fileImages, ...img.libraryImages].flatMap((e) => e.tags || []))).sort(),
@@ -293,12 +297,12 @@ export const ImagesPanel: React.FC = () => {
   );
 
   // Filter an entry by the search query against alias, description and tags.
+  // AND search: every whitespace-separated term must match somewhere.
   const matchesQuery = (e: ImageEntry) => {
-    const q = query.trim().toLowerCase();
-    if (!q) return true;
-    return e.alias.toLowerCase().includes(q)
-      || (e.description || '').toLowerCase().includes(q)
-      || (e.tags || []).some((t) => t.toLowerCase().includes(q));
+    const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    if (!terms.length) return true;
+    const hay = `${e.alias} ${e.description || ''} ${(e.tags || []).join(' ')}`.toLowerCase();
+    return terms.every((t) => hay.includes(t));
   };
 
   const openAddWithValue = (value: string) => setDialog({ mode: 'add', scope: 'file', alias: '', value, description: '', tags: [] });
@@ -369,7 +373,8 @@ export const ImagesPanel: React.FC = () => {
           <Box sx={{ overflowX: 'auto' }}>
           <Table size="small" sx={{ minWidth: 360 }}><TableBody>
             {visible.map((e) => (
-              <ImageRow key={e.alias} entry={e} overrides={scope === 'file' && libAliases.has(e.alias)} highlight={img.focusAlias === e.alias}
+              <ImageRow key={e.alias} entry={e} overrides={scope === 'file' && libAliases.has(e.alias)}
+                moveDisabled={scope === 'file' ? libAliases.has(e.alias) : fileAliases.has(e.alias)} highlight={img.focusAlias === e.alias}
                 resolveThumb={img.resolveThumb} onInsert={img.onInsertReference} onPreview={img.onPreview}
                 onEdit={(en) => setDialog({ mode: 'edit', scope: en.scope, alias: en.alias, value: en.value, description: en.description || '', tags: en.tags || [] })}
                 onDelete={(en) => img.onDeleteImage(en.scope, en.alias)} onMove={img.onMove} onEditDrawio={img.onEditDrawio} />
