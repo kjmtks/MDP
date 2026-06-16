@@ -26,8 +26,6 @@ export interface SlideContext {
   pageClass?: string;
   columnsRatio?: number[];
   columnIndex?: number;
-  addclasses: Record<string, string>;
-  addstyles: Record<string, string>;
   // Global defaults from the meta page.
   transition?: MotionSpec;
   build?: MotionSpec;
@@ -37,6 +35,4 @@ export const createDefaultContext = (): SlideContext => ({
   numberOfPages: 0,
   aspectRatio: [16, 9],
   meta: {},
-  addclasses: {},
-  addstyles: {},
 });

@@ -1,0 +1,69 @@
+<module>
+  <name>addstyle</name>
+  <type>block</type>
+  <description>Apply scoped CSS to a region. Section 1 = CSS, section 2 = content. Selectors are auto-prefixed with a unique scope class, so the CSS only affects this block (e.g. override drawio fonts per diagram).</description>
+
+  <snippets>
+    <snippet>
+      <category>Layout</category>
+      <label>Scoped style</label>
+      <text><![CDATA[<!-- @addstyle -->
+img { height: 450px; }
+<!-- @ -->
+![@image](...)
+<!-- @end -->]]></text>
+      <description>Apply CSS only to the content inside this block (selectors auto-scoped).</description>
+    </snippet>
+    <snippet>
+      <category>Layout</category>
+      <label>Scoped style (drawio font)</label>
+      <text><![CDATA[<!-- @addstyle -->
+.mdp-drawio-svg { --mdp-drawio-font: "Noto Sans JP"; --mdp-drawio-font-size: 16px; }
+<!-- @ -->
+![@drawio](data:image/svg+xml;base64,...)
+<!-- @end -->]]></text>
+      <description>Override the drawio font only for the diagram inside this block.</description>
+    </snippet>
+    <snippet>
+      <category>Layout</category>
+      <label>Scoped style in a free box</label>
+      <text><![CDATA[<!-- @freebox x: 50, y: 40, w: 40, h: 30 -->
+<!-- @addstyle -->
+.mdp-drawio-svg { --mdp-drawio-font: "Noto Sans JP"; --mdp-drawio-font-size: 16px; }
+<!-- @ -->
+![@drawio](data:image/svg+xml;base64,...)
+<!-- @end -->
+<!-- @end -->]]></text>
+      <description>A movable free box whose drawio uses a specific font.</description>
+    </snippet>
+  </snippets>
+
+  <render><![CDATA[
+    const cssText = (sections[0] || '').trim();
+    const inner = (sections[1] || '').trim();
+    // Forgiving: with no second section (missing `<!-- @ -->` separator), the
+    // single section is the CONTENT, not CSS — otherwise an image/text put there
+    // would be swallowed into a <style> tag and vanish.
+    if (!inner) {
+      return `\n\n${cssText}\n\n`;
+    }
+    // Deterministic, instance-unique scope class from the CSS + content.
+    let h = 0;
+    const sig = cssText + '|' + inner;
+    for (let i = 0; i < sig.length; i++) h = (h * 31 + sig.charCodeAt(i)) | 0;
+    const scope = 'mdpscope-' + Math.abs(h).toString(36);
+    // Prefix each rule's selectors with the scope class (flat rules; @-rules left
+    // as-is). This keeps the CSS from leaking to other diagrams/slides.
+    const scoped = cssText.replace(/([^{}]+)\{([^{}]*)\}/g, (_m, sel, body) => {
+      const sl = String(sel).split(',').map(function (x) { return x.trim(); })
+        .filter(Boolean)
+        .map(function (x) { return x.charAt(0) === '@' ? x : '.' + scope + ' ' + x; })
+        .join(', ');
+      return sl + ' { ' + body + ' }';
+    });
+    return `\n\n<style>${scoped}</style>\n\n<div class="${scope}">\n\n${inner}\n\n</div>\n\n`;
+  ]]></render>
+
+  <style></style>
+  <script></script>
+</module>

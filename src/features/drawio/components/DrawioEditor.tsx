@@ -27,6 +27,12 @@ export const DrawioEditor: React.FC<DrawioEditorProps> = ({ open, onClose, onSav
     : '/drawio/index.html?embed=1&ui=atlas&spin=1&proto=json&libraries=1&stealth=1';
 
   useEffect(() => {
+    // Only the OPEN editor may handle drawio iframe messages. All DrawioEditor
+    // instances stay mounted (only `open` toggles), so without this gate every
+    // instance's onSave fires on a single save — e.g. editing a library diagram
+    // would also trigger the editor-insert instance and drop `![@drawio](…)` into
+    // the document.
+    if (!open) return;
     const handleMessage = (event: MessageEvent) => {
       if (!event.data || typeof event.data !== 'string') return;
       try {
@@ -90,7 +96,7 @@ export const DrawioEditor: React.FC<DrawioEditorProps> = ({ open, onClose, onSav
     };
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [initialBase64Xml, onClose, onSave]);
+  }, [open, initialBase64Xml, onClose, onSave]);
 
   return (
     <Dialog

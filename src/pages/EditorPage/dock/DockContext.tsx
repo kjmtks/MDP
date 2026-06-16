@@ -3,6 +3,7 @@ import type { ViewUpdate } from '@uiw/react-codemirror';
 import type { Extension } from '@codemirror/state';
 import type { FileNode, FileType, SnippetsCategory } from '../../../types';
 import type { Stroke } from '../../../features/drawing/components/DrawingOverlay';
+import type { ManipRuntime } from '../../../features/slide/components/ManipulationLayer';
 import type { OpenTab } from '../../../features/fileTree/hooks/useFileManager';
 import type { Bookmark } from '../hooks/useBookmarks';
 import type { ImageEntry } from '../../../features/images/imageRegistry';
@@ -71,6 +72,25 @@ export interface PreviewSharedProps {
   onClosePreviewImage?: () => void;
 
   onEditDrawio?: () => void;
+
+  // On-preview module manipulation (move/resize/rotate). `manipulate` is passed
+  // to SlideView; the toggles drive the edit-layout mode. `canEditLayout` is
+  // false when the previewed slide isn't the active editor tab (so writes would
+  // not be reflected live).
+  manipulate: ManipRuntime;
+  editLayout: boolean;
+  canEditLayout: boolean;
+  snapOn: boolean;
+  onToggleEditLayout: () => void;
+  onToggleSnap: () => void;
+
+  // Live-preview toggle. When off, edits stop re-parsing / re-rendering the
+  // preview (avoids heavy parses mid-typing); `onApplyPreview` renders once on
+  // demand. `previewStale` is true when the frozen preview is behind the editor.
+  livePreview: boolean;
+  previewStale: boolean;
+  onToggleLivePreview: () => void;
+  onApplyPreview: () => void;
 }
 
 export interface EditorSharedProps {

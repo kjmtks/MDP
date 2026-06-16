@@ -31,6 +31,9 @@ import { clearAllEffects, registerEffect, getAllEffectSnippets } from '../../fea
 import { applyModulesToMarkdown } from '../../features/modules/moduleProcessor';
 import { resolveImages, setLibraryImages, clearLibraryImages, parseInFileImageDefs, type ImageEntry } from '../../features/images/imageRegistry';
 import { addFileImageDef, editFileImageDef, deleteFileImageDef } from '../../features/images/imageDocEdits';
+import { updateModuleTransforms, removeModuleDirectives } from '../../features/modules/moduleDocEdits';
+import { prewarmSvgs } from '../../features/slide/inlineSvg';
+import type { ManipRuntime } from '../../features/slide/components/ManipulationLayer';
 import { storeLibraryImage, inlineLibraryImage, saveRegistry, deleteLibraryFile } from '../../features/images/imageLibraryStore';
 import { useBookmarks } from './hooks/useBookmarks';
 import { useCatalogSync } from '../../features/catalog/hooks/useCatalogSync';
@@ -272,6 +275,20 @@ export default function EditorPage() {
   // Image shown in the Preview panel instead of the slides (library preview).
   const [previewImage, setPreviewImage] = useState<string | null>(null);
 
+  // On-preview module manipulation (edit-layout mode).
+  const [editLayout, setEditLayout] = useState(false);
+  const [snapOn, setSnapOn] = useState(true);
+  const snapStep = 1; // percent
+
+  // Live preview. When OFF, editor changes stop advancing the preview source, so
+  // no re-parse/re-render happens while typing (avoids heavy mid-edit parses).
+  // The preview freezes at the last applied markdown until re-enabled or applied.
+  const [livePreview, setLivePreview] = useState(true);
+  // The exact editor doc produced by the LAST overlay transform commit. Used to
+  // detect a pure move/resize/rotate change and suppress the slide re-render
+  // (which would re-create inline drawio = flicker, and reset other elements).
+  const lastManipDocRef = useRef<string | null>(null);
+
   // A library-image preview overlays the slides in the Preview panel. Dismiss it
   // when the active file changes, otherwise switching to a slide/image tab keeps
   // showing the lingering image (the slide preview never appears until the user
@@ -414,9 +431,24 @@ export default function EditorPage() {
   );
   // Adjust during render (React-recommended) so switching to a slide updates the
   // preview without a one-frame lag; a non-previewable active tab leaves it frozen.
-  if (isPreviewableActive && (previewSource.fileName !== currentFileName || previewSource.fileType !== effectiveFileType || previewSource.md !== debouncedMarkdown)) {
+  // While editing layout, a debounced doc that EXACTLY equals the overlay's last
+  // transform commit is a pure move/resize/rotate — the live DOM is already
+  // correct (applyLive), so we skip the slide re-render (no inline-drawio
+  // re-creation flicker, no resetting other manip elements). Typing / undo /
+  // manual edits differ → normal re-render. Flushed when edit-layout turns off,
+  // the file changes, or slideshow/overview starts (effect below).
+  const fileChanged = previewSource.fileName !== currentFileName || previewSource.fileType !== effectiveFileType;
+  const mdChanged = previewSource.md !== debouncedMarkdown;
+  const manipSuppress = editLayout && mdChanged && !fileChanged && debouncedMarkdown === lastManipDocRef.current;
+  // When live preview is off, freeze the preview on editor changes (no re-parse).
+  // A file switch still updates so the preview follows the active tab.
+  const liveSuppress = !livePreview && mdChanged && !fileChanged;
+  if (isPreviewableActive && (fileChanged || (mdChanged && !manipSuppress && !liveSuppress))) {
     setPreviewSource({ fileName: currentFileName, fileType: effectiveFileType, md: debouncedMarkdown });
   }
+  // The frozen preview is "stale" when the editor content differs from what's
+  // shown (drives the Apply button's highlight).
+  const previewStale = !livePreview && markdown !== previewSource.md && !fileChanged;
   const previewFileName = previewSource.fileName;
   const previewFileType = previewSource.fileType;
   const previewMarkdown = previewSource.md;
@@ -445,7 +477,12 @@ export default function EditorPage() {
     md = md.replace(/([，．、。])\$/g, '$1 $');
     md = md.replace(/\$([^\x20-\x7E\s])/g, '$ $1');
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return md.replace(/!\[([^\]]*)\]\((data:image\/[^)]+)\)/g, (_: any, alt: any, dataUrl: any) => {
+    return md.replace(/!\[([^\]]*)\]\((data:image\/[^)]+)\)/g, (m: any, alt: any, dataUrl: any) => {
+      // Keep SVG (drawio) data-URIs as-is so SlideView can INLINE them (theme-
+      // styleable text, no <object> reload flicker). Only raster data-URIs get
+      // the blob-URL optimization. Blobbing SVGs would render them as opaque
+      // <img>, defeating inlining.
+      if (/^data:image\/svg/i.test(dataUrl)) return m;
       const blobUrl = getBlobUrlFromBase64(dataUrl);
       return `![${alt}](${blobUrl})`;
     });
@@ -520,6 +557,15 @@ export default function EditorPage() {
     toggleSlideOverview, mode, setMode, showControls, setShowControls, moveSlide, toggleSlideshow,
     step, setStep
   } = usePresentation(slides, currentSlideIndex, setCurrentSlideIndex);
+
+  // The transform-only suppress above can leave `slides` (used by slideshow /
+  // overview / presenter / remote) lagging the doc. Flush to the latest doc
+  // whenever those surfaces activate so they're never stale.
+  useEffect(() => {
+    if (isSlideshow || isSlideOverview) {
+      setPreviewSource((prev) => (prev.md === debouncedMarkdown ? prev : { ...prev, md: debouncedMarkdown }));
+    }
+  }, [isSlideshow, isSlideOverview, debouncedMarkdown]);
 
   const { handleAddBlankSlide, handleSaveDrawingsToMarkdown } = useAppActions({
     currentFileName, markdown, setMarkdown, markdownRef, editorRef, drawings, insertPage, syncDrawings
@@ -800,6 +846,12 @@ export default function EditorPage() {
     window.location.href = `${baseUrl}#/remote`;
   }, []);
 
+  // Warm the inline-SVG cache when remote broadcasting starts so rasterized
+  // slides (including never-previewed ones) have their drawio diagrams ready.
+  useEffect(() => {
+    if (remoteActive) void prewarmSvgs(slides.map((s) => (s as { html?: string }).html || ''), basePath);
+  }, [remoteActive, slides, basePath]);
+
   const handlePrint = useCallback(async () => {
     const originalTitle = document.title;
     let baseName = 'MDP_Presentation';
@@ -809,6 +861,10 @@ export default function EditorPage() {
     }
     const safeTitle = baseName.replace(/[\\/:*?"<>|\n\r\t]/g, '_').trim() || 'MDP_Presentation';
     document.title = safeTitle;
+
+    // Warm the inline-SVG cache so drawio on never-previewed slides is ready
+    // before the print container captures (no missing/late diagrams).
+    try { await prewarmSvgs(slides.map((s) => (s as { html?: string }).html || ''), basePath); } catch { /* ignore */ }
 
     // Defensive: clear any print styles a previous (interrupted) print may have
     // left behind, so the off-screen print container can never get stuck visible.
@@ -946,6 +1002,24 @@ export default function EditorPage() {
 
   const onEditDrawio = currentFileName?.match(/\.drawio\.svg$/i) ? handleEditDirectDrawio : undefined;
 
+  // Edit-layout requires the previewed slide to BE the active editor tab, so the
+  // transform write-back lands in the right document and the (live) preview
+  // reflects it. Under preview-pinning they can diverge — then the toggle is off.
+  const canEditLayout = previewFileType === 'markdown' && previewFileName === currentFileName;
+  const manipulate = useMemo<ManipRuntime>(() => ({
+    enabled: editLayout && canEditLayout,
+    snap: snapOn,
+    snapStep,
+    onCommit: (edits) => {
+      const view = editorRef.current?.view;
+      if (view) { updateModuleTransforms(view, edits); lastManipDocRef.current = view.state.doc.toString(); }
+    },
+    onDelete: (sels) => {
+      const view = editorRef.current?.view;
+      if (view) { removeModuleDirectives(view, sels); lastManipDocRef.current = view.state.doc.toString(); }
+    },
+  }), [editLayout, canEditLayout, snapOn, editorRef]);
+
   const sidebarSlice = useMemo<SidebarSharedProps>(() => ({
     currentFileName, currentFileType: previewFileType, slides, currentSlideIndex, slideSize,
     drawings, fileTree, onSlideSelect: setCurrentSlideIndex, onFileSelect: handleFileSelect,
@@ -968,10 +1042,19 @@ export default function EditorPage() {
     previewImage,
     onClosePreviewImage: () => setPreviewImage(null),
     onEditDrawio,
+    manipulate, editLayout, canEditLayout, snapOn,
+    onToggleEditLayout: () => setEditLayout((v) => !v),
+    onToggleSnap: () => setSnapOn((v) => !v),
+    livePreview, previewStale,
+    onToggleLivePreview: () => setLivePreview((v) => !v),
+    // Render the current editor content once, even while live preview is off.
+    onApplyPreview: () => setPreviewSource({ fileName: currentFileName, fileType: effectiveFileType, md: markdownRef.current }),
   }), [previewFileType, slides, currentSlideIndex, slideSize, basePath, drawings, mode, setMode,
     showControls, moveSlide, handleAddBlankSlide, clear, send, channelId, toolType, setToolType,
     penColor, setPenColor, penWidth, setPenWidth, canUndo, canRedo, undo, redo, stylusOnly,
-    setStylusOnly, addStroke, handleUpdateStrokes, isSlideshow, onEditDrawio, previewImage]);
+    setStylusOnly, addStroke, handleUpdateStrokes, isSlideshow, onEditDrawio, previewImage,
+    manipulate, editLayout, canEditLayout, snapOn, livePreview, previewStale,
+    currentFileName, effectiveFileType, markdownRef]);
 
   const snippetsSlice = useMemo<SnippetsShared>(() => ({
     snippets: snipets, onInsertText: handleInsertText,

@@ -13,6 +13,11 @@ import PresentToAllIcon from '@mui/icons-material/PresentToAll';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import PrintIcon from '@mui/icons-material/Print';
 import GridViewIcon from '@mui/icons-material/GridView';
+import ControlCameraIcon from '@mui/icons-material/ControlCamera';
+import GridOnIcon from '@mui/icons-material/GridOn';
+import SyncIcon from '@mui/icons-material/Sync';
+import SyncDisabledIcon from '@mui/icons-material/SyncDisabled';
+import RefreshIcon from '@mui/icons-material/Refresh';
 import type { IDockviewPanelProps, IDockviewPanelHeaderProps } from 'dockview';
 
 import { darkMenuSlotProps } from './darkMenu';
@@ -497,6 +502,22 @@ export const PreviewPanel: React.FC = () => {
           <Tooltip title="Switch to Remote Mode"><IconButton size="small" sx={toolBtnSx} onClick={h.onSwitchToRemote}><SmartphoneIcon fontSize="small" /></IconButton></Tooltip>
         ) }
         <Tooltip title="Connect Remote"><IconButton size="small" sx={toolBtnSx} onClick={h.onOpenConnectDialog}><DevicesIcon fontSize="small" /></IconButton></Tooltip>
+        <Tooltip title={p.livePreview ? 'Live preview on — click to pause auto-parsing while typing' : 'Live preview paused — edits are not parsed until you apply'}>
+          <span><IconButton size="small" sx={{ ...toolBtnSx, color: p.livePreview ? '#3b82f6' : '#f59e0b' }} onClick={p.onToggleLivePreview}>{p.livePreview ? <SyncIcon fontSize="small" /> : <SyncDisabledIcon fontSize="small" />}</IconButton></span>
+        </Tooltip>
+        {!p.livePreview && (
+          <Tooltip title={p.previewStale ? 'Apply edits to the preview now' : 'Preview is up to date'}>
+            <span><IconButton size="small" sx={{ ...toolBtnSx, color: p.previewStale ? '#f59e0b' : '#aaa' }} onClick={p.onApplyPreview}><RefreshIcon fontSize="small" /></IconButton></span>
+          </Tooltip>
+        )}
+        <Tooltip title={p.canEditLayout ? 'Edit layout (move/resize/rotate modules)' : 'Edit layout — open the slide being previewed to enable'}>
+          <span><IconButton size="small" sx={{ ...toolBtnSx, color: p.editLayout ? '#3b82f6' : '#aaa' }} disabled={!p.canEditLayout} onClick={p.onToggleEditLayout}><ControlCameraIcon fontSize="small" /></IconButton></span>
+        </Tooltip>
+        {p.editLayout && (
+          <Tooltip title={`Grid snap ${p.snapOn ? 'on' : 'off'} (hold Alt to bypass)`}>
+            <span><IconButton size="small" sx={{ ...toolBtnSx, color: p.snapOn ? '#3b82f6' : '#aaa' }} onClick={p.onToggleSnap}><GridOnIcon fontSize="small" /></IconButton></span>
+          </Tooltip>
+        )}
         <Box sx={{ flex: 1 }} />
         <Tooltip title="Open Presenter View"><span><IconButton size="small" sx={toolBtnSx} disabled={!h.canPresent} onClick={h.onOpenPresenter}><PresentToAllIcon fontSize="small" /></IconButton></span></Tooltip>
         <Tooltip title="Start Slideshow (F5)"><span><IconButton size="small" sx={toolBtnSx} disabled={!h.canPresent} onClick={h.onToggleSlideshow}><PlayArrowIcon fontSize="small" /></IconButton></span></Tooltip>
@@ -552,6 +573,7 @@ export const PreviewPanel: React.FC = () => {
                     isActive={true} slideSize={p.slideSize} isEnabledPointerEvents={p.mode === 'view'} header={slide.header} footer={slide.footer}
                     drawings={p.drawings[index] || []}
                     slideIndex={index} moduleRole={p.moduleRole}
+                    manipulate={p.manipulate}
                     onAddStroke={(stroke) => { p.addStroke(index, stroke); p.send({ type: 'DRAW_STROKE', channelId: p.channelId, pageIndex: index, stroke }); }}
                     isInteracting={p.mode === 'pen'} toolType={p.toolType} color={p.penColor} lineWidth={p.penWidth} penOnly={p.stylusOnly}
                     onUpdateStrokes={(indices, dx, dy) => p.handleUpdateStrokes(index, indices, dx, dy)}

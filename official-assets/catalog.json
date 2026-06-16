@@ -66,6 +66,12 @@
   ],
   ".modules": [
     {
+      "path": ".modules/addclass.mdpmod.xml"
+    },
+    {
+      "path": ".modules/addstyle.mdpmod.xml"
+    },
+    {
       "path": ".modules/alert.mdpmod.xml"
     },
     {

@@ -1,6 +1,8 @@
 import { isElectron } from '../../../api/apiClient';
 import React, { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, useMemo } from 'react';
 import { DrawingOverlay, type Stroke } from '../../drawing/components/DrawingOverlay';
+import { ManipulationLayer, type ManipRuntime } from './ManipulationLayer';
+import { getCachedSvg, getFallback, getSvgNode, loadSvg, registerDataUri } from '../inlineSvg';
 import { executeModuleScripts } from '../../modules/moduleManager';
 import { applyBuildStep, applyBuildStepInstant } from '../../effects/buildRuntime';
 import './SlideViewer.css';
@@ -36,6 +38,8 @@ interface SlideViewProps {
   slideIndex?: number;
   // 'owner' runs interactive-module logic; 'mirror' only displays synced state.
   moduleRole?: 'owner' | 'mirror';
+  // When provided (editor preview only), enables on-preview module manipulation.
+  manipulate?: ManipRuntime;
 }
 
 export const SlideView: React.FC<SlideViewProps> = memo(({
@@ -62,9 +66,11 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
   onStepAutoAdvance,
   presenting,
   slideIndex,
-  moduleRole
+  moduleRole,
+  manipulate
 }) => {
   const [containerEl, setContainerEl] = useState<HTMLDivElement | null>(null);
+  const [svgVersion, setSvgVersion] = useState(0);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mountedRoots = useRef<any[]>([]);
   const prevBuildStepRef = useRef<number | null>(null);
@@ -142,18 +148,33 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
       return `${prefix}${cleanUrl}${queryPart ? '?' + queryPart : ''}`;
     };
 
+    // Workspace-relative path (decoded) for a src, used to read the SVG via the
+    // file API for inlining. Strips any already-applied URL prefix.
+    const toWorkspacePath = (src: string): string => {
+      let s = src.split('?')[0];
+      if (s.startsWith('mdp-file://')) s = s.slice('mdp-file://'.length);
+      else if (s.startsWith('/files/')) s = s.slice('/files/'.length);
+      else if (s.startsWith('/')) s = s.slice(1);
+      else s = basePath ? `${basePath}/${s}` : s;
+      try { s = decodeURIComponent(s); } catch { /* ignore */ }
+      return s;
+    };
+
     if (raw) {
       const dataUris: string[] = [];
       const regex = /!\[.*?\]\((data:image\/[^)]+)\)/g;
       let m;
       while ((m = regex.exec(raw)) !== null) {
-        dataUris.push(m[1]);
+        // SVG data-URIs are kept as-is (inlined later) and never blobbed, so they
+        // must NOT take part in this order-based restoration — including them
+        // would shift the alignment and feed the wrong data-URI to raster images.
+        if (!/^data:image\/svg/i.test(m[1])) dataUris.push(m[1]);
       }
 
       if (dataUris.length > 0) {
         let i = 0;
         currentHtml = currentHtml.replace(/<img\s+([^>]*?)src=["']([^"']*)["']([^>]*?)>/gi, (match, before, src, after) => {
-          if (src === '' || src === '#' || src.startsWith('data:')) {
+          if (src === '' || src === '#' || (src.startsWith('data:') && !/^data:image\/svg/i.test(src))) {
             const dataUri = dataUris[i] || src;
             i++;
             return `<img ${before}src="${dataUri}"${after}>`;
@@ -169,8 +190,22 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
         if (blobMatch) return `<img ${before}src="${blobMatch[1]}"${after}>`;
       }
       const resolvedSrc = resolvePath(src);
-      if (resolvedSrc.toLowerCase().includes('.svg')) {
-        return `<object type="image/svg+xml" data="${resolvedSrc}" ${before} ${after} style="max-width: 100%; pointer-events: none;"></object>`;
+      const isSvg = resolvedSrc.toLowerCase().split('?')[0].endsWith('.svg') || /^data:image\/svg/i.test(src);
+      if (isSvg) {
+        // drawio/SVG → a placeholder carrying a cache KEY; a layout effect injects
+        // the inline SVG into it (NOT into this html string — that keeps the SVG's
+        // internal url(#id) refs out of the style-url rewriting below). data-URIs
+        // register synchronously so they inject before paint (no blank gap);
+        // workspace files load async then re-inject. http/blob keep <object>.
+        if (/^data:image\/svg/i.test(src)) {
+          const key = registerDataUri(src);
+          return `<span class="mdp-drawio-svg" data-svg-key="${key}"></span>`;
+        }
+        if (/^(https?:|blob:)/i.test(src)) {
+          return `<object type="image/svg+xml" data="${resolvedSrc}" style="max-width:100%;pointer-events:none;"></object>`;
+        }
+        const esc = toWorkspacePath(src).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+        return `<span class="mdp-drawio-svg" data-svg-key="${esc}" data-svg-load="${esc}"></span>`;
       }
       return `<img ${before}src="${resolvedSrc}"${after}>`;
     });
@@ -199,6 +234,54 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
 
     return currentHtml;
   }, [html, raw, basePath]);
+
+  // Inject inline SVG into `.mdp-drawio-svg` placeholders BEFORE paint, so the
+  // per-commit innerHTML replace never shows the white flash an <object> reload
+  // would. Cached (incl. all data-URIs) inject immediately; uncached workspace
+  // files are fetched then re-injected. On a processing failure the placeholder
+  // gets the original <object> (never empty). Idempotent: a placeholder that
+  // already holds its SVG (`data-svg-done` AND a child node) is skipped, so this
+  // can safely be called from any path (render, toggle, DOM mutation) — it only
+  // (re)fills EMPTY placeholders. The `firstChild` check matters because a
+  // content re-render can drop the injected child while a stale attribute lingers
+  // on a reused span.
+  const injectInlineSvgs = useCallback(() => {
+    const node = containerNodeRef.current;
+    if (!node) return;
+    const pending = new Set<string>();
+    node.querySelectorAll<HTMLElement>('.mdp-drawio-svg[data-svg-key]').forEach((ph) => {
+      if (ph.getAttribute('data-svg-done') === '1' && ph.firstChild) return;
+      const key = ph.getAttribute('data-svg-key') || '';
+      const svg = getCachedSvg(key);
+      if (svg !== undefined) {
+        if (svg) {
+          // Inject a clone of the pre-parsed node (fast) rather than re-parsing
+          // the SVG string on every re-render.
+          const frag = getSvgNode(key);
+          if (frag) { ph.textContent = ''; ph.appendChild(frag); }
+          else ph.innerHTML = svg;
+        } else {
+          const fb = getFallback(key);
+          if (fb) ph.innerHTML = `<object type="image/svg+xml" data="${fb}" style="max-width:100%;pointer-events:none;"></object>`;
+        }
+        ph.setAttribute('data-svg-done', '1');
+      } else {
+        const loadPath = ph.getAttribute('data-svg-load');
+        if (loadPath) pending.add(loadPath);
+      }
+    });
+    if (pending.size) {
+      Promise.all([...pending].map((p) => loadSvg(p))).then(() => setSvgVersion((v) => v + 1));
+    }
+  }, []);
+
+  // Re-inject before paint whenever the content, this surface's edit-layout mode,
+  // or an async SVG load changes. `manipulate?.enabled` is included because
+  // toggling edit-layout can re-create the content DOM (clearing injected SVGs)
+  // on a path that doesn't change `processedHtml`.
+  useLayoutEffect(() => {
+    injectInlineSvgs();
+  }, [processedHtml, containerEl, svgVersion, manipulate?.enabled, injectInlineSvgs]);
 
   useEffect(() => {
     if (!containerEl) return;
@@ -259,6 +342,9 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
     const observer = new MutationObserver(() => {
       observer.disconnect();
       runModuleScripts();
+      // The content DOM was replaced (e.g. a re-render or transition) — its
+      // injected inline SVGs are gone with it, so re-fill the placeholders.
+      injectInlineSvgs();
       // A content mutation can replace build wrappers, dropping their
       // `mdp-build-shown` class; re-snap builds to the current step so a revealed
       // build doesn't vanish. (Module re-init alone does not restore build state.)
@@ -268,7 +354,7 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
     });
     observer.observe(containerEl, { childList: true });
     return () => observer.disconnect();
-  }, [containerEl, runModuleScripts]);
+  }, [containerEl, runModuleScripts, injectInlineSvgs]);
 
   // Re-run module scripts when this surface's ownership role flips on an already
   // mounted slide (e.g. the editor preview goes owner→mirror when the fullscreen
@@ -326,7 +412,7 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
 
   return (
     <div
-      className={`slide-content-wrapper markdown-body ${className}`}
+      className={`slide-content-wrapper markdown-body ${className} ${manipulate?.enabled ? 'mdp-manip-editing' : ''}`}
       style={{
         width: `${slideSize.width}px`, height: `${slideSize.height}px`,
         display: isActive ? 'block' : 'none', position: 'relative',
@@ -354,6 +440,10 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
           isInteracting={isInteracting} onAddStroke={onAddStroke} onUpdateStrokes={onUpdateStrokes}
           toolType={toolType} color={color} lineWidth={lineWidth} penOnly={penOnly}
         />
+      )}
+
+      {manipulate && (
+        <ManipulationLayer container={containerEl} runtime={manipulate} />
       )}
 
       {footer && <div className="slide-footer" dangerouslySetInnerHTML={{ __html: footer }} />}

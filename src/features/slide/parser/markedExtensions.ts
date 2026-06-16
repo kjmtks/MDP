@@ -3,20 +3,6 @@ import type { SlideContext } from '../parser/SlideContext';
 import { parseCommand } from './slideCommands';
 import hljs from 'highlight.js';
 
-const getAttributesAndClear = (context: SlideContext, tagName: string): string => {
-  const parts: string[] = [];
-  const tag = tagName.toLowerCase();
-  if (context.addclasses[tag]) {
-    parts.push(`class="${context.addclasses[tag]}"`);
-    delete context.addclasses[tag];
-  }
-  if (context.addstyles[tag]) {
-    parts.push(`style="${context.addstyles[tag]}"`);
-    delete context.addstyles[tag];
-  }
-  return parts.length > 0 ? ' ' + parts.join(' ') : '';
-};
-
 const parseLineRanges = (rangeStr: string | undefined): Set<number> => {
   const lines = new Set<number>();
   if (!rangeStr) return lines;
@@ -56,22 +42,6 @@ export const slideRenderer = (context: SlideContext, baseUrl: string = "", lastU
     if (command.scope === 'GLOBAL') {
       return "";
     }
-    if (command.type === 'ADD_CLASS') {
-        const { tag: cTag, val: cVal } = command.params;
-        const lowerTag = cTag.toLowerCase();
-        context.addclasses[lowerTag] = context.addclasses[lowerTag]
-          ? `${context.addclasses[lowerTag]} ${cVal}`
-          : cVal;
-        return "";
-    }
-    if (command.type === 'ADD_STYLE') {
-        const { tag: sTag, val: sVal } = command.params;
-        const lowerTag = sTag.toLowerCase();
-        context.addstyles[lowerTag] = context.addstyles[lowerTag]
-          ? `${context.addstyles[lowerTag]} ${sVal}`
-          : sVal;
-        return "";
-    }
     if (command.type === 'CAPTION') {
         context.caption = command.params;
         return "";
@@ -96,13 +66,11 @@ export const slideRenderer = (context: SlideContext, baseUrl: string = "", lastU
     for (let i = 0; i < token.items.length; i++) {
       body += this.listitem(token.items[i]);
     }
-    const tag = token.ordered ? 'ol' : 'ul';
-    const attrs = getAttributesAndClear(context, tag);
     if (token.ordered) {
       const start = token.start !== 1 ? ` start="${token.start}"` : '';
-      return `<ol${start}${attrs}>\n${body}</ol>\n`;
+      return `<ol${start}>\n${body}</ol>\n`;
     }
-    return `<ul${attrs}>\n${body}</ul>\n`;
+    return `<ul>\n${body}</ul>\n`;
   },
 
   listitem(item) {
@@ -128,26 +96,22 @@ export const slideRenderer = (context: SlideContext, baseUrl: string = "", lastU
       }
     }
     content += this.parser.parse(item.tokens);
-    const attrs = getAttributesAndClear(context, 'li');
-    return `<li${attrs}>${content}</li>\n`;
+    return `<li>${content}</li>\n`;
   },
 
   heading({ tokens, depth }) {
     const text = this.parser.parseInline(tokens);
-    const attrs = getAttributesAndClear(context, `h${depth}`);
-    return `<h${depth}${attrs}>${text}</h${depth}>\n`;
+    return `<h${depth}>${text}</h${depth}>\n`;
   },
 
   paragraph({ tokens }) {
     const text = this.parser.parseInline(tokens);
-    const attrs = getAttributesAndClear(context, 'p');
-    return `<p${attrs}>${text}</p>\n`;
+    return `<p>${text}</p>\n`;
   },
 
   blockquote({ tokens }) {
     const body = this.parser.parse(tokens);
-    const attrs = getAttributesAndClear(context, 'blockquote');
-    return `<blockquote${attrs}>\n${body}</blockquote>\n`;
+    return `<blockquote>\n${body}</blockquote>\n`;
   },
 
   tablecell(token) {
@@ -183,13 +147,12 @@ export const slideRenderer = (context: SlideContext, baseUrl: string = "", lastU
       body += this.tablerow({ text: cell } as any);
     }
 
-    const attrs = getAttributesAndClear(context, 'table');
     const caption = context.caption ? context.caption : null;
     if (caption) {
       delete context.caption;
-      return `<table${attrs}>\n<caption>${renderMeta(caption)}</caption>\n<thead>\n${header}</thead>\n<tbody>\n${body}</tbody>\n</table>\n`;
+      return `<table>\n<caption>${renderMeta(caption)}</caption>\n<thead>\n${header}</thead>\n<tbody>\n${body}</tbody>\n</table>\n`;
     } else {
-      return `<table${attrs}>\n<thead>\n${header}</thead>\n<tbody>\n${body}</tbody>\n</table>\n`;
+      return `<table>\n<thead>\n${header}</thead>\n<tbody>\n${body}</tbody>\n</table>\n`;
     }
 
   },
@@ -211,15 +174,14 @@ export const slideRenderer = (context: SlideContext, baseUrl: string = "", lastU
       const separator = cleanHref.includes('?') ? '&' : '?';
       cleanHref = `${cleanHref}${separator}_t=${lastUpdated}`;
     }
-    const attrs = getAttributesAndClear(context, 'img');
     const titleAttr = title ? ` title="${title}"` : '';
     const altAttr = text ? ` alt="${text}"` : '';
     const caption = context.caption;
     if (caption) {
       delete context.caption;
-      return `<figure><img src="${cleanHref}"${altAttr}${titleAttr}${attrs} /><figcaption>${renderMeta(caption)}</figcaption></figure>`;
+      return `<figure><img src="${cleanHref}"${altAttr}${titleAttr} /><figcaption>${renderMeta(caption)}</figcaption></figure>`;
     } else {
-      return `<figure><img src="${cleanHref}"${altAttr}${titleAttr}${attrs} /></figure>`;
+      return `<figure><img src="${cleanHref}"${altAttr}${titleAttr} /></figure>`;
     }
   },
 
@@ -263,9 +225,8 @@ export const slideRenderer = (context: SlideContext, baseUrl: string = "", lastU
     const filenameHtml = fileName
       ? `<div class="code-filename">${fileName}</div>`
       : '';
-    const attrs = getAttributesAndClear(context, 'code');
     return `
-      <div${attrs}>
+      <div>
         <div class="code-block-wrapper">
           ${filenameHtml}
           <div class="code-background">
@@ -281,25 +242,13 @@ export const slideRenderer = (context: SlideContext, baseUrl: string = "", lastU
     const text = this.parser.parseInline(token.tokens);
     const isAsterisk = token.raw.startsWith('**');
     const typeClass = isAsterisk ? 'asterisk' : 'underscore';
-    let attrs = getAttributesAndClear(context, 'strong') || '';
-    if (attrs.includes('class="')) {
-      attrs = attrs.replace('class="', `class="${typeClass} `);
-    } else {
-      attrs = ` class="${typeClass}"` + attrs;
-    }
-    return `<strong${attrs}>${text}</strong>`;
+    return `<strong class="${typeClass}">${text}</strong>`;
   },
 
   em(token) {
     const text = this.parser.parseInline(token.tokens);
     const isAsterisk = token.raw.startsWith('*');
     const typeClass = isAsterisk ? 'asterisk' : 'underscore';
-    let attrs = getAttributesAndClear(context, 'em') || '';
-    if (attrs.includes('class="')) {
-      attrs = attrs.replace('class="', `class="${typeClass} `);
-    } else {
-      attrs = ` class="${typeClass}"` + attrs;
-    }
-    return `<em${attrs}>${text}</em>`;
+    return `<em class="${typeClass}">${text}</em>`;
   },
 });

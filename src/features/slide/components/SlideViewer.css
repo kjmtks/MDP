@@ -169,3 +169,35 @@
   user-select: none;
   pointer-events: none;
 }
+
+/* =========================================
+ * Manipulable modules (on-preview move/resize/rotate)
+ * ========================================= */
+/* Make the slide content the positioning context for absolutely-placed
+ * `.mdp-manip` wrappers so their percent x/y/w/h are relative to the canvas. */
+.slide-content { position: relative; }
+
+/* The wrapper itself is transparent layout-only; sizing/position come from
+ * inline style emitted by the module pipeline. Resizable modules should fill it. */
+.mdp-manip { box-sizing: border-box; }
+/* Once lifted (absolutely placed) the content fills the box; in-flow (unlifted)
+ * modules keep their natural size. */
+.mdp-manip[data-lifted="1"] > * { width: 100%; height: 100%; box-sizing: border-box; }
+
+/* In edit-layout mode, mark which modules are manipulable with a dashed outline
+ * (outline doesn't affect layout/size) and a grab cursor. (The overlay sits on
+ * top and captures pointer events, so :hover on the element itself won't fire —
+ * the always-on outline is what signals manipulability.) */
+.mdp-manip-editing .mdp-manip {
+  cursor: move;
+  outline: 1.5px dashed rgba(59, 130, 246, 0.55);
+  outline-offset: 2px;
+}
+
+/* Inlined drawio/SVG container. The SVG lives in the slide DOM (no <object>
+ * reload flicker; its <text> is reachable by theme CSS). Theme override hooks:
+ *   .slide-content .mdp-drawio-svg { --mdp-drawio-font: "Your Font"; }
+ *   .slide-content .mdp-drawio-svg { --mdp-drawio-font-size: 18px; }
+ * or target text directly: .slide-content .mdp-drawio-svg text { fill: ...; } */
+.mdp-drawio-svg { display: inline-block; max-width: 100%; line-height: 0; vertical-align: middle; }
+.mdp-drawio-svg svg { max-width: 100%; height: auto; }

@@ -56,7 +56,57 @@ export function parseArguments(argString: string): Record<string, string> {
   return args;
 }
 
-function renderModuleTemplate(mod: ModuleData, sections: string[], argsStr: string): string {
+// Wrap a manipulable module's output in a positioning layer the ManipulationLayer
+// can grab. Transform args (x,y = center %, w,h = canvas % , rot deg) become CSS;
+// when x/y are absent the element stays in normal flow ("unlifted") until the
+// first on-preview drag injects them. Blank lines keep nested markdown rendering.
+function wrapManipulable(
+  inner: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  manip: NonNullable<ModuleData['config']['manipulate']>,
+  args: Record<string, string>,
+  ord: number | undefined,
+): string {
+  const num = (v: string | undefined): number | undefined => {
+    const n = v == null ? NaN : parseFloat(v);
+    return Number.isFinite(n) ? n : undefined;
+  };
+  const x = num(args.x), y = num(args.y), w = num(args.w), h = num(args.h);
+  const rot = num(args.rot) ?? 0;
+  const hasPos = x !== undefined && y !== undefined;
+
+  const styles: string[] = [];
+  if (hasPos) {
+    styles.push('position:absolute', `left:${x}%`, `top:${y}%`);
+    if (w !== undefined) styles.push(`width:${w}%`);
+    if (h !== undefined) styles.push(`height:${h}%`);
+    styles.push(`transform:translate(-50%,-50%) rotate(${rot}deg)`, 'transform-origin:center center');
+  } else {
+    styles.push('position:relative');
+  }
+  if (manip.minW != null) styles.push(`min-width:${manip.minW}%`);
+  if (manip.maxW != null) styles.push(`max-width:${manip.maxW}%`);
+  if (manip.minH != null) styles.push(`min-height:${manip.minH}%`);
+  if (manip.maxH != null) styles.push(`max-height:${manip.maxH}%`);
+
+  const attrs = [
+    'class="mdp-manip"',
+    'data-mdp-manip="1"',
+    ord != null ? `data-mdp-ord="${ord}"` : '',
+    `data-move="${manip.move}"`,
+    `data-resize="${manip.resize}"`,
+    `data-rotate="${manip.rotate ? '1' : '0'}"`,
+    `data-lifted="${hasPos ? '1' : '0'}"`,
+    manip.minW != null ? `data-minw="${manip.minW}"` : '',
+    manip.maxW != null ? `data-maxw="${manip.maxW}"` : '',
+    manip.minH != null ? `data-minh="${manip.minH}"` : '',
+    manip.maxH != null ? `data-maxh="${manip.maxH}"` : '',
+  ].filter(Boolean).join(' ');
+
+  return `\n\n<div ${attrs} style="${styles.join('; ')}">\n\n${inner}\n\n</div>\n\n`;
+}
+
+function renderModuleTemplate(mod: ModuleData, sections: string[], argsStr: string, ord?: number): string {
   const { parameters } = mod.config;
   const userArgs = parseArguments(argsStr || '');
   const finalArgs = { ...userArgs };
@@ -99,6 +149,7 @@ function renderModuleTemplate(mod: ModuleData, sections: string[], argsStr: stri
   try {
     const renderFn = new Function('args', 'sections', 'content', mod.render);
     const generatedHtml = renderFn(renderArgs, sections, (sections[0] || '').trim());
+    if (mod.config.manipulate) return wrapManipulable(generatedHtml, mod.config.manipulate, finalArgs, ord);
     return generatedHtml;
   } catch (e) {
     console.error(`[MDP] Module Render Error (${mod.config.name}):`, e);
@@ -121,6 +172,9 @@ interface StackContext {
   sections: string[];
   currentSectionStr: string;
   indent: string;
+  // Document-order index among manipulable block modules (identity fallback
+  // until the directive gets an explicit `id`). undefined for non-manipulable.
+  ord?: number;
 }
 
 export const applyModulesToMarkdown = (markdown: string): string => {
@@ -178,6 +232,7 @@ export const applyModulesToMarkdown = (markdown: string): string => {
 
   const stack: StackContext[] = [];
   let rootStr = "";
+  let manipOrd = 0; // assigned in document order at each manipulable block's start
 
   for (const token of tokens) {
     if (token.type === 'text') {
@@ -192,7 +247,8 @@ export const applyModulesToMarkdown = (markdown: string): string => {
           argsStr: token.argsStr,
           sections: [],
           currentSectionStr: '',
-          indent: token.indent
+          indent: token.indent,
+          ord: mod.config.manipulate ? manipOrd++ : undefined
         });
       } else {
         const text = `${token.indent}<!-- @${token.name} ${token.argsStr} -->`;
@@ -215,7 +271,7 @@ export const applyModulesToMarkdown = (markdown: string): string => {
         currentMod.sections.push(currentMod.currentSectionStr);
 
         const mod = loadedModules[currentMod.name];
-        let html = renderModuleTemplate(mod, currentMod.sections, currentMod.argsStr);
+        let html = renderModuleTemplate(mod, currentMod.sections, currentMod.argsStr, currentMod.ord);
 
         if (currentMod.indent) {
           html = html.replace(/\n/g, '\n' + currentMod.indent);
@@ -236,7 +292,7 @@ export const applyModulesToMarkdown = (markdown: string): string => {
     const currentMod = stack.pop()!;
     currentMod.sections.push(currentMod.currentSectionStr);
     const mod = loadedModules[currentMod.name];
-    let html = renderModuleTemplate(mod, currentMod.sections, currentMod.argsStr);
+    let html = renderModuleTemplate(mod, currentMod.sections, currentMod.argsStr, currentMod.ord);
 
     if (currentMod.indent) {
       html = html.replace(/\n/g, '\n' + currentMod.indent);

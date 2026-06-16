@@ -145,8 +145,6 @@ export const renderSlideHTML = (block: RawBlock, globalContext: SlideContext, pa
     caption: undefined,
     columnsRatio: undefined,
     columnIndex: undefined,
-    addclasses: {},
-    addstyles: {},
   };
   const renderer = new marked.Renderer();
   const customRenderer = slideRenderer(localContext, baseUrl, lastUpdated);

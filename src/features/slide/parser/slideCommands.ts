@@ -55,14 +55,6 @@ export const parseCommand = (input: string): CommandResult | null => {
     return { type: 'CAPTION', scope: 'LOCAL', params: matchCaption[1] };
   }
 
-  const matchAddClass = text.match(/^@addclass\s+([^\s]+)\s+(.*)$/);
-  if (matchAddClass) {
-    return { type: 'ADD_CLASS', scope: 'LOCAL', params: { tag: matchAddClass[1].toLowerCase(), val: matchAddClass[2] } };
-  }
-  const matchAddStyle = text.match(/^@addstyle\s+([^\s]+)\s+(.*)$/);
-  if (matchAddStyle) {
-    return { type: 'ADD_STYLE', scope: 'LOCAL', params: { tag: matchAddStyle[1].toLowerCase(), val: matchAddStyle[2] } };
-  }
   if (/^@cover$/.test(text)) {
     return { type: 'COVER', scope: 'LOCAL', params: null };
   }

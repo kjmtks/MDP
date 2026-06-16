@@ -1,0 +1,62 @@
+<module>
+  <name>freebox</name>
+  <type>block</type>
+  <description>Free-floating box you can move, resize and rotate directly on the preview (Edit layout mode).</description>
+
+  <manipulate position="xy" size="xy" rotation="true" minW="5" maxW="100" minH="3" maxH="100" />
+
+  <parameters>
+    <param name="bg" default="rgba(255,255,255,0.0)" required="false" />
+    <param name="border" default="0" required="false" />
+    <param name="halign" default="center" required="false" />
+    <param name="valign" default="middle" required="false" />
+  </parameters>
+
+  <snippets>
+    <snippet>
+      <category>Layout</category>
+      <label>Free box</label>
+      <text><![CDATA[<!-- @freebox -->
+Drag me in **Edit layout** mode
+<!-- @end -->]]></text>
+      <description>A box that flows normally until you move/resize/rotate it on the preview.</description>
+    </snippet>
+    <snippet>
+      <category>Layout</category>
+      <label>Free box (placed)</label>
+      <text><![CDATA[<!-- @freebox x: 50, y: 40, w: 40, h: 20, halign: center, valign: middle -->
+Positioned box
+<!-- @end -->]]></text>
+      <description>A free box pre-placed at the centre. halign: left|center|right, valign: top|middle|bottom.</description>
+    </snippet>
+  </snippets>
+
+  <render><![CDATA[
+    const bg = args.bg || 'transparent';
+    const border = args.border || '0';
+    // halign = horizontal (left/center/right), valign = vertical (top/middle/bottom).
+    const h = (args.halign || 'center').toLowerCase();
+    const v = (args.valign || 'middle').toLowerCase();
+    const items = h === 'left' ? 'flex-start' : h === 'right' ? 'flex-end' : 'center';
+    const justify = v === 'top' ? 'flex-start' : v === 'bottom' ? 'flex-end' : 'center';
+    const textAlign = h === 'left' ? 'left' : h === 'right' ? 'right' : 'center';
+    const body = (sections[0] || '').trim();
+    return `\n\n<div class="mdp-mod-freebox" style="background:${bg}; border:${border}; align-items:${items}; justify-content:${justify}; text-align:${textAlign};">\n\n${body}\n\n</div>\n\n`;
+  ]]></render>
+
+  <style><![CDATA[
+    .mdp-mod-freebox {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      box-sizing: border-box;
+      padding: 0.6em 0.9em;
+      border-radius: var(--radius-sm, 6px);
+      overflow: hidden;
+    }
+    .mdp-mod-freebox > :first-child { margin-top: 0; }
+    .mdp-mod-freebox > :last-child { margin-bottom: 0; }
+  ]]></style>
+
+  <script></script>
+</module>

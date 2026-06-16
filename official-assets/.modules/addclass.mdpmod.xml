@@ -1,0 +1,41 @@
+<module>
+  <name>addclass</name>
+  <type>block</type>
+  <description>Wrap a region in a div carrying the given CSS classes. Section 1 = space-separated class names, section 2 = content. Use it to apply theme/utility classes (or your own scoped CSS via @addstyle) to a block of slide content.</description>
+
+  <snippets>
+    <snippet>
+      <category>Layout</category>
+      <label>Add class</label>
+      <text><![CDATA[<!-- @addclass -->
+highlight rounded
+<!-- @ -->
+![@image](...)
+<!-- @end -->]]></text>
+      <description>Wrap the content in a div with the given classes.</description>
+    </snippet>
+  </snippets>
+
+  <render><![CDATA[
+    const rawClasses = (sections[0] || '').trim();
+    const inner = (sections[1] || '').trim();
+    // Forgiving: with no second section (missing `<!-- @ -->` separator), the
+    // single section is the CONTENT, not a class list — otherwise content put
+    // there would be swallowed / dropped.
+    if (!inner) {
+      return `\n\n${rawClasses}\n\n`;
+    }
+    // Sanitize: keep only class-name-safe chars (letters, digits, _, -, space),
+    // collapse whitespace. Prevents breaking out of the class attribute.
+    const classes = rawClasses
+      .replace(/[^\w\- ]+/g, ' ')
+      .split(/\s+/)
+      .filter(Boolean)
+      .join(' ');
+    const classAttr = classes ? ` class="${classes}"` : '';
+    return `\n\n<div${classAttr}>\n\n${inner}\n\n</div>\n\n`;
+  ]]></render>
+
+  <style></style>
+  <script></script>
+</module>
