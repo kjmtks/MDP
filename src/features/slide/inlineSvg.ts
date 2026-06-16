@@ -82,6 +82,10 @@ function processSvg(raw: string, key: string): string {
     //    would miss the latter. Font-* attributes are moved into the style so the
     //    var() default works.
     svg.querySelectorAll('*').forEach((el) => {
+      // KaTeX (mermaid math) gets its glyph fonts (KaTeX_Main, KaTeX_Math, …)
+      // from the global katex.css by class. Forcing font-family on those spans
+      // would break the math, so skip the whole `.katex` subtree.
+      if (el.closest('.katex')) return;
       let style = el.getAttribute('style') || '';
       const famAttr = el.getAttribute('font-family');
       if (famAttr && !/font-family/i.test(style)) { style += `;font-family:${famAttr}`; el.removeAttribute('font-family'); }

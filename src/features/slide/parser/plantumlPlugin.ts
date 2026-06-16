@@ -1,7 +1,19 @@
 import '@plantuml/core/viz-global.js';
 import { render } from '@plantuml/core/plantuml.js';
 
+// Cached as a finished <img src="data:image/svg+xml"> tag (same shape as
+// mermaid). Emitting the diagram as an SVG data-URI image — instead of inline
+// <svg> — routes it through SlideView's inline-SVG path (registerDataUri →
+// processSvg), which var-izes fonts (`--mdp-drawio-font`) and exposes the text
+// to theme/`@addstyle` CSS exactly like drawio and mermaid.
 const plantumlCache = new Map<string, string>();
+
+// Encode an SVG string (may contain non-Latin text) to a base64 data URI.
+const svgToDataUri = (svg: string): string => {
+  const bytes = new TextEncoder().encode(svg);
+  const binString = Array.from(bytes, (byte) => String.fromCodePoint(byte)).join('');
+  return `data:image/svg+xml;base64,${btoa(binString)}`;
+};
 
 export const processPlantUml = async (div: HTMLElement) => {
   const nodes = Array.from(div.querySelectorAll('.plantuml'));
@@ -22,13 +34,6 @@ export const processPlantUml = async (div: HTMLElement) => {
       const wrapper = document.createElement('div');
       wrapper.className = "plantuml-svg-wrapper";
       wrapper.innerHTML = plantumlCache.get(code)!;
-      const svgEl = wrapper.querySelector('svg');
-      if (svgEl) {
-        svgEl.style.maxWidth = '100%';
-        svgEl.style.height = 'auto';
-        svgEl.style.display = 'block';
-        svgEl.style.margin = '0 auto';
-      }
       node.replaceWith(wrapper);
       return;
     }
@@ -69,20 +74,16 @@ export const processPlantUml = async (div: HTMLElement) => {
         throw new Error(`SVG element not found after wait.\nDOM Output: ${output.substring(0, 150)}`);
       }
 
-      svgEl.style.maxWidth = '100%';
-      svgEl.style.height = 'auto';
-      svgEl.style.display = 'block';
-      svgEl.style.margin = '0 auto';
-
-      const svgContent = tempDiv.innerHTML;
+      const dataUri = svgToDataUri(svgEl.outerHTML);
       tempDiv.remove();
 
+      const imgTag = `<img src="${dataUri}" alt="PlantUML Diagram" style="max-width: 100%; height: auto; display: block; margin: 0 auto;" />`;
       const wrapper = document.createElement('div');
       wrapper.className = "plantuml-svg-wrapper";
-      wrapper.innerHTML = svgContent;
+      wrapper.innerHTML = imgTag;
       node.replaceWith(wrapper);
 
-      plantumlCache.set(code, svgContent);
+      plantumlCache.set(code, imgTag);
 
     } catch (e) {
       console.error("PlantUML error:", e);

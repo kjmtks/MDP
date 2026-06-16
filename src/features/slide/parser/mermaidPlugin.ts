@@ -4,7 +4,13 @@ mermaid.initialize({
   theme: 'neutral',
   securityLevel: 'loose',
   startOnLoad: true,
-  flowchart: { htmlLabels: false },
+  // htmlLabels:true so labels (and KaTeX math) render as HTML in <foreignObject>.
+  // Math is written as `$$ … $$` in a label; mermaid typesets it with KaTeX.
+  // The diagram is emitted as an SVG data-URI <img>, then INLINED by SlideView
+  // (registerDataUri → processSvg), so the foreignObject HTML lands in the live
+  // DOM where the global katex.css can style it. processSvg skips `.katex`
+  // subtrees so the math glyph fonts survive the font-var rewrite.
+  flowchart: { htmlLabels: true },
   er: { useMaxWidth: false },
 });
 
