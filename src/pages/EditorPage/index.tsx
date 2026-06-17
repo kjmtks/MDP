@@ -5,6 +5,7 @@ import FolderOpenIcon from '@mui/icons-material/FolderOpen';
 import { type SnippetsCategory, type ThemeOption, type FileType, getCustomItemStyle } from '../../types';
 
 import { MainHeader } from '../../components/layout/MainHeader';
+import { MDP_DIR, MODULES_DIR, EFFECTS_DIR, IMAGES_DIR, SNIPPETS_DIR, TEMPLATES_DIR, THEMES_DIR } from '../../features/workspace/specialFolders';
 import { DrawioEditor } from '../../features/drawio/components/DrawioEditor';
 import { ConnectDialog } from '../../features/remote/components/ConnectDialog';
 import { PrintContainer } from '../../features/slide/components/PrintContainer';
@@ -243,29 +244,31 @@ export default function EditorPage() {
     });
   }, [persistDrafts, clearDrafts]);
 
+  // App-managed folders now live under `.mdp/` (`.mdp/modules`, `.mdp/effects`, …).
+  const mdpDir = useMemo(() => fileTree.find(node => node.name === MDP_DIR), [fileTree]);
+
   const modulePathsString = useMemo(() => {
-    const modulesDir = fileTree.find(node => node.name === '.modules');
+    const modulesDir = mdpDir?.children?.find(node => node.name === 'modules');
     const paths = modulesDir?.children
       ?.filter(file => file.name.endsWith('.mdpmod.xml'))
       ?.map(file => file.path) || [];
     return paths.sort().join(',');
-  }, [fileTree]);
+  }, [mdpDir]);
 
   const effectPathsString = useMemo(() => {
-    // `.effects` is canonical; `.effect` is the legacy folder (still loaded).
-    const dirs = fileTree.filter(node => node.name === '.effects' || node.name === '.effect');
-    const paths = dirs.flatMap(d => d.children
+    const effectsDir = mdpDir?.children?.find(node => node.name === 'effects');
+    const paths = effectsDir?.children
       ?.filter(file => file.name.endsWith('.mdpfx.xml'))
-      ?.map(file => file.path) || []);
+      ?.map(file => file.path) || [];
     return paths.sort().join(',');
-  }, [fileTree]);
+  }, [mdpDir]);
 
   // Incremented whenever modules/effects finish (re)loading. Threaded into slide
   // generation so slides parsed before registration are re-parsed once their
   // markdown transforms (and CSS) are available — otherwise they stay raw.
   const [moduleEpoch, setModuleEpoch] = useState(0);
 
-  // Workspace-shared image-alias library (.images/registry.json). In-file `@image`
+  // Workspace-shared image-alias library (.mdp/images/registry.json). In-file `@image`
   // defs override these on alias conflict (see resolveImages).
   const [imageLibrary, setImageLibrary] = useState<Record<string, string>>({});
   // Optional human descriptions for library aliases (alias → text).
@@ -523,13 +526,13 @@ export default function EditorPage() {
     apiClient.getThemes().then(setThemes).catch(err => console.error('Failed to load themes', err));
   }, [fileTree]);
 
-  // Load the workspace-shared image-alias library (.images/registry.json). It is
+  // Load the workspace-shared image-alias library (.mdp/images/registry.json). It is
   // async like modules, so bump moduleEpoch to force a slide re-parse once ready.
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const text = await apiClient.readFileText('.images/registry.json');
+        const text = await apiClient.readFileText(`${IMAGES_DIR}/registry.json`);
         const parsed = JSON.parse(text);
         const map: Record<string, string> = (parsed && parsed.images) || {};
         const desc: Record<string, string> = (parsed && parsed.descriptions) || {};
@@ -590,7 +593,7 @@ export default function EditorPage() {
 
       const { path, content } = (e as CustomEvent).detail;
 
-      if (path.includes('.modules/') && path.endsWith('.mdpmod.xml')) {
+      if (path.includes(`${MODULES_DIR}/`) && path.endsWith('.mdpmod.xml')) {
         const mod = registerModule(content);
         if (mod) {
           const allModSnips = getAllModuleSnippets();
@@ -609,7 +612,7 @@ export default function EditorPage() {
             return cleanPrev;
           });
         }
-      } else if ((path.includes('.effects/') || path.includes('.effect/')) && path.endsWith('.mdpfx.xml')) {
+      } else if (path.includes(`${EFFECTS_DIR}/`) && path.endsWith('.mdpfx.xml')) {
         // Re-register the edited effect so its CSS/JS updates live, then refresh
         // snippets (effect snippets share the isModule flag).
         registerEffect(content);
@@ -627,7 +630,7 @@ export default function EditorPage() {
           });
           return cleanPrev;
         });
-      } else if (path === '.images/registry.json' || path.endsWith('/.images/registry.json')) {
+      } else if (path === `${IMAGES_DIR}/registry.json` || path.endsWith(`/${IMAGES_DIR}/registry.json`)) {
         // The shared image-alias library changed (panel write or hand-edit):
         // reload it and force a slide re-parse.
         try {
@@ -641,7 +644,7 @@ export default function EditorPage() {
           setLibraryImages(map);
           setModuleEpoch((e) => e + 1);
         } catch { /* ignore malformed registry */ }
-      } else if (path.includes('.snippets/') || path.includes('.templates/') || path.includes('.themes/')) {
+      } else if (path.includes(`${SNIPPETS_DIR}/`) || path.includes(`${TEMPLATES_DIR}/`) || path.includes(`${THEMES_DIR}/`)) {
         scheduleRefresh();
       }
     };
@@ -1179,7 +1182,7 @@ export default function EditorPage() {
       onInsertReference: (alias) => handleInsertText(`![image](@${alias})`),
       resolveThumb,
       // --- library writes go through imageLibraryStore: data images become
-      //     individual .images/<alias>.<ext> files, registry.json stays small ---
+      //     individual .mdp/images/<alias>.<ext> files, registry.json stays small ---
       onAddImage: (scope, alias, value, description, tags) => {
         if (scope === 'file') { const v = view(); if (v) addFileImageDef(v, alias, value, description, tags); return; }
         (async () => {

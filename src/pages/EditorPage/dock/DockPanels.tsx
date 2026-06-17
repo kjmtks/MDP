@@ -433,7 +433,7 @@ export const ImagesPanel: React.FC = () => {
                   <ToggleButton value="library" sx={scopeBtnSx}><CollectionsBookmarkOutlinedIcon fontSize="small" sx={{ mr: 0.5 }} />Shared library</ToggleButton>
                 </ToggleButtonGroup>
                 <Typography sx={{ color: '#777', fontSize: '0.66rem', mt: 0.5 }}>
-                  {dialog?.scope === 'file' ? 'Embedded in this deck — travels with the file.' : 'Reusable across decks — saved under .images/.'}
+                  {dialog?.scope === 'file' ? 'Embedded in this deck — travels with the file.' : 'Reusable across decks — saved under .mdp/images/.'}
                 </Typography>
               </Box>
             )}

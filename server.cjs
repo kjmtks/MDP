@@ -232,7 +232,7 @@ app.get('/api/snippets', async (req, res) => {
     console.error('Default snippets error:', e.message);
   }
 
-  const customDir = path.join(targetDir, '.snippets');
+  const customDir = path.join(targetDir, '.mdp', 'snippets');
   if (fs.existsSync(customDir)) {
     try {
       const files = await fs.promises.readdir(customDir);
@@ -259,12 +259,12 @@ app.get('/api/snippets', async (req, res) => {
 
 app.get('/api/templates', async (req, res) => {
   let templates = [];
-  const customDir = path.join(targetDir, '.templates');
+  const customDir = path.join(targetDir, '.mdp', 'templates');
   if (fs.existsSync(customDir)) {
     try {
       const files = await fs.promises.readdir(customDir);
       templates.push(...files.filter(f => f.endsWith('.md')).map(f => ({
-        name: f, path: `.templates/${f}`, isCustom: true
+        name: f, path: `.mdp/templates/${f}`, isCustom: true
       })));
     } catch (e) { console.error(e); }
   }
@@ -293,8 +293,8 @@ app.get('/api/templateContent', async (req, res) => {
   try {
     const templatePath = req.query.path;
     if (templatePath && templatePath !== 'default') {
-       const absolutePath = templatePath.startsWith('.templates') 
-          ? path.join(targetDir, templatePath) 
+       const absolutePath = templatePath.startsWith('.mdp/')
+          ? path.join(targetDir, templatePath)
           : path.join(publicDir, templatePath);
        if (fs.existsSync(absolutePath)) {
          return res.send(await fs.promises.readFile(absolutePath, 'utf-8'));
@@ -306,12 +306,12 @@ app.get('/api/templateContent', async (req, res) => {
 
 app.get('/api/themes', async (req, res) => {
   let themes = [];
-  const customDir = path.join(targetDir, '.themes');
+  const customDir = path.join(targetDir, '.mdp', 'themes');
   if (fs.existsSync(customDir)) {
     try {
       const files = await fs.promises.readdir(customDir);
       themes = files.filter(f => f.endsWith('.css')).map(f => ({
-        name: f.replace('.css', ''), fileName: f, path: `.themes/${f}`, isCustom: true
+        name: f.replace('.css', ''), fileName: f, path: `.mdp/themes/${f}`, isCustom: true
       }));
     } catch (e) {}
   }
@@ -331,14 +331,14 @@ app.get('/api/themes', async (req, res) => {
 
 app.get('/api/modules', async (req, res) => {
   let modules = [];
-  const customDir = path.join(targetDir, '.modules');
+  const customDir = path.join(targetDir, '.mdp', 'modules');
   if (fs.existsSync(customDir)) {
     try {
       const files = await fs.promises.readdir(customDir);
       modules = files.filter(f => f.endsWith('.mdpmod.xml')).map(f => ({
         name: f.replace('.mdpmod.xml', ''),
         fileName: f,
-        path: `.modules/${f}`,
+        path: `.mdp/modules/${f}`,
         isCustom: true
       }));
     } catch (e) {}
@@ -366,7 +366,7 @@ app.get('/api/moduleContent', async (req, res) => {
   try {
     const modulePath = req.query.path;
     if (modulePath) {
-       const absolutePath = modulePath.startsWith('.modules')
+       const absolutePath = modulePath.startsWith('.mdp/')
           ? path.join(targetDir, modulePath)
           : path.join(publicDir, modulePath);
 
@@ -380,15 +380,12 @@ app.get('/api/moduleContent', async (req, res) => {
 
 app.get('/api/effects', async (req, res) => {
   let effects = [];
-  // `.effects` is canonical; `.effect` is the legacy folder (still read).
-  for (const dirName of ['.effects', '.effect']) {
-    const customDir = path.join(targetDir, dirName);
-    if (!fs.existsSync(customDir)) continue;
+  const customDir = path.join(targetDir, '.mdp', 'effects');
+  if (fs.existsSync(customDir)) {
     try {
       const files = await fs.promises.readdir(customDir);
       files.filter(f => f.endsWith('.mdpfx.xml')).forEach(f => {
-        if (effects.find(e => e.fileName === f)) return; // .effects wins over legacy
-        effects.push({ name: f.replace('.mdpfx.xml', ''), fileName: f, path: `${dirName}/${f}`, isCustom: true });
+        effects.push({ name: f.replace('.mdpfx.xml', ''), fileName: f, path: `.mdp/effects/${f}`, isCustom: true });
       });
     } catch (e) {}
   }
@@ -415,7 +412,7 @@ app.get('/api/effectContent', async (req, res) => {
   try {
     const effectPath = req.query.path;
     if (effectPath) {
-       const absolutePath = effectPath.startsWith('.effect')
+       const absolutePath = effectPath.startsWith('.mdp/')
           ? path.join(targetDir, effectPath)
           : path.join(publicDir, effectPath);
 

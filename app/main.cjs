@@ -301,7 +301,7 @@ const getAssetPath = (filename) => {
 ipcMain.handle('getTemplates', async () => {
   let templates = [];
   if (currentBaseDir) {
-    const customDir = path.join(currentBaseDir, '.templates');
+    const customDir = path.join(currentBaseDir, '.mdp', 'templates');
     if (fsSync.existsSync(customDir)) {
       try {
         const files = await fs.readdir(customDir);
@@ -369,7 +369,7 @@ ipcMain.handle('getSnipets', async () => {
     ];
   }
   if (currentBaseDir) {
-    const customDir = path.join(currentBaseDir, '.snippets');
+    const customDir = path.join(currentBaseDir, '.mdp', 'snippets');
     if (fsSync.existsSync(customDir)) {
       try {
         const files = await fs.readdir(customDir);
@@ -411,8 +411,9 @@ async function buildFileTree(dir, basePath = '') {
     const entries = await fs.readdir(dir, { withFileTypes: true });
     const nodes = [];
     for (const entry of entries) {
-      const SPECIAL_FOLDERS = ['.templates', '.snippets', '.themes', '.modules', '.effects', '.effect'];
-      if (entry.name.startsWith('.') && !SPECIAL_FOLDERS.includes(entry.name)) {
+      // App-managed folders now live under a single `.mdp/` directory; keep it
+      // (its non-dot subfolders pass naturally) and skip all other dotfiles.
+      if (entry.name.startsWith('.') && entry.name !== '.mdp') {
         continue;
       }
       const nodePath = basePath ? `${basePath}/${entry.name}` : entry.name;
@@ -472,14 +473,14 @@ ipcMain.handle('getThemes', async () => {
   let themes = [];
 
   if (currentBaseDir) {
-    const customDir = path.join(currentBaseDir, '.themes');
+    const customDir = path.join(currentBaseDir, '.mdp', 'themes');
     if (fsSync.existsSync(customDir)) {
       try {
         const files = await fs.readdir(customDir);
         themes = files.filter(f => f.endsWith('.css')).map(f => ({
           name: f.replace('.css', ''),
           fileName: f,
-          path: `.themes/${f}`,
+          path: `.mdp/themes/${f}`,
           isCustom: true
         }));
       } catch (e) { console.error('Error reading custom themes:', e); }
@@ -506,14 +507,14 @@ ipcMain.handle('getModules', async () => {
   let modules = [];
 
   if (currentBaseDir) {
-    const customDir = path.join(currentBaseDir, '.modules');
+    const customDir = path.join(currentBaseDir, '.mdp', 'modules');
     if (fsSync.existsSync(customDir)) {
       try {
         const files = await fs.readdir(customDir);
         const customModules = files.filter(f => f.endsWith('.mdpmod.xml')).map(f => ({
           name: f.replace('.mdpmod.xml', ''),
           fileName: f,
-          path: `.modules/${f}`,
+          path: `.mdp/modules/${f}`,
           isCustom: true
         }));
         modules.push(...customModules);
@@ -544,7 +545,7 @@ ipcMain.handle('getModules', async () => {
 ipcMain.handle('getModuleContent', async (event, modulePath) => {
   try {
     if (modulePath) {
-       const absolutePath = modulePath.startsWith('.modules')
+       const absolutePath = modulePath.startsWith('.mdp/')
           ? path.join(currentBaseDir, modulePath)
           : getAssetPath(modulePath);
 
@@ -562,15 +563,12 @@ ipcMain.handle('getEffects', async () => {
   let effects = [];
 
   if (currentBaseDir) {
-    // `.effects` is canonical; `.effect` is the legacy folder (still read).
-    for (const dirName of ['.effects', '.effect']) {
-      const customDir = path.join(currentBaseDir, dirName);
-      if (!fsSync.existsSync(customDir)) continue;
+    const customDir = path.join(currentBaseDir, '.mdp', 'effects');
+    if (fsSync.existsSync(customDir)) {
       try {
         const files = await fs.readdir(customDir);
         files.filter(f => f.endsWith('.mdpfx.xml')).forEach(f => {
-          if (effects.find(e => e.fileName === f)) return; // .effects wins over legacy
-          effects.push({ name: f.replace('.mdpfx.xml', ''), fileName: f, path: `${dirName}/${f}`, isCustom: true });
+          effects.push({ name: f.replace('.mdpfx.xml', ''), fileName: f, path: `.mdp/effects/${f}`, isCustom: true });
         });
       } catch (e) { console.error('Error reading custom effects:', e); }
     }
@@ -599,7 +597,7 @@ ipcMain.handle('getEffects', async () => {
 ipcMain.handle('getEffectContent', async (event, effectPath) => {
   try {
     if (effectPath) {
-       const absolutePath = effectPath.startsWith('.effect')
+       const absolutePath = effectPath.startsWith('.mdp/')
           ? path.join(currentBaseDir, effectPath)
           : getAssetPath(effectPath);
 

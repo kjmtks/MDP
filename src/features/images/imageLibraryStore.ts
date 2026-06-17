@@ -1,9 +1,10 @@
 import { apiClient } from '../../api/apiClient';
+import { IMAGES_DIR } from '../workspace/specialFolders';
 
-// The shared image library keeps `.images/registry.json` SMALL: data images are
-// written as individual binary files under `.images/` and the registry stores
-// only a root-relative path (or a plain URL). This avoids a single giant JSON
-// that is slow to read/parse/rewrite on every edit.
+// The shared image library keeps `.mdp/images/registry.json` SMALL: data images
+// are written as individual binary files under `.mdp/images/` and the registry
+// stores only a root-relative path (or a plain URL). This avoids a single giant
+// JSON that is slow to read/parse/rewrite on every edit.
 
 const MIME_EXT: Record<string, string> = {
   'image/png': 'png', 'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/gif': 'gif',
@@ -15,19 +16,19 @@ const extFromDataUri = (dataUri: string): string => {
   return (m && MIME_EXT[m[1].toLowerCase()]) || 'png';
 };
 
-const isManagedPath = (value: string) => value.startsWith('/.images/') || value.startsWith('.images/');
+const isManagedPath = (value: string) => value.startsWith(`/${IMAGES_DIR}/`) || value.startsWith(`${IMAGES_DIR}/`);
 
 /**
  * Persist a library image value. A `data:` URI is written to
- * `.images/<alias>.<ext>` and a root-relative path is returned; URLs and paths
+ * `.mdp/images/<alias>.<ext>` and a root-relative path is returned; URLs and paths
  * pass through unchanged.
  */
 export async function storeLibraryImage(alias: string, value: string): Promise<string> {
   if (!value.startsWith('data:')) return value;
   const ext = extFromDataUri(value);
   const payload = value.split(',')[1] || '';
-  const path = `.images/${alias}.${ext}`;
-  await apiClient.createFile('.images', 'directory').catch(() => {});
+  const path = `${IMAGES_DIR}/${alias}.${ext}`;
+  await apiClient.createFile(IMAGES_DIR, 'directory').catch(() => {});
   await apiClient.saveFile(path, payload, true);
   return `/${path}`;
 }
@@ -48,12 +49,12 @@ export async function saveRegistry(
   descriptions: Record<string, string> = {},
   tags: Record<string, string[]> = {},
 ): Promise<void> {
-  await apiClient.createFile('.images', 'directory').catch(() => {});
+  await apiClient.createFile(IMAGES_DIR, 'directory').catch(() => {});
   const payload = { version: 1, images: map, descriptions, tags };
-  await apiClient.saveFile('.images/registry.json', JSON.stringify(payload, null, 2));
+  await apiClient.saveFile(`${IMAGES_DIR}/registry.json`, JSON.stringify(payload, null, 2));
 }
 
-/** Delete a library image's backing file if it is a managed `.images/` file. */
+/** Delete a library image's backing file if it is a managed `.mdp/images/` file. */
 export async function deleteLibraryFile(value: string): Promise<void> {
   if (!isManagedPath(value)) return;
   try {

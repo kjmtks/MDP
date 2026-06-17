@@ -19,6 +19,7 @@ import defaultThemeContent from '../../../../public/themes/default.css?raw';
 import defaultTemplateContent from '../../../../public/templates/default.slide.md?raw';
 import defaultModuleContent from '../../../../public/default-module.mdpmod.xml?raw';
 import defaultEffectContent from '../../../../public/default-effect.mdpfx.xml?raw';
+import { MDP_DIR, SPECIAL_SUBFOLDERS } from '../../workspace/specialFolders';
 import BookmarkIcon from '@mui/icons-material/Bookmark';
 import BookmarkBorderIcon from '@mui/icons-material/BookmarkBorder';
 import { isFileTreeDrag } from '../dragUtils';
@@ -48,10 +49,11 @@ interface SidebarProps {
   section?: 'thumbnail' | 'files' | 'bookmarks';
 }
 
-// `.effect` is the legacy name (still shown/loaded if present); `.effects` is canonical.
-const SPECIAL_FOLDERS = ['.templates', '.snippets', '.themes', '.modules', '.effects', '.effect'];
-// Folders that get an auto-created placeholder when absent (canonical names only).
-const PLACEHOLDER_FOLDERS = ['.templates', '.snippets', '.themes', '.modules', '.effects'];
+// App-managed folders now live under a single `.mdp/` directory (e.g.
+// `.mdp/modules`). The special SUBFOLDER names (no leading dot) get the
+// specialized "New X File" treatment + placeholders; `.mdp/images` is hidden
+// (managed via the Images panel).
+const SPECIAL_PATHS = SPECIAL_SUBFOLDERS.map((s) => `${MDP_DIR}/${s}`);
 
 const SECTION_INDEX: Record<'thumbnail' | 'files' | 'bookmarks', number> = {
   thumbnail: 0,
@@ -98,41 +100,50 @@ export const Sidebar: React.FC<SidebarProps> = ({
   // restored on app startup — never auto-expands.
 
   const visibleFileTree = React.useMemo(() => {
-    const filterDotFiles = (nodes: FileNode[], isRoot: boolean): FileNode[] => {
+    const sortNodes = (a: FileNode, b: FileNode) =>
+      a.type === b.type ? a.name.localeCompare(b.name) : (a.type === 'directory' ? -1 : 1);
+
+    // Keep `.mdp` (the app-managed container) and all non-dot entries; hide every
+    // other dotfile, plus the managed `.mdp/images` store.
+    const filterNodes = (nodes: FileNode[], parentPath: string): FileNode[] => {
       return nodes
         .filter(n => {
-          if (!n.name.startsWith('.')) return true;
-          if (isRoot && SPECIAL_FOLDERS.includes(n.name)) return true;
-          return false;
+          if (parentPath === MDP_DIR && n.name === 'images') return false;
+          if (parentPath === '') return n.name === MDP_DIR || !n.name.startsWith('.');
+          return !n.name.startsWith('.');
         })
-        .map(n => ({
-          ...n,
-          isSpecial: isRoot && SPECIAL_FOLDERS.includes(n.name),
-          children: n.children ? filterDotFiles(n.children, false) : undefined
-        }));
+        .map(n => {
+          const fullPath = parentPath ? `${parentPath}/${n.name}` : n.name;
+          return {
+            ...n,
+            isSpecial: fullPath === MDP_DIR || SPECIAL_PATHS.includes(fullPath),
+            children: n.children ? filterNodes(n.children, fullPath) : undefined,
+          };
+        });
     };
 
-    const processedTree = filterDotFiles(fileTree, true);
-    const existingNames = new Set(processedTree.map(n => n.name));
+    const processedTree = filterNodes(fileTree, '');
 
-    PLACEHOLDER_FOLDERS.forEach(special => {
-      if (!existingNames.has(special)) {
-        processedTree.push({
-          name: special,
-          path: special,
-          type: 'directory',
-          isSpecial: true,
-          isVirtual: true,
-          children: [],
+    // Ensure the `.mdp` container exists and exposes all special subfolders
+    // (virtual placeholders when absent) so assets can be created on a fresh ws.
+    let mdp = processedTree.find(n => n.name === MDP_DIR);
+    if (!mdp) {
+      mdp = { name: MDP_DIR, path: MDP_DIR, type: 'directory', isSpecial: true, isVirtual: true, children: [] };
+      processedTree.push(mdp);
+    }
+    mdp.children = mdp.children || [];
+    const childNames = new Set(mdp.children.map(c => c.name));
+    SPECIAL_SUBFOLDERS.forEach(sub => {
+      if (!childNames.has(sub)) {
+        mdp!.children!.push({
+          name: sub, path: `${MDP_DIR}/${sub}`, type: 'directory',
+          isSpecial: true, isVirtual: true, children: [],
         });
       }
     });
+    mdp.children.sort(sortNodes);
 
-    processedTree.sort((a, b) => {
-      if (a.type === b.type) return a.name.localeCompare(b.name);
-      return a.type === 'directory' ? -1 : 1;
-    });
-
+    processedTree.sort(sortNodes);
     return processedTree;
   }, [fileTree]);
 
@@ -249,21 +260,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
     const { type, parentPath } = dialogConfig;
 
     if (type === 'special') {
-      const folder = parentPath;
+      const folder = parentPath;            // e.g. '.mdp/themes'
+      const sub = folder.split('/').pop();  // 'themes'
       let content = '';
-      if (folder === '.themes') {
+      if (sub === 'themes') {
         if (!finalName.endsWith('.css')) finalName += '.css';
         content = defaultThemeContent;
-      } else if (folder === '.snippets') {
+      } else if (sub === 'snippets') {
         if (!finalName.endsWith('.json')) finalName += '.json';
         content = '[\n  {\n    "category": "Custom",\n    "items": [\n      { "label": "New", "text": "text", "description": "desc" }\n    ]\n  }\n]';
-      } else if (folder === '.templates') {
+      } else if (sub === 'templates') {
         if (!finalName.endsWith('.slide.md')) finalName += '.slide.md';
         content = defaultTemplateContent;
-      } else if (folder === '.modules') {
+      } else if (sub === 'modules') {
         if (!finalName.endsWith('.mdpmod.xml')) finalName += '.mdpmod.xml';
         content = defaultModuleContent;
-      } else if (folder === '.effects' || folder === '.effect') {
+      } else if (sub === 'effects') {
         if (!finalName.endsWith('.mdpfx.xml')) finalName += '.mdpfx.xml';
         content = defaultEffectContent;
       }
@@ -432,9 +444,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const ctxParts = contextMenu?.path ? contextMenu.path.split('/') : [];
   const ctxIsFile = contextMenu?.node?.type === 'file';
-  // A file sitting directly inside a special folder (e.g. .themes/foo.css) should
-  // offer that folder's specialized "New X File" instead of the generic items.
-  const ctxFileInSpecial = ctxIsFile && ctxParts.length === 2 && SPECIAL_FOLDERS.includes(ctxParts[0]);
+  // A file sitting directly inside a special folder (e.g. .mdp/themes/foo.css)
+  // should offer that folder's specialized "New X File" instead of the generic
+  // items. `ctxParts[1]` is the subfolder name ('themes').
+  const ctxFileInSpecial = ctxIsFile && ctxParts.length === 3 && ctxParts[0] === MDP_DIR && (SPECIAL_SUBFOLDERS as readonly string[]).includes(ctxParts[1]);
+  // The `.mdp` container itself is "special" (protected) but is not a leaf asset
+  // folder, so it shows no "New X File" item.
+  const ctxIsMdpRoot = contextMenu?.node?.name === MDP_DIR;
   const ctxShowGenericNew = !contextMenu?.node?.isSpecial && !ctxFileInSpecial && (contextMenu?.isFolder || ctxIsFile);
 
   return (
@@ -540,15 +556,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
         anchorReference="anchorPosition"
         anchorPosition={contextMenu ? { top: contextMenu.mouseY, left: contextMenu.mouseX } : undefined}
       >
-        {contextMenu?.node?.isSpecial ? (
+        {contextMenu?.node?.isSpecial && !ctxIsMdpRoot ? (
           <MenuItem onClick={() => handleOpenDialog('special')}>
             <ListItemIcon><NoteAddIcon fontSize="small" color="secondary" /></ListItemIcon>
-            New {contextMenu.node.name.replace('.', '').replace(/s$/, '')} File
+            New {contextMenu.node.name.replace(/s$/, '')} File
           </MenuItem>
         ) : ctxFileInSpecial ? (
           <MenuItem onClick={() => handleOpenDialog('special')}>
             <ListItemIcon><NoteAddIcon fontSize="small" color="secondary" /></ListItemIcon>
-            New {ctxParts[0].replace('.', '').replace(/s$/, '')} File
+            New {ctxParts[1].replace(/s$/, '')} File
           </MenuItem>
         ) : (
           ctxShowGenericNew && [

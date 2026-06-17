@@ -1,197 +1,200 @@
 {
-  ".effects": [
+  "effects": [
     {
-      "path": ".effects/blur.mdpfx.xml"
+      "path": "effects/blur.mdpfx.xml"
     },
     {
-      "path": ".effects/bounce.mdpfx.xml"
+      "path": "effects/bounce.mdpfx.xml"
     },
     {
-      "path": ".effects/drop.mdpfx.xml"
+      "path": "effects/drop.mdpfx.xml"
     },
     {
-      "path": ".effects/fade.mdpfx.xml"
+      "path": "effects/fade.mdpfx.xml"
     },
     {
-      "path": ".effects/flash.mdpfx.xml"
+      "path": "effects/flash.mdpfx.xml"
     },
     {
-      "path": ".effects/flip.mdpfx.xml"
+      "path": "effects/flip.mdpfx.xml"
     },
     {
-      "path": ".effects/fly.mdpfx.xml"
+      "path": "effects/fly.mdpfx.xml"
     },
     {
-      "path": ".effects/glide.mdpfx.xml"
+      "path": "effects/glide.mdpfx.xml"
     },
     {
-      "path": ".effects/glow.mdpfx.xml"
+      "path": "effects/glow.mdpfx.xml"
     },
     {
-      "path": ".effects/iris.mdpfx.xml"
+      "path": "effects/iris.mdpfx.xml"
     },
     {
-      "path": ".effects/none.mdpfx.xml"
+      "path": "effects/none.mdpfx.xml"
     },
     {
-      "path": ".effects/pulse.mdpfx.xml"
+      "path": "effects/pulse.mdpfx.xml"
     },
     {
-      "path": ".effects/reveal.mdpfx.xml"
+      "path": "effects/reveal.mdpfx.xml"
     },
     {
-      "path": ".effects/rotate.mdpfx.xml"
+      "path": "effects/rotate.mdpfx.xml"
     },
     {
-      "path": ".effects/shake.mdpfx.xml"
+      "path": "effects/shake.mdpfx.xml"
     },
     {
-      "path": ".effects/skew.mdpfx.xml"
+      "path": "effects/skew.mdpfx.xml"
     },
     {
-      "path": ".effects/slide.mdpfx.xml"
+      "path": "effects/slide.mdpfx.xml"
     },
     {
-      "path": ".effects/swing.mdpfx.xml"
+      "path": "effects/swing.mdpfx.xml"
     },
     {
-      "path": ".effects/tada.mdpfx.xml"
+      "path": "effects/tada.mdpfx.xml"
     },
     {
-      "path": ".effects/wipe.mdpfx.xml"
+      "path": "effects/wipe.mdpfx.xml"
     },
     {
-      "path": ".effects/zoom.mdpfx.xml"
+      "path": "effects/zoom.mdpfx.xml"
     }
   ],
-  ".modules": [
+  "modules": [
     {
-      "path": ".modules/addclass.mdpmod.xml"
+      "path": "modules/addclass.mdpmod.xml"
     },
     {
-      "path": ".modules/addstyle.mdpmod.xml"
+      "path": "modules/addstyle.mdpmod.xml"
     },
     {
-      "path": ".modules/alert.mdpmod.xml"
+      "path": "modules/alert.mdpmod.xml"
     },
     {
-      "path": ".modules/arrow.mdpmod.xml"
+      "path": "modules/arrow.mdpmod.xml"
     },
     {
-      "path": ".modules/badge.mdpmod.xml"
+      "path": "modules/badge.mdpmod.xml"
     },
     {
-      "path": ".modules/balloon.mdpmod.xml"
+      "path": "modules/balloon.mdpmod.xml"
     },
     {
-      "path": ".modules/bignumber.mdpmod.xml"
+      "path": "modules/bignumber.mdpmod.xml"
     },
     {
-      "path": ".modules/button.mdpmod.xml"
+      "path": "modules/button.mdpmod.xml"
     },
     {
-      "path": ".modules/card.mdpmod.xml"
+      "path": "modules/card.mdpmod.xml"
     },
     {
-      "path": ".modules/checklist.mdpmod.xml"
+      "path": "modules/checklist.mdpmod.xml"
     },
     {
-      "path": ".modules/columns.mdpmod.xml"
+      "path": "modules/columns.mdpmod.xml"
     },
     {
-      "path": ".modules/compare.mdpmod.xml"
+      "path": "modules/compare.mdpmod.xml"
     },
     {
-      "path": ".modules/conclusion.mdpmod.xml"
+      "path": "modules/conclusion.mdpmod.xml"
     },
     {
-      "path": ".modules/definition.mdpmod.xml"
+      "path": "modules/definition.mdpmod.xml"
     },
     {
-      "path": ".modules/faq.mdpmod.xml"
+      "path": "modules/faq.mdpmod.xml"
     },
     {
-      "path": ".modules/gallery.mdpmod.xml"
+      "path": "modules/freebox.mdpmod.xml"
     },
     {
-      "path": ".modules/grid.mdpmod.xml"
+      "path": "modules/gallery.mdpmod.xml"
     },
     {
-      "path": ".modules/infobox.mdpmod.xml"
+      "path": "modules/grid.mdpmod.xml"
     },
     {
-      "path": ".modules/introduction.mdpmod.xml"
+      "path": "modules/infobox.mdpmod.xml"
     },
     {
-      "path": ".modules/kbd.mdpmod.xml"
+      "path": "modules/introduction.mdpmod.xml"
     },
     {
-      "path": ".modules/label.mdpmod.xml"
+      "path": "modules/kbd.mdpmod.xml"
     },
     {
-      "path": ".modules/mark.mdpmod.xml"
+      "path": "modules/label.mdpmod.xml"
     },
     {
-      "path": ".modules/metrics.mdpmod.xml"
+      "path": "modules/mark.mdpmod.xml"
     },
     {
-      "path": ".modules/multicolumn.mdpmod.xml"
+      "path": "modules/metrics.mdpmod.xml"
     },
     {
-      "path": ".modules/process.mdpmod.xml"
+      "path": "modules/multicolumn.mdpmod.xml"
     },
     {
-      "path": ".modules/progress.mdpmod.xml"
+      "path": "modules/process.mdpmod.xml"
     },
     {
-      "path": ".modules/quote.mdpmod.xml"
+      "path": "modules/progress.mdpmod.xml"
     },
     {
-      "path": ".modules/shortcut.mdpmod.xml"
+      "path": "modules/quote.mdpmod.xml"
     },
     {
-      "path": ".modules/sticky.mdpmod.xml"
+      "path": "modules/shortcut.mdpmod.xml"
     },
     {
-      "path": ".modules/timeline.mdpmod.xml"
+      "path": "modules/sticky.mdpmod.xml"
     },
     {
-      "path": ".modules/timer.mdpmod.xml"
+      "path": "modules/timeline.mdpmod.xml"
+    },
+    {
+      "path": "modules/timer.mdpmod.xml"
     }
   ],
-  ".snippets": [],
-  ".templates": [
+  "snippets": [],
+  "templates": [
     {
-      "path": ".templates/poster.slide.md"
+      "path": "templates/poster.slide.md"
     }
   ],
-  ".themes": [
+  "themes": [
     {
-      "path": ".themes/academic.css"
+      "path": "themes/academic.css"
     },
     {
-      "path": ".themes/dark.css"
+      "path": "themes/dark.css"
     },
     {
-      "path": ".themes/forest.css"
+      "path": "themes/forest.css"
     },
     {
-      "path": ".themes/midnight.css"
+      "path": "themes/midnight.css"
     },
     {
-      "path": ".themes/minimal.css"
+      "path": "themes/minimal.css"
     },
     {
-      "path": ".themes/poster.css"
+      "path": "themes/poster.css"
     },
     {
-      "path": ".themes/sepia.css"
+      "path": "themes/sepia.css"
     },
     {
-      "path": ".themes/sunset.css"
+      "path": "themes/sunset.css"
     },
     {
-      "path": ".themes/terminal.css"
+      "path": "themes/terminal.css"
     }
   ]
 }

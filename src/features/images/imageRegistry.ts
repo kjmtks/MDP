@@ -7,7 +7,7 @@
 //   ...later in the body...  ![alt](@logo)
 //
 // Definitions may live in the slide file (per-deck) and/or a workspace-shared
-// library (.images/registry.json). On alias conflict the in-file def wins.
+// library (.mdp/images/registry.json). On alias conflict the in-file def wins.
 
 // --- workspace-shared library registry (module-scoped, like loadedModules) ---
 let libraryImages: Record<string, string> = {};
@@ -81,10 +81,11 @@ const refRegex = () => /!\[([^\]]*)\]\(@([\w-]+)\)/g;
  * masked so literal examples are left untouched. An unknown alias is left in
  * place as an inline English warning (and a console.warn).
  */
-// Library data images are stored as `/.images/<alias>.<ext>` files. They resolve
-// relative to the WORKSPACE ROOT (not the slide's folder), so the caller passes a
-// resolver that prefixes them with the platform base (`/files/` or `mdp-file://`).
-const MANAGED_PATH = /^\/?\.images\//;
+// Library data images are stored as `/.mdp/images/<alias>.<ext>` files. They
+// resolve relative to the WORKSPACE ROOT (not the slide's folder), so the caller
+// passes a resolver that prefixes them with the platform base (`/files/` or
+// `mdp-file://`).
+const MANAGED_PATH = /^\/?\.mdp\/images\//;
 
 export const resolveImages = (
   markdown: string,

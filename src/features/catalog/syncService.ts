@@ -5,8 +5,9 @@ export type CatalogData = Record<string, CatalogItem[]>;
 
 // Official assets now live in the MDP app repo under official-assets/.
 // catalog.json sits at the root of that folder and its item paths are
-// relative to it (e.g. ".effects/blur.mdpfx.xml"), so the base URL points
-// straight at official-assets/.
+// relative to it (e.g. "effects/blur.mdpfx.xml"), so the base URL points
+// straight at official-assets/. On sync each category is re-homed under the
+// workspace's `.mdp/` directory (see catalogLocalDir).
 export const CATALOG_BASE_URL = 'https://raw.githubusercontent.com/kjmtks/MDP/refs/heads/main/official-assets';
 
 /** Fetch the official catalog manifest (cache-busted so updates are picked up). */
@@ -16,10 +17,19 @@ export async function fetchCatalog(): Promise<CatalogData> {
   return res.json();
 }
 
-/** Local destination path for a catalog item: `${category}/${fileName}`. */
+/** Local destination DIRECTORY for a catalog category. The remote catalog uses
+ *  root-relative categories (`.modules`, `.themes`, …); locally they live under
+ *  `.mdp/` (`.mdp/modules`, …) — strip the leading dot and re-home under `.mdp`.
+ *  Tolerates categories already in `.mdp/...` form. */
+export function catalogLocalDir(category: string): string {
+  if (category.startsWith('.mdp/')) return category;
+  return `.mdp/${category.replace(/^\./, '')}`;
+}
+
+/** Local destination path for a catalog item: `${localDir}/${fileName}`. */
 export function catalogLocalPath(category: string, item: CatalogItem): string {
   const fileName = item.path.split('/').pop() || '';
-  return `${category}/${fileName}`;
+  return `${catalogLocalDir(category)}/${fileName}`;
 }
 
 export async function syncOfficialCatalog(): Promise<void> {
@@ -33,7 +43,7 @@ export async function syncOfficialCatalog(): Promise<void> {
     for (const [category, items] of Object.entries(catalog)) {
       if (!items || items.length === 0) continue;
 
-      try { await apiClient.createFile(category, 'directory'); } catch {
+      try { await apiClient.createFile(catalogLocalDir(category), 'directory'); } catch {
         // directory already exists
       }
 

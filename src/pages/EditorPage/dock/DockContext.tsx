@@ -125,7 +125,7 @@ export interface SnippetsShared {
 
 export interface ImagesShared {
   fileImages: ImageEntry[];      // `@image` defs parsed from the current file
-  libraryImages: ImageEntry[];   // shared workspace library (.images/registry.json)
+  libraryImages: ImageEntry[];   // shared workspace library (.mdp/images/registry.json)
   onInsertReference: (alias: string) => void;                       // ![image](@alias)
   onAddImage: (scope: 'file' | 'library', alias: string, value: string, description?: string, tags?: string[]) => void;
   onEditImage: (scope: 'file' | 'library', alias: string, value: string, description?: string, tags?: string[]) => void;
