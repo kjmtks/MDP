@@ -214,6 +214,20 @@
   font-size: 1em;
   color: var(--muted-color);
 }
+/* Cover contact email: show as plain code-style text — the theme's text colour,
+ * no underline, monospace — instead of a blue underlined mailto link. The
+ * pseudo-class selectors raise specificity so this wins over base/theme `a`
+ * rules (e.g. poster's `.slide-content a`) regardless of source order, for
+ * every theme. */
+.slide-content.cover .contact a,
+.slide-content.cover .contact a:link,
+.slide-content.cover .contact a:visited,
+.slide-content.cover .contact a:hover,
+.slide-content.cover .contact a:active {
+  color: var(--text-color);
+  text-decoration: none;
+  font-family: 'Consolas', 'Monaco', 'Courier New', Courier, monospace;
+}
 
 /* =========================================
  * Components (Tables, Header/Footer, Layouts)
