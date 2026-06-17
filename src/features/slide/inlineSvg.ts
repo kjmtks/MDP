@@ -111,10 +111,12 @@ function processSvg(raw: string, key: string): string {
       st.textContent = css;
     });
 
-    // 4. Responsive + theming hook.
+    // 4. Responsive + theming hook. The sizing defaults (max-width:100%;
+    //    height:auto) live in a base CSS rule on `.mdp-drawio-svg-el`
+    //    (SlideBaseDesign.css) instead of an inline style, so scoped deck CSS can
+    //    override them WITHOUT needing !important — e.g. an `@addstyle` block
+    //    doing `img, svg { height: 200px }` around an inlined SVG image.
     svg.setAttribute('class', `${svg.getAttribute('class') || ''} mdp-drawio-svg-el`.trim());
-    const sstyle = svg.getAttribute('style') || '';
-    if (!/max-width/i.test(sstyle)) svg.setAttribute('style', `${sstyle};max-width:100%;height:auto`.replace(/^;+/, ''));
 
     return new XMLSerializer().serializeToString(svg);
   } catch {

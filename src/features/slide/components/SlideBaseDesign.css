@@ -267,6 +267,14 @@
   background-color: var(--table-bg);
 }
 
+/* Inlined SVG images (drawio diagrams, workspace .svg files / data-URIs). Sizing
+ * defaults live here — not inline on the <svg> — so scoped deck CSS can override
+ * them (e.g. an @addstyle block doing `img, svg { height: 200px }`). */
+.mdp-drawio-svg-el {
+  max-width: 100%;
+  height: auto;
+}
+
 /* Image Captions */
 .slide-content-wrapper figcaption {
   font-size: 0.9em;
