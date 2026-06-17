@@ -6,10 +6,10 @@
 
   <parameters>
     <param name="layout" type="select" default="list" label="Layout" options="list:List,cards:Cards" />
-    <param name="notation" type="select" default="ieee" label="Notation style" options="ieee:IEEE,apa:APA,chicago:Chicago,nature:Nature" />
-    <param name="marker" type="select" default="number" label="Item marker" options="number:Auto number,key:Cite key,bullet:Bullet,none:None" />
+    <param name="notation" type="select" default="ieee" label="Notation Style" options="ieee:IEEE,apa:APA,chicago:Chicago,nature:Nature" />
+    <param name="marker" type="select" default="number" label="Item Marker" options="number:Auto number,key:Cite key,bullet:Bullet,none:None" />
     <param name="title" type="text" default="References" label="Header" desc="Header text; empty or 'none' hides it" />
-    <param name="accent" type="color" default="" label="Accent colour" desc="Overrides the theme accent" required="false" />
+    <param name="accent" type="color" default="" label="Accent Colour" desc="Overrides the theme accent" />
   </parameters>
 
   <snippets>

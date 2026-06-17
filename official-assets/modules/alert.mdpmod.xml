@@ -4,7 +4,7 @@
   <description>Colored alert banner with a leading glyph</description>
 
   <parameters>
-    <param name="type" type="select" default="info" label="Type" options="info:Info,success:Success,warning:Warning,danger:Danger" required="false" />
+    <param name="type" type="select" default="info" label="Type" desc="Alert severity, sets color and leading glyph" options="info:Info,success:Success,warning:Warning,danger:Danger" />
   </parameters>
 
   <snippets>

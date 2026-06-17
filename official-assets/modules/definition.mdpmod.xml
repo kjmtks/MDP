@@ -4,7 +4,7 @@
   <description>Dictionary-style term and definition entry</description>
 
   <parameters>
-    <param name="color" type="color" default="var(--accent-color)" label="Accent Color" required="false" />
+    <param name="color" type="color" default="var(--accent-color)" label="Accent Color" />
   </parameters>
 
   <snippets>

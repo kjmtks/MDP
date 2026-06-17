@@ -6,10 +6,10 @@
   <manipulate position="xy" size="xy" rotation="true" minW="5" maxW="100" minH="3" maxH="100" />
 
   <parameters>
-    <param name="bg" type="color" default="rgba(255,255,255,0.0)" label="Background" required="false" />
-    <param name="border" type="text" default="0" label="Border" desc="CSS border shorthand, e.g. 1px solid #ccc" required="false" />
-    <param name="halign" type="select" default="center" label="Horizontal align" options="left,center,right" required="false" />
-    <param name="valign" type="select" default="middle" label="Vertical align" options="top,middle,bottom" required="false" />
+    <param name="bg" type="color" default="rgba(255,255,255,0.0)" label="Background" />
+    <param name="border" type="text" default="0" label="Border" desc="CSS border shorthand, e.g. 1px solid #ccc" />
+    <param name="halign" type="select" default="center" label="Horizontal Align" options="left,center,right" />
+    <param name="valign" type="select" default="middle" label="Vertical Align" options="top,middle,bottom" />
   </parameters>
 
   <snippets>

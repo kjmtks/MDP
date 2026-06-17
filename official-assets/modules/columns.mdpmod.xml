@@ -4,8 +4,8 @@
   <description>A simple even N-column text layout</description>
 
   <parameters>
-    <param name="count" type="number" default="2" label="Columns" desc="Number of columns" min="1" max="6" integer="true" required="false" />
-    <param name="gap" type="text" default="1.5rem" label="Gap" desc="CSS length between columns (e.g. 1.5rem)" required="false" />
+    <param name="count" type="number" default="2" label="Columns" desc="Number of columns" min="1" max="6" integer="true" />
+    <param name="gap" type="text" default="1.5rem" label="Gap" desc="CSS length between columns (e.g. 1.5rem)" />
   </parameters>
 
   <snippets>

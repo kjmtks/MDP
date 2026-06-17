@@ -3,9 +3,9 @@
   <type>block</type>
   <description>Displays important numbers gigantically for a strong impact.</description>
   <parameters>
-    <param name="value" type="text" default="100%" label="Value" desc="The big number to display (e.g. 100%, 1/10)" required="true" />
-    <param name="label" type="text" default="Achievement Rate" label="Label" required="false" />
-    <param name="color" type="color" default="var(--accent-color)" label="Value Color" required="false" />
+    <param name="value" type="text" label="Value" desc="The big number to display (e.g. 100%, 1/10)" required="true" />
+    <param name="label" type="text" default="Achievement Rate" label="Label" />
+    <param name="color" type="color" default="var(--accent-color)" label="Value Color" />
   </parameters>
   <snippets>
     <snippet>

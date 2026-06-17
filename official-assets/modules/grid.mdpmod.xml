@@ -4,8 +4,8 @@
   <description>Responsive equal card grid</description>
 
   <parameters>
-    <param name="columns" type="number" default="3" label="Columns" min="1" max="6" integer="true" required="false" />
-    <param name="gap" type="text" default="1rem" label="Gap" desc="CSS length between cards, e.g. 1rem or 16px" required="false" />
+    <param name="columns" type="number" default="3" label="Columns" desc="Number of columns in the card grid" min="1" max="6" integer="true" />
+    <param name="gap" type="text" default="1rem" label="Gap" desc="CSS length between cards, e.g. 1rem or 16px" />
   </parameters>
 
   <snippets>

@@ -3,7 +3,7 @@
   <type>block</type>
   <description>A box that strongly highlights the slide's introduction</description>
   <parameters>
-    <param name="color" type="color" default="var(--accent-color)" label="Border Color" required="false" />
+    <param name="color" type="color" default="var(--accent-color)" label="Border Color" />
   </parameters>
   <snippets>
     <snippet>

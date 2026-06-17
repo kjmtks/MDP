@@ -5,7 +5,7 @@
 
   <parameters>
     <param name="text" type="text" label="Text" required="true" />
-    <param name="color" type="color" default="#fde68a" label="Highlight Color" required="false" />
+    <param name="color" type="color" default="#fde68a" label="Highlight Color" />
   </parameters>
 
   <snippets>

@@ -3,7 +3,7 @@
   <type>block</type>
   <description>Beautifully displays quotes from papers or books.</description>
   <parameters>
-    <param name="author" type="text" default="" label="Author" required="false" />
+    <param name="author" type="text" default="" label="Author" />
   </parameters>
   <snippets>
     <snippet>

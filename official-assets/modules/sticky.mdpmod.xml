@@ -9,8 +9,8 @@
   <manipulate position="xy" size="xy" rotation="true" minW="10" maxW="100" minH="5" maxH="100" />
 
   <parameters>
-    <param name="color" type="color" default="#fef08a" label="Note Color" options="#fef08a:Yellow,#fde68a:Amber,#bbf7d0:Green,#bfdbfe:Blue,#fbcfe8:Pink,#fed7aa:Orange,#e9d5ff:Purple,#a5f3fc:Cyan,#e5e7eb:Gray" required="false" />
-    <param name="rotate" type="number" default="-2" label="Rotation" desc="Tilt of the note in degrees" min="-45" max="45" required="false" />
+    <param name="color" type="color" default="#fef08a" label="Note Color" options="#fef08a:Yellow,#fde68a:Amber,#bbf7d0:Green,#bfdbfe:Blue,#fbcfe8:Pink,#fed7aa:Orange,#e9d5ff:Purple,#a5f3fc:Cyan,#e5e7eb:Gray" />
+    <param name="rotate" type="number" default="-2" label="Rotation" desc="Tilt of the note in degrees" min="-45" max="45" />
   </parameters>
   <snippets>
     <snippet>

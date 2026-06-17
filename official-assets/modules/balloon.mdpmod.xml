@@ -3,9 +3,9 @@
   <type>block</type>
   <description>Creates an interactive chat balloon UI with optional avatar image.</description>
   <parameters>
-    <param name="direction" type="select" default="left" label="Direction" options="left:Left,right:Right" required="false" />
-    <param name="name" type="text" default="User" label="Name" required="false" />
-    <param name="image" type="image" default="" label="Avatar" desc="URL/path or @alias" required="false" />
+    <param name="direction" type="select" default="left" label="Direction" options="left:Left,right:Right" />
+    <param name="name" type="text" default="User" label="Name" />
+    <param name="image" type="image" default="" label="Avatar" desc="URL/path or @alias" />
   </parameters>
   <snippets>
     <snippet>

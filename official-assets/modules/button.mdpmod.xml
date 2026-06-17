@@ -5,8 +5,8 @@
 
   <parameters>
     <param name="text" type="text" label="Text" required="true" />
-    <param name="href" type="text" default="#" label="Link URL" desc="Destination the button links to" required="false" />
-    <param name="color" type="color" default="var(--accent-color)" label="Background Color" required="false" />
+    <param name="href" type="text" default="#" label="Link URL" desc="Destination the button links to" />
+    <param name="color" type="color" default="var(--accent-color)" label="Background Color" />
   </parameters>
 
   <snippets>

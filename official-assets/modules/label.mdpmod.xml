@@ -5,7 +5,7 @@
 
   <parameters>
     <param name="text" type="text" label="Text" required="true" />
-    <param name="color" type="color" default="var(--accent-color)" label="Color" desc="Text and border color" required="false" />
+    <param name="color" type="color" default="var(--accent-color)" label="Color" desc="Text and border color" />
   </parameters>
 
   <snippets>
