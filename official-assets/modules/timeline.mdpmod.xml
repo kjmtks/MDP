@@ -3,9 +3,9 @@
   <type>block</type>
   <description>Displays multiple contents beautifully as a vertical timeline (steps).</description>
   <parameters>
-    <param name="color" default="var(--accent-color)" required="false" />
-    <param name="active_index" default="0" required="false" />
-    <param name="indexes" default="[]" required="false" />
+    <param name="color" type="color" default="var(--accent-color)" label="Color" required="false" />
+    <param name="active_index" type="number" default="0" label="Active Step" desc="Which step is highlighted (1-based; 0 = none)" min="0" integer="true" required="false" />
+    <param name="indexes" default="[]" label="Custom Labels" desc="Array of marker labels, e.g. [Phase1, Phase2, Phase3]" required="false" />
   </parameters>
   <snippets>
     <snippet>

@@ -5,10 +5,10 @@
   <interactive>true</interactive>
 
   <parameters>
-    <param name="minutes" default="5" />
-    <param name="seconds" default="0" />
-    <param name="autostart" default="false" />
-    <param name="size" default="md" />
+    <param name="minutes" type="number" default="5" label="Minutes" min="0" integer="true" />
+    <param name="seconds" type="number" default="0" label="Seconds" min="0" max="59" integer="true" />
+    <param name="autostart" type="boolean" default="false" label="Auto-start when presenting" />
+    <param name="size" type="select" default="md" label="Size" options="sm:Small,md:Medium,lg:Large,xl:Extra large" />
   </parameters>
 
   <snippets>

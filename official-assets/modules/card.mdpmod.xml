@@ -4,7 +4,7 @@
   <description>Elevated card with a title bar and body</description>
 
   <parameters>
-    <param name="color" default="var(--accent-color)" required="false" />
+    <param name="color" type="color" default="var(--accent-color)" label="Header Color" required="false" />
   </parameters>
 
   <snippets>

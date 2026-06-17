@@ -3,10 +3,10 @@
   <type>inline</type>
   <description>Arrows connecting elements</description>
   <parameters>
-    <param name="direction" default="down" required="false" />
-    <param name="size" default="40px" required="false" />
-    <param name="margin" default="1rem 0 0 0" required="false" />
-    <param name="color" default="var(--accent-color)" required="false" />
+    <param name="direction" type="select" default="down" label="Direction" options="down:Down,right:Right" required="false" />
+    <param name="size" default="40px" label="Size" desc="CSS size, e.g. 40px" required="false" />
+    <param name="margin" default="1rem 0 0 0" label="Margin" desc="CSS margin shorthand" required="false" />
+    <param name="color" type="color" default="var(--accent-color)" label="Color" required="false" />
   </parameters>
   <snippets>
     <snippet>

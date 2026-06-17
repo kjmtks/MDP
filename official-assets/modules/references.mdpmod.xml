@@ -5,11 +5,11 @@
   <interactive>false</interactive>
 
   <parameters>
-    <param name="layout" default="list" />
-    <param name="notation" default="ieee" />
-    <param name="marker" default="number" />
-    <param name="title" default="References" />
-    <param name="accent" default="" required="false" />
+    <param name="layout" type="select" default="list" label="Layout" options="list:List,cards:Cards" />
+    <param name="notation" type="select" default="ieee" label="Notation style" options="ieee:IEEE,apa:APA,chicago:Chicago,nature:Nature" />
+    <param name="marker" type="select" default="number" label="Item marker" options="number:Auto number,key:Cite key,bullet:Bullet,none:None" />
+    <param name="title" type="text" default="References" label="Header" desc="Header text; empty or 'none' hides it" />
+    <param name="accent" type="color" default="" label="Accent colour" desc="Overrides the theme accent" required="false" />
   </parameters>
 
   <snippets>
@@ -331,6 +331,43 @@
       const label = e.doi ? ('doi:' + e.doi) : 'link';
       return '<a class="mdp-ref-link" href="' + esc(e.href) + '" target="_blank" rel="noopener">' + esc(label) + '</a>';
     };
+    // Ordinalise an edition: "2" -> "2nd", "3" -> "3rd"; non-numeric (e.g.
+    // "Revised") is returned unchanged.
+    const ordinal = function (s) {
+      const n = parseInt(s, 10);
+      if (!Number.isFinite(n) || String(n) !== String(s).trim()) return s;
+      const v = n % 100;
+      const suf = (v >= 11 && v <= 13) ? 'th' : (['th', 'st', 'nd', 'rd'][n % 10] || 'th');
+      return n + suf;
+    };
+    // Chicago: first author inverted ("Last, First"), the rest natural order.
+    const chicagoNames = function (names) {
+      if (!names.length) return '';
+      const one = function (nm, inv) {
+        const first = nm.first || nm.initials;
+        return inv ? (nm.last + (first ? ', ' + first : '')) : ((first ? first + ' ' : '') + nm.last);
+      };
+      if (names.length === 1) return one(names[0], true);
+      const arr = names.map(function (nm, i) { return one(nm, i === 0); });
+      return arr.slice(0, -1).join(', ') + ', and ' + arr[arr.length - 1];
+    };
+    // All names in natural order (for Chicago "edited by …").
+    const namesNatural = function (names) {
+      const arr = names.map(function (nm) { const f = nm.first || nm.initials; return (f ? f + ' ' : '') + nm.last; });
+      if (arr.length <= 1) return arr[0] || '';
+      return arr.slice(0, -1).join(', ') + ' and ' + arr[arr.length - 1];
+    };
+    // Nature: "Surname, A. B.", joined with " & ", "et al." past 5 authors.
+    const natureNames = function (names) {
+      if (!names.length) return '';
+      if (names.length > 5) {
+        const nm = names[0];
+        return nm.last + (nm.initials ? ', ' + nm.initials : '') + ' et al.';
+      }
+      const parts = names.map(function (nm) { return nm.last + (nm.initials ? ', ' + nm.initials : ''); });
+      if (parts.length === 1) return parts[0];
+      return parts.slice(0, -1).join(', ') + ' & ' + parts[parts.length - 1];
+    };
 
     // ---- APA-ish notation, type-aware ---------------------------------------
     const apaPlace = function (e) {
@@ -354,14 +391,14 @@
         s += '. ';
       } else if (T === 'book' || T === 'proceedings' || T === 'manual' || T === 'booklet') {
         s += '<em>' + esc(ttl) + '</em>';
-        if (e.edition) s += ' (' + esc(e.edition) + ' ed.)';
+        if (e.edition) s += ' (' + esc(ordinal(e.edition)) + ' ed.)';
         if (e.series) s += ' (' + esc(e.series) + ')';
         s += '. ' + apaPlace(e);
       } else if (isInType(T)) {
         s += esc(ttl) + '. In ';
         if (e.editors.length) s += esc(fmtNames(e.editors, 'first-last') + (e.editors.length > 1 ? ' (Eds.)' : ' (Ed.)')) + ', ';
         s += '<em>' + esc(e.booktitle || e.series) + '</em>';
-        if (e.edition) s += ' (' + esc(e.edition) + ' ed.)';
+        if (e.edition) s += ' (' + esc(ordinal(e.edition)) + ' ed.)';
         if (e.volume) s += ' (Vol. ' + esc(e.volume) + ')';
         if (e.pages) s += ' (pp. ' + esc(e.pages) + ')';
         s += '. ' + apaPlace(e);
@@ -409,7 +446,7 @@
       const ttl = titleSub(e);
       if (T === 'book' || T === 'proceedings' || T === 'manual' || T === 'booklet') {
         s += '<em>' + esc(ttl) + '</em>';
-        if (e.edition) s += ', ' + esc(e.edition) + ' ed';
+        if (e.edition) s += ', ' + esc(ordinal(e.edition)) + ' ed';
         s += '. ' + ieeePlace(e);
         if (e.year) s += esc(e.year);
         s += '. ';
@@ -449,6 +486,93 @@
       }
       if (e.note) s += esc(e.note) + '. ';
       const l = linkHtml(e); if (l) s += l;
+      return s.trim();
+    };
+
+    // ---- Chicago (notes-bibliography), type-aware ---------------------------
+    const chicagoPlace = function (e) {
+      if (e.address && e.publisher) return esc(e.address) + ': ' + esc(e.publisher);
+      if (e.publisher) return esc(e.publisher);
+      if (e.address) return esc(e.address);
+      return '';
+    };
+    const chicagoText = function (e) {
+      const T = e.type; let s = '';
+      let lead = '';
+      if (e.authors.length) lead = chicagoNames(e.authors);
+      else if (e.editors.length) lead = chicagoNames(e.editors) + ', ' + (e.editors.length > 1 ? 'eds.' : 'ed.');
+      // Chicago puts a period after the author/editor block.
+      if (lead) s += esc(lead) + (/[.]$/.test(lead) ? ' ' : '. ');
+      const ttl = titleSub(e);
+      if (T === 'book' || T === 'proceedings' || T === 'manual' || T === 'booklet') {
+        s += '<em>' + esc(ttl) + '</em>. ';
+        if (e.edition) s += esc(ordinal(e.edition)) + ' ed. ';
+        const pl = chicagoPlace(e); if (pl) s += pl + ', ';
+        if (e.year) s += esc(e.year);
+        s += '.';
+      } else if (isInType(T)) {
+        s += '&ldquo;' + esc(ttl) + '.&rdquo; In <em>' + esc(e.booktitle || e.series) + '</em>';
+        if (e.editors.length) s += ', edited by ' + esc(namesNatural(e.editors));
+        if (e.pages) s += ', ' + esc(e.pages);
+        s += '. ';
+        const pl = chicagoPlace(e); if (pl) s += pl + ', ';
+        if (e.year) s += esc(e.year);
+        s += '.';
+      } else if (T === 'phdthesis' || T === 'mastersthesis' || T === 'thesis') {
+        s += '&ldquo;' + esc(ttl) + '.&rdquo; ';
+        s += esc(e.thesisType || (T === 'mastersthesis' ? "Master's thesis" : 'PhD diss.'));
+        const inst = e.school || e.institution; if (inst) s += ', ' + esc(inst);
+        if (e.year) s += ', ' + esc(e.year);
+        s += '.';
+      } else if (T === 'misc' || T === 'online' || T === 'electronic' || T === 'unpublished') {
+        s += '&ldquo;' + esc(ttl) + '.&rdquo; ';
+        if (e.howpublished) s += esc(e.howpublished) + '. ';
+        if (e.year) s += esc(e.year) + '.';
+      } else {
+        s += '&ldquo;' + esc(ttl) + '.&rdquo; ';
+        if (e.journal) s += '<em>' + esc(e.journal) + '</em>';
+        if (e.volume) s += ' ' + esc(e.volume);
+        if (e.number) s += ', no. ' + esc(e.number);
+        if (e.year) s += ' (' + esc(e.year) + ')';
+        if (e.pages) s += ': ' + esc(e.pages);
+        s += '.';
+      }
+      if (e.note) s += ' ' + esc(e.note) + '.';
+      const l = linkHtml(e); if (l) s += ' ' + l;
+      return s.trim();
+    };
+
+    // ---- Nature, type-aware --------------------------------------------------
+    const natureText = function (e) {
+      const T = e.type; let s = '';
+      let lead = '';
+      if (e.authors.length) lead = natureNames(e.authors);
+      else if (e.editors.length) lead = natureNames(e.editors) + ' (' + (e.editors.length > 1 ? 'eds' : 'ed') + ')';
+      if (lead) s += esc(lead) + ' ';
+      const ttl = titleSub(e);
+      if (T === 'book' || T === 'proceedings' || T === 'manual' || T === 'booklet') {
+        s += '<em>' + esc(ttl) + '</em> (';
+        if (e.publisher) s += esc(e.publisher);
+        if (e.year) s += (e.publisher ? ', ' : '') + esc(e.year);
+        s += ').';
+      } else if (isInType(T)) {
+        s += esc(ttl) + '. In <em>' + esc(e.booktitle || e.series) + '</em>';
+        if (e.pages) s += ' ' + esc(e.pages);
+        s += ' (' + (e.publisher ? esc(e.publisher) + ', ' : '') + esc(e.year) + ').';
+      } else if (T === 'phdthesis' || T === 'mastersthesis' || T === 'thesis') {
+        s += esc(ttl) + '. ' + esc(e.thesisType || (T === 'mastersthesis' ? "Master's thesis" : 'PhD thesis'));
+        const inst = e.school || e.institution; if (inst) s += ', ' + esc(inst);
+        s += ' (' + esc(e.year) + ').';
+      } else {
+        s += esc(ttl) + '. ';
+        if (e.journal) s += '<em>' + esc(e.journal) + '</em>';
+        if (e.volume) s += ' <strong>' + esc(e.volume) + '</strong>';
+        if (e.pages) s += ', ' + esc(e.pages);
+        if (e.year) s += ' (' + esc(e.year) + ')';
+        s += '.';
+      }
+      if (e.note) s += ' ' + esc(e.note) + '.';
+      const l = linkHtml(e); if (l) s += ' ' + l;
       return s.trim();
     };
 
@@ -498,7 +622,7 @@
     const raw = (sections[0] || '').trim();
     const parsed = resolveCrossrefs(parseBibtex(raw)).map(norm);
     const layout = pick(args.layout, { list: 'list', cards: 'cards', card: 'cards' }, 'list');
-    const notation = pick(args.notation, { ieee: 'ieee', apa: 'apa' }, 'ieee');
+    const notation = pick(args.notation, { ieee: 'ieee', apa: 'apa', chicago: 'chicago', nature: 'nature' }, 'ieee');
     const marker = pick(args.marker, {
       number: 'number', num: 'number', auto: 'number', numbered: 'number',
       key: 'key', tag: 'key', cite: 'key',
@@ -518,7 +642,10 @@
         + '<div class="mdp-ref-empty">No valid BibTeX entries found.</div></div>\n\n';
     }
 
-    const textOf = notation === 'apa' ? apaText : ieeeText;
+    const textOf = notation === 'apa' ? apaText
+      : notation === 'chicago' ? chicagoText
+      : notation === 'nature' ? natureText
+      : ieeeText;
     let inner;
     if (layout === 'cards') {
       inner = '<div class="mdp-ref-cards">'

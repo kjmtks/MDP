@@ -30,9 +30,11 @@ import { useDrawio } from '../../features/drawio/hooks/useDrawio';
 import { useAppActions } from './hooks/useAppActions';
 import { useEditorIntegration } from '../../features/editor/hooks/useEditorIntegration';
 import { apiClient, isElectron } from '../../api/apiClient';
-import { clearAllModules, registerModule, getAllModuleSnippets } from '../../features/modules/moduleManager';
+import { clearAllModules, registerModule, getAllModuleSnippets, loadedModules } from '../../features/modules/moduleManager';
+import { ModuleSettingsDialog } from '../../features/modules/components/ModuleSettingsDialog';
+import type { ModuleParam } from '../../utils/moduleParser';
 import { clearAllEffects, registerEffect, getAllEffectSnippets } from '../../features/effects/effectManager';
-import { applyModulesToMarkdown } from '../../features/modules/moduleProcessor';
+import { applyModulesToMarkdown, parseArguments } from '../../features/modules/moduleProcessor';
 import { resolveImages, setLibraryImages, clearLibraryImages, parseInFileImageDefs, type ImageEntry } from '../../features/images/imageRegistry';
 import { addFileImageDef, editFileImageDef, deleteFileImageDef } from '../../features/images/imageDocEdits';
 import { updateModuleTransforms, removeModuleDirectives } from '../../features/modules/moduleDocEdits';
@@ -1004,6 +1006,52 @@ export default function EditorPage() {
     return () => document.removeEventListener('open-theme-selector', handleOpenThemeSelector);
   }, []);
 
+  // --- Module settings dialog (the ⚙ button on a module directive) ----------
+  const [moduleSettings, setModuleSettings] = useState<{
+    name: string; params: ModuleParam[]; values: Record<string, string>;
+    from: number; to: number; original: string;
+  } | null>(null);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const d = (e as CustomEvent).detail as { name: string; args: string; from: number; to: number; original: string };
+      const mod = loadedModules[d.name];
+      if (!mod) return;
+      setModuleSettings({
+        name: d.name,
+        params: mod.config.parameters || [],
+        values: parseArguments(d.args || ''),
+        from: d.from, to: d.to, original: d.original,
+      });
+    };
+    document.addEventListener('open-module-settings', handler);
+    return () => document.removeEventListener('open-module-settings', handler);
+  }, []);
+
+  const handleModuleSettingsSave = useCallback((vals: Record<string, string>) => {
+    const view = editorRef.current?.view;
+    setModuleSettings((st) => {
+      if (!view || !st) return null;
+      // Serialize back to `key: value, …`; quote values containing a comma so
+      // the argument parser doesn't split them (e.g. rgba(…) colours).
+      const argStr = Object.entries(vals)
+        .map(([k, v]) => `${k}: ${/,/.test(v) ? `"${v}"` : v}`)
+        .join(', ');
+      const directive = `<!-- @${st.name}${argStr ? ' ' + argStr : ''} -->`;
+      const doc = view.state.doc;
+      let from = st.from, to = st.to;
+      // Positions may be stale if the doc changed while the dialog was open —
+      // fall back to locating the original directive text.
+      if (doc.sliceString(from, to) !== st.original) {
+        const idx = doc.toString().indexOf(st.original);
+        if (idx === -1) return null;
+        from = idx; to = idx + st.original.length;
+      }
+      view.dispatch({ changes: { from, to, insert: directive } });
+      return null;
+    });
+  }, [editorRef]);
+
   const handleThemeChange = (newThemeName: string) => {
     if (editorRef.current?.view) {
       const view = editorRef.current.view;
@@ -1316,6 +1364,23 @@ export default function EditorPage() {
       <DrawioEditor open={!!drawioForAdd} onClose={() => setDrawioForAdd(null)} initialBase64Xml={drawioForAdd?.initial || undefined} onSave={handleDrawioForAddSave} />
 
       <ConnectDialog open={isConnectDialogOpen} onClose={() => setIsConnectDialogOpen(false)} channelId={channelId} token={token} ipCandidates={remoteIps} port={remotePort} />
+
+      {moduleSettings && (
+        <ModuleSettingsDialog
+          open
+          moduleName={moduleSettings.name}
+          params={moduleSettings.params}
+          initialValues={moduleSettings.values}
+          // In-file `@image` aliases (active tab) first — they override the
+          // shared library on conflict — then the shared library aliases.
+          imageAliases={Array.from(new Set([
+            ...Object.keys(parseInFileImageDefs(markdown).defs),
+            ...Object.keys(imageLibrary),
+          ]))}
+          onClose={() => setModuleSettings(null)}
+          onSave={handleModuleSettingsSave}
+        />
+      )}
 
       {rasterHost}
 

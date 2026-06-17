@@ -4,8 +4,8 @@
   <description>Highlighted text</description>
 
   <parameters>
-    <param name="text" required="true" />
-    <param name="color" default="#fde68a" required="false" />
+    <param name="text" type="text" label="Text" required="true" />
+    <param name="color" type="color" default="#fde68a" label="Highlight Color" required="false" />
   </parameters>
 
   <snippets>

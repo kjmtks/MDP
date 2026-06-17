@@ -4,7 +4,7 @@
   <description>Information box</description>
   
   <parameters>
-    <param name="color" default="var(--success-color)" required="false" />
+    <param name="color" type="color" default="var(--success-color)" label="Accent Color" desc="Border and header color of the box" required="false" />
   </parameters>
 
   <snippets>

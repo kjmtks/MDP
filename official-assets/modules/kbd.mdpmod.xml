@@ -4,7 +4,7 @@
   <description>A keyboard key</description>
 
   <parameters>
-    <param name="keys" required="true" />
+    <param name="keys" type="text" label="Key" desc="Single key label, e.g. Enter" required="true" />
   </parameters>
 
   <snippets>

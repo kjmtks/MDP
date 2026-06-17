@@ -4,8 +4,8 @@
   <description>Badge</description>
 
   <parameters>
-    <param name="text" required="true" />
-    <param name="color" default="var(--accent-color)" required="false" />
+    <param name="text" type="text" label="Text" required="true" />
+    <param name="color" type="color" default="var(--accent-color)" label="Color" required="false" />
   </parameters>
 
   <snippets>

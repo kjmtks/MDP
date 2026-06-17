@@ -4,9 +4,9 @@
   <description>A styled pseudo-button link</description>
 
   <parameters>
-    <param name="text" required="true" />
-    <param name="href" default="#" required="false" />
-    <param name="color" default="var(--accent-color)" required="false" />
+    <param name="text" type="text" label="Text" required="true" />
+    <param name="href" type="text" default="#" label="Link URL" desc="Destination the button links to" required="false" />
+    <param name="color" type="color" default="var(--accent-color)" label="Background Color" required="false" />
   </parameters>
 
   <snippets>

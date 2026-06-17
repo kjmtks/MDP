@@ -3,7 +3,7 @@
   <type>block</type>
   <description>A box that strongly highlights the slide's conclusion or key points</description>
   <parameters>
-    <param name="color" default="var(--accent-color)" required="false" />
+    <param name="color" type="color" default="var(--accent-color)" label="Color" required="false" />
   </parameters>
   <snippets>
     <snippet>

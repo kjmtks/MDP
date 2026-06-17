@@ -4,7 +4,7 @@
   <description>A markdown list rendered as a styled checklist</description>
 
   <parameters>
-    <param name="color" default="var(--accent-color)" required="false" />
+    <param name="color" type="color" default="var(--accent-color)" label="Mark Color" desc="Color of the checkmark squares" required="false" />
   </parameters>
 
   <snippets>

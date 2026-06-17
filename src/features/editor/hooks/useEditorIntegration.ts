@@ -12,6 +12,7 @@ import { base64Folding } from '../base64Folding';
 import { noteCollapsePlugin } from '../extensions/NoteCollapsePlugin';
 import { themeCollapsePlugin } from '../extensions/ThemeCollapsePlugin';
 import { imageDefCollapsePlugin } from '../extensions/ImageDefCollapsePlugin';
+import { moduleSettingsPlugin } from '../extensions/ModuleSettingsPlugin';
 import { useAppSettings } from '../../settings/AppSettingsContext';
 import { resolveKeys } from '../../settings/shortcuts/matcher';
 import { actionById } from '../../settings/shortcuts/registry';
@@ -170,6 +171,7 @@ export const useEditorIntegration = ({
       activeSlideTheme,
       noteCollapsePlugin,
       themeCollapsePlugin,
+      moduleSettingsPlugin,
     ];
 
     const ext = currentFileName?.split('.').pop()?.toLowerCase();

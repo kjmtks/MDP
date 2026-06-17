@@ -4,7 +4,7 @@
   <description>A keyboard shortcut as a sequence of keys</description>
 
   <parameters>
-    <param name="keys" required="true" />
+    <param name="keys" type="text" label="Keys" desc="Key combination joined with +, e.g. Ctrl+Shift+P" required="true" />
   </parameters>
 
   <snippets>

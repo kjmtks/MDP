@@ -3,9 +3,9 @@
   <type>inline</type>
   <description>Visually displays a percentage as a progress bar.</description>
   <parameters>
-    <param name="percent" default="50" required="true" />
-    <param name="label" default="" required="false" />
-    <param name="color" default="var(--accent-color)" required="false" />
+    <param name="percent" type="number" default="50" label="Percent" min="0" max="100" integer="true" required="true" />
+    <param name="label" type="text" default="" label="Label" required="false" />
+    <param name="color" type="color" default="var(--accent-color)" label="Bar Color" required="false" />
   </parameters>
   <snippets>
     <snippet>

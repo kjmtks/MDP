@@ -5,9 +5,9 @@
   <interactive>true</interactive>
 
   <parameters>
-    <param name="format" default="24" />
-    <param name="seconds" default="true" />
-    <param name="size" default="md" />
+    <param name="format" type="select" default="24" label="Clock format" options="24:24-hour,12:12-hour (AM/PM)" />
+    <param name="seconds" type="boolean" default="true" label="Show seconds" />
+    <param name="size" type="select" default="md" label="Size" options="sm:Small,md:Medium,lg:Large,xl:Extra large" />
   </parameters>
 
   <snippets>

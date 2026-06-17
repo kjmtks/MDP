@@ -3,8 +3,8 @@
   <type>block</type>
   <description>Places a sticky note memo on the screen.</description>
   <parameters>
-    <param name="color" default="#fef08a" required="false" />
-    <param name="rotate" default="-2" required="false" />
+    <param name="color" type="color" default="#fef08a" label="Note Color" required="false" />
+    <param name="rotate" type="number" default="-2" label="Rotation" desc="Tilt of the note in degrees" min="-45" max="45" required="false" />
   </parameters>
   <snippets>
     <snippet>
