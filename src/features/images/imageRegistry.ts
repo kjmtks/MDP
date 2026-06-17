@@ -119,6 +119,22 @@ export const resolveImages = (
     return `![${alt}](${value})`;
   });
 
+  // Also resolve aliases used as MODULE arguments inside HTML-comment directives,
+  // e.g. `<!-- @balloon image: @avatar-kojima -->`. We only touch `key: @alias`
+  // (a value position) so the directive name (`@balloon`) is never matched, and
+  // only KNOWN aliases are substituted (so `@balloon` etc. are left as-is even if
+  // a comment uses them as a value). The resolved value is wrapped in quotes so a
+  // data-URI's commas survive the module arg parser (which splits on `,` but
+  // respects quotes).
+  md = md.replace(/<!--[\s\S]*?-->/g, (comment) =>
+    comment.replace(/([:=]\s*)@([\w-]+)/g, (whole, pre: string, alias: string) => {
+      let value = map[alias];
+      if (value == null || value === '') return whole;
+      if (resolveManagedPath && MANAGED_PATH.test(value)) value = resolveManagedPath(value);
+      return `${pre}"${value}"`;
+    }),
+  );
+
   codeBlocks.forEach((b, i) => { md = md.replace(`__MDP_IMG_CB_${i}__`, () => b); });
   return { markdown: md, unresolved };
 };

@@ -37,11 +37,13 @@ Positioned box
     // halign = horizontal (left/center/right), valign = vertical (top/middle/bottom).
     const h = (args.halign || 'center').toLowerCase();
     const v = (args.valign || 'middle').toLowerCase();
-    const items = h === 'left' ? 'flex-start' : h === 'right' ? 'flex-end' : 'center';
+    // valign positions the whole content block on the column's main axis.
     const justify = v === 'top' ? 'flex-start' : v === 'bottom' ? 'flex-end' : 'center';
+    // halign is handled via text-align; content stretches to the full box width
+    // (align-items: stretch) so paragraphs/tables/images use the available width.
     const textAlign = h === 'left' ? 'left' : h === 'right' ? 'right' : 'center';
     const body = (sections[0] || '').trim();
-    return `\n\n<div class="mdp-mod-freebox" style="background:${bg}; border:${border}; align-items:${items}; justify-content:${justify}; text-align:${textAlign};">\n\n${body}\n\n</div>\n\n`;
+    return `\n\n<div class="mdp-mod-freebox" style="background:${bg}; border:${border}; align-items: stretch; justify-content:${justify}; text-align:${textAlign};">\n\n${body}\n\n</div>\n\n`;
   ]]></render>
 
   <style><![CDATA[
@@ -50,10 +52,15 @@ Positioned box
       flex-direction: column;
       justify-content: center;
       box-sizing: border-box;
-      padding: 0.6em 0.9em;
+      /* No padding/margin: the box is positioned/sized freely, so content fills
+         it edge-to-edge. */
+      padding: 0;
+      margin: 0;
       border-radius: var(--radius-sm, 6px);
       overflow: hidden;
     }
+    /* Strip the content's outer block margins so it sits flush and valign stays
+       accurate. */
     .mdp-mod-freebox > :first-child { margin-top: 0; }
     .mdp-mod-freebox > :last-child { margin-bottom: 0; }
   ]]></style>
