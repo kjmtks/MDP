@@ -28,9 +28,13 @@ const winBtnSx = { minWidth: 0, width: 46, borderRadius: 0, color: 'var(--app-te
 export const SettingsPage: React.FC = () => {
   const [section, setSection] = useState<SectionId>('appearance');
 
+  // On macOS the window's traffic-light buttons sit at the top-left, so pad the
+  // bar (matches MainHeader) to keep the Back button clear of them.
+  const mac = isElectron() && isMac();
+
   return (
     <div className="settings-overlay">
-      <div className="settings-topbar">
+      <div className="settings-topbar" style={{ paddingLeft: mac ? 80 : undefined }}>
         <Tooltip title="Back to editor">
           <IconButton size="small" onClick={closeSettings} sx={{ color: 'var(--app-text-muted)', '&:hover': { color: 'var(--app-text-strong)' } }}>
             <ArrowBackIcon />

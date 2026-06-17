@@ -1,7 +1,7 @@
 <module>
   <name>timer</name>
   <type>inline</type>
-  <description>Countdown timer with start / pause / reset. Interactive: clicking it does not advance the slide. Auto-starts when presenting if autostart:true.</description>
+  <description>Countdown timer with start / pause / reset. Self-contained inline element (no closing tag). Interactive: clicking it does not advance the slide. Auto-starts when presenting if autostart:true. Use the size argument to scale it.</description>
   <interactive>true</interactive>
 
   <parameters>

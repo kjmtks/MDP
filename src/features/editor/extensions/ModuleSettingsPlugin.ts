@@ -1,7 +1,20 @@
 import { EditorView, Decoration, ViewPlugin, WidgetType } from '@codemirror/view';
 import type { ViewUpdate, DecorationSet } from '@uiw/react-codemirror';
 import { RangeSetBuilder } from '@codemirror/state';
+import { syntaxTree } from '@codemirror/language';
 import { loadedModules } from '../../modules/moduleManager';
+
+// A directive written inside a fenced/inline code block is shown as literal text
+// (moduleProcessor masks code before expanding modules), so it is NOT a module
+// instance and must not get a settings button. We detect this via the markdown
+// syntax tree (FencedCode / CodeBlock / CodeText / InlineCode nodes).
+const isInCode = (view: EditorView, pos: number): boolean => {
+  let node = syntaxTree(view.state).resolveInner(pos, 1) as { name: string; parent: unknown } | null;
+  for (let n = node; n; n = (n as { parent: unknown }).parent as typeof node) {
+    if (/Code/.test(n.name)) return true;
+  }
+  return false;
+};
 
 // A small gear button appended after a module directive (`<!-- @name ... -->`).
 // Clicking it dispatches `open-module-settings` so EditorPage can open the
@@ -69,6 +82,8 @@ export const moduleSettingsPlugin = ViewPlugin.fromClass(class {
           // Skip modules with no declared parameters — nothing to edit.
           if (!loadedModules[name].config.parameters?.length) continue;
           const dirFrom = line.from + m.index;
+          // A directive inside a code block isn't a module — no button.
+          if (isInCode(view, dirFrom)) continue;
           const dirTo = dirFrom + m[0].length;
           builder.add(
             dirTo, dirTo,
