@@ -1,16 +1,19 @@
+// Shared MUI menu styling, reused across the app. Driven by app-theme tokens so
+// every menu re-themes at once. (Name kept for compatibility; it follows the
+// active app theme, not just dark.)
 export const darkMenuSlotProps = {
   paper: {
     sx: {
-      bgcolor: '#252526',
-      color: '#cccccc',
-      border: '1px solid #3c3c3c',
+      bgcolor: 'var(--app-bg-panel)',
+      color: 'var(--app-text-secondary)',
+      border: '1px solid var(--app-border-subtle)',
       backgroundImage: 'none',
-      '& .MuiMenuItem-root': { fontSize: '0.85rem', '&:hover': { bgcolor: '#2a2d2e' }, '&.Mui-disabled': { opacity: 1, color: '#8ba0b2' } },
-      '& .MuiListItemIcon-root': { color: '#cccccc', minWidth: 32 },
-      '& .MuiListItemText-secondary': { color: '#8ba0b2' },
-      '& .MuiDivider-root': { borderColor: '#3c3c3c' },
-      '& .MuiCheckbox-root': { color: '#8ba0b2' },
-      '& .MuiCheckbox-root.Mui-checked': { color: '#3b82f6' },
+      '& .MuiMenuItem-root': { fontSize: '0.85rem', '&:hover': { bgcolor: 'var(--app-bg-hover)' }, '&.Mui-disabled': { opacity: 1, color: 'var(--app-text-disabled)' } },
+      '& .MuiListItemIcon-root': { color: 'var(--app-text-secondary)', minWidth: 32 },
+      '& .MuiListItemText-secondary': { color: 'var(--app-text-disabled)' },
+      '& .MuiDivider-root': { borderColor: 'var(--app-border-subtle)' },
+      '& .MuiCheckbox-root': { color: 'var(--app-text-disabled)' },
+      '& .MuiCheckbox-root.Mui-checked': { color: 'var(--app-accent)' },
     },
   },
 } as const;

@@ -6,6 +6,9 @@ import { type SnippetsCategory, type ThemeOption, type FileType, getCustomItemSt
 
 import { MainHeader } from '../../components/layout/MainHeader';
 import { MDP_DIR, MODULES_DIR, EFFECTS_DIR, IMAGES_DIR, SNIPPETS_DIR, TEMPLATES_DIR, THEMES_DIR } from '../../features/workspace/specialFolders';
+import { useAppSettings } from '../../features/settings/AppSettingsContext';
+import { matchAction } from '../../features/settings/shortcuts/matcher';
+import { ACTIONS_BY_SCOPE } from '../../features/settings/shortcuts/registry';
 import { DrawioEditor } from '../../features/drawio/components/DrawioEditor';
 import { ConnectDialog } from '../../features/remote/components/ConnectDialog';
 import { PrintContainer } from '../../features/slide/components/PrintContainer';
@@ -109,6 +112,8 @@ export default function EditorPage() {
     onFileLoaded: useCallback(() => { prevSlideIndexRef.current = -1; }, []),
     drawings, currentSlideIndexRef
   });
+
+  const { settings: appSettings } = useAppSettings();
 
   const tabsRef = useRef(tabs);
   const activeTabIndexRef = useRef(activeTabIndex);
@@ -817,12 +822,11 @@ export default function EditorPage() {
 
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'F5') {
+      const action = matchAction(e, ACTIONS_BY_SCOPE.global, appSettings);
+      if (action?.id === 'global.slideshowToggle') {
         e.preventDefault();
-        if (!isSlideshow) {
-          toggleSlideshow();
-        }
-      } else if (e.key === 'Escape' && isSlideOverview) {
+        if (!isSlideshow) toggleSlideshow();
+      } else if (action?.id === 'global.overviewExit' && isSlideOverview) {
         e.preventDefault();
         setIsSlideOverview(false);
       }
@@ -830,7 +834,7 @@ export default function EditorPage() {
 
     window.addEventListener('keydown', handleGlobalKeyDown, { passive: false });
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [isSlideshow, toggleSlideshow, isSlideOverview, setIsSlideOverview]);
+  }, [isSlideshow, toggleSlideshow, isSlideOverview, setIsSlideOverview, appSettings]);
 
   const { onEditorUpdate, extensions, handleInsertText } = useEditorIntegration({
     editorRef, currentFileName,

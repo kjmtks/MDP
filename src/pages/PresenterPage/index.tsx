@@ -8,6 +8,9 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import { Panel, Group, Separator } from 'react-resizable-panels';
 
 import { useSync, type SyncMessage } from '../../features/remote/hooks/useSync';
+import { useAppSettings } from '../../features/settings/AppSettingsContext';
+import { matchAction } from '../../features/settings/shortcuts/matcher';
+import { ACTIONS_BY_SCOPE } from '../../features/settings/shortcuts/registry';
 import { moduleSyncBus } from '../../features/modules/moduleSyncBus';
 import { registerParsedModule, clearAllModules } from '../../features/modules/moduleManager';
 import { registerParsedEffect, clearAllEffects } from '../../features/effects/effectManager';
@@ -56,6 +59,7 @@ const extractNoteText = (slide: any) => {
 };
 
 export default function PresenterPage() {
+  const { settings: appSettings } = useAppSettings();
   const [channelId] = useState<string | null>(() => {
     const query = window.location.hash.split('?')[1] || window.location.search;
     const params = new URLSearchParams(query);
@@ -296,23 +300,20 @@ export default function PresenterPage() {
       const target = e.target as HTMLElement;
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
 
-      if (e.key === 'p') setMode(prev => prev === 'pen' ? 'view' : 'pen');
-      if ((e.metaKey || e.ctrlKey) && e.key === 'z') { e.preventDefault(); handleUndo(); }
-      if ((e.metaKey || e.ctrlKey) && e.key === 'y') { e.preventDefault(); handleRedo(); }
-      if (e.key === 'c') handleClear();
-      if (e.key === 'n') handleAddSlide();
-
-      if (['ArrowRight', 'ArrowDown', ' ', 'Enter', 'PageDown'].includes(e.key)) {
-        e.preventDefault();
-        sendNav(1);
-      } else if (['ArrowLeft', 'ArrowUp', 'PageUp'].includes(e.key)) {
-        e.preventDefault();
-        sendNav(-1);
+      const action = matchAction(e, ACTIONS_BY_SCOPE.presenter, appSettings);
+      switch (action?.id) {
+        case 'presenter.penToggle': setMode(prev => prev === 'pen' ? 'view' : 'pen'); break;
+        case 'presenter.undo': e.preventDefault(); handleUndo(); break;
+        case 'presenter.redo': e.preventDefault(); handleRedo(); break;
+        case 'presenter.clear': handleClear(); break;
+        case 'presenter.addSlide': handleAddSlide(); break;
+        case 'presenter.next': e.preventDefault(); sendNav(1); break;
+        case 'presenter.prev': e.preventDefault(); sendNav(-1); break;
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [sendNav, handleUndo, handleRedo, handleClear, handleAddSlide]);
+  }, [sendNav, handleUndo, handleRedo, handleClear, handleAddSlide, appSettings]);
 
   useEffect(() => {
     const handleTouch = (e: TouchEvent) => {

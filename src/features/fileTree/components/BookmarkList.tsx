@@ -72,7 +72,7 @@ export const BookmarkList: React.FC<BookmarkListProps> = ({ bookmarks, onFileSel
   }, [bookmarks, titles]);
 
   if (bookmarks.length === 0) {
-    return <Typography variant="body1" sx={{ color: '#888', textAlign: 'center', p: 2 }}>No bookmarks yet.</Typography>;
+    return <Typography variant="body1" sx={{ color: 'var(--app-text-disabled)', textAlign: 'center', p: 2 }}>No bookmarks yet.</Typography>;
   }
 
   const pickerBookmark = picker ? bookmarks.find((b) => b.path === picker.path) : undefined;
@@ -114,18 +114,18 @@ export const BookmarkList: React.FC<BookmarkListProps> = ({ bookmarks, onFileSel
             }}
             onDragEnd={() => { setDraggedIndex(null); setOverIndex(null); }}
             secondaryAction={
-              <IconButton edge="end" aria-label="remove bookmark" onClick={(e) => { e.stopPropagation(); onRemove(bm.path); }} size="small" sx={{ color: '#888', '&:hover': { color: '#ef4444' } }}>
+              <IconButton edge="end" aria-label="remove bookmark" onClick={(e) => { e.stopPropagation(); onRemove(bm.path); }} size="small" sx={{ color: 'var(--app-text-disabled)', '&:hover': { color: 'var(--app-danger)' } }}>
                 <CloseIcon fontSize="small" />
               </IconButton>
             }
             sx={{
               opacity: draggedIndex === index ? 0.4 : 1,
-              borderTop: overIndex === index && draggedIndex !== null && draggedIndex !== index ? '2px solid #3b82f6' : '2px solid transparent',
+              borderTop: overIndex === index && draggedIndex !== null && draggedIndex !== index ? '2px solid var(--app-accent)' : '2px solid transparent',
               '&:hover .MuiListItemSecondaryAction-root': { opacity: 1 },
               '.MuiListItemSecondaryAction-root': { opacity: 0.3 },
             }}
           >
-            <ListItemButton onClick={() => onFileSelect(bm.path)} sx={{ py: 0.5, borderRadius: 1, '&:hover': { bgcolor: '#333' } }}>
+            <ListItemButton onClick={() => onFileSelect(bm.path)} sx={{ py: 0.5, borderRadius: 1, '&:hover': { bgcolor: 'var(--app-bg-hover)' } }}>
               <ListItemIcon
                 sx={{ minWidth: 32 }}
                 onClick={(e) => { e.stopPropagation(); setPicker({ anchor: e.currentTarget, path: bm.path }); }}
@@ -136,7 +136,7 @@ export const BookmarkList: React.FC<BookmarkListProps> = ({ bookmarks, onFileSel
               <ListItemText
                 primary={primary}
                 secondary={secondary}
-                slotProps={{ primary: { fontSize: '0.85rem', color: '#ccc' }, secondary: { fontSize: '0.7rem', color: '#888', sx: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } } }}
+                slotProps={{ primary: { fontSize: '0.85rem', color: 'var(--app-text-secondary)' }, secondary: { fontSize: '0.7rem', color: 'var(--app-text-disabled)', sx: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } } }}
               />
             </ListItemButton>
           </ListItem>
@@ -148,29 +148,29 @@ export const BookmarkList: React.FC<BookmarkListProps> = ({ bookmarks, onFileSel
         anchorEl={picker?.anchor}
         onClose={() => setPicker(null)}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
-        slotProps={{ paper: { sx: { bgcolor: '#252526', color: '#ccc', border: '1px solid #3c3c3c', p: 1.5 } } }}
+        slotProps={{ paper: { sx: { bgcolor: 'var(--app-bg-panel)', color: 'var(--app-text-secondary)', border: '1px solid var(--app-border-subtle)', p: 1.5 } } }}
       >
         {pickerBookmark && (
           <Box sx={{ width: 180 }}>
-            <Typography variant="caption" sx={{ color: '#8ba0b2' }}>Icon</Typography>
+            <Typography variant="caption" sx={{ color: 'var(--app-text-disabled)' }}>Icon</Typography>
             <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 0.5, mb: 1, mt: 0.5 }}>
               {BOOKMARK_ICON_KEYS.map((key) => {
                 const Icon = bookmarkIconFor(key);
                 const selected = key === pickerBookmark.icon;
                 return (
-                  <IconButton key={key} size="small" onClick={() => onUpdate(pickerBookmark.path, { icon: key })} sx={{ color: pickerBookmark.color, border: selected ? '1px solid #3b82f6' : '1px solid transparent', borderRadius: 1 }}>
+                  <IconButton key={key} size="small" onClick={() => onUpdate(pickerBookmark.path, { icon: key })} sx={{ color: pickerBookmark.color, border: selected ? '1px solid var(--app-accent)' : '1px solid transparent', borderRadius: 1 }}>
                     <Icon fontSize="small" />
                   </IconButton>
                 );
               })}
             </Box>
-            <Typography variant="caption" sx={{ color: '#8ba0b2' }}>Color</Typography>
+            <Typography variant="caption" sx={{ color: 'var(--app-text-disabled)' }}>Color</Typography>
             <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 0.5, mt: 0.5 }}>
               {BOOKMARK_COLORS.map((c) => (
                 <Box
                   key={c}
                   onClick={() => onUpdate(pickerBookmark.path, { color: c })}
-                  sx={{ width: 16, height: 16, borderRadius: '50%', bgcolor: c, cursor: 'pointer', border: c === pickerBookmark.color ? '2px solid #fff' : '2px solid transparent', boxShadow: '0 0 0 1px rgba(255,255,255,0.2)' }}
+                  sx={{ width: 16, height: 16, borderRadius: '50%', bgcolor: c, cursor: 'pointer', border: c === pickerBookmark.color ? '2px solid var(--app-text-strong)' : '2px solid transparent', boxShadow: '0 0 0 1px var(--app-border)' }}
                 />
               ))}
             </Box>

@@ -6,10 +6,10 @@ import GridViewIcon from '@mui/icons-material/GridView';
 import MinimizeIcon from '@mui/icons-material/Remove';
 import MaximizeIcon from '@mui/icons-material/CropSquare';
 import CloseIcon from '@mui/icons-material/Close';
-import InfoIcon from '@mui/icons-material/Info';
+import SettingsIcon from '@mui/icons-material/Settings';
 import { isElectron } from '../../api/apiClient';
 import { isMac } from '../../utils/osUtils';
-import { LicensesDialog } from '../LicensesDialog';
+import { openSettings } from '../../features/settings/nav';
 import mdpIcon from '../../assets/icon.svg';
 import { STATIC_PANELS, TOGGLE_PANEL_EVENT, VISIBLE_PANELS_EVENT, REQUEST_VISIBLE_EVENT } from '../../pages/EditorPage/dock/dockShared';
 import { darkMenuSlotProps } from '../../pages/EditorPage/dock/darkMenu';
@@ -25,7 +25,6 @@ export const MainHeader: React.FC<MainHeaderProps> = ({
 }) => {
   const mac = isMac();
 
-  const [isLicenseOpen, setIsLicenseOpen] = useState(false);
   const [viewMenuAnchor, setViewMenuAnchor] = useState<HTMLElement | null>(null);
   const [visiblePanels, setVisiblePanels] = useState<Set<string>>(new Set());
 
@@ -60,8 +59,8 @@ export const MainHeader: React.FC<MainHeaderProps> = ({
         height: '40px',
         flexShrink: 0,
         boxSizing: 'border-box',
-        backgroundColor: '#202225',
-        color: '#eee',
+        backgroundColor: 'var(--app-bg-header)',
+        color: 'var(--app-text)',
         WebkitAppRegion: 'drag',
         userSelect: 'none'
       } as React.CSSProperties}
@@ -101,7 +100,7 @@ export const MainHeader: React.FC<MainHeaderProps> = ({
         )}
         <Tooltip title="View / Panels">
           <span>
-            <Button variant="text" size="small" onClick={openViewMenu} sx={{ color: '#aaa', minWidth: '40px', '&:hover': { color: '#fff' } }}>
+            <Button variant="text" size="small" onClick={openViewMenu} sx={{ color: 'var(--app-text-muted)', minWidth: '40px', '&:hover': { color: 'var(--app-text-strong)' } }}>
               <ViewSidebarIcon />
             </Button>
           </span>
@@ -121,15 +120,15 @@ export const MainHeader: React.FC<MainHeaderProps> = ({
             </MenuItem>,
           ]}
         </Menu>
-        <Tooltip title="Licenses">
+        <Tooltip title="Settings">
           <span>
             <Button
               variant="text"
               size="small"
-              onClick={() => setIsLicenseOpen(true)}
-              sx={{ color: '#aaa', minWidth: '40px', ml: 1, '&:hover': { color: '#fff' } }}
+              onClick={openSettings}
+              sx={{ color: 'var(--app-text-muted)', minWidth: '40px', ml: 1, '&:hover': { color: 'var(--app-text-strong)' } }}
             >
-              <InfoIcon />
+              <SettingsIcon />
             </Button>
           </span>
         </Tooltip>
@@ -140,7 +139,7 @@ export const MainHeader: React.FC<MainHeaderProps> = ({
               variant="text"
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               onClick={() => (window as any).electronAPI?.minimize()}
-              sx={{ minWidth: '46px', borderRadius: 0, color: '#aaa', '&:hover':{backgroundColor: 'rgba(255,255,255,0.1)', color:'#fff'} }}
+              sx={{ minWidth: '46px', borderRadius: 0, color: 'var(--app-text-muted)', '&:hover':{backgroundColor: 'var(--app-bg-hover)', color:'var(--app-text-strong)'} }}
             >
               <MinimizeIcon fontSize="small" />
             </Button>
@@ -148,7 +147,7 @@ export const MainHeader: React.FC<MainHeaderProps> = ({
               variant="text"
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               onClick={() => (window as any).electronAPI?.maximize()}
-              sx={{ minWidth: '46px', borderRadius: 0, color: '#aaa', '&:hover':{backgroundColor: 'rgba(255,255,255,0.1)', color:'#fff'} }}
+              sx={{ minWidth: '46px', borderRadius: 0, color: 'var(--app-text-muted)', '&:hover':{backgroundColor: 'var(--app-bg-hover)', color:'var(--app-text-strong)'} }}
             >
               <MaximizeIcon fontSize="small" style={{ transform: 'scale(0.8)' }} />
             </Button>
@@ -156,15 +155,13 @@ export const MainHeader: React.FC<MainHeaderProps> = ({
               variant="text"
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               onClick={() => (window as any).electronAPI?.close()}
-              sx={{ minWidth: '46px', borderRadius: 0, color: '#aaa', '&:hover':{backgroundColor: '#f04747', color:'#fff'} }}
+              sx={{ minWidth: '46px', borderRadius: 0, color: 'var(--app-text-muted)', '&:hover':{backgroundColor: 'var(--app-danger)', color:'#fff'} }}
             >
               <CloseIcon fontSize="small" />
             </Button>
           </Stack>
         )}
       </Stack>
-
-      <LicensesDialog open={isLicenseOpen} onClose={() => setIsLicenseOpen(false)} />
     </div>
   );
 };

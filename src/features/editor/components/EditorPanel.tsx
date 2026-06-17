@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect, useRef } from 'react';
 import SaveIcon from '@mui/icons-material/Save';
 import UndoIcon from '@mui/icons-material/Undo';
 import RedoIcon from '@mui/icons-material/Redo';
@@ -16,6 +16,9 @@ import { EditorView } from '@codemirror/view';
 import { type FileType } from '../../../types';
 import { MAX_FILE_SIZE, CODEMIRROR_BASIC_SETUP } from '../../../constants';
 import { apiClient } from '../../../api/apiClient';
+import { useAppSettings } from '../../settings/AppSettingsContext';
+import { matchAction } from '../../settings/shortcuts/matcher';
+import { actionById } from '../../settings/shortcuts/registry';
 
 interface EditorPanelProps {
   currentFileName: string | null;
@@ -40,29 +43,46 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
   bookmark, onUpdateBookmark
 }) => {
 
-  const [editorFontSize, setEditorFontSize] = useState(16);
+  // Editor font size is a persisted app setting (per-workspace). Ctrl+wheel and
+  // Ctrl +/- adjust it live.
+  const { appThemeVariant, settings, update } = useAppSettings();
+  const editorFontSize = settings.editorFontSize;
+  const fontRef = useRef(editorFontSize);
+  fontRef.current = editorFontSize;
+  const setFont = useCallback((v: number) => update({ editorFontSize: Math.max(10, Math.min(v, 40)) }), [update]);
   const [bookmarkPickerAnchor, setBookmarkPickerAnchor] = useState<HTMLElement | null>(null);
+  const editorAreaRef = useRef<HTMLDivElement>(null);
 
-  const handleWheel = useCallback((e: React.WheelEvent) => {
-    if (e.ctrlKey || e.metaKey) {
+  // Ctrl/Cmd + wheel = font zoom. Use a NATIVE non-passive listener (React's
+  // onWheel is passive, so preventDefault there is ignored and the page would
+  // zoom). Plain wheel is left entirely untouched so the editor scrolls normally.
+  useEffect(() => {
+    const el = editorAreaRef.current;
+    if (!el) return;
+    const onWheelNative = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
       e.preventDefault();
-      setEditorFontSize(prev => Math.max(10, Math.min(prev + (e.deltaY > 0 ? -1 : 1), 40)));
-    }
-  }, []);
+      setFont(fontRef.current + (e.deltaY > 0 ? -1 : 1));
+    };
+    el.addEventListener('wheel', onWheelNative, { passive: false });
+    return () => el.removeEventListener('wheel', onWheelNative);
+  }, [setFont]);
 
   useEffect(() => {
+    const inc = actionById('global.editorFontIncrease');
+    const dec = actionById('global.editorFontDecrease');
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && (e.key === '+' || e.key === ';' || e.key === '=')) {
+      if (inc && matchAction(e, [inc], settings)) {
         e.preventDefault();
-        setEditorFontSize(prev => Math.min(prev + 1, 40));
-      } else if ((e.ctrlKey || e.metaKey) && e.key === '-') {
+        setFont(fontRef.current + 1);
+      } else if (dec && matchAction(e, [dec], settings)) {
         e.preventDefault();
-        setEditorFontSize(prev => Math.max(10, prev - 1));
+        setFont(fontRef.current - 1);
       }
     };
     window.addEventListener('keydown', handleKeyDown, { passive: false });
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [setFont, settings]);
 
   const handleUndo = useCallback(() => {
     if (editorRef.current?.view) undo(editorRef.current.view);
@@ -223,43 +243,43 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
         extensions={extensions}
         onChange={onChangeEditor}
         onUpdate={onEditorUpdate}
-        theme="dark"
+        theme={appThemeVariant === 'light' ? 'light' : 'dark'}
         basicSetup={CODEMIRROR_BASIC_SETUP}
       />
     </Box>
   );
 
   return (
-    <Box onWheel={handleWheel} sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: 'white', position: 'relative', overflow: 'hidden' }}>
+    <Box ref={editorAreaRef} sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: 'var(--app-bg-editor)', position: 'relative', overflow: 'hidden' }}>
       {!currentFileName ? (
-        <Box sx={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#999', bgcolor: '#f5f5f5' }}>
+        <Box sx={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--app-text-disabled)', bgcolor: 'var(--app-bg-editor)' }}>
           <Typography>No file selected</Typography>
         </Box>
       ) : (
         <>
           {(currentFileType === 'markdown' || currentFileType === 'text') && (
-            <Box sx={{ display: 'flex', alignItems: 'center', px: 2, py: 0.5, borderBottom: '1px solid #333333', bgcolor: '#252526' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', px: 2, py: 0.5, borderBottom: '1px solid var(--app-border)', bgcolor: 'var(--app-bg-panel)' }}>
               <Tooltip title="Save (Ctrl+S)">
-                <IconButton size="small" onClick={onSave} sx={{ color: '#aaa', '&:hover': { color: '#fff' } }}><SaveIcon fontSize="small" /></IconButton>
+                <IconButton size="small" onClick={onSave} sx={{ color: 'var(--app-text-muted)', '&:hover': { color: 'var(--app-text-strong)' } }}><SaveIcon fontSize="small" /></IconButton>
               </Tooltip>
 
-              <Divider orientation="vertical" flexItem sx={{ mx: 1, my: 0.5, borderColor: '#444' }} />
+              <Divider orientation="vertical" flexItem sx={{ mx: 1, my: 0.5, borderColor: 'var(--app-border-strong)' }} />
 
               <Tooltip title="Undo (Ctrl+Z)">
-                <IconButton size="small" onClick={handleUndo} sx={{ color: '#aaa', '&:hover': { color: '#fff' } }}><UndoIcon fontSize="small" /></IconButton>
+                <IconButton size="small" onClick={handleUndo} sx={{ color: 'var(--app-text-muted)', '&:hover': { color: 'var(--app-text-strong)' } }}><UndoIcon fontSize="small" /></IconButton>
               </Tooltip>
               <Tooltip title="Redo (Ctrl+Y)">
-                <IconButton size="small" onClick={handleRedo} sx={{ color: '#aaa', '&:hover': { color: '#fff' } }}><RedoIcon fontSize="small" /></IconButton>
+                <IconButton size="small" onClick={handleRedo} sx={{ color: 'var(--app-text-muted)', '&:hover': { color: 'var(--app-text-strong)' } }}><RedoIcon fontSize="small" /></IconButton>
               </Tooltip>
 
               {currentFileName.endsWith('.slide.md') && (
                 <>
-                  <Divider orientation="vertical" flexItem sx={{ mx: 1, my: 0.5, borderColor: '#444' }} />
+                  <Divider orientation="vertical" flexItem sx={{ mx: 1, my: 0.5, borderColor: 'var(--app-border-strong)' }} />
                   <Tooltip title="Previous Slide">
-                    <IconButton size="small" onClick={handlePrevSlide} sx={{ color: '#aaa', '&:hover': { color: '#fff' } }}><ArrowUpwardIcon fontSize="small" /></IconButton>
+                    <IconButton size="small" onClick={handlePrevSlide} sx={{ color: 'var(--app-text-muted)', '&:hover': { color: 'var(--app-text-strong)' } }}><ArrowUpwardIcon fontSize="small" /></IconButton>
                   </Tooltip>
                   <Tooltip title="Next Slide">
-                    <IconButton size="small" onClick={handleNextSlide} sx={{ color: '#aaa', '&:hover': { color: '#fff' } }}><ArrowDownwardIcon fontSize="small" /></IconButton>
+                    <IconButton size="small" onClick={handleNextSlide} sx={{ color: 'var(--app-text-muted)', '&:hover': { color: 'var(--app-text-strong)' } }}><ArrowDownwardIcon fontSize="small" /></IconButton>
                   </Tooltip>
                 </>
               )}
@@ -268,7 +288,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                 const bmColor = bookmark?.color || '#3b82f6';
                 return (
                   <>
-                    <Divider orientation="vertical" flexItem sx={{ mx: 1, my: 0.5, borderColor: '#444' }} />
+                    <Divider orientation="vertical" flexItem sx={{ mx: 1, my: 0.5, borderColor: 'var(--app-border-strong)' }} />
                     <Tooltip title={isBookmarked ? "Bookmark (icon / color / remove)" : "Add Bookmark"}>
                       <IconButton
                         size="small"
@@ -286,11 +306,11 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
 
           <Box sx={{ flex: 1, height: 0 }}>
             {(currentFileType === 'markdown' || currentFileType === 'text') ? (
-              <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: '#1e1e1e' }}>
+              <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: 'var(--app-bg-editor)' }}>
                 {commonEditor}
               </Box>
             ) : (
-              <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', bgcolor: '#f5f5f5', color: '#999', gap: 1 }}>
+              <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', bgcolor: 'var(--app-bg-editor)', color: 'var(--app-text-disabled)', gap: 1 }}>
                 <Typography variant="h6">{currentFileType === 'limit-exceeded' ? "File Too Large" : "Editor Disabled"}</Typography>
                 <Typography variant="body2">{currentFileType === 'image' ? "Image file" : currentFileType === 'binary' ? "Binary file" : currentFileType === 'limit-exceeded' ? `Exceeds editor limit (${MAX_FILE_SIZE / 1024}KB)` : "Unknown file type"}</Typography>
               </Box>
@@ -304,38 +324,38 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
         anchorEl={bookmarkPickerAnchor}
         onClose={() => setBookmarkPickerAnchor(null)}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
-        slotProps={{ paper: { sx: { bgcolor: '#252526', color: '#ccc', border: '1px solid #3c3c3c', p: 1.5 } } }}
+        slotProps={{ paper: { sx: { bgcolor: 'var(--app-bg-panel)', color: 'var(--app-text-secondary)', border: '1px solid var(--app-border-subtle)', p: 1.5 } } }}
       >
         {bookmark && (
           <Box sx={{ width: 180 }}>
-            <Typography variant="caption" sx={{ color: '#8ba0b2' }}>Icon</Typography>
+            <Typography variant="caption" sx={{ color: 'var(--app-text-disabled)' }}>Icon</Typography>
             <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 0.5, mb: 1, mt: 0.5 }}>
               {BOOKMARK_ICON_KEYS.map((key) => {
                 const Icon = bookmarkIconFor(key);
                 const selected = key === bookmark.icon;
                 return (
-                  <IconButton key={key} size="small" onClick={() => onUpdateBookmark?.({ icon: key })} sx={{ color: bookmark.color, border: selected ? '1px solid #3b82f6' : '1px solid transparent', borderRadius: 1 }}>
+                  <IconButton key={key} size="small" onClick={() => onUpdateBookmark?.({ icon: key })} sx={{ color: bookmark.color, border: selected ? '1px solid var(--app-accent)' : '1px solid transparent', borderRadius: 1 }}>
                     <Icon fontSize="small" />
                   </IconButton>
                 );
               })}
             </Box>
-            <Typography variant="caption" sx={{ color: '#8ba0b2' }}>Color</Typography>
+            <Typography variant="caption" sx={{ color: 'var(--app-text-disabled)' }}>Color</Typography>
             <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 0.5, mt: 0.5, mb: 1 }}>
               {BOOKMARK_COLORS.map((c) => (
                 <Box
                   key={c}
                   onClick={() => onUpdateBookmark?.({ color: c })}
-                  sx={{ width: 16, height: 16, borderRadius: '50%', bgcolor: c, cursor: 'pointer', border: c === bookmark.color ? '2px solid #fff' : '2px solid transparent', boxShadow: '0 0 0 1px rgba(255,255,255,0.2)' }}
+                  sx={{ width: 16, height: 16, borderRadius: '50%', bgcolor: c, cursor: 'pointer', border: c === bookmark.color ? '2px solid var(--app-text-strong)' : '2px solid transparent', boxShadow: '0 0 0 1px var(--app-border)' }}
                 />
               ))}
             </Box>
-            <Divider sx={{ borderColor: '#3c3c3c', my: 1 }} />
+            <Divider sx={{ borderColor: 'var(--app-border-subtle)', my: 1 }} />
             <Button
               size="small"
               fullWidth
               onClick={() => { onToggleBookmark?.(); setBookmarkPickerAnchor(null); }}
-              sx={{ color: '#ef4444', textTransform: 'none', justifyContent: 'flex-start' }}
+              sx={{ color: 'var(--app-danger)', textTransform: 'none', justifyContent: 'flex-start' }}
             >
               Remove Bookmark
             </Button>

@@ -185,6 +185,8 @@ ipcMain.handle('startRemoteServer', async () => {
 
 ipcMain.handle('getRemoteInfo', () => remoteServer.getRemoteInfo());
 
+ipcMain.handle('getAppVersion', () => app.getVersion());
+
 ipcMain.on('stopRemoteServer', () => remoteServer.stopRemoteServer());
 
 let captureWin = null;

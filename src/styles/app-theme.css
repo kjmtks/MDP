@@ -1,0 +1,203 @@
+/*
+ * App (chrome) theme tokens. The `:root` block holds the DARK defaults (matching
+ * the app's current look), so an absent/unknown `data-app-theme` still renders
+ * the existing dark UI with zero regression. Each theme overrides via
+ * `html[data-app-theme="<id>"]`. These `--app-*` tokens are app-only and must
+ * never collide with slide-theme variables (`--accent-color`, `--panel-bg`,
+ * `--mdp-*`, …), which are scoped to the slide DOM.
+ *
+ * Font sizes (`--app-font-size`, `--app-editor-font-size`) are set at runtime as
+ * inline custom properties on <html> by AppSettingsContext, so they compose with
+ * whichever theme is active.
+ */
+
+:root {
+  /* Backgrounds */
+  --app-bg-header: #202225;
+  --app-bg-panel: #252526;
+  --app-bg-editor: #1e1e1e;
+  --app-bg-elevated: #2d2d2d;
+  --app-bg-app: #1e1e1e;
+  --app-bg-light: #f3f4f6;
+  --app-bg-hover: #2a2d2e;
+  --app-bg-overlay: rgba(0, 0, 0, 0.6);
+
+  /* Borders */
+  --app-border: #333333;
+  --app-border-subtle: #3c3c3c;
+  --app-border-strong: #444444;
+
+  /* Text */
+  --app-text: #eeeeee;
+  --app-text-strong: #ffffff;
+  --app-text-muted: #aaaaaa;
+  --app-text-secondary: #cccccc;
+  --app-text-disabled: #8ba0b2;
+
+  /* Accent / status */
+  --app-accent: #3b82f6;
+  --app-accent-color: #3b82f6; /* legacy alias (App.css resize-handle rules) */
+  --app-accent-contrast: #ffffff;
+  --app-danger: #f04747;
+
+  /* Scrollbars */
+  --app-scrollbar-thumb: rgba(255, 255, 255, 0.15);
+  --app-scrollbar-thumb-hover: rgba(255, 255, 255, 0.25);
+
+  /* Sizes (overridden at runtime from settings) */
+  --app-font-size: 14px;
+  --app-editor-font-size: 16px;
+}
+
+/* ----------------------------------------------------------------------------
+ * Dark (explicit block, mirrors :root — needed so a scoped element such as the
+ * Settings theme-preview swatch resolves the Dark palette instead of inheriting
+ * the active theme).
+ * ------------------------------------------------------------------------- */
+[data-app-theme="dark"] {
+  --app-bg-header: #202225;
+  --app-bg-panel: #252526;
+  --app-bg-editor: #1e1e1e;
+  --app-bg-elevated: #2d2d2d;
+  --app-bg-app: #1e1e1e;
+  --app-bg-light: #f3f4f6;
+  --app-bg-hover: #2a2d2e;
+  --app-bg-overlay: rgba(0, 0, 0, 0.6);
+
+  --app-border: #333333;
+  --app-border-subtle: #3c3c3c;
+  --app-border-strong: #444444;
+
+  --app-text: #eeeeee;
+  --app-text-strong: #ffffff;
+  --app-text-muted: #aaaaaa;
+  --app-text-secondary: #cccccc;
+  --app-text-disabled: #8ba0b2;
+
+  --app-accent: #3b82f6;
+  --app-accent-color: #3b82f6;
+  --app-accent-contrast: #ffffff;
+  --app-danger: #f04747;
+
+  --app-scrollbar-thumb: rgba(255, 255, 255, 0.15);
+  --app-scrollbar-thumb-hover: rgba(255, 255, 255, 0.25);
+}
+
+/* ----------------------------------------------------------------------------
+ * Light
+ * ------------------------------------------------------------------------- */
+[data-app-theme="light"] {
+  --app-bg-header: #e7e8ec;
+  --app-bg-panel: #f3f3f4;
+  --app-bg-editor: #ffffff;
+  --app-bg-elevated: #e7e7ea;
+  --app-bg-app: #ffffff;
+  --app-bg-light: #f0f1f3;
+  --app-bg-hover: #e2e4e8;
+  --app-bg-overlay: rgba(0, 0, 0, 0.35);
+
+  --app-border: #d4d6db;
+  --app-border-subtle: #e2e3e7;
+  --app-border-strong: #c2c4ca;
+
+  --app-text: #24262b;
+  --app-text-strong: #000000;
+  --app-text-muted: #5a5e66;
+  --app-text-secondary: #33363c;
+  --app-text-disabled: #8a8f98;
+
+  --app-accent: #2563eb;
+  --app-accent-color: #2563eb;
+  --app-accent-contrast: #ffffff;
+  --app-danger: #dc2626;
+
+  --app-scrollbar-thumb: rgba(0, 0, 0, 0.22);
+  --app-scrollbar-thumb-hover: rgba(0, 0, 0, 0.35);
+}
+
+/* ----------------------------------------------------------------------------
+ * Midnight (deep blue dark)
+ * ------------------------------------------------------------------------- */
+[data-app-theme="midnight"] {
+  --app-bg-header: #0d1117;
+  --app-bg-panel: #161b22;
+  --app-bg-editor: #0d1117;
+  --app-bg-elevated: #21262d;
+  --app-bg-app: #0d1117;
+  --app-bg-light: #161b22;
+  --app-bg-hover: #21262d;
+  --app-bg-overlay: rgba(1, 4, 9, 0.7);
+
+  --app-border: #30363d;
+  --app-border-subtle: #21262d;
+  --app-border-strong: #444c56;
+
+  --app-text: #c9d1d9;
+  --app-text-strong: #f0f6fc;
+  --app-text-muted: #8b949e;
+  --app-text-secondary: #adbac7;
+  --app-text-disabled: #6e7681;
+
+  --app-accent: #58a6ff;
+  --app-accent-color: #58a6ff;
+  --app-accent-contrast: #0d1117;
+  --app-danger: #f85149;
+}
+
+/* ----------------------------------------------------------------------------
+ * Solarized Dark
+ * ------------------------------------------------------------------------- */
+[data-app-theme="solarized-dark"] {
+  --app-bg-header: #002b36;
+  --app-bg-panel: #073642;
+  --app-bg-editor: #002b36;
+  --app-bg-elevated: #073642;
+  --app-bg-app: #002b36;
+  --app-bg-light: #073642;
+  --app-bg-hover: #0a4452;
+  --app-bg-overlay: rgba(0, 20, 26, 0.7);
+
+  --app-border: #0a4452;
+  --app-border-subtle: #073642;
+  --app-border-strong: #586e75;
+
+  --app-text: #93a1a1;
+  --app-text-strong: #fdf6e3;
+  --app-text-muted: #839496;
+  --app-text-secondary: #b3c0c0;
+  --app-text-disabled: #586e75;
+
+  --app-accent: #268bd2;
+  --app-accent-color: #268bd2;
+  --app-accent-contrast: #002b36;
+  --app-danger: #dc322f;
+}
+
+/* ----------------------------------------------------------------------------
+ * High Contrast
+ * ------------------------------------------------------------------------- */
+[data-app-theme="high-contrast"] {
+  --app-bg-header: #000000;
+  --app-bg-panel: #000000;
+  --app-bg-editor: #000000;
+  --app-bg-elevated: #0a0a0a;
+  --app-bg-app: #000000;
+  --app-bg-light: #0a0a0a;
+  --app-bg-hover: #1a1a1a;
+  --app-bg-overlay: rgba(0, 0, 0, 0.8);
+
+  --app-border: #6b6b6b;
+  --app-border-subtle: #4d4d4d;
+  --app-border-strong: #8a8a8a;
+
+  --app-text: #ffffff;
+  --app-text-strong: #ffffff;
+  --app-text-muted: #d0d0d0;
+  --app-text-secondary: #eaeaea;
+  --app-text-disabled: #9a9a9a;
+
+  --app-accent: #00e5ff;
+  --app-accent-color: #00e5ff;
+  --app-accent-contrast: #000000;
+  --app-danger: #ff5d5d;
+}

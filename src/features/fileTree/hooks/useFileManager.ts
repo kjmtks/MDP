@@ -379,6 +379,8 @@ export const useFileManager = ({ setCurrentSlideIndex, syncDrawings, onFileLoade
       const result = await apiClient.openFolder();
       if (result && result.path) {
         localStorage.setItem('mdp_root_path', result.path);
+        // Per-workspace app settings (.mdp/settings.json) reload on this signal.
+        window.dispatchEvent(new Event('mdp-workspace-changed'));
         setFileTree(result.tree);
         setTabState({ tabs: [], activeIndex: -1 });
       }

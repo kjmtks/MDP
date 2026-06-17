@@ -42,12 +42,12 @@ export const FileTreeItem: React.FC<FileTreeItemProps> = ({
   else if (isMarkdown) Icon = ArticleIcon;
   else if (!isDir && node.isBinary) Icon = ImageIcon;
 
-  let iconColor = '#e5e7eb';
+  let iconColor = 'var(--app-text-secondary)';
   if (node.isSpecial) iconColor = '#a855f7';
   else if (isDir) iconColor = '#60a5fa';
   else if (isSlide) iconColor = '#fb923c';
-  else if (isMarkdown) iconColor = '#9ca3af';
-  else if (!isDir && node.isBinary) iconColor = '#64748b';
+  else if (isMarkdown) iconColor = 'var(--app-text-muted)';
+  else if (!isDir && node.isBinary) iconColor = 'var(--app-text-disabled)';
 
   return (
     <div style={{ opacity: node.isVirtual ? 0.6 : 1 }}>
@@ -65,11 +65,11 @@ export const FileTreeItem: React.FC<FileTreeItemProps> = ({
           cursor: 'pointer', userSelect: 'none',
           width: '100%',
           boxSizing: 'border-box',
-          backgroundColor: isSelected ? 'rgba(255, 255, 255, 0.12)' : 'transparent',
-          outline: isDragOver ? '1px dashed #3b82f6' : 'none',
+          backgroundColor: isSelected ? 'var(--app-bg-hover)' : 'transparent',
+          outline: isDragOver ? '1px dashed var(--app-accent)' : 'none',
           outlineOffset: '-1px',
-          color: isDir ? '#d1d5db' : '#9ca3af',
-          '&:hover': { backgroundColor: isSelected ? 'rgba(255, 255, 255, 0.15)' : 'rgba(255, 255, 255, 0.08)' }
+          color: isDir ? 'var(--app-text-secondary)' : 'var(--app-text-muted)',
+          '&:hover': { backgroundColor: 'var(--app-bg-hover)' }
         }}
       >
         <Box

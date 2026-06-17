@@ -1,3 +1,7 @@
+declare const __APP_VERSION__: string;
+// Baked in at build time (Vite `define`). Falls back gracefully if undefined.
+const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.0.0';
+
 export const isElectron = () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return typeof window !== 'undefined' && !!(window as any).electronAPI;
@@ -161,6 +165,16 @@ export const apiClient = {
       if (res.ok) return await res.json();
     } catch (e) { console.error(e); }
     return [];
+  },
+
+  getAppVersion: async (): Promise<string> => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (isElectron()) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      try { return await (window as any).electronAPI.getAppVersion(); } catch { /* fall through */ }
+    }
+    // Web (or Electron fallback): the version is baked in at build time.
+    return APP_VERSION;
   },
 
   getModules: async () => {

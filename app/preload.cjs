@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getTemplates: () => ipcRenderer.invoke('getTemplates'),
   getTemplateContent: (path) => ipcRenderer.invoke('getTemplateContent', path),
   getThemes: () => ipcRenderer.invoke('getThemes'),
+  getAppVersion: () => ipcRenderer.invoke('getAppVersion'),
   setModified: (modified) => ipcRenderer.send('set-modified', modified),
   onAppCloseRequest: (cb) => {
     const handler = () => cb();

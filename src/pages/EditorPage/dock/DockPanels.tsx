@@ -48,15 +48,15 @@ import { isElectron } from '../../../api/apiClient';
 
 const toolbarSx = {
   display: 'flex', alignItems: 'center', gap: 0.5, px: 0.5, py: 0.25,
-  bgcolor: '#1e1e1e', borderBottom: '1px solid #333', flexShrink: 0,
+  bgcolor: 'var(--app-bg-editor)', borderBottom: '1px solid var(--app-border)', flexShrink: 0,
 };
-const toolBtnSx = { color: '#aaa', '&:hover': { color: '#fff' }, '&.Mui-disabled': { color: 'rgba(255,255,255,0.25)' } };
+const toolBtnSx = { color: 'var(--app-text-muted)', '&:hover': { color: 'var(--app-text-strong)' }, '&.Mui-disabled': { color: 'var(--app-text-disabled)' } };
 
 export const ExplorerPanel: React.FC = () => {
   const sidebar = useSidebar();
   const h = useHeaderActions();
   return (
-    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: '#252526' }}>
+    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: 'var(--app-bg-panel)' }}>
       {(h.onOpenFolder || h.onSyncCatalog) && (
         <Box sx={toolbarSx}>
           {h.onOpenFolder && (
@@ -105,8 +105,8 @@ export const SnippetsPanel: React.FC = () => {
   }, [snippets, query]);
 
   return (
-    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: '#252526' }}>
-      <Box sx={{ p: 0.75, borderBottom: '1px solid #333' }}>
+    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: 'var(--app-bg-panel)' }}>
+      <Box sx={{ p: 0.75, borderBottom: '1px solid var(--app-border)' }}>
         <TextField
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -117,42 +117,42 @@ export const SnippetsPanel: React.FC = () => {
           slotProps={{
             input: {
               startAdornment: (
-                <InputAdornment position="start"><SearchIcon fontSize="small" sx={{ color: '#8ba0b2' }} /></InputAdornment>
+                <InputAdornment position="start"><SearchIcon fontSize="small" sx={{ color: 'var(--app-text-disabled)' }} /></InputAdornment>
               ),
-              sx: { color: '#ccc', fontSize: '0.8rem', bgcolor: '#1e1e1e', '& fieldset': { borderColor: '#3c3c3c' }, '&:hover fieldset': { borderColor: '#555' } },
+              sx: { color: 'var(--app-text-secondary)', fontSize: '0.8rem', bgcolor: 'var(--app-bg-editor)', '& fieldset': { borderColor: 'var(--app-border-subtle)' }, '&:hover fieldset': { borderColor: 'var(--app-border-strong)' } },
             },
           }}
         />
       </Box>
       <Box sx={{ flex: 1, overflowY: 'auto' }}>
         {filtered.length === 0 ? (
-          <Typography variant="body2" sx={{ color: '#888', textAlign: 'center', p: 2 }}>No matching snippets.</Typography>
+          <Typography variant="body2" sx={{ color: 'var(--app-text-disabled)', textAlign: 'center', p: 2 }}>No matching snippets.</Typography>
         ) : (
         <List subheader={<li />} sx={{ p: 0 }}>
           {filtered.map((section) => (
             <li key={section.category}>
               <Box component="ul" sx={{ p: 0, m: 0 }}>
-                <ListSubheader sx={{ bgcolor: '#1e1e1e', color: '#cccccc', lineHeight: '30px', fontWeight: 'bold', borderBottom: '1px solid #333333' }}>
+                <ListSubheader sx={{ bgcolor: 'var(--app-bg-editor)', color: 'var(--app-text-secondary)', lineHeight: '30px', fontWeight: 'bold', borderBottom: '1px solid var(--app-border)' }}>
                   {section.category}
                 </ListSubheader>
                 {section.items.map((item) => (
                   <ListItem key={item.label} disablePadding>
-                    <ListItemButton onClick={() => onInsertText(item.text)} sx={{ py: 0.5, '&:hover': { bgcolor: '#2a2d2e' } }}>
+                    <ListItemButton onClick={() => onInsertText(item.text)} sx={{ py: 0.5, '&:hover': { bgcolor: 'var(--app-bg-hover)' } }}>
                       {item.icon && (
-                        <div style={{ marginRight: '8px', display: 'flex', alignItems: 'center', width: '20px', height: '20px', fill: '#cccccc' }} dangerouslySetInnerHTML={{ __html: item.icon }} />
+                        <div style={{ marginRight: '8px', display: 'flex', alignItems: 'center', width: '20px', height: '20px', fill: 'var(--app-text-secondary)' }} dangerouslySetInnerHTML={{ __html: item.icon }} />
                       )}
                       <ListItemText
                         primary={item.label}
                         slotProps={{
-                          primary: { fontSize: '0.85rem', color: '#cccccc', fontWeight: item.isCustom ? 'bold' : 'normal' },
-                          secondary: { fontSize: '0.7rem', color: '#8ba0b2' },
+                          primary: { fontSize: '0.85rem', color: 'var(--app-text-secondary)', fontWeight: item.isCustom ? 'bold' : 'normal' },
+                          secondary: { fontSize: '0.7rem', color: 'var(--app-text-disabled)' },
                         }}
                         secondary={item.description}
                       />
                     </ListItemButton>
                   </ListItem>
                 ))}
-                <Divider sx={{ borderColor: '#333333' }} />
+                <Divider sx={{ borderColor: 'var(--app-border)' }} />
               </Box>
             </li>
           ))}
@@ -206,7 +206,7 @@ const isImageDrag = (e: React.DragEvent) => {
 };
 
 const scopeBtnSx = {
-  color: '#bbb', fontSize: '0.72rem', textTransform: 'none', py: 0.4,
+  color: 'var(--app-text-disabled)', fontSize: '0.72rem', textTransform: 'none', py: 0.4,
   '&.Mui-selected': { bgcolor: '#0ea5e9', color: '#fff', '&:hover': { bgcolor: '#0284c7' } },
 };
 
@@ -233,11 +233,11 @@ const ImageRow: React.FC<{
   // matches the edit dialog instead of showing a meaningless "—").
   const detail = entry.value.startsWith('data:') ? `${imgType(entry.value)} · ${imgSize(entry.value)}` : entry.value;
   return (
-    <TableRow sx={{ bgcolor: highlight ? 'rgba(14,165,233,0.18)' : undefined, '&:hover': { bgcolor: '#2a2d2e' } }}>
+    <TableRow sx={{ bgcolor: highlight ? 'rgba(14,165,233,0.18)' : undefined, '&:hover': { bgcolor: 'var(--app-bg-hover)' } }}>
       <TableCell sx={{ border: 0, p: 0.5, width: 48 }}>
         <Box onMouseEnter={(e) => setHoverEl(e.currentTarget)} onMouseLeave={() => setHoverEl(null)} sx={{ width: 40, height: 40 }}>
           {broken
-            ? <BrokenImageIcon sx={{ color: '#777', width: 40, height: 40 }} />
+            ? <BrokenImageIcon sx={{ color: 'var(--app-text-disabled)', width: 40, height: 40 }} />
             : <img src={src} onError={() => setBroken(true)} alt={entry.alias}
                 style={{ width: 40, height: 40, objectFit: 'contain', background: '#fff', borderRadius: 4, cursor: 'zoom-in' }} />}
         </Box>
@@ -245,15 +245,15 @@ const ImageRow: React.FC<{
           <Popover open={!!hoverEl} anchorEl={hoverEl} onClose={() => setHoverEl(null)} disableRestoreFocus
             sx={{ pointerEvents: 'none' }} anchorOrigin={{ vertical: 'center', horizontal: 'right' }}
             transformOrigin={{ vertical: 'center', horizontal: 'left' }}
-            slotProps={{ paper: { sx: { p: 0.5, ml: 1, bgcolor: '#1e1e1e', border: '1px solid #444' } } }}>
+            slotProps={{ paper: { sx: { p: 0.5, ml: 1, bgcolor: 'var(--app-bg-editor)', border: '1px solid var(--app-border-strong)' } } }}>
             <img src={src} alt={entry.alias} style={{ maxWidth: 320, maxHeight: 320, objectFit: 'contain', background: '#fff', display: 'block' }} />
           </Popover>
         )}
       </TableCell>
       <TableCell sx={{ border: 0, p: 0.5 }}>
-        <div style={{ color: '#ddd', fontSize: '0.82rem', fontWeight: 'bold', wordBreak: 'break-all' }}>{entry.alias}</div>
-        <div style={{ color: '#8ba0b2', fontSize: '0.68rem', wordBreak: 'break-all' }}>{detail}</div>
-        {entry.description && <div style={{ color: '#9ca3af', fontSize: '0.66rem', fontStyle: 'italic', wordBreak: 'break-word' }}>{entry.description}</div>}
+        <div style={{ color: 'var(--app-text)', fontSize: '0.82rem', fontWeight: 'bold', wordBreak: 'break-all' }}>{entry.alias}</div>
+        <div style={{ color: 'var(--app-text-disabled)', fontSize: '0.68rem', wordBreak: 'break-all' }}>{detail}</div>
+        {entry.description && <div style={{ color: 'var(--app-text-disabled)', fontSize: '0.66rem', fontStyle: 'italic', wordBreak: 'break-word' }}>{entry.description}</div>}
         {entry.tags && entry.tags.length > 0 && (
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.25, mt: 0.25 }}>
             {entry.tags.map((t) => (
@@ -361,14 +361,14 @@ export const ImagesPanel: React.FC = () => {
     const visible = entries.filter(matchesQuery);
     return (
     <Box>
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', bgcolor: '#1e1e1e', px: 1, py: 0.25, borderBottom: '1px solid #333', position: 'sticky', top: 0, zIndex: 1 }}>
-        <Typography sx={{ color: '#ccc', fontSize: '0.75rem', fontWeight: 'bold' }}>{title} ({query ? `${visible.length}/${entries.length}` : entries.length})</Typography>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', bgcolor: 'var(--app-bg-editor)', px: 1, py: 0.25, borderBottom: '1px solid var(--app-border)', position: 'sticky', top: 0, zIndex: 1 }}>
+        <Typography sx={{ color: 'var(--app-text-secondary)', fontSize: '0.75rem', fontWeight: 'bold' }}>{title} ({query ? `${visible.length}/${entries.length}` : entries.length})</Typography>
         <Tooltip title={`Add image to ${scope === 'file' ? 'this file' : 'shared library'}`}>
           <IconButton size="small" sx={toolBtnSx} onClick={() => setDialog({ mode: 'add', scope, alias: '', value: '', description: '', tags: [] })}><AddPhotoAlternateIcon fontSize="small" /></IconButton>
         </Tooltip>
       </Box>
       {visible.length === 0
-        ? <Typography sx={{ color: '#777', fontSize: '0.72rem', p: 1 }}>{query ? 'No matching images.' : 'No images.'}</Typography>
+        ? <Typography sx={{ color: 'var(--app-text-disabled)', fontSize: '0.72rem', p: 1 }}>{query ? 'No matching images.' : 'No images.'}</Typography>
         : (
           <Box sx={{ overflowX: 'auto' }}>
           <Table size="small" sx={{ minWidth: 360 }}><TableBody>
@@ -395,23 +395,23 @@ export const ImagesPanel: React.FC = () => {
       onDragOver={(e) => { if (!isImageDrag(e)) return; e.preventDefault(); setDragOver(true); }}
       onDragLeave={() => setDragOver(false)}
       onDrop={(e) => { if (!isImageDrag(e)) return; e.preventDefault(); setDragOver(false); imageFromTransfer(e.dataTransfer).then((v) => { if (v) openAddWithValue(v); }); }}
-      sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: '#252526', overflowY: 'auto', outline: 'none', position: 'relative', ...(dragOver ? { boxShadow: 'inset 0 0 0 2px #0ea5e9' } : {}) }}>
-      <Box sx={{ p: 0.75, borderBottom: '1px solid #333', position: 'sticky', top: 0, zIndex: 2, bgcolor: '#252526' }}>
+      sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: 'var(--app-bg-panel)', overflowY: 'auto', outline: 'none', position: 'relative', ...(dragOver ? { boxShadow: 'inset 0 0 0 2px #0ea5e9' } : {}) }}>
+      <Box sx={{ p: 0.75, borderBottom: '1px solid var(--app-border)', position: 'sticky', top: 0, zIndex: 2, bgcolor: 'var(--app-bg-panel)' }}>
         <TextField value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search name / description / tag…"
           size="small" fullWidth variant="outlined"
           slotProps={{ input: {
-            startAdornment: (<InputAdornment position="start"><SearchIcon fontSize="small" sx={{ color: '#8ba0b2' }} /></InputAdornment>),
-            sx: { color: '#ccc', fontSize: '0.8rem', bgcolor: '#1e1e1e', '& fieldset': { borderColor: '#3c3c3c' }, '&:hover fieldset': { borderColor: '#555' } },
+            startAdornment: (<InputAdornment position="start"><SearchIcon fontSize="small" sx={{ color: 'var(--app-text-disabled)' }} /></InputAdornment>),
+            sx: { color: 'var(--app-text-secondary)', fontSize: '0.8rem', bgcolor: 'var(--app-bg-editor)', '& fieldset': { borderColor: 'var(--app-border-subtle)' }, '&:hover fieldset': { borderColor: 'var(--app-border-strong)' } },
           } }} />
       </Box>
       {renderSection('In this file', img.fileImages, 'file')}
       {renderSection('Shared library', img.libraryImages, 'library')}
-      <Typography sx={{ color: '#666', fontSize: '0.66rem', textAlign: 'center', p: 1 }}>
+      <Typography sx={{ color: 'var(--app-text-disabled)', fontSize: '0.66rem', textAlign: 'center', p: 1 }}>
         Drop or paste an image / image URL here to add it.
       </Typography>
 
       <Dialog open={!!dialog} onClose={() => setDialog(null)} maxWidth="xs" fullWidth
-        slotProps={{ paper: { sx: { bgcolor: '#252526', color: '#ccc', backgroundImage: 'none' } } }}>
+        slotProps={{ paper: { sx: { bgcolor: 'var(--app-bg-panel)', color: 'var(--app-text-secondary)', backgroundImage: 'none' } } }}>
         <DialogTitle sx={{ fontSize: '0.95rem' }}>{dialog?.mode === 'add' ? 'Add image' : `Edit “${dialog?.alias}”`}</DialogTitle>
         <DialogContent
           onDragOver={(e) => e.preventDefault()}
@@ -426,13 +426,13 @@ export const ImagesPanel: React.FC = () => {
           <Stack spacing={1.5} sx={{ pt: 0.5 }}>
             {dialog?.mode === 'add' && (
               <Box>
-                <Typography sx={{ color: '#8ba0b2', fontSize: '0.72rem', mb: 0.5 }}>Where to store this image</Typography>
+                <Typography sx={{ color: 'var(--app-text-disabled)', fontSize: '0.72rem', mb: 0.5 }}>Where to store this image</Typography>
                 <ToggleButtonGroup exclusive fullWidth size="small" value={dialog?.scope}
                   onChange={(_e, v) => v && setDialog((d) => (d ? { ...d, scope: v } : d))}>
                   <ToggleButton value="file" sx={scopeBtnSx}><InsertDriveFileOutlinedIcon fontSize="small" sx={{ mr: 0.5 }} />This file</ToggleButton>
                   <ToggleButton value="library" sx={scopeBtnSx}><CollectionsBookmarkOutlinedIcon fontSize="small" sx={{ mr: 0.5 }} />Shared library</ToggleButton>
                 </ToggleButtonGroup>
-                <Typography sx={{ color: '#777', fontSize: '0.66rem', mt: 0.5 }}>
+                <Typography sx={{ color: 'var(--app-text-disabled)', fontSize: '0.66rem', mt: 0.5 }}>
                   {dialog?.scope === 'file' ? 'Embedded in this deck — travels with the file.' : 'Reusable across decks — saved under .mdp/images/.'}
                 </Typography>
               </Box>
@@ -442,17 +442,17 @@ export const ImagesPanel: React.FC = () => {
                 onChange={(e) => setDialog((d) => (d ? { ...d, alias: e.target.value.replace(/[^\w-]/g, '') } : d))}
                 variant="outlined"
                 slotProps={{
-                  inputLabel: { sx: { color: '#8ba0b2', '&.Mui-disabled': { color: '#8ba0b2' } } },
-                  input: { sx: { color: '#ccc', '& .MuiInputBase-input.Mui-disabled': { WebkitTextFillColor: '#bbb' } } },
+                  inputLabel: { sx: { color: 'var(--app-text-disabled)', '&.Mui-disabled': { color: 'var(--app-text-disabled)' } } },
+                  input: { sx: { color: 'var(--app-text-secondary)', '& .MuiInputBase-input.Mui-disabled': { WebkitTextFillColor: 'var(--app-text-disabled)' } } },
                 }} />
-              <Typography sx={{ color: '#8ba0b2', fontSize: '0.68rem', mt: 0.4, ml: 0.25 }}>
+              <Typography sx={{ color: 'var(--app-text-disabled)', fontSize: '0.68rem', mt: 0.4, ml: 0.25 }}>
                 Reference as ![alt](@alias)
               </Typography>
             </Box>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               {dialog?.value
                 ? <img src={img.resolveThumb(dialog.value)} alt="preview" style={{ width: 48, height: 48, objectFit: 'contain', background: '#fff', borderRadius: 4 }} />
-                : <Box sx={{ width: 48, height: 48, bgcolor: '#1e1e1e', borderRadius: 1 }} />}
+                : <Box sx={{ width: 48, height: 48, bgcolor: 'var(--app-bg-editor)', borderRadius: 1 }} />}
               <Button component="label" size="small" startIcon={<UploadFileIcon />} sx={{ color: '#0ea5e9' }}>
                 Upload
                 <input hidden type="file" accept="image/*" onChange={(e) => onUpload(e.target.files?.[0])} />
@@ -466,11 +466,11 @@ export const ImagesPanel: React.FC = () => {
               placeholder={dialogIsData ? 'Using uploaded image data' : 'https://… or relative/path.png'}
               onChange={(e) => setDialog((d) => (d ? { ...d, value: e.target.value } : d))}
               variant="outlined"
-              slotProps={{ inputLabel: { sx: { color: '#8ba0b2' } }, input: { sx: { color: '#ccc' } } }} />
+              slotProps={{ inputLabel: { sx: { color: 'var(--app-text-disabled)' } }, input: { sx: { color: 'var(--app-text-secondary)' } } }} />
             <TextField label="Description (optional)" size="small" value={dialog?.description || ''}
               onChange={(e) => setDialog((d) => (d ? { ...d, description: e.target.value } : d))}
               multiline maxRows={3} variant="outlined"
-              slotProps={{ inputLabel: { sx: { color: '#8ba0b2' } }, input: { sx: { color: '#ccc' } } }} />
+              slotProps={{ inputLabel: { sx: { color: 'var(--app-text-disabled)' } }, input: { sx: { color: 'var(--app-text-secondary)' } } }} />
             {(
               <Autocomplete multiple freeSolo size="small" options={allTags} value={dialog?.tags || []}
                 onChange={(_e, v) => setDialog((d) => (d ? { ...d, tags: v as string[] } : d))}
@@ -480,13 +480,13 @@ export const ImagesPanel: React.FC = () => {
                 ))}
                 renderInput={(params) => (
                   <TextField {...params} label="Tags (optional)" placeholder="Add tag + Enter" variant="outlined"
-                    slotProps={{ inputLabel: { sx: { color: '#8ba0b2' } } }} sx={{ '& .MuiInputBase-input': { color: '#ccc' } }} />
+                    slotProps={{ inputLabel: { sx: { color: 'var(--app-text-disabled)' } } }} sx={{ '& .MuiInputBase-input': { color: 'var(--app-text-secondary)' } }} />
                 )} />
             )}
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDialog(null)} sx={{ color: '#aaa' }}>Cancel</Button>
+          <Button onClick={() => setDialog(null)} sx={{ color: 'var(--app-text-muted)' }}>Cancel</Button>
           <Button onClick={submit} disabled={!dialog?.alias.trim() || !dialog?.value.trim()} variant="contained">
             {dialog?.mode === 'add' ? 'Add' : 'Save'}
           </Button>
@@ -508,25 +508,25 @@ export const PreviewPanel: React.FC = () => {
         ) }
         <Tooltip title="Connect Remote"><IconButton size="small" sx={toolBtnSx} onClick={h.onOpenConnectDialog}><DevicesIcon fontSize="small" /></IconButton></Tooltip>
         <Tooltip title={p.livePreview ? 'Live preview on — click to pause auto-parsing while typing' : 'Live preview paused — edits are not parsed until you apply'}>
-          <span><IconButton size="small" sx={{ ...toolBtnSx, color: p.livePreview ? '#3b82f6' : '#f59e0b' }} onClick={p.onToggleLivePreview}>{p.livePreview ? <SyncIcon fontSize="small" /> : <SyncDisabledIcon fontSize="small" />}</IconButton></span>
+          <span><IconButton size="small" sx={{ ...toolBtnSx, color: p.livePreview ? 'var(--app-accent)' : '#f59e0b' }} onClick={p.onToggleLivePreview}>{p.livePreview ? <SyncIcon fontSize="small" /> : <SyncDisabledIcon fontSize="small" />}</IconButton></span>
         </Tooltip>
         {!p.livePreview && (
           <Tooltip title={p.previewStale ? 'Apply edits to the preview now' : 'Preview is up to date'}>
-            <span><IconButton size="small" sx={{ ...toolBtnSx, color: p.previewStale ? '#f59e0b' : '#aaa' }} onClick={p.onApplyPreview}><RefreshIcon fontSize="small" /></IconButton></span>
+            <span><IconButton size="small" sx={{ ...toolBtnSx, color: p.previewStale ? '#f59e0b' : 'var(--app-text-muted)' }} onClick={p.onApplyPreview}><RefreshIcon fontSize="small" /></IconButton></span>
           </Tooltip>
         )}
         <Tooltip title={p.canEditLayout ? 'Edit layout (move/resize/rotate modules)' : 'Edit layout — open the slide being previewed to enable'}>
-          <span><IconButton size="small" sx={{ ...toolBtnSx, color: p.editLayout ? '#3b82f6' : '#aaa' }} disabled={!p.canEditLayout} onClick={p.onToggleEditLayout}><ControlCameraIcon fontSize="small" /></IconButton></span>
+          <span><IconButton size="small" sx={{ ...toolBtnSx, color: p.editLayout ? 'var(--app-accent)' : 'var(--app-text-muted)' }} disabled={!p.canEditLayout} onClick={p.onToggleEditLayout}><ControlCameraIcon fontSize="small" /></IconButton></span>
         </Tooltip>
         {p.editLayout && (
           <Tooltip title={`Grid snap ${p.snapOn ? 'on' : 'off'} (hold Alt to bypass)`}>
-            <span><IconButton size="small" sx={{ ...toolBtnSx, color: p.snapOn ? '#3b82f6' : '#aaa' }} onClick={p.onToggleSnap}><GridOnIcon fontSize="small" /></IconButton></span>
+            <span><IconButton size="small" sx={{ ...toolBtnSx, color: p.snapOn ? 'var(--app-accent)' : 'var(--app-text-muted)' }} onClick={p.onToggleSnap}><GridOnIcon fontSize="small" /></IconButton></span>
           </Tooltip>
         )}
         <Box sx={{ flex: 1 }} />
         <Tooltip title="Open Presenter View"><span><IconButton size="small" sx={toolBtnSx} disabled={!h.canPresent} onClick={h.onOpenPresenter}><PresentToAllIcon fontSize="small" /></IconButton></span></Tooltip>
         <Tooltip title="Start Slideshow (F5)"><span><IconButton size="small" sx={toolBtnSx} disabled={!h.canPresent} onClick={h.onToggleSlideshow}><PlayArrowIcon fontSize="small" /></IconButton></span></Tooltip>
-        <Tooltip title="Slide Overview"><span><IconButton size="small" sx={{ ...toolBtnSx, color: h.isSlideOverview ? '#fff' : '#aaa' }} disabled={!h.canPresent} onClick={h.onToggleOverview}><GridViewIcon fontSize="small" /></IconButton></span></Tooltip>
+        <Tooltip title="Slide Overview"><span><IconButton size="small" sx={{ ...toolBtnSx, color: h.isSlideOverview ? 'var(--app-text-strong)' : 'var(--app-text-muted)' }} disabled={!h.canPresent} onClick={h.onToggleOverview}><GridViewIcon fontSize="small" /></IconButton></span></Tooltip>
         <Tooltip title="Print / Export PDF"><span><IconButton size="small" sx={toolBtnSx} disabled={!h.canPresent} onClick={h.onPrint}><PrintIcon fontSize="small" /></IconButton></span></Tooltip>
         {p.onEditDrawio && (
           <Button variant="text" size="small" startIcon={<EditIcon fontSize="small" />} onClick={p.onEditDrawio} sx={{ ...toolBtnSx, ml: 1, textTransform: 'none', fontSize: '0.75rem' }}>Edit Diagram</Button>
@@ -534,20 +534,20 @@ export const PreviewPanel: React.FC = () => {
       </Stack>
 
       {p.previewImage ? (
-        <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', backgroundColor: '#222' }}>
+        <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', backgroundColor: 'var(--app-bg-editor)' }}>
           {/* Dedicated bar so the control is never hidden behind a large image. */}
-          <Box sx={{ flexShrink: 0, display: 'flex', alignItems: 'center', px: 1, py: 0.5, bgcolor: '#1e1e1e', borderBottom: '1px solid #333' }}>
+          <Box sx={{ flexShrink: 0, display: 'flex', alignItems: 'center', px: 1, py: 0.5, bgcolor: 'var(--app-bg-editor)', borderBottom: '1px solid var(--app-border)' }}>
             <Button size="small" startIcon={<CloseIcon fontSize="small" />} onClick={p.onClosePreviewImage}
               sx={{ color: '#0ea5e9', textTransform: 'none', fontSize: '0.78rem' }}>Back to slides</Button>
-            <Typography sx={{ color: '#888', fontSize: '0.7rem', ml: 1 }}>Image preview</Typography>
+            <Typography sx={{ color: 'var(--app-text-disabled)', fontSize: '0.7rem', ml: 1 }}>Image preview</Typography>
           </Box>
           <Box sx={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', p: 2 }}>
             <img src={p.previewImage} alt="preview" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', background: '#fff', borderRadius: 4 }} />
           </Box>
         </Box>
       ) : p.slides.length === 0 ? (
-        <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#222' }}>
-          <Typography variant="body1" sx={{ color: '#888' }}>No slide preview for this file.</Typography>
+        <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'var(--app-bg-editor)' }}>
+          <Typography variant="body1" sx={{ color: 'var(--app-text-disabled)' }}>No slide preview for this file.</Typography>
         </Box>
       ) : (
         <div
@@ -558,7 +558,7 @@ export const PreviewPanel: React.FC = () => {
             if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); p.moveSlide(1); }
             else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); p.moveSlide(-1); }
           }}
-          style={{ flex: 1, minHeight: 0, backgroundColor: '#222', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', outline: 'none' }}
+          style={{ flex: 1, minHeight: 0, backgroundColor: 'var(--app-bg-editor)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', outline: 'none' }}
         >
           <SlideControls
             mode={p.mode as 'view' | 'pen' | 'laser'} setMode={p.setMode} pageIndex={p.currentSlideIndex} totalSlides={p.slides.length}
@@ -597,12 +597,12 @@ export const FileEditorPanel: React.FC<IDockviewPanelProps<{ tabId: string }>> =
   const e = useEditor();
   const tab = e.tabs.find(t => t.id === props.params.tabId);
 
-  if (!tab) return <div style={{ height: '100%', backgroundColor: '#1e1e1e' }} />;
+  if (!tab) return <div style={{ height: '100%', backgroundColor: 'var(--app-bg-editor)' }} />;
 
   const isActive = tab.path === e.currentFileName;
 
   return (
-    <div style={{ height: '100%', backgroundColor: '#1e1e1e' }}>
+    <div style={{ height: '100%', backgroundColor: 'var(--app-bg-editor)' }}>
       <EditorPanel
         currentFileName={tab.path}
         currentFileType={tab.type}
@@ -670,8 +670,8 @@ export const FileTab: React.FC<IDockviewPanelHeaderProps<{ tabId: string }>> = (
         <MenuItem disabled={e.tabs.length <= 1} onClick={() => runAndClose(() => { const i = indexOf(); if (i !== -1) e.closeOtherTabs(i); })}>
           <ListItemIcon><CloseFullscreenIcon fontSize="small" /></ListItemIcon> Close Others
         </MenuItem>
-        <MenuItem onClick={() => runAndClose(() => e.closeAllTabs())} sx={{ color: '#ef4444' }}>
-          <ListItemIcon><ClearAllIcon fontSize="small" sx={{ color: '#ef4444' }} /></ListItemIcon> Close All
+        <MenuItem onClick={() => runAndClose(() => e.closeAllTabs())} sx={{ color: 'var(--app-danger)' }}>
+          <ListItemIcon><ClearAllIcon fontSize="small" sx={{ color: 'var(--app-danger)' }} /></ListItemIcon> Close All
         </MenuItem>
       </Menu>
     </div>

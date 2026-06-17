@@ -1,7 +1,7 @@
 .thumbnail-list-panel {
   display: flex;
   flex-direction: column;
-  background-color: #f3f4f6;
+  background-color: var(--app-bg-light);
 }
 .thumbnail-list {
   flex: 1;
@@ -71,7 +71,7 @@
 .thumbnail-frame {
   width: 100%;
   background: white;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--app-border);
   border-radius: 4px;
   overflow: hidden;
   box-shadow: 0 1px 3px rgba(0,0,0,0.1);
@@ -80,7 +80,7 @@
 .preview-pane {
   width: 100%;
   height: 100%;
-  background-color: #2d2d2d;
+  background-color: var(--app-bg-elevated);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -94,14 +94,14 @@
   min-height: 0;
 }
 .mdp-dockview {
-  --dv-activegroup-visiblepanel-tab-background-color: #1e1e1e;
-  --dv-tabs-and-actions-container-background-color: #252526;
-  --dv-activegroup-hiddenpanel-tab-background-color: #2d2d2d;
-  --dv-inactivegroup-visiblepanel-tab-background-color: #1e1e1e;
-  --dv-inactivegroup-hiddenpanel-tab-background-color: #2d2d2d;
-  --dv-tab-divider-color: #1e1e1e;
+  --dv-activegroup-visiblepanel-tab-background-color: var(--app-bg-editor);
+  --dv-tabs-and-actions-container-background-color: var(--app-bg-panel);
+  --dv-activegroup-hiddenpanel-tab-background-color: var(--app-bg-elevated);
+  --dv-inactivegroup-visiblepanel-tab-background-color: var(--app-bg-editor);
+  --dv-inactivegroup-hiddenpanel-tab-background-color: var(--app-bg-elevated);
+  --dv-tab-divider-color: var(--app-bg-editor);
   --dv-drag-over-background-color: rgba(59, 130, 246, 0.25);
-  --dv-drag-over-border-color: #3b82f6;
+  --dv-drag-over-border-color: var(--app-accent);
 }
 .note-pane {
   background: white;
@@ -110,9 +110,14 @@
   font-size: 14px;
 }
 .file-tree-row:hover {
-  background-color: rgba(255, 255, 255, 0.08) !important;
+  background-color: var(--app-bg-hover) !important;
 }
 
+/* @uiw/react-codemirror wraps the editor in `.cm-theme-light` or
+   `.cm-theme-dark` depending on the theme — BOTH must fill the height or the
+   scroller is unbounded and the editor can't scroll (regressed when the light
+   app theme started using `theme="light"`). */
+.cm-theme-light,
 .cm-theme-dark,
 .cm-editor {
   height: 100% !important;
@@ -125,8 +130,8 @@
   outline: none !important;
 }
 .cm-gutters {
-  background-color: #1e1e1e !important; 
-  border-right: 1px solid #333 !important;
+  background-color: var(--app-bg-editor) !important;
+  border-right: 1px solid var(--app-border) !important;
   font-family: 'Menlo', 'Monaco', 'Consolas', 'Courier New', monospace !important;
   white-space: nowrap;
 }

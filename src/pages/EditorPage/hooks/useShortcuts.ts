@@ -1,6 +1,9 @@
 import { useEffect, useRef } from 'react';
 import type { AppMode } from '../../../features/drawing/components/SlideControls';
 import type { SyncMessage } from '../../../features/remote/hooks/useSync';
+import { useAppSettings } from '../../../features/settings/AppSettingsContext';
+import { matchAction } from '../../../features/settings/shortcuts/matcher';
+import { ACTIONS_BY_SCOPE, actionById } from '../../../features/settings/shortcuts/registry';
 
 export const useShortcuts = (
   isSlideshow: boolean, setIsSlideshow: (val: boolean) => void,
@@ -10,6 +13,7 @@ export const useShortcuts = (
   undo: (pageIndex: number) => void, redo: (pageIndex: number) => void, clear: (pageIndex: number) => void,
   handleAddBlankSlide: (pageIndex: number) => void, send: (msg: SyncMessage) => void, channelId: string
 ) => {
+  const { settings } = useAppSettings();
   const lastWheelTime = useRef(0);
 
   useEffect(() => {
@@ -25,16 +29,24 @@ export const useShortcuts = (
     const inInteractive = (e: Event) => !!(e.target as HTMLElement | null)?.closest?.('.mdp-interactive');
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'p') setShowControls(prev => !prev);
-      if ((e.metaKey || e.ctrlKey) && e.key === 'z') { e.preventDefault(); undo(currentSlideIndex); }
-      if ((e.metaKey || e.ctrlKey) && e.key === 'y') { e.preventDefault(); redo(currentSlideIndex); }
-      if (showControls) {
-          if (e.key === 'c') { clear(currentSlideIndex); send({ type: 'CLEAR_DRAWING', channelId, pageIndex: currentSlideIndex }); }
-          if (e.key === 'n') handleAddBlankSlide(currentSlideIndex);
+      const action = matchAction(e, ACTIONS_BY_SCOPE.slideshow, settings);
+      switch (action?.id) {
+        case 'slideshow.toggleControls': setShowControls(prev => !prev); break;
+        case 'slideshow.undo': e.preventDefault(); undo(currentSlideIndex); break;
+        case 'slideshow.redo': e.preventDefault(); redo(currentSlideIndex); break;
+        case 'slideshow.clear':
+          if (showControls) { clear(currentSlideIndex); send({ type: 'CLEAR_DRAWING', channelId, pageIndex: currentSlideIndex }); }
+          break;
+        case 'slideshow.addSlide':
+          if (showControls) handleAddBlankSlide(currentSlideIndex);
+          break;
+        case 'slideshow.next':
+          if (!inInteractive(e)) { e.preventDefault(); moveSlide(1); }
+          break;
+        case 'slideshow.prev':
+          if (!inInteractive(e)) { e.preventDefault(); moveSlide(-1); }
+          break;
       }
-      if (inInteractive(e)) return;
-      if (['ArrowRight', 'ArrowDown', ' ', 'Enter', 'PageDown'].includes(e.key)) { e.preventDefault(); moveSlide(1); }
-      else if (['ArrowLeft', 'ArrowUp', 'PageUp'].includes(e.key)) { e.preventDefault(); moveSlide(-1); }
     };
     const handleWheel = (e: WheelEvent) => {
       if ((e.target as HTMLElement).closest('.cm-editor') || inInteractive(e)) return;
@@ -55,19 +67,20 @@ export const useShortcuts = (
       window.removeEventListener('wheel', handleWheel);
       window.removeEventListener('mousedown', handleClick);
     };
-  }, [isSlideshow, moveSlide, undo, redo, currentSlideIndex, mode, clear, send, channelId, handleAddBlankSlide, showControls, setShowControls]);
+  }, [isSlideshow, moveSlide, undo, redo, currentSlideIndex, mode, clear, send, channelId, handleAddBlankSlide, showControls, setShowControls, settings]);
 
   useEffect(() => {
     if (isSlideshow) return;
+    const penToggle = actionById('global.previewPenToggle');
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
-      if (e.key === 'p') {
-          setShowControls(prev => !prev);
-          setMode(prev => prev === 'pen' ? 'view' : 'pen');
+      if (penToggle && matchAction(e, [penToggle], settings)) {
+        setShowControls(prev => !prev);
+        setMode(prev => prev === 'pen' ? 'view' : 'pen');
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isSlideshow, setMode, setShowControls]);
+  }, [isSlideshow, setMode, setShowControls, settings]);
 };

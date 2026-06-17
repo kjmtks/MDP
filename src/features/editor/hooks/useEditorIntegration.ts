@@ -12,6 +12,9 @@ import { base64Folding } from '../base64Folding';
 import { noteCollapsePlugin } from '../extensions/NoteCollapsePlugin';
 import { themeCollapsePlugin } from '../extensions/ThemeCollapsePlugin';
 import { imageDefCollapsePlugin } from '../extensions/ImageDefCollapsePlugin';
+import { useAppSettings } from '../../settings/AppSettingsContext';
+import { resolveKeys } from '../../settings/shortcuts/matcher';
+import { actionById } from '../../settings/shortcuts/registry';
 
 interface UseEditorIntegrationProps {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -90,6 +93,7 @@ export const useEditorIntegration = ({
   isLoadingFile, prevSlideIndexRef, setDrawioButtonPos, setDrawioEditTarget,
   handleSave, setMarkdown, markdownRef, currentFileName
 }: UseEditorIntegrationProps) => {
+  const { settings } = useAppSettings();
   const isSyncingFromEditor = useRef(false);
   const prevActiveFileRef = useRef(currentFileName);
 
@@ -131,15 +135,27 @@ export const useEditorIntegration = ({
     }
   }, [currentSlideIndex, currentFileType, slides.length, setCurrentSlideIndex, isLoadingFile, setDrawioButtonPos, setDrawioEditTarget]);
 
-  const saveKeymap = useMemo(() => keymap.of([{ key: "Mod-s", run: () => { handleSave(); return true; }, preventDefault: true }]), [handleSave]);
+  // Editor keymaps are built from the central shortcut registry (combos use the
+  // CodeMirror `Mod-` syntax), so remapping `editor.save` / slide-nav in Settings
+  // reconfigures CodeMirror live.
+  const saveKeymap = useMemo(
+    () => keymap.of(
+      resolveKeys(actionById('editor.save')!, settings).map((key) => ({
+        key, run: () => { handleSave(); return true; }, preventDefault: true,
+      })),
+    ),
+    [handleSave, settings],
+  );
 
   const slideNavKeymap = useMemo(() => {
     const isSlide = !!currentFileName?.endsWith('.slide.md');
+    const prevKeys = resolveKeys(actionById('editor.slidePrev')!, settings);
+    const nextKeys = resolveKeys(actionById('editor.slideNext')!, settings);
     return Prec.high(keymap.of([
-      { key: 'PageUp', run: (v) => (isSlide ? moveSlideInEditor(v, -1) : false), preventDefault: isSlide },
-      { key: 'PageDown', run: (v) => (isSlide ? moveSlideInEditor(v, 1) : false), preventDefault: isSlide },
+      ...prevKeys.map((key) => ({ key, run: (v: EditorView) => (isSlide ? moveSlideInEditor(v, -1) : false), preventDefault: isSlide })),
+      ...nextKeys.map((key) => ({ key, run: (v: EditorView) => (isSlide ? moveSlideInEditor(v, 1) : false), preventDefault: isSlide })),
     ]));
-  }, [currentFileName]);
+  }, [currentFileName, settings]);
 
   const extensions = useMemo(() => {
     const baseExts: Extension[] = [

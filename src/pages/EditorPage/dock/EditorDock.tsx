@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import {
   DockviewReact,
   themeAbyss,
+  themeLight,
   type DockviewReadyEvent,
   type DockviewApi,
   type IDockviewPanelProps,
@@ -9,6 +10,7 @@ import {
   type IWatermarkPanelProps,
 } from 'dockview';
 import 'dockview/dist/styles/dockview.css';
+import { useAppSettings } from '../../../features/settings/AppSettingsContext';
 
 import {
   ExplorerPanel,
@@ -160,6 +162,7 @@ function reconcile(
 }
 
 export function EditorDock() {
+  const { appThemeVariant } = useAppSettings();
   const apiRef = useRef<DockviewApi | null>(null);
   const syncingRef = useRef(false);
   const lastActiveRef = useRef<string | undefined>(undefined);
@@ -296,7 +299,7 @@ export function EditorDock() {
         tabComponents={tabComponents}
         watermarkComponent={watermarkComponent}
         onReady={onReady}
-        theme={themeAbyss}
+        theme={appThemeVariant === 'light' ? themeLight : themeAbyss}
         className="mdp-dockview"
       />
     </div>

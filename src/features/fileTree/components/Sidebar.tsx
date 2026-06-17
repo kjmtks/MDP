@@ -454,15 +454,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const ctxShowGenericNew = !contextMenu?.node?.isSpecial && !ctxFileInSpecial && (contextMenu?.isFolder || ctxIsFile);
 
   return (
-    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', position: 'relative', bgcolor: '#252526', color: '#cccccc' }}>
+    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', position: 'relative', bgcolor: 'var(--app-bg-panel)', color: 'var(--app-text-secondary)' }}>
       {!section && (
-      <Box sx={{ height: 41, minHeight: 41, maxHeight: 41, flexShrink: 0, borderBottom: '1px solid #333333', bgcolor: '#1e1e1e', overflow: 'hidden', boxSizing: 'border-box', display: 'flex', alignItems: 'center' }}>
+      <Box sx={{ height: 41, minHeight: 41, maxHeight: 41, flexShrink: 0, borderBottom: '1px solid var(--app-border)', bgcolor: 'var(--app-bg-editor)', overflow: 'hidden', boxSizing: 'border-box', display: 'flex', alignItems: 'center' }}>
         <Tabs
           value={leftTabIndex} onChange={(_, val) => setLeftTabIndex(val)} variant="fullWidth"
           sx={{
             flex: 1, minHeight: 40, height: 40,
-            '& .MuiTabs-indicator': { backgroundColor: '#3b82f6', height: '2px' },
-            '& .MuiTab-root': { color: '#8ba0b2', '&.Mui-selected': { color: '#ffffff' } }
+            '& .MuiTabs-indicator': { backgroundColor: 'var(--app-accent)', height: '2px' },
+            '& .MuiTab-root': { color: 'var(--app-text-disabled)', '&.Mui-selected': { color: '#ffffff' } }
           }}
         >
           <Tab label="Thumbnail" />
@@ -511,7 +511,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               ))}
             </div>
           ) : (
-            <Typography variant="body1" sx={{ color: '#888', textAlign: 'center', p: 2 }}>
+            <Typography variant="body1" sx={{ color: 'var(--app-text-disabled)', textAlign: 'center', p: 2 }}>
               {currentFileName ? "Thumbnails available for Markdown only." : "No file selected."}
             </Typography>
           )}
@@ -520,7 +520,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <CustomTabPanel value={activeIndex} index={1} noScroll>
           <Box
             onDragOver={handleDragOver} onDrop={handleDrop} onDragEnd={() => setDragOverPath(null)} onDragLeave={() => setDragOverPath(null)} onClick={() => setSelectedPaths(new Set())} onContextMenu={handleRootContextMenu}
-            sx={{ p: 1, height: '100%', color: '#cccccc', fontSize: '0.9rem', overflowY: 'auto', bgcolor: '#252526', pb: 10, outline: dragOverPath === '' ? '2px dashed #3b82f6' : 'none', outlineOffset: '-2px' }}
+            sx={{ p: 1, height: '100%', color: 'var(--app-text-secondary)', fontSize: '0.9rem', overflowY: 'auto', bgcolor: 'var(--app-bg-panel)', pb: 10, outline: dragOverPath === '' ? '2px dashed var(--app-accent)' : 'none', outlineOffset: '-2px' }}
           >
             {visibleFileTree.length > 0 ? (
               visibleFileTree.map(node => (
@@ -532,13 +532,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 />
               ))
             ) : (
-              <Typography variant="body1" sx={{ color: '#888', textAlign: 'center', p: 2, pointerEvents: 'none' }}>Drag & Drop files here</Typography>
+              <Typography variant="body1" sx={{ color: 'var(--app-text-disabled)', textAlign: 'center', p: 2, pointerEvents: 'none' }}>Drag & Drop files here</Typography>
             )}
           </Box>
         </CustomTabPanel>
 
         <CustomTabPanel value={activeIndex} index={2} noScroll>
-          <Box sx={{ p: 1, height: '100%', color: '#cccccc', overflowY: 'auto', bgcolor: '#252526', pb: 10 }}>
+          <Box sx={{ p: 1, height: '100%', color: 'var(--app-text-secondary)', overflowY: 'auto', bgcolor: 'var(--app-bg-panel)', pb: 10 }}>
             <BookmarkList
               bookmarks={bookmarks}
               onFileSelect={onFileSelect}
@@ -660,10 +660,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       onClick={() => setSelectedTemplatePath(t.path)}
                       sx={{
                         cursor: 'pointer', p: 1.5, borderRadius: 1.5,
-                        border: selected ? '2px solid #3b82f6' : '1px solid #e0e0e0',
+                        border: selected ? '2px solid var(--app-accent)' : '1px solid #e0e0e0',
                         bgcolor: selected ? 'rgba(59,130,246,0.06)' : 'transparent',
                         display: 'flex', flexDirection: 'column', gap: 0.5, minHeight: 84,
-                        transition: 'border-color 0.1s', '&:hover': { borderColor: '#3b82f6' },
+                        transition: 'border-color 0.1s', '&:hover': { borderColor: 'var(--app-accent)' },
                       }}
                     >
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>

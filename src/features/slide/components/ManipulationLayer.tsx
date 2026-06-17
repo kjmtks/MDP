@@ -1,5 +1,8 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { TransformEdit, DirectiveSelector } from '../../modules/moduleDocEdits';
+import { useAppSettings } from '../../settings/AppSettingsContext';
+import { matchAction } from '../../settings/shortcuts/matcher';
+import { ACTIONS_BY_SCOPE } from '../../settings/shortcuts/registry';
 
 // Runtime wiring supplied by the editor preview. Commit/delete go through the
 // editor view (moduleDocEdits) so changes land in the markdown with native undo.
@@ -44,6 +47,7 @@ const boxEq = (a: Box | undefined, b: Box) =>
 
 export const ManipulationLayer: React.FC<Props> = ({ container, runtime }) => {
   const { enabled, snap, snapStep, onCommit, onDelete } = runtime;
+  const { settings } = useAppSettings();
   const rootRef = useRef<HTMLDivElement>(null);
   const [selected, setSelected] = useState<string[]>([]);
   // Frame boxes are kept in STATE (not read during render) so they reflect the
@@ -330,8 +334,9 @@ export const ManipulationLayer: React.FC<Props> = ({ container, runtime }) => {
       const tag = (document.activeElement?.tagName || '').toLowerCase();
       if (tag === 'input' || tag === 'textarea' || (document.activeElement as HTMLElement)?.isContentEditable) return;
 
-      if (e.key === 'Escape') { setSelected([]); return; }
-      if (e.key === 'Delete' || e.key === 'Backspace') {
+      const action = matchAction(e, ACTIONS_BY_SCOPE.manipulation, settings);
+      if (action?.id === 'manip.deselect') { setSelected([]); return; }
+      if (action?.id === 'manip.delete') {
         e.preventDefault();
         onDelete(sel.map(selOf));
         setSelected([]);
@@ -367,7 +372,7 @@ export const ManipulationLayer: React.FC<Props> = ({ container, runtime }) => {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [enabled, snapStep, findEl, readBox, commitItems, onDelete]);
+  }, [enabled, snapStep, findEl, readBox, commitItems, onDelete, settings]);
 
   // Drop selection when leaving edit mode.
   useEffect(() => { if (!enabled) { setSelected([]); setMarquee(null); setFrameBoxes({}); } }, [enabled]);
