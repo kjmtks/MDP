@@ -1,0 +1,360 @@
+<module>
+  <name>references</name>
+  <type>block</type>
+  <description>Bibliography from raw BibTeX. Paste one or more @entries in the body; each is parsed and rendered. Pick a visual style: cards | numbered | apa.</description>
+
+  <parameters>
+    <param name="style" default="cards" />
+    <param name="title" default="References" />
+    <param name="accent" default="" required="false" />
+  </parameters>
+
+  <snippets>
+    <snippet>
+      <category>Content</category>
+      <label>References (cards)</label>
+      <text><![CDATA[<!-- @references style: cards -->
+@article{einstein1905,
+  author = {Einstein, Albert},
+  title = {On the Electrodynamics of Moving Bodies},
+  journal = {Annalen der Physik},
+  volume = {17},
+  number = {10},
+  pages = {891--921},
+  year = {1905}
+}
+@book{knuth1997,
+  author = {Knuth, Donald E.},
+  title = {The Art of Computer Programming},
+  publisher = {Addison-Wesley},
+  year = {1997}
+}
+<!-- @end -->]]></text>
+      <description>Bibliography from BibTeX. style: cards | numbered | apa.</description>
+    </snippet>
+    <snippet>
+      <category>Content</category>
+      <label>References (numbered)</label>
+      <text><![CDATA[<!-- @references style: numbered, title: References -->
+@inproceedings{vaswani2017,
+  author = {Vaswani, Ashish and Shazeer, Noam and Parmar, Niki},
+  title = {Attention Is All You Need},
+  booktitle = {Advances in Neural Information Processing Systems},
+  year = {2017},
+  pages = {5998--6008}
+}
+<!-- @end -->]]></text>
+      <description>IEEE-style numbered reference list.</description>
+    </snippet>
+  </snippets>
+
+  <render><![CDATA[
+    // ---- helpers -------------------------------------------------------------
+    const esc = function (s) {
+      return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    };
+    // Minimal LaTeX -> text cleanup for display fields.
+    const clean = function (s, isUrl) {
+      if (!s) return '';
+      let out = String(s).replace(/[{}]/g, '');
+      out = out.replace(/\\&/g, '&').replace(/\\_/g, '_').replace(/\\%/g, '%')
+               .replace(/\\#/g, '#').replace(/\\\$/g, '$').replace(/~/g, ' ');
+      if (!isUrl) out = out.replace(/--/g, '–'); // en-dash for page ranges
+      return out.replace(/\s+/g, ' ').trim();
+    };
+
+    // ---- BibTeX parser (brace-aware) ----------------------------------------
+    const parseBibtex = function (src) {
+      const entries = [];
+      // drop line-leading % comments (not escaped \%)
+      src = String(src || '').replace(/^[ \t]*%.*$/gm, '');
+      let i = 0; const n = src.length;
+      while (i < n) {
+        while (i < n && src[i] !== '@') i++;
+        if (i >= n) break;
+        i++;
+        let type = '';
+        while (i < n && /[a-zA-Z]/.test(src[i])) { type += src[i]; i++; }
+        type = type.toLowerCase();
+        if (type === 'comment' || type === 'preamble' || type === 'string') { continue; }
+        while (i < n && /\s/.test(src[i])) i++;
+        if (src[i] !== '{') continue;
+        i++;
+        let depth = 1, body = '';
+        while (i < n && depth > 0) {
+          const c = src[i];
+          if (c === '{') depth++;
+          else if (c === '}') { depth--; if (depth === 0) { i++; break; } }
+          body += c; i++;
+        }
+        const fc = body.indexOf(',');
+        const key = (fc === -1 ? body : body.slice(0, fc)).trim();
+        const fieldsStr = fc === -1 ? '' : body.slice(fc + 1);
+        const fields = {};
+        let j = 0; const m = fieldsStr.length;
+        while (j < m) {
+          while (j < m && /[\s,]/.test(fieldsStr[j])) j++;
+          let name = '';
+          while (j < m && /[a-zA-Z0-9_-]/.test(fieldsStr[j])) { name += fieldsStr[j]; j++; }
+          if (!name) break;
+          while (j < m && /\s/.test(fieldsStr[j])) j++;
+          if (fieldsStr[j] !== '=') continue;
+          j++;
+          while (j < m && /\s/.test(fieldsStr[j])) j++;
+          let val = '';
+          if (fieldsStr[j] === '{') {
+            let d = 1; j++;
+            while (j < m && d > 0) {
+              const c = fieldsStr[j];
+              if (c === '{') d++;
+              else if (c === '}') { d--; if (d === 0) { j++; break; } }
+              val += c; j++;
+            }
+          } else if (fieldsStr[j] === '"') {
+            j++;
+            while (j < m && fieldsStr[j] !== '"') { val += fieldsStr[j]; j++; }
+            j++;
+          } else {
+            while (j < m && fieldsStr[j] !== ',') { val += fieldsStr[j]; j++; }
+          }
+          fields[name.toLowerCase()] = val.trim();
+        }
+        entries.push({ type: type, key: key, fields: fields });
+      }
+      return entries;
+    };
+
+    // ---- author formatting ---------------------------------------------------
+    const splitName = function (a) {
+      a = a.trim();
+      let last, first;
+      if (a.indexOf(',') > -1) {
+        const p = a.split(',');
+        last = p[0].trim(); first = (p[1] || '').trim();
+      } else {
+        const p = a.split(/\s+/);
+        last = p.pop(); first = p.join(' ');
+      }
+      const initials = first.split(/\s+/).filter(Boolean)
+        .map(function (x) { return x.charAt(0).toUpperCase() + '.'; }).join(' ');
+      return { last: last || '', first: first, initials: initials };
+    };
+    const authorList = function (raw) {
+      if (!raw) return [];
+      return clean(raw).split(/\s+and\s+/i).map(function (x) { return x.trim(); })
+        .filter(Boolean).map(splitName);
+    };
+    // "Smith, J., Doe, A., & Lee, K." (APA) / truncated for cards.
+    const fmtAuthors = function (names, mode) {
+      if (!names.length) return '';
+      const parts = names.map(function (nm) {
+        if (mode === 'first-last') return (nm.initials ? nm.initials + ' ' : '') + nm.last;
+        return nm.last + (nm.initials ? ', ' + nm.initials : '');
+      });
+      if (mode === 'cards' && parts.length > 3) return parts.slice(0, 3).join(', ') + ' et al.';
+      if (parts.length === 1) return parts[0];
+      if (mode === 'first-last') return parts.slice(0, -1).join(', ') + ' and ' + parts[parts.length - 1];
+      return parts.slice(0, -1).join(', ') + ', & ' + parts[parts.length - 1];
+    };
+
+    // ---- normalise an entry to a common shape -------------------------------
+    const norm = function (e) {
+      const f = e.fields;
+      const venue = f.journal || f.booktitle || f.publisher || f.school ||
+                    f.institution || f.organization || f.howpublished || '';
+      const href = f.doi ? ('https://doi.org/' + clean(f.doi, true))
+                         : (f.url ? clean(f.url, true) : '');
+      return {
+        type: e.type,
+        names: authorList(f.author || f.editor || ''),
+        year: clean(f.year || f.date || ''),
+        title: clean(f.title || ''),
+        venue: clean(venue),
+        vol: clean(f.volume || ''),
+        num: clean(f.number || ''),
+        pages: clean(f.pages || ''),
+        doi: f.doi ? clean(f.doi, true) : '',
+        href: href
+      };
+    };
+    const linkHtml = function (e) {
+      if (!e.href) return '';
+      const label = e.doi ? ('doi:' + e.doi) : 'link';
+      return '<a class="mdp-ref-link" href="' + esc(e.href) + '" target="_blank" rel="noopener">' + esc(label) + '</a>';
+    };
+
+    // ---- per-style renderers -------------------------------------------------
+    const apaLine = function (e) {
+      let s = '';
+      const au = fmtAuthors(e.names, 'last-first');
+      if (au) s += esc(au) + ' ';
+      if (e.year) s += '(' + esc(e.year) + '). ';
+      if (e.title) s += esc(e.title) + '. ';
+      if (e.venue) s += '<em>' + esc(e.venue) + '</em>';
+      if (e.vol) s += ', ' + esc(e.vol);
+      if (e.num) s += '(' + esc(e.num) + ')';
+      if (e.pages) s += ', ' + esc(e.pages);
+      s += '. ';
+      const l = linkHtml(e); if (l) s += l;
+      return '<li>' + s.trim() + '</li>';
+    };
+    const numberedLine = function (e) {
+      let s = '';
+      const au = fmtAuthors(e.names, 'first-last');
+      if (au) s += esc(au) + ', ';
+      if (e.title) s += '&ldquo;' + esc(e.title) + ',&rdquo; ';
+      if (e.venue) s += '<em>' + esc(e.venue) + '</em>';
+      if (e.vol) s += ', vol. ' + esc(e.vol);
+      if (e.num) s += ', no. ' + esc(e.num);
+      if (e.pages) s += ', pp. ' + esc(e.pages);
+      if (e.year) s += ', ' + esc(e.year);
+      s += '. ';
+      const l = linkHtml(e); if (l) s += l;
+      return '<li><span class="mdp-ref-body">' + s.trim() + '</span></li>';
+    };
+    const cardBox = function (e) {
+      const au = fmtAuthors(e.names, 'cards');
+      let meta = '';
+      if (e.venue) meta += '<span class="mdp-ref-venue">' + esc(e.venue) + '</span>';
+      if (e.year) meta += '<span class="mdp-ref-chip">' + esc(e.year) + '</span>';
+      const l = linkHtml(e); if (l) meta += l;
+      return '<div class="mdp-ref-card">'
+        + (e.title ? '<div class="mdp-ref-card-title">' + esc(e.title) + '</div>' : '')
+        + (au ? '<div class="mdp-ref-card-authors">' + esc(au) + '</div>' : '')
+        + (meta ? '<div class="mdp-ref-card-meta">' + meta + '</div>' : '')
+        + (e.type ? '<span class="mdp-ref-type">' + esc(e.type) + '</span>' : '')
+        + '</div>';
+    };
+
+    // ---- assemble ------------------------------------------------------------
+    const raw = (sections[0] || '').trim();
+    const parsed = parseBibtex(raw).map(norm);
+    const styles = { cards: 'cards', numbered: 'numbered', apa: 'apa' };
+    const style = styles[(args.style || 'cards').toLowerCase()] || 'cards';
+    const accent = (args.accent || '').trim();
+    const accentStyle = accent ? ' style="--ref-accent:' + esc(accent) + '"' : '';
+    const heading = (args.title || '').trim();
+    const head = heading ? '<div class="mdp-ref-title-head">' + esc(heading) + '</div>' : '';
+
+    if (!parsed.length) {
+      return '\n\n<div class="mdp-mod-references"' + accentStyle + '>' + head
+        + '<div class="mdp-ref-empty">No valid BibTeX entries found.</div></div>\n\n';
+    }
+
+    let inner;
+    if (style === 'cards') {
+      inner = '<div class="mdp-ref-cards">' + parsed.map(cardBox).join('') + '</div>';
+    } else if (style === 'apa') {
+      inner = '<ol class="mdp-ref-list mdp-ref-apa">' + parsed.map(apaLine).join('') + '</ol>';
+    } else {
+      inner = '<ol class="mdp-ref-list mdp-ref-numbered">' + parsed.map(numberedLine).join('') + '</ol>';
+    }
+    // Single HTML block, no internal blank lines, so markdown leaves it intact.
+    return '\n\n<div class="mdp-mod-references"' + accentStyle + '>' + head + inner + '</div>\n\n';
+  ]]></render>
+
+  <style><![CDATA[
+    .mdp-mod-references {
+      --ref-accent: var(--accent-color, #3b82f6);
+      margin: 0.5em 0;
+      font-size: 0.78em;
+      line-height: 1.45;
+      text-align: left;
+      color: var(--text-color);
+    }
+    .mdp-mod-references .mdp-ref-title-head {
+      font-weight: 700;
+      font-size: 1.15em;
+      letter-spacing: 0.02em;
+      margin-bottom: 0.5em;
+      padding-bottom: 0.15em;
+      border-bottom: 2px solid var(--ref-accent);
+    }
+    .mdp-mod-references .mdp-ref-empty { color: var(--muted-color); font-style: italic; }
+    .mdp-mod-references a.mdp-ref-link {
+      color: var(--ref-accent);
+      text-decoration: none;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .mdp-mod-references a.mdp-ref-link:hover { text-decoration: underline; }
+
+    /* ---- list styles (apa / numbered) ---- */
+    .mdp-ref-list { margin: 0; padding: 0; list-style: none; counter-reset: mdpref; }
+    .mdp-ref-list.mdp-ref-apa li {
+      padding-left: 2.2em;
+      text-indent: -2.2em;
+      margin-bottom: 0.55em;
+    }
+    .mdp-ref-list.mdp-ref-numbered li {
+      counter-increment: mdpref;
+      display: grid;
+      grid-template-columns: 2.6em 1fr;
+      column-gap: 0.4em;
+      margin-bottom: 0.55em;
+    }
+    .mdp-ref-list.mdp-ref-numbered li::before {
+      content: "[" counter(mdpref) "]";
+      color: var(--ref-accent);
+      font-weight: 700;
+      text-align: right;
+    }
+    .mdp-ref-list em { font-style: italic; color: var(--muted-color); }
+
+    /* ---- card style ---- */
+    .mdp-ref-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 0.7em;
+    }
+    .mdp-ref-card {
+      position: relative;
+      background: var(--panel-bg);
+      color: var(--panel-text);
+      border: 1px solid var(--panel-border);
+      border-left: 4px solid var(--ref-accent);
+      border-radius: var(--radius-sm, 6px);
+      box-shadow: var(--shadow-sm, 0 2px 4px rgba(0,0,0,0.05));
+      padding: 0.7em 0.9em;
+      overflow: hidden;
+    }
+    .mdp-ref-card .mdp-ref-card-title {
+      font-weight: 700;
+      font-size: 1.02em;
+      margin-bottom: 0.25em;
+      padding-right: 3.2em;
+    }
+    .mdp-ref-card .mdp-ref-card-authors { opacity: 0.78; font-size: 0.92em; }
+    .mdp-ref-card .mdp-ref-card-meta {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.4em;
+      margin-top: 0.5em;
+      font-size: 0.86em;
+    }
+    .mdp-ref-card .mdp-ref-venue { font-style: italic; opacity: 0.85; }
+    .mdp-ref-card .mdp-ref-chip {
+      background: var(--ref-accent);
+      color: #fff;
+      padding: 0.05em 0.55em;
+      border-radius: 1em;
+      font-weight: 600;
+      font-size: 0.92em;
+    }
+    .mdp-ref-card .mdp-ref-type {
+      position: absolute;
+      top: 0.55em;
+      right: 0.7em;
+      font-size: 0.62em;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-weight: 700;
+      opacity: 0.45;
+    }
+  ]]></style>
+
+  <script></script>
+</module>
