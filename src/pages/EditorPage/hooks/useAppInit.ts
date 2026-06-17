@@ -24,7 +24,7 @@ const collectFilePaths = (nodes: any[], acc: Set<string>): Set<string> => {
 
 export const useAppInit = (
   fetchFileTree: () => void,
-  loadFile: (fileName: string, isBinaryFromServer?: boolean, initialPage?: number, draftContent?: string) => Promise<void> | void,
+  loadFile: (fileName: string, isBinaryFromServer?: boolean, initialPage?: number, draftContent?: string, background?: boolean) => Promise<void> | void,
   setTemplateContent: (content: string) => void,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   setSnipets: (snipets: any) => void,
@@ -53,15 +53,21 @@ export const useAppInit = (
       const savedPaths = Array.isArray(SAVED_OPEN_FILES?.paths) ? SAVED_OPEN_FILES!.paths! : [];
       const savedActive = SAVED_OPEN_FILES?.active ?? null;
 
+      // Fall back to the first still-existing saved file so we never restore with
+      // tabs open but none active.
+      const firstExisting = savedPaths.find((p) => existing.has(p)) ?? null;
       const activePath = (fileUrl && existing.has(fileUrl)) ? fileUrl
         : (savedActive && existing.has(savedActive)) ? savedActive
-        : null;
+        : firstExisting;
 
-      // Reopen previously-open files that still exist; load the active one last.
-      // Apply any unsaved draft so the editor is restored exactly as it was left.
+      // Reopen previously-open files that still exist as BACKGROUND tabs (they do
+      // not steal focus or drive the preview), then load the active one normally
+      // last so it ends up focused. Apply any unsaved draft so the editor is
+      // restored exactly as it was left. Loading background tabs without
+      // activating avoids briefly flashing an image tab's preview on startup.
       for (const p of savedPaths) {
         if (p !== activePath && existing.has(p)) {
-          try { await loadFile(p, undefined, 0, SAVED_DRAFTS[p]); } catch { /* skip */ }
+          try { await loadFile(p, undefined, 0, SAVED_DRAFTS[p], true); } catch { /* skip */ }
         }
       }
       if (activePath) {

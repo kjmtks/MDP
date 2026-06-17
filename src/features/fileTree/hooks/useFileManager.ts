@@ -204,7 +204,11 @@ export const useFileManager = ({ setCurrentSlideIndex, syncDrawings, onFileLoade
     });
   }, [setCurrentSlideIndex, syncDrawings]);
 
-  const loadFile = useCallback(async (fileName: string, isBinaryFromServer?: boolean, initialPage: number = 0, draftContent?: string) => {
+  // `background: true` opens the tab WITHOUT making it active (used by session
+  // restore so reopening a previously-open image tab doesn't briefly flash its
+  // preview, then stay as a landing spot when other tabs close). The active tab
+  // is loaded normally (background omitted) and ends up focused.
+  const loadFile = useCallback(async (fileName: string, isBinaryFromServer?: boolean, initialPage: number = 0, draftContent?: string, background: boolean = false) => {
     if (fileName.startsWith('http://') || fileName.startsWith('https://')) {
       reportError('External URLs cannot be loaded.', { severity: 'warning' });
       return;
@@ -212,7 +216,7 @@ export const useFileManager = ({ setCurrentSlideIndex, syncDrawings, onFileLoade
 
     const existingIndex = stateRef.current.tabs.findIndex(t => t.path === fileName);
     if (existingIndex !== -1) {
-      switchTab(existingIndex);
+      if (!background) switchTab(existingIndex);
       return;
     }
 
@@ -228,14 +232,16 @@ export const useFileManager = ({ setCurrentSlideIndex, syncDrawings, onFileLoade
           newTabs[prev.activeIndex] = { ...newTabs[prev.activeIndex], drawings: currentDrawingsRef.current, currentSlideIndex: currentSlideIndexRef.current };
         }
         newTabs.push(newTab);
-        return { tabs: newTabs, activeIndex: newTabs.length - 1 };
+        return { tabs: newTabs, activeIndex: background ? prev.activeIndex : newTabs.length - 1 };
       });
       setTimeout(() => {
-        setCurrentSlideIndex(0);
-        syncDrawings({});
-        const params = new URLSearchParams(window.location.search);
-        params.set('file', fileName);
-        window.history.pushState(null, '', `${window.location.pathname}?${params.toString()}`);
+        if (!background) {
+          setCurrentSlideIndex(0);
+          syncDrawings({});
+          const params = new URLSearchParams(window.location.search);
+          params.set('file', fileName);
+          window.history.pushState(null, '', `${window.location.pathname}?${params.toString()}`);
+        }
         isLoadingFile.current = false;
       }, 0);
       return;
@@ -288,20 +294,22 @@ export const useFileManager = ({ setCurrentSlideIndex, syncDrawings, onFileLoade
           newTabs[prev.activeIndex] = { ...newTabs[prev.activeIndex], drawings: currentDrawingsRef.current, currentSlideIndex: currentSlideIndexRef.current };
         }
         newTabs.push(newTab);
-        return { tabs: newTabs, activeIndex: newTabs.length - 1 };
+        return { tabs: newTabs, activeIndex: background ? prev.activeIndex : newTabs.length - 1 };
       });
 
-      markdownRef.current = contentToUse;
+      if (!background) markdownRef.current = contentToUse;
       setLastUpdated(Date.now());
 
       setTimeout(() => {
-        setCurrentSlideIndex(initialPage);
-        syncDrawings(newDrawings);
-        const params = new URLSearchParams(window.location.search);
-        params.set('file', fileName);
-        window.history.pushState(null, '', `${window.location.pathname}?${params.toString()}`);
+        if (!background) {
+          setCurrentSlideIndex(initialPage);
+          syncDrawings(newDrawings);
+          const params = new URLSearchParams(window.location.search);
+          params.set('file', fileName);
+          window.history.pushState(null, '', `${window.location.pathname}?${params.toString()}`);
+          onFileLoaded?.();
+        }
         isLoadingFile.current = false;
-        onFileLoaded?.();
       }, 0);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -316,9 +324,9 @@ export const useFileManager = ({ setCurrentSlideIndex, syncDrawings, onFileLoade
             newTabs[prev.activeIndex] = { ...newTabs[prev.activeIndex], drawings: currentDrawingsRef.current };
           }
           newTabs.push(newTab);
-          return { tabs: newTabs, activeIndex: newTabs.length - 1 };
+          return { tabs: newTabs, activeIndex: background ? prev.activeIndex : newTabs.length - 1 };
         });
-        setTimeout(() => { setCurrentSlideIndex(0); syncDrawings({}); }, 0);
+        if (!background) setTimeout(() => { setCurrentSlideIndex(0); syncDrawings({}); }, 0);
       } else {
         reportError('Failed to load the file. It may have been deleted or renamed.', { detail: err });
       }
