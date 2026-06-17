@@ -255,6 +255,15 @@ export const ManipulationLayer: React.FC<Props> = ({ container, runtime }) => {
       draggingRef.current = true;
       const items: DragItem[] = sel.map((k) => { const el = findEl(k); return el ? { key: k, el, start: readBox(el, r) } : null; }).filter(Boolean) as DragItem[];
       drag.current = { mode: 'move', items, psx: px, psy: py };
+      // Reveal the selection frame (+ resize/rotate handles) immediately on
+      // press — a plain click now shows the box, instead of only once a drag
+      // actually moves. (syncFrames is suppressed while draggingRef is set, so
+      // we seed the boxes here from the elements' current geometry.)
+      setFrameBoxes(() => {
+        const next: Record<string, Box> = {};
+        for (const it of items) next[it.key] = it.start;
+        return next;
+      });
     } else {
       if (!e.shiftKey) setSelected([]);
       rootRef.current!.setPointerCapture(e.pointerId);
