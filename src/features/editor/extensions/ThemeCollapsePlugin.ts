@@ -21,9 +21,9 @@ export class ThemeWidget extends WidgetType {
     btn.textContent = `🎨 Theme: ${this.themeName || 'default'}`;
 
     btn.style.cssText = `
-      background-color: #3b4048;
-      color: #dcdfe4;
-      border: 1px solid #5c6370;
+      background-color: var(--app-bg-elevated);
+      color: var(--app-text-secondary);
+      border: 1px solid var(--app-border-strong);
       border-radius: 4px;
       padding: 2px 8px;
       font-size: 0.85em;
@@ -32,8 +32,8 @@ export class ThemeWidget extends WidgetType {
       font-family: inherit;
       transition: background-color 0.2s;
     `;
-    btn.onmouseover = () => { btn.style.backgroundColor = '#4b5363'; };
-    btn.onmouseout = () => { btn.style.backgroundColor = '#3b4048'; };
+    btn.onmouseover = () => { btn.style.backgroundColor = 'var(--app-bg-hover)'; };
+    btn.onmouseout = () => { btn.style.backgroundColor = 'var(--app-bg-elevated)'; };
 
     btn.onclick = (e) => {
       e.preventDefault();

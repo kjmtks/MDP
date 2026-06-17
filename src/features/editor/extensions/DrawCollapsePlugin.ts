@@ -11,13 +11,13 @@ export class DrawDataCollapseWidget extends WidgetType {
     const span = document.createElement("span");
     span.textContent = "🖌️ Drawing Data";
     span.style.cssText = `
-      background-color: #333;
-      color: #aaa;
+      background-color: var(--app-bg-elevated);
+      color: var(--app-text-muted);
       padding: 2px 6px;
       border-radius: 4px;
       font-size: 0.85em;
       user-select: none;
-      border: 1px dashed #666;
+      border: 1px dashed var(--app-border-strong);
       margin: 0 4px;
     `;
     return span;

@@ -52,11 +52,11 @@ export const TabsBar: React.FC<TabsBarProps> = ({
     <>
       <Box sx={{
         display: 'flex',
-        bgcolor: '#252526',
+        bgcolor: 'var(--app-bg-panel)',
         overflowX: 'auto',
         flexShrink: 0,
         '&::-webkit-scrollbar': { height: 4 },
-        '&::-webkit-scrollbar-thumb': { bgcolor: '#555' }
+        '&::-webkit-scrollbar-thumb': { bgcolor: 'var(--app-scrollbar-thumb)' }
       }}>
         {tabs.map((tab, index) => {
           const isActive = index === activeTabIndex;
@@ -72,13 +72,13 @@ export const TabsBar: React.FC<TabsBarProps> = ({
               onClick={() => onTabClick(index)}
               sx={{
                 display: 'flex', alignItems: 'center', minWidth: 120, maxWidth: 200, height: 35,
-                bgcolor: isActive ? '#1e1e1e' : '#2d2d2d', color: isActive ? '#ffffff' : '#8ba0b2',
-                borderTop: isActive ? '2px solid #3b82f6' : '2px solid transparent',
-                borderRight: '1px solid #1e1e1e', cursor: 'pointer', px: 1.5,
+                bgcolor: isActive ? 'var(--app-bg-editor)' : 'var(--app-bg-elevated)', color: isActive ? 'var(--app-text-strong)' : 'var(--app-text-disabled)',
+                borderTop: isActive ? '2px solid var(--app-accent)' : '2px solid transparent',
+                borderRight: '1px solid var(--app-border)', cursor: 'pointer', px: 1.5,
                 opacity: draggedIndex === index ? 0.5 : 1,
                 userSelect: 'none',
                 transition: 'background-color 0.1s',
-                '&:hover': { bgcolor: isActive ? '#1e1e1e' : '#2a2d2e' }
+                '&:hover': { bgcolor: isActive ? 'var(--app-bg-editor)' : 'var(--app-bg-hover)' }
               }}
             >
               <Typography variant="body2" noWrap sx={{ flex: 1, fontSize: '0.8rem', fontStyle: tab.isModified ? 'italic' : 'normal' }}>
@@ -87,7 +87,7 @@ export const TabsBar: React.FC<TabsBarProps> = ({
               <IconButton
                 size="small"
                 onClick={(e) => { e.stopPropagation(); onTabClose(e, index); }}
-                sx={{ ml: 0.5, p: 0.25, color: 'inherit', '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' } }}
+                sx={{ ml: 0.5, p: 0.25, color: 'inherit', '&:hover': { bgcolor: 'var(--app-bg-hover)' } }}
               >
                 <CloseIcon sx={{ fontSize: '1rem' }} />
               </IconButton>

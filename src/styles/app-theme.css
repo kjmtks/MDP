@@ -39,6 +39,12 @@
   --app-accent-color: #3b82f6; /* legacy alias (App.css resize-handle rules) */
   --app-accent-contrast: #ffffff;
   --app-danger: #f04747;
+  --app-warning: #f59e0b;
+  /* Translucent fills for chips / row highlights / drop zones. Defined once via
+   * color-mix against the accent/warning above, so they automatically track
+   * whichever value the active theme sets — no per-theme duplication needed. */
+  --app-accent-soft: color-mix(in srgb, var(--app-accent) 16%, transparent);
+  --app-warning-soft: color-mix(in srgb, var(--app-warning) 16%, transparent);
 
   /* Scrollbars */
   --app-scrollbar-thumb: rgba(255, 255, 255, 0.15);
@@ -78,6 +84,7 @@
   --app-accent-color: #3b82f6;
   --app-accent-contrast: #ffffff;
   --app-danger: #f04747;
+  --app-warning: #f59e0b;
 
   --app-scrollbar-thumb: rgba(255, 255, 255, 0.15);
   --app-scrollbar-thumb-hover: rgba(255, 255, 255, 0.25);
@@ -110,6 +117,7 @@
   --app-accent-color: #2563eb;
   --app-accent-contrast: #ffffff;
   --app-danger: #dc2626;
+  --app-warning: #d97706;
 
   --app-scrollbar-thumb: rgba(0, 0, 0, 0.22);
   --app-scrollbar-thumb-hover: rgba(0, 0, 0, 0.35);
@@ -142,6 +150,7 @@
   --app-accent-color: #58a6ff;
   --app-accent-contrast: #0d1117;
   --app-danger: #f85149;
+  --app-warning: #d29922;
 }
 
 /* ----------------------------------------------------------------------------
@@ -171,6 +180,7 @@
   --app-accent-color: #268bd2;
   --app-accent-contrast: #002b36;
   --app-danger: #dc322f;
+  --app-warning: #b58900;
 }
 
 /* ----------------------------------------------------------------------------
@@ -200,4 +210,5 @@
   --app-accent-color: #00e5ff;
   --app-accent-contrast: #000000;
   --app-danger: #ff5d5d;
+  --app-warning: #ffd400;
 }

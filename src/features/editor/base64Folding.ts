@@ -6,8 +6,8 @@ class Base64Widget extends WidgetType {
   toDOM() {
     const span = document.createElement("span");
     span.textContent = " 🖼️ Image Data ";
-    span.style.backgroundColor = "#4b5563";
-    span.style.color = "white";
+    span.style.backgroundColor = "var(--app-bg-elevated)";
+    span.style.color = "var(--app-text-secondary)";
     span.style.borderRadius = "4px";
     span.style.padding = "2px 6px";
     span.style.fontSize = "0.85em";

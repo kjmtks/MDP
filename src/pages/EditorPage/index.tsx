@@ -453,6 +453,15 @@ export default function EditorPage() {
   const liveSuppress = !livePreview && mdChanged && !fileChanged;
   if (isPreviewableActive && (fileChanged || (mdChanged && !manipSuppress && !liveSuppress))) {
     setPreviewSource({ fileName: currentFileName, fileType: effectiveFileType, md: debouncedMarkdown });
+  } else if (!isPreviewableActive && previewSource.fileType === 'image') {
+    // Never KEEP a pinned image while a non-previewable file (css / module /
+    // effect / other text) is active. Pinning exists so theme/module/effect
+    // edits preview against the last real slide DECK — an image is not a deck,
+    // and retaining it leaves a stale, unrelated image in the preview after
+    // switching to (or closing a tab onto) a text file. Drop it so the preview
+    // falls back to the empty state instead. Converges: once the type is
+    // 'markdown' this branch no longer fires.
+    setPreviewSource({ fileName: null, fileType: 'markdown', md: '' });
   }
   // The frozen preview is "stale" when the editor content differs from what's
   // shown (drives the Apply button's highlight).
@@ -494,7 +503,10 @@ export default function EditorPage() {
       const blobUrl = getBlobUrlFromBase64(dataUrl);
       return `![${alt}](${blobUrl})`;
     });
-  }, [previewMarkdown, imageLibrary]);
+    // moduleEpoch: re-run `applyModulesToMarkdown` when a module/effect is
+    // (re)registered — e.g. saving a `*.mdpmod.xml` — so the pinned deck reflects
+    // the new module <render>/<script> output live, not just its <style>.
+  }, [previewMarkdown, imageLibrary, moduleEpoch]);
 
   const { baseUrl, globalContext, slides: mdSlides, slideSize: mdSlideSize, slideStyleVariables, themeCssUrl } = useSlideProcessor(
     previewFileName, previewFileType, processedMarkdown, lastUpdated, themes, moduleEpoch
@@ -617,6 +629,9 @@ export default function EditorPage() {
             return cleanPrev;
           });
         }
+        // Re-apply modules to the pinned deck so <render>/<script> changes show
+        // live (registerModule already swapped the <style> for CSS changes).
+        setModuleEpoch((e) => e + 1);
       } else if (path.includes(`${EFFECTS_DIR}/`) && path.endsWith('.mdpfx.xml')) {
         // Re-register the edited effect so its CSS/JS updates live, then refresh
         // snippets (effect snippets share the isModule flag).
@@ -635,6 +650,9 @@ export default function EditorPage() {
           });
           return cleanPrev;
         });
+        // Re-render the pinned deck so the effect's updated build/transition
+        // CSS+JS re-applies live.
+        setModuleEpoch((e) => e + 1);
       } else if (path === `${IMAGES_DIR}/registry.json` || path.endsWith(`/${IMAGES_DIR}/registry.json`)) {
         // The shared image-alias library changed (panel write or hand-edit):
         // reload it and force a slide re-parse.

@@ -22,12 +22,12 @@ class ImageDefWidget extends WidgetType {
 
     const label = document.createElement('span');
     label.textContent = `🖼️ ${this.alias}`;
-    label.style.cssText = 'color:#e5e7eb;background-color:#334155;padding:2px 8px;border-radius:12px 0 0 12px;font-size:0.85em;user-select:none;border:1px solid rgba(148,163,184,0.4);border-right:none;';
+    label.style.cssText = 'color:var(--app-text-secondary);background-color:var(--app-bg-elevated);padding:2px 8px;border-radius:12px 0 0 12px;font-size:0.85em;user-select:none;border:1px solid var(--app-border-strong);border-right:none;';
 
     const editBtn = document.createElement('button');
     editBtn.type = 'button';
     editBtn.textContent = 'edit';
-    editBtn.style.cssText = 'background-color:#0ea5e9;color:white;border:none;border-radius:0 12px 12px 0;padding:2px 8px;font-size:0.8em;cursor:pointer;line-height:1.2;';
+    editBtn.style.cssText = 'background-color:var(--app-accent);color:var(--app-accent-contrast);border:none;border-radius:0 12px 12px 0;padding:2px 8px;font-size:0.8em;cursor:pointer;line-height:1.2;';
     editBtn.title = 'Manage this image in the Images panel';
     editBtn.onclick = (e) => {
       e.preventDefault();

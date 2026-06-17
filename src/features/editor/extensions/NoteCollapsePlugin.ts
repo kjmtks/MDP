@@ -24,12 +24,12 @@ class NoteWidget extends WidgetType {
     span.style.padding = '2px 8px';
     span.style.margin = '0 4px';
     span.style.borderRadius = '12px';
-    span.style.backgroundColor = 'rgba(59, 130, 246, 0.15)';
-    span.style.color = '#3b82f6';
+    span.style.backgroundColor = 'var(--app-accent-soft)';
+    span.style.color = 'var(--app-accent)';
     span.style.fontSize = '0.85em';
     span.style.fontWeight = 'bold';
     span.style.userSelect = 'none';
-    span.style.border = '1px solid rgba(59, 130, 246, 0.3)';
+    span.style.border = '1px solid color-mix(in srgb, var(--app-accent) 30%, transparent)';
     span.title = 'Click to expand note';
 
     span.addEventListener('mousedown', (e) => {

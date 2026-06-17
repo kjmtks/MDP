@@ -285,7 +285,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
               )}
               {onToggleBookmark && (() => {
                 const BmIcon = bookmark ? bookmarkIconFor(bookmark.icon) : BookmarkBorderIcon;
-                const bmColor = bookmark?.color || '#3b82f6';
+                const bmColor = bookmark?.color || 'var(--app-accent)';
                 return (
                   <>
                     <Divider orientation="vertical" flexItem sx={{ mx: 1, my: 0.5, borderColor: 'var(--app-border-strong)' }} />
@@ -293,7 +293,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                       <IconButton
                         size="small"
                         onClick={(e) => { if (isBookmarked) setBookmarkPickerAnchor(e.currentTarget); else onToggleBookmark(); }}
-                        sx={{ color: isBookmarked ? bmColor : '#aaa', '&:hover': { color: isBookmarked ? bmColor : '#fff' } }}
+                        sx={{ color: isBookmarked ? bmColor : 'var(--app-text-muted)', '&:hover': { color: isBookmarked ? bmColor : 'var(--app-text-strong)' } }}
                       >
                         <BmIcon fontSize="small" />
                       </IconButton>

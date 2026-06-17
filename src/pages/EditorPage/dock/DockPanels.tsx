@@ -207,7 +207,10 @@ const isImageDrag = (e: React.DragEvent) => {
 
 const scopeBtnSx = {
   color: 'var(--app-text-disabled)', fontSize: '0.72rem', textTransform: 'none', py: 0.4,
-  '&.Mui-selected': { bgcolor: '#0ea5e9', color: '#fff', '&:hover': { bgcolor: '#0284c7' } },
+  '&.Mui-selected': {
+    bgcolor: 'var(--app-accent)', color: 'var(--app-accent-contrast)',
+    '&:hover': { bgcolor: 'color-mix(in srgb, var(--app-accent) 85%, black)' },
+  },
 };
 
 const imgType = (value: string): string =>
@@ -233,7 +236,7 @@ const ImageRow: React.FC<{
   // matches the edit dialog instead of showing a meaningless "—").
   const detail = entry.value.startsWith('data:') ? `${imgType(entry.value)} · ${imgSize(entry.value)}` : entry.value;
   return (
-    <TableRow sx={{ bgcolor: highlight ? 'rgba(14,165,233,0.18)' : undefined, '&:hover': { bgcolor: 'var(--app-bg-hover)' } }}>
+    <TableRow sx={{ bgcolor: highlight ? 'var(--app-accent-soft)' : undefined, '&:hover': { bgcolor: 'var(--app-bg-hover)' } }}>
       <TableCell sx={{ border: 0, p: 0.5, width: 48 }}>
         <Box onMouseEnter={(e) => setHoverEl(e.currentTarget)} onMouseLeave={() => setHoverEl(null)} sx={{ width: 40, height: 40 }}>
           {broken
@@ -257,11 +260,11 @@ const ImageRow: React.FC<{
         {entry.tags && entry.tags.length > 0 && (
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.25, mt: 0.25 }}>
             {entry.tags.map((t) => (
-              <Chip key={t} label={t} size="small" sx={{ height: 16, fontSize: '0.6rem', color: '#93c5fd', bgcolor: 'rgba(59,130,246,0.15)' }} />
+              <Chip key={t} label={t} size="small" sx={{ height: 16, fontSize: '0.6rem', color: 'var(--app-accent)', bgcolor: 'var(--app-accent-soft)' }} />
             ))}
           </Box>
         )}
-        {overrides && <Chip label="overrides library" size="small" sx={{ height: 16, fontSize: '0.6rem', color: '#fbbf24', bgcolor: 'rgba(251,191,36,0.15)', mt: 0.25 }} />}
+        {overrides && <Chip label="overrides library" size="small" sx={{ height: 16, fontSize: '0.6rem', color: 'var(--app-warning)', bgcolor: 'var(--app-warning-soft)', mt: 0.25 }} />}
       </TableCell>
       <TableCell align="right" sx={{ border: 0, p: 0.25, whiteSpace: 'nowrap', width: '1%' }}>
         {onPreview && (
@@ -395,7 +398,7 @@ export const ImagesPanel: React.FC = () => {
       onDragOver={(e) => { if (!isImageDrag(e)) return; e.preventDefault(); setDragOver(true); }}
       onDragLeave={() => setDragOver(false)}
       onDrop={(e) => { if (!isImageDrag(e)) return; e.preventDefault(); setDragOver(false); imageFromTransfer(e.dataTransfer).then((v) => { if (v) openAddWithValue(v); }); }}
-      sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: 'var(--app-bg-panel)', overflowY: 'auto', outline: 'none', position: 'relative', ...(dragOver ? { boxShadow: 'inset 0 0 0 2px #0ea5e9' } : {}) }}>
+      sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: 'var(--app-bg-panel)', overflowY: 'auto', outline: 'none', position: 'relative', ...(dragOver ? { boxShadow: 'inset 0 0 0 2px var(--app-accent)' } : {}) }}>
       <Box sx={{ p: 0.75, borderBottom: '1px solid var(--app-border)', position: 'sticky', top: 0, zIndex: 2, bgcolor: 'var(--app-bg-panel)' }}>
         <TextField value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search name / description / tag…"
           size="small" fullWidth variant="outlined"
@@ -453,11 +456,11 @@ export const ImagesPanel: React.FC = () => {
               {dialog?.value
                 ? <img src={img.resolveThumb(dialog.value)} alt="preview" style={{ width: 48, height: 48, objectFit: 'contain', background: '#fff', borderRadius: 4 }} />
                 : <Box sx={{ width: 48, height: 48, bgcolor: 'var(--app-bg-editor)', borderRadius: 1 }} />}
-              <Button component="label" size="small" startIcon={<UploadFileIcon />} sx={{ color: '#0ea5e9' }}>
+              <Button component="label" size="small" startIcon={<UploadFileIcon />} sx={{ color: 'var(--app-accent)' }}>
                 Upload
                 <input hidden type="file" accept="image/*" onChange={(e) => onUpload(e.target.files?.[0])} />
               </Button>
-              <Button size="small" startIcon={<AccountTreeIcon />} sx={{ color: '#0ea5e9' }}
+              <Button size="small" startIcon={<AccountTreeIcon />} sx={{ color: 'var(--app-accent)' }}
                 onClick={() => window.dispatchEvent(new CustomEvent('mdp-open-drawio-for-image', { detail: { value: dialog?.value || '' } }))}>
                 Diagram
               </Button>
@@ -476,7 +479,7 @@ export const ImagesPanel: React.FC = () => {
                 onChange={(_e, v) => setDialog((d) => (d ? { ...d, tags: v as string[] } : d))}
                 renderTags={(value, getTagProps) => value.map((option, index) => (
                   <Chip {...getTagProps({ index })} key={option} label={option} size="small"
-                    sx={{ color: '#93c5fd', bgcolor: 'rgba(59,130,246,0.2)' }} />
+                    sx={{ color: 'var(--app-accent)', bgcolor: 'var(--app-accent-soft)' }} />
                 ))}
                 renderInput={(params) => (
                   <TextField {...params} label="Tags (optional)" placeholder="Add tag + Enter" variant="outlined"
@@ -508,11 +511,11 @@ export const PreviewPanel: React.FC = () => {
         ) }
         <Tooltip title="Connect Remote"><IconButton size="small" sx={toolBtnSx} onClick={h.onOpenConnectDialog}><DevicesIcon fontSize="small" /></IconButton></Tooltip>
         <Tooltip title={p.livePreview ? 'Live preview on — click to pause auto-parsing while typing' : 'Live preview paused — edits are not parsed until you apply'}>
-          <span><IconButton size="small" sx={{ ...toolBtnSx, color: p.livePreview ? 'var(--app-accent)' : '#f59e0b' }} onClick={p.onToggleLivePreview}>{p.livePreview ? <SyncIcon fontSize="small" /> : <SyncDisabledIcon fontSize="small" />}</IconButton></span>
+          <span><IconButton size="small" sx={{ ...toolBtnSx, color: p.livePreview ? 'var(--app-accent)' : 'var(--app-warning)' }} onClick={p.onToggleLivePreview}>{p.livePreview ? <SyncIcon fontSize="small" /> : <SyncDisabledIcon fontSize="small" />}</IconButton></span>
         </Tooltip>
         {!p.livePreview && (
           <Tooltip title={p.previewStale ? 'Apply edits to the preview now' : 'Preview is up to date'}>
-            <span><IconButton size="small" sx={{ ...toolBtnSx, color: p.previewStale ? '#f59e0b' : 'var(--app-text-muted)' }} onClick={p.onApplyPreview}><RefreshIcon fontSize="small" /></IconButton></span>
+            <span><IconButton size="small" sx={{ ...toolBtnSx, color: p.previewStale ? 'var(--app-warning)' : 'var(--app-text-muted)' }} onClick={p.onApplyPreview}><RefreshIcon fontSize="small" /></IconButton></span>
           </Tooltip>
         )}
         <Tooltip title={p.canEditLayout ? 'Edit layout (move/resize/rotate modules)' : 'Edit layout — open the slide being previewed to enable'}>
@@ -538,7 +541,7 @@ export const PreviewPanel: React.FC = () => {
           {/* Dedicated bar so the control is never hidden behind a large image. */}
           <Box sx={{ flexShrink: 0, display: 'flex', alignItems: 'center', px: 1, py: 0.5, bgcolor: 'var(--app-bg-editor)', borderBottom: '1px solid var(--app-border)' }}>
             <Button size="small" startIcon={<CloseIcon fontSize="small" />} onClick={p.onClosePreviewImage}
-              sx={{ color: '#0ea5e9', textTransform: 'none', fontSize: '0.78rem' }}>Back to slides</Button>
+              sx={{ color: 'var(--app-accent)', textTransform: 'none', fontSize: '0.78rem' }}>Back to slides</Button>
             <Typography sx={{ color: 'var(--app-text-disabled)', fontSize: '0.7rem', ml: 1 }}>Image preview</Typography>
           </Box>
           <Box sx={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', p: 2 }}>
@@ -652,7 +655,7 @@ export const FileTab: React.FC<IDockviewPanelHeaderProps<{ tabId: string }>> = (
       <span style={{ fontSize: '0.8rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontStyle: isModified ? 'italic' : 'normal' }}>
         {fileName}{isModified ? ' •' : ''}
       </span>
-      <IconButton size="small" onClick={handleClose} sx={{ ml: 0.5, p: 0.25, color: 'inherit', '&:hover': { bgcolor: 'rgba(255,255,255,0.15)' } }}>
+      <IconButton size="small" onClick={handleClose} sx={{ ml: 0.5, p: 0.25, color: 'inherit', '&:hover': { bgcolor: 'var(--app-bg-hover)' } }}>
         <CloseIcon sx={{ fontSize: '0.9rem' }} />
       </IconButton>
 

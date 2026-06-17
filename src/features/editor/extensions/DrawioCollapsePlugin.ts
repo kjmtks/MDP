@@ -18,8 +18,8 @@ export class CollapseWidget extends WidgetType {
     const textSpan = document.createElement("span");
     textSpan.textContent = "( 📊 Drawio Data ";
     textSpan.style.cssText = `
-      color: #aaa;
-      background-color: #333;
+      color: var(--app-text-muted);
+      background-color: var(--app-bg-elevated);
       padding: 2px 0 2px 6px;
       border-radius: 4px 0 0 4px;
       font-size: 0.85em;
@@ -33,8 +33,8 @@ export class CollapseWidget extends WidgetType {
     editBtn.dataset.base64 = this.base64;
 
     editBtn.style.cssText = `
-      background-color: #1976d2;
-      color: white;
+      background-color: var(--app-accent);
+      color: var(--app-accent-contrast);
       border: none;
       border-radius: 3px;
       padding: 2px 6px;
@@ -55,7 +55,7 @@ export class CollapseWidget extends WidgetType {
 
     const closingSpan = document.createElement("span");
     closingSpan.textContent = ")";
-    closingSpan.style.cssText = "color: #aaa; background-color: #333; padding: 2px 6px 2px 0; border-radius: 0 4px 4px 0; font-size: 0.85em;";
+    closingSpan.style.cssText = "color: var(--app-text-muted); background-color: var(--app-bg-elevated); padding: 2px 6px 2px 0; border-radius: 0 4px 4px 0; font-size: 0.85em;";
     textSpan.appendChild(editBtn);
     wrapper.appendChild(textSpan);
     wrapper.appendChild(closingSpan);

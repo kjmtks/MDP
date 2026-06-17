@@ -9,7 +9,7 @@ export class ImageCollapseWidget extends WidgetType {
   toDOM() {
     const span = document.createElement("span");
     span.textContent = "( 🖼️ Image Data )";
-    span.style.cssText = "color: #aaa; background: #333; padding: 2px 6px; border-radius: 4px; font-size: 0.9em; margin: 0 2px; user-select: none;";
+    span.style.cssText = "color: var(--app-text-muted); background: var(--app-bg-elevated); padding: 2px 6px; border-radius: 4px; font-size: 0.9em; margin: 0 2px; user-select: none;";
     return span;
   }
 }
