@@ -1,10 +1,13 @@
 <module>
   <name>references</name>
   <type>block</type>
-  <description>Bibliography from raw BibTeX. Paste one or more @entries in the body; each is parsed and rendered. Pick a visual style: cards | numbered | apa.</description>
+  <description>Bibliography from raw BibTeX. Independent knobs: layout (list|cards), notation (ieee|apa), marker (number|key|bullet|none), and a custom/omittable header. Handles any entry type with type-aware formatting (place: publisher, In ... for chapters/proceedings, thesis/report types), @string macros, # concatenation, crossref/xdata inheritance, biblatex fields, LaTeX accents and $math$.</description>
+  <interactive>false</interactive>
 
   <parameters>
-    <param name="style" default="cards" />
+    <param name="layout" default="list" />
+    <param name="notation" default="ieee" />
+    <param name="marker" default="number" />
     <param name="title" default="References" />
     <param name="accent" default="" required="false" />
   </parameters>
@@ -12,65 +15,173 @@
   <snippets>
     <snippet>
       <category>Content</category>
-      <label>References (cards)</label>
-      <text><![CDATA[<!-- @references style: cards -->
+      <label>References (numbered list, IEEE)</label>
+      <text><![CDATA[<!-- @references layout: list, notation: ieee, marker: number -->
 @article{einstein1905,
   author = {Einstein, Albert},
   title = {On the Electrodynamics of Moving Bodies},
   journal = {Annalen der Physik},
-  volume = {17},
-  number = {10},
-  pages = {891--921},
-  year = {1905}
+  volume = {17}, number = {10}, pages = {891--921}, year = {1905}
 }
 @book{knuth1997,
   author = {Knuth, Donald E.},
   title = {The Art of Computer Programming},
-  publisher = {Addison-Wesley},
-  year = {1997}
+  address = {Reading, MA}, publisher = {Addison-Wesley}, year = {1997}
 }
 <!-- @end -->]]></text>
-      <description>Bibliography from BibTeX. style: cards | numbered | apa.</description>
+      <description>layout: list|cards · notation: ieee|apa · marker: number|key|bullet|none · title: text (empty/none hides it).</description>
     </snippet>
     <snippet>
       <category>Content</category>
-      <label>References (numbered)</label>
-      <text><![CDATA[<!-- @references style: numbered, title: References -->
+      <label>References (cards, no header)</label>
+      <text><![CDATA[<!-- @references layout: cards, notation: apa, marker: none, title: none -->
 @inproceedings{vaswani2017,
   author = {Vaswani, Ashish and Shazeer, Noam and Parmar, Niki},
   title = {Attention Is All You Need},
   booktitle = {Advances in Neural Information Processing Systems},
-  year = {2017},
-  pages = {5998--6008}
+  address = {Long Beach, CA}, year = {2017}, pages = {5998--6008}
 }
 <!-- @end -->]]></text>
-      <description>IEEE-style numbered reference list.</description>
+      <description>Card layout, APA notation, no markers, header hidden.</description>
+    </snippet>
+    <snippet>
+      <category>Content</category>
+      <label>References (cite-key tags)</label>
+      <text><![CDATA[<!-- @references layout: list, marker: key, title: Bibliography -->
+@book{knuth1997,
+  author = {Knuth, Donald E.}, title = {The Art of Computer Programming},
+  address = {Reading, MA}, publisher = {Addison-Wesley}, year = {1997}
+}
+<!-- @end -->]]></text>
+      <description>Uses the BibTeX cite key as the marker, e.g. [knuth1997].</description>
     </snippet>
   </snippets>
 
   <render><![CDATA[
-    // ---- helpers -------------------------------------------------------------
+    // ---- HTML escape ---------------------------------------------------------
     const esc = function (s) {
       return String(s == null ? '' : s)
         .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;');
     };
-    // Minimal LaTeX -> text cleanup for display fields.
+
+    // ---- LaTeX -> Unicode/text ----------------------------------------------
+    const ACC = {
+      "'a":"á","'e":"é","'i":"í","'o":"ó","'u":"ú","'y":"ý","'n":"ń","'c":"ć","'s":"ś","'z":"ź",
+      "'A":"Á","'E":"É","'I":"Í","'O":"Ó","'U":"Ú","'Y":"Ý","'N":"Ń","'C":"Ć","'S":"Ś",
+      "`a":"à","`e":"è","`i":"ì","`o":"ò","`u":"ù","`A":"À","`E":"È","`I":"Ì","`O":"Ò","`U":"Ù",
+      "^a":"â","^e":"ê","^i":"î","^o":"ô","^u":"û","^A":"Â","^E":"Ê","^I":"Î","^O":"Ô","^U":"Û",
+      '"a':"ä",'"e':"ë",'"i':"ï",'"o':"ö",'"u':"ü",'"y':"ÿ",'"A':"Ä",'"E':"Ë",'"O':"Ö",'"U':"Ü",
+      "~n":"ñ","~a":"ã","~o":"õ","~N":"Ñ","~A":"Ã","~O":"Õ",
+      "=a":"ā","=e":"ē","=i":"ī","=o":"ō","=u":"ū","=A":"Ā","=O":"Ō",
+      ".c":"ċ",".e":"ė",".z":"ż",".Z":"Ż",
+      "Ho":"ő","Hu":"ű","HO":"Ő","HU":"Ű",
+      "vc":"č","vs":"š","vz":"ž","vr":"ř","vn":"ň","ve":"ě","va":"ǎ","vg":"ǧ",
+      "vS":"Š","vZ":"Ž","vC":"Č","vR":"Ř","vN":"Ň","vE":"Ě",
+      "cc":"ç","cC":"Ç","cs":"ş","cS":"Ş","cg":"ģ","ct":"ţ",
+      "ua":"ă","ug":"ğ","uA":"Ă","uG":"Ğ",
+      "ra":"å","ru":"ů","rA":"Å","rU":"Ů",
+      "ka":"ą","ke":"ę","kA":"Ą","kE":"Ę"
+    };
+    const SPEC = { "ss":"ß","ae":"æ","AE":"Æ","oe":"œ","OE":"Œ","aa":"å","AA":"Å",
+                   "o":"ø","O":"Ø","l":"ł","L":"Ł","i":"ı","j":"ȷ" };
+    const delatex = function (s) {
+      let out = String(s);
+      out = out.replace(/\\url\{([^{}]*)\}/g, '$1');
+      out = out.replace(/\\href\{[^{}]*\}\{([^{}]*)\}/g, '$1');
+      out = out.replace(/\\(?:emph|textbf|textit|textrm|textsf|textsc|texttt|mathrm|mathbf|mathit|text)\{([^{}]*)\}/g, '$1');
+      out = out.replace(/\\(['`^"~=.Hvcukrbd])\s*\{\s*\\?([A-Za-z])\s*\}/g,
+        function (m, a, l) { return ACC[a + l] || l; });
+      out = out.replace(/\\(ss|ae|AE|oe|OE|aa|AA|o|O|l|L|i|j)(?![A-Za-z])/g,
+        function (m, w) { return SPEC[w] || w; });
+      out = out.replace(/\\(['`^"~=.])\s*\{?\\?([A-Za-z])\}?/g,
+        function (m, a, l) { return ACC[a + l] || l; });
+      out = out.replace(/\\([&%#_${}])/g, '$1');
+      out = out.replace(/\\,/g, ' ').replace(/\\ /g, ' ');
+      out = out.replace(/\\[A-Za-z]+\s*\{([^{}]*)\}/g, '$1');
+      out = out.replace(/\\[A-Za-z]+/g, '');
+      out = out.replace(/\\/g, '');
+      return out;
+    };
+    // Non-math text cleanup.
+    const scrub = function (t) {
+      return delatex(t).replace(/[{}]/g, '').replace(/--/g, '–').replace(/~/g, ' ');
+    };
+    // Display cleanup. $math$ / $$math$$ spans are kept verbatim (only non-math
+    // segments are scrubbed) so KaTeX can typeset them later — no sentinels, so
+    // the file stays valid XML.
     const clean = function (s, isUrl) {
       if (!s) return '';
-      let out = String(s).replace(/[{}]/g, '');
-      out = out.replace(/\\&/g, '&').replace(/\\_/g, '_').replace(/\\%/g, '%')
-               .replace(/\\#/g, '#').replace(/\\\$/g, '$').replace(/~/g, ' ');
-      if (!isUrl) out = out.replace(/--/g, '–'); // en-dash for page ranges
+      if (isUrl) return String(s).replace(/[{}]/g, '').replace(/\\(?=[&%#_~])/g, '').trim();
+      const src = String(s);
+      const re = /\$\$[\s\S]*?\$\$|\$[^$]*\$/g;
+      let out = '', last = 0, m;
+      while ((m = re.exec(src)) !== null) {
+        out += scrub(src.slice(last, m.index));
+        out += m[0];
+        last = m.index + m[0].length;
+      }
+      out += scrub(src.slice(last));
       return out.replace(/\s+/g, ' ').trim();
     };
 
-    // ---- BibTeX parser (brace-aware) ----------------------------------------
+    // ---- BibTeX parser (brace-aware, @string macros + # concatenation) ------
     const parseBibtex = function (src) {
       const entries = [];
-      // drop line-leading % comments (not escaped \%)
+      const macros = {
+        jan: 'January', feb: 'February', mar: 'March', apr: 'April', may: 'May', jun: 'June',
+        jul: 'July', aug: 'August', sep: 'September', oct: 'October', nov: 'November', dec: 'December'
+      };
       src = String(src || '').replace(/^[ \t]*%.*$/gm, '');
       let i = 0; const n = src.length;
+      const skipWs = function () { while (i < n && /\s/.test(src[i])) i++; };
+      const readDelimited = function () {
+        if (src[i] === '{') {
+          let d = 1, v = ''; i++;
+          while (i < n && d > 0) {
+            const c = src[i];
+            if (c === '{') d++; else if (c === '}') { d--; if (d === 0) { i++; break; } }
+            v += c; i++;
+          }
+          return v;
+        }
+        let v = '', d = 0; i++;
+        while (i < n) {
+          const c = src[i];
+          if (c === '{') d++; else if (c === '}') d--;
+          else if (c === '"' && d === 0) { i++; break; }
+          v += c; i++;
+        }
+        return v;
+      };
+      const readBareword = function () {
+        let v = '';
+        while (i < n && /[A-Za-z0-9_.:+\/\-]/.test(src[i])) { v += src[i]; i++; }
+        return v;
+      };
+      const readValue = function () {
+        let out = '';
+        while (true) {
+          skipWs();
+          const c = src[i];
+          if (c === '{' || c === '"') { out += readDelimited(); }
+          else {
+            const w = readBareword();
+            if (!w) break;
+            const lk = w.toLowerCase();
+            out += (macros[lk] !== undefined ? macros[lk] : w);
+          }
+          skipWs();
+          if (src[i] === '#') { i++; continue; }
+          break;
+        }
+        return out.trim();
+      };
+      const skipEntryBody = function () {
+        let d = 1;
+        while (i < n && d > 0) { const c = src[i]; if (c === '{') d++; else if (c === '}') d--; i++; }
+      };
+
       while (i < n) {
         while (i < n && src[i] !== '@') i++;
         if (i >= n) break;
@@ -78,76 +189,88 @@
         let type = '';
         while (i < n && /[a-zA-Z]/.test(src[i])) { type += src[i]; i++; }
         type = type.toLowerCase();
-        if (type === 'comment' || type === 'preamble' || type === 'string') { continue; }
-        while (i < n && /\s/.test(src[i])) i++;
+        skipWs();
         if (src[i] !== '{') continue;
         i++;
-        let depth = 1, body = '';
-        while (i < n && depth > 0) {
-          const c = src[i];
-          if (c === '{') depth++;
-          else if (c === '}') { depth--; if (depth === 0) { i++; break; } }
-          body += c; i++;
-        }
-        const fc = body.indexOf(',');
-        const key = (fc === -1 ? body : body.slice(0, fc)).trim();
-        const fieldsStr = fc === -1 ? '' : body.slice(fc + 1);
-        const fields = {};
-        let j = 0; const m = fieldsStr.length;
-        while (j < m) {
-          while (j < m && /[\s,]/.test(fieldsStr[j])) j++;
+        if (type === 'string') {
+          skipWs();
           let name = '';
-          while (j < m && /[a-zA-Z0-9_-]/.test(fieldsStr[j])) { name += fieldsStr[j]; j++; }
-          if (!name) break;
-          while (j < m && /\s/.test(fieldsStr[j])) j++;
-          if (fieldsStr[j] !== '=') continue;
-          j++;
-          while (j < m && /\s/.test(fieldsStr[j])) j++;
-          let val = '';
-          if (fieldsStr[j] === '{') {
-            let d = 1; j++;
-            while (j < m && d > 0) {
-              const c = fieldsStr[j];
-              if (c === '{') d++;
-              else if (c === '}') { d--; if (d === 0) { j++; break; } }
-              val += c; j++;
-            }
-          } else if (fieldsStr[j] === '"') {
-            j++;
-            while (j < m && fieldsStr[j] !== '"') { val += fieldsStr[j]; j++; }
-            j++;
-          } else {
-            while (j < m && fieldsStr[j] !== ',') { val += fieldsStr[j]; j++; }
-          }
-          fields[name.toLowerCase()] = val.trim();
+          while (i < n && /[A-Za-z0-9_-]/.test(src[i])) { name += src[i]; i++; }
+          skipWs();
+          if (src[i] === '=') { i++; const val = readValue(); if (name) macros[name.toLowerCase()] = val; }
+          skipEntryBody();
+          continue;
         }
+        if (type === 'comment' || type === 'preamble') { skipEntryBody(); continue; }
+
+        let key = '';
+        while (i < n && src[i] !== ',' && src[i] !== '}') { key += src[i]; i++; }
+        key = key.trim();
+        const fields = {};
+        while (i < n && src[i] !== '}') {
+          if (src[i] === ',') { i++; }
+          skipWs();
+          if (src[i] === '}' || i >= n) break;
+          let fname = '';
+          while (i < n && /[A-Za-z0-9_-]/.test(src[i])) { fname += src[i]; i++; }
+          skipWs();
+          if (src[i] !== '=') { while (i < n && src[i] !== ',' && src[i] !== '}') i++; continue; }
+          i++;
+          const val = readValue();
+          if (fname) fields[fname.toLowerCase()] = val;
+          skipWs();
+        }
+        if (src[i] === '}') i++;
         entries.push({ type: type, key: key, fields: fields });
       }
       return entries;
     };
 
-    // ---- author formatting ---------------------------------------------------
+    // ---- crossref / xdata inheritance ---------------------------------------
+    const isInType = function (t) { return /^(inproceedings|incollection|inbook|conference)$/.test(t); };
+    const stripKey = function (s) { return String(s || '').replace(/[{}]/g, '').trim().toLowerCase(); };
+    const inheritFrom = function (child, parent, mapTitle) {
+      Object.keys(parent.fields).forEach(function (k) {
+        if (k === 'crossref' || k === 'xref' || k === 'xdata' || k === 'ids' || k === 'key') return;
+        let target = k;
+        if (mapTitle && k === 'title') target = 'booktitle';
+        if (mapTitle && k === 'subtitle') target = 'booksubtitle';
+        if (child.fields[target] === undefined) child.fields[target] = parent.fields[k];
+      });
+    };
+    const resolveCrossrefs = function (raw) {
+      const byKey = {}; const targets = {};
+      raw.forEach(function (e) { if (e.key) byKey[e.key.toLowerCase()] = e; });
+      raw.forEach(function (e) {
+        const cr = e.fields.crossref || e.fields.xref;
+        if (cr) { const tk = stripKey(cr); const p = byKey[tk]; if (p && p !== e) { inheritFrom(e, p, isInType(e.type)); targets[tk] = true; } }
+        if (e.fields.xdata) {
+          stripKey(e.fields.xdata).split(',').forEach(function (k) {
+            k = k.trim(); const p = byKey[k]; if (p && p !== e) { inheritFrom(e, p, false); targets[k] = true; }
+          });
+        }
+      });
+      // A pure crossref/xdata target (e.g. the @proceedings a paper points at) is
+      // folded into its children, not listed as its own reference.
+      return raw.filter(function (e) { return !(e.key && targets[e.key.toLowerCase()]); });
+    };
+
+    // ---- author / editor formatting -----------------------------------------
     const splitName = function (a) {
       a = a.trim();
       let last, first;
-      if (a.indexOf(',') > -1) {
-        const p = a.split(',');
-        last = p[0].trim(); first = (p[1] || '').trim();
-      } else {
-        const p = a.split(/\s+/);
-        last = p.pop(); first = p.join(' ');
-      }
+      if (a.indexOf(',') > -1) { const p = a.split(','); last = p[0].trim(); first = (p[1] || '').trim(); }
+      else { const p = a.split(/\s+/); last = p.pop(); first = p.join(' '); }
       const initials = first.split(/\s+/).filter(Boolean)
         .map(function (x) { return x.charAt(0).toUpperCase() + '.'; }).join(' ');
       return { last: last || '', first: first, initials: initials };
     };
-    const authorList = function (raw) {
+    const nameListOf = function (raw) {
       if (!raw) return [];
       return clean(raw).split(/\s+and\s+/i).map(function (x) { return x.trim(); })
         .filter(Boolean).map(splitName);
     };
-    // "Smith, J., Doe, A., & Lee, K." (APA) / truncated for cards.
-    const fmtAuthors = function (names, mode) {
+    const fmtNames = function (names, mode) {
       if (!names.length) return '';
       const parts = names.map(function (nm) {
         if (mode === 'first-last') return (nm.initials ? nm.initials + ' ' : '') + nm.last;
@@ -159,25 +282,49 @@
       return parts.slice(0, -1).join(', ') + ', & ' + parts[parts.length - 1];
     };
 
-    // ---- normalise an entry to a common shape -------------------------------
+    // ---- normalise an entry to a rich common shape --------------------------
+    const yearOf = function (f) {
+      if (f.year) return clean(f.year);
+      const d = clean(f.date || f.urldate || '');
+      const m = d.match(/\d{4}/); return m ? m[0] : d;
+    };
     const norm = function (e) {
       const f = e.fields;
-      const venue = f.journal || f.booktitle || f.publisher || f.school ||
-                    f.institution || f.organization || f.howpublished || '';
-      const href = f.doi ? ('https://doi.org/' + clean(f.doi, true))
-                         : (f.url ? clean(f.url, true) : '');
       return {
-        type: e.type,
-        names: authorList(f.author || f.editor || ''),
-        year: clean(f.year || f.date || ''),
+        type: e.type, key: e.key,
+        authors: nameListOf(f.author || ''),
+        editors: nameListOf(f.editor || ''),
+        year: yearOf(f),
         title: clean(f.title || ''),
-        venue: clean(venue),
-        vol: clean(f.volume || ''),
-        num: clean(f.number || ''),
+        subtitle: clean(f.subtitle || ''),
+        journal: clean(f.journal || f.journaltitle || ''),
+        booktitle: clean(f.booktitle || ''),
+        series: clean(f.series || ''),
+        edition: clean(f.edition || ''),
+        volume: clean(f.volume || ''),
+        number: clean(f.number || f.issue || ''),
+        chapter: clean(f.chapter || ''),
         pages: clean(f.pages || ''),
+        publisher: clean(f.publisher || ''),
+        address: clean(f.address || f.location || ''),
+        institution: clean(f.institution || ''),
+        school: clean(f.school || ''),
+        organization: clean(f.organization || ''),
+        howpublished: clean(f.howpublished || ''),
+        thesisType: clean(f.type || ''),
+        note: clean(f.note || ''),
+        isbn: clean(f.isbn || ''),
         doi: f.doi ? clean(f.doi, true) : '',
-        href: href
+        url: f.url ? clean(f.url, true) : '',
+        href: f.doi ? ('https://doi.org/' + clean(f.doi, true)) : (f.url ? clean(f.url, true) : '')
       };
+    };
+
+    const titleSub = function (e) { return e.subtitle ? (e.title + ': ' + e.subtitle) : e.title; };
+    const leadNames = function (e, mode, edSuffix) {
+      if (e.authors.length) return esc(fmtNames(e.authors, mode));
+      if (e.editors.length) return esc(fmtNames(e.editors, mode) + edSuffix(e.editors.length));
+      return '';
     };
     const linkHtml = function (e) {
       if (!e.href) return '';
@@ -185,71 +332,200 @@
       return '<a class="mdp-ref-link" href="' + esc(e.href) + '" target="_blank" rel="noopener">' + esc(label) + '</a>';
     };
 
-    // ---- per-style renderers -------------------------------------------------
-    const apaLine = function (e) {
-      let s = '';
-      const au = fmtAuthors(e.names, 'last-first');
-      if (au) s += esc(au) + ' ';
+    // ---- APA-ish notation, type-aware ---------------------------------------
+    const apaPlace = function (e) {
+      if (e.address && e.publisher) return esc(e.address) + ': ' + esc(e.publisher) + '. ';
+      if (e.publisher) return esc(e.publisher) + '. ';
+      if (e.address) return esc(e.address) + '. ';
+      return '';
+    };
+    const apaText = function (e) {
+      const T = e.type; let s = '';
+      const lead = leadNames(e, 'last-first', function (k) { return k > 1 ? ' (Eds.)' : ' (Ed.)'; });
+      if (lead) s += lead + ' ';
       if (e.year) s += '(' + esc(e.year) + '). ';
-      if (e.title) s += esc(e.title) + '. ';
-      if (e.venue) s += '<em>' + esc(e.venue) + '</em>';
-      if (e.vol) s += ', ' + esc(e.vol);
-      if (e.num) s += '(' + esc(e.num) + ')';
-      if (e.pages) s += ', ' + esc(e.pages);
-      s += '. ';
+      const ttl = titleSub(e);
+      if (T === 'article') {
+        s += esc(ttl) + '. ';
+        if (e.journal) s += '<em>' + esc(e.journal) + '</em>';
+        if (e.volume) s += ', ' + esc(e.volume);
+        if (e.number) s += '(' + esc(e.number) + ')';
+        if (e.pages) s += ', ' + esc(e.pages);
+        s += '. ';
+      } else if (T === 'book' || T === 'proceedings' || T === 'manual' || T === 'booklet') {
+        s += '<em>' + esc(ttl) + '</em>';
+        if (e.edition) s += ' (' + esc(e.edition) + ' ed.)';
+        if (e.series) s += ' (' + esc(e.series) + ')';
+        s += '. ' + apaPlace(e);
+      } else if (isInType(T)) {
+        s += esc(ttl) + '. In ';
+        if (e.editors.length) s += esc(fmtNames(e.editors, 'first-last') + (e.editors.length > 1 ? ' (Eds.)' : ' (Ed.)')) + ', ';
+        s += '<em>' + esc(e.booktitle || e.series) + '</em>';
+        if (e.edition) s += ' (' + esc(e.edition) + ' ed.)';
+        if (e.volume) s += ' (Vol. ' + esc(e.volume) + ')';
+        if (e.pages) s += ' (pp. ' + esc(e.pages) + ')';
+        s += '. ' + apaPlace(e);
+      } else if (T === 'phdthesis' || T === 'mastersthesis' || T === 'thesis') {
+        s += '<em>' + esc(ttl) + '</em> ';
+        const tt = e.thesisType || (T === 'mastersthesis' ? "Master's thesis" : 'Doctoral dissertation');
+        s += '(' + esc(tt) + '). ';
+        const inst = e.school || e.institution;
+        if (inst) s += esc(inst);
+        if (e.address) s += (inst ? ', ' : '') + esc(e.address);
+        if (inst || e.address) s += '. ';
+      } else if (T === 'techreport') {
+        s += '<em>' + esc(ttl) + '</em> ';
+        const tt = e.thesisType || 'Tech. Rep.';
+        s += '(' + esc(tt) + (e.number ? ' ' + esc(e.number) : '') + '). ';
+        const inst = e.institution || e.organization;
+        if (inst) s += esc(inst);
+        if (e.address) s += (inst ? ', ' : '') + esc(e.address);
+        if (inst || e.address) s += '. ';
+      } else if (T === 'misc' || T === 'online' || T === 'electronic' || T === 'unpublished') {
+        s += esc(ttl) + '. ';
+        if (e.howpublished) s += esc(e.howpublished) + '. ';
+        if (e.organization) s += esc(e.organization) + '. ';
+      } else {
+        s += esc(ttl) + '. ';
+        if (e.journal || e.booktitle) s += '<em>' + esc(e.journal || e.booktitle) + '</em>. ';
+        s += apaPlace(e);
+      }
+      if (e.note) s += esc(e.note) + '. ';
       const l = linkHtml(e); if (l) s += l;
-      return '<li>' + s.trim() + '</li>';
+      return s.trim();
     };
-    const numberedLine = function (e) {
-      let s = '';
-      const au = fmtAuthors(e.names, 'first-last');
-      if (au) s += esc(au) + ', ';
-      if (e.title) s += '&ldquo;' + esc(e.title) + ',&rdquo; ';
-      if (e.venue) s += '<em>' + esc(e.venue) + '</em>';
-      if (e.vol) s += ', vol. ' + esc(e.vol);
-      if (e.num) s += ', no. ' + esc(e.num);
-      if (e.pages) s += ', pp. ' + esc(e.pages);
-      if (e.year) s += ', ' + esc(e.year);
-      s += '. ';
+
+    // ---- IEEE-ish notation, type-aware --------------------------------------
+    const ieeePlace = function (e) {
+      if (e.address && e.publisher) return esc(e.address) + ': ' + esc(e.publisher) + ', ';
+      if (e.publisher) return esc(e.publisher) + ', ';
+      if (e.address) return esc(e.address) + ', ';
+      return '';
+    };
+    const ieeeText = function (e) {
+      const T = e.type; let s = '';
+      const lead = leadNames(e, 'first-last', function (k) { return k > 1 ? ', Eds.' : ', Ed.'; });
+      if (lead) s += lead + ', ';
+      const ttl = titleSub(e);
+      if (T === 'book' || T === 'proceedings' || T === 'manual' || T === 'booklet') {
+        s += '<em>' + esc(ttl) + '</em>';
+        if (e.edition) s += ', ' + esc(e.edition) + ' ed';
+        s += '. ' + ieeePlace(e);
+        if (e.year) s += esc(e.year);
+        s += '. ';
+      } else if (isInType(T)) {
+        s += '&ldquo;' + esc(ttl) + ',&rdquo; in <em>' + esc(e.booktitle || e.series) + '</em>';
+        if (e.address) s += ', ' + esc(e.address);
+        if (e.year) s += ', ' + esc(e.year);
+        if (e.pages) s += ', pp. ' + esc(e.pages);
+        s += '. ';
+      } else if (T === 'phdthesis' || T === 'mastersthesis' || T === 'thesis') {
+        const tt = e.thesisType || (T === 'mastersthesis' ? 'M.S. thesis' : 'Ph.D. dissertation');
+        s += '&ldquo;' + esc(ttl) + ',&rdquo; ' + esc(tt);
+        const inst = e.school || e.institution; if (inst) s += ', ' + esc(inst);
+        if (e.address) s += ', ' + esc(e.address);
+        if (e.year) s += ', ' + esc(e.year);
+        s += '. ';
+      } else if (T === 'techreport') {
+        s += '&ldquo;' + esc(ttl) + ',&rdquo; ';
+        const inst = e.institution || e.organization; if (inst) s += esc(inst);
+        if (e.address) s += ', ' + esc(e.address);
+        if (e.number) s += ', Rep. ' + esc(e.number);
+        if (e.year) s += ', ' + esc(e.year);
+        s += '. ';
+      } else if (T === 'misc' || T === 'online' || T === 'electronic' || T === 'unpublished') {
+        s += '&ldquo;' + esc(ttl) + ',&rdquo; ';
+        if (e.howpublished) s += esc(e.howpublished) + ', ';
+        if (e.year) s += esc(e.year);
+        s += '. ';
+      } else {
+        s += '&ldquo;' + esc(ttl) + ',&rdquo; ';
+        if (e.journal) s += '<em>' + esc(e.journal) + '</em>';
+        if (e.volume) s += ', vol. ' + esc(e.volume);
+        if (e.number) s += ', no. ' + esc(e.number);
+        if (e.pages) s += ', pp. ' + esc(e.pages);
+        if (e.year) s += ', ' + esc(e.year);
+        s += '. ';
+      }
+      if (e.note) s += esc(e.note) + '. ';
       const l = linkHtml(e); if (l) s += l;
-      return '<li><span class="mdp-ref-body">' + s.trim() + '</span></li>';
+      return s.trim();
     };
-    const cardBox = function (e) {
-      const au = fmtAuthors(e.names, 'cards');
+
+    // ---- card layout ---------------------------------------------------------
+    const cardBox = function (e, idx, marker, nameMode) {
+      const au = leadNames(e, 'cards', function (k) { return k > 1 ? ' (Eds.)' : ' (Ed.)'; });
+      const venue = e.journal || e.booktitle || e.series || e.publisher ||
+                    e.school || e.institution || e.organization || e.howpublished;
       let meta = '';
-      if (e.venue) meta += '<span class="mdp-ref-venue">' + esc(e.venue) + '</span>';
+      if (venue) meta += '<span class="mdp-ref-venue">' + esc(venue) + '</span>';
       if (e.year) meta += '<span class="mdp-ref-chip">' + esc(e.year) + '</span>';
       const l = linkHtml(e); if (l) meta += l;
-      return '<div class="mdp-ref-card">'
-        + (e.title ? '<div class="mdp-ref-card-title">' + esc(e.title) + '</div>' : '')
-        + (au ? '<div class="mdp-ref-card-authors">' + esc(au) + '</div>' : '')
+      const det = [];
+      if (e.address && e.publisher) det.push(esc(e.address) + ': ' + esc(e.publisher));
+      else if (e.publisher && venue !== e.publisher) det.push(esc(e.publisher));
+      else if (e.address) det.push(esc(e.address));
+      if (e.edition) det.push(esc(e.edition) + ' ed.');
+      if (e.volume) det.push('vol. ' + esc(e.volume));
+      if (e.pages) det.push('pp. ' + esc(e.pages));
+      let badge = '';
+      if (marker === 'number') badge = '<span class="mdp-ref-card-no">' + (idx + 1) + '</span>';
+      else if (marker === 'key' && e.key) badge = '<span class="mdp-ref-card-no">' + esc(e.key) + '</span>';
+      return '<div class="mdp-ref-card' + (badge ? ' has-badge' : '') + '">'
+        + badge
+        + (e.title ? '<div class="mdp-ref-card-title">' + esc(titleSub(e)) + '</div>' : '')
+        + (au ? '<div class="mdp-ref-card-authors">' + au + '</div>' : '')
         + (meta ? '<div class="mdp-ref-card-meta">' + meta + '</div>' : '')
+        + (det.length ? '<div class="mdp-ref-card-detail">' + det.join(' · ') + '</div>' : '')
         + (e.type ? '<span class="mdp-ref-type">' + esc(e.type) + '</span>' : '')
         + '</div>';
     };
 
+    // ---- list layout (marker = number | key | bullet | none) ----------------
+    const listItem = function (e, idx, inner, marker) {
+      const body = '<span class="mdp-ref-body">' + inner + '</span>';
+      if (marker === 'key') return '<li class="li-tag"><span class="mdp-ref-tag">[' + esc(e.key || String(idx + 1)) + ']</span>' + body + '</li>';
+      if (marker === 'bullet') return '<li class="li-bul">' + body + '</li>';
+      if (marker === 'none') return '<li class="li-none">' + body + '</li>';
+      return '<li class="li-num">' + body + '</li>';
+    };
+
     // ---- assemble ------------------------------------------------------------
+    const pick = function (val, map, def) {
+      const k = String(val == null ? '' : val).trim().toLowerCase();
+      return map[k] || def;
+    };
     const raw = (sections[0] || '').trim();
-    const parsed = parseBibtex(raw).map(norm);
-    const styles = { cards: 'cards', numbered: 'numbered', apa: 'apa' };
-    const style = styles[(args.style || 'cards').toLowerCase()] || 'cards';
+    const parsed = resolveCrossrefs(parseBibtex(raw)).map(norm);
+    const layout = pick(args.layout, { list: 'list', cards: 'cards', card: 'cards' }, 'list');
+    const notation = pick(args.notation, { ieee: 'ieee', apa: 'apa' }, 'ieee');
+    const marker = pick(args.marker, {
+      number: 'number', num: 'number', auto: 'number', numbered: 'number',
+      key: 'key', tag: 'key', cite: 'key',
+      bullet: 'bullet', dot: 'bullet', dash: 'bullet',
+      none: 'none', no: 'none', off: 'none', hidden: 'none'
+    }, 'number');
     const accent = (args.accent || '').trim();
     const accentStyle = accent ? ' style="--ref-accent:' + esc(accent) + '"' : '';
-    const heading = (args.title || '').trim();
-    const head = heading ? '<div class="mdp-ref-title-head">' + esc(heading) + '</div>' : '';
+
+    // Header: custom text, or hidden when empty / none / off / false.
+    const titleRaw = (args.title == null ? 'References' : String(args.title)).trim();
+    const hideHeader = (titleRaw === '' || /^(none|off|false|hidden)$/i.test(titleRaw));
+    const head = hideHeader ? '' : '<div class="mdp-ref-title-head">' + esc(titleRaw) + '</div>';
 
     if (!parsed.length) {
       return '\n\n<div class="mdp-mod-references"' + accentStyle + '>' + head
         + '<div class="mdp-ref-empty">No valid BibTeX entries found.</div></div>\n\n';
     }
 
+    const textOf = notation === 'apa' ? apaText : ieeeText;
     let inner;
-    if (style === 'cards') {
-      inner = '<div class="mdp-ref-cards">' + parsed.map(cardBox).join('') + '</div>';
-    } else if (style === 'apa') {
-      inner = '<ol class="mdp-ref-list mdp-ref-apa">' + parsed.map(apaLine).join('') + '</ol>';
+    if (layout === 'cards') {
+      inner = '<div class="mdp-ref-cards">'
+        + parsed.map(function (e, idx) { return cardBox(e, idx, marker, notation); }).join('') + '</div>';
     } else {
-      inner = '<ol class="mdp-ref-list mdp-ref-numbered">' + parsed.map(numberedLine).join('') + '</ol>';
+      inner = '<ol class="mdp-ref-list mk-' + marker + '">'
+        + parsed.map(function (e, idx) { return listItem(e, idx, textOf(e), marker); }).join('') + '</ol>';
     }
     // Single HTML block, no internal blank lines, so markdown leaves it intact.
     return '\n\n<div class="mdp-mod-references"' + accentStyle + '>' + head + inner + '</div>\n\n';
@@ -280,30 +556,43 @@
       white-space: nowrap;
     }
     .mdp-mod-references a.mdp-ref-link:hover { text-decoration: underline; }
+    .mdp-mod-references .katex { font-size: 1em; }
+    .mdp-mod-references em { font-style: italic; color: var(--muted-color); }
 
-    /* ---- list styles (apa / numbered) ---- */
+    /* ---- list layout ---- */
     .mdp-ref-list { margin: 0; padding: 0; list-style: none; counter-reset: mdpref; }
-    .mdp-ref-list.mdp-ref-apa li {
-      padding-left: 2.2em;
-      text-indent: -2.2em;
-      margin-bottom: 0.55em;
-    }
-    .mdp-ref-list.mdp-ref-numbered li {
-      counter-increment: mdpref;
+    .mdp-ref-list > li { margin-bottom: 0.55em; }
+    .mdp-ref-list > li.li-num,
+    .mdp-ref-list > li.li-bul,
+    .mdp-ref-list > li.li-tag {
       display: grid;
-      grid-template-columns: 2.6em 1fr;
-      column-gap: 0.4em;
-      margin-bottom: 0.55em;
+      grid-template-columns: auto 1fr;
+      column-gap: 0.5em;
+      align-items: baseline;
     }
-    .mdp-ref-list.mdp-ref-numbered li::before {
+    .mdp-ref-list > li.li-num { counter-increment: mdpref; }
+    .mdp-ref-list > li.li-num::before {
       content: "[" counter(mdpref) "]";
       color: var(--ref-accent);
       font-weight: 700;
       text-align: right;
     }
-    .mdp-ref-list em { font-style: italic; color: var(--muted-color); }
+    .mdp-ref-list > li.li-bul::before {
+      content: "•";
+      color: var(--ref-accent);
+      font-weight: 700;
+    }
+    .mdp-ref-list > li.li-tag .mdp-ref-tag {
+      color: var(--ref-accent);
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .mdp-ref-list > li.li-none {
+      padding-left: 2.2em;
+      text-indent: -2.2em;
+    }
 
-    /* ---- card style ---- */
+    /* ---- card layout ---- */
     .mdp-ref-cards {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
@@ -319,6 +608,21 @@
       box-shadow: var(--shadow-sm, 0 2px 4px rgba(0,0,0,0.05));
       padding: 0.7em 0.9em;
       overflow: hidden;
+    }
+    .mdp-ref-card.has-badge { padding-top: 1.7em; }
+    .mdp-ref-card .mdp-ref-card-no {
+      position: absolute;
+      top: 0; left: 0;
+      max-width: 70%;
+      background: var(--ref-accent);
+      color: #fff;
+      font-size: 0.66em;
+      font-weight: 700;
+      padding: 0.12em 0.6em;
+      border-bottom-right-radius: 0.5em;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
     .mdp-ref-card .mdp-ref-card-title {
       font-weight: 700;
@@ -344,6 +648,11 @@
       font-weight: 600;
       font-size: 0.92em;
     }
+    .mdp-ref-card .mdp-ref-card-detail {
+      margin-top: 0.3em;
+      font-size: 0.82em;
+      opacity: 0.62;
+    }
     .mdp-ref-card .mdp-ref-type {
       position: absolute;
       top: 0.55em;
@@ -356,5 +665,31 @@
     }
   ]]></style>
 
-  <script></script>
+  <!--
+    Typeset $math$ in the rendered references. Our HTML is injected as a raw block
+    that bypasses the markdown KaTeX extension, so we run KaTeX auto-render here.
+    window.renderMathInElement is exposed once in main.tsx (KaTeX is bundled —
+    offline-safe). Already-typeset math (.katex) has no `$` left, so re-runs are
+    no-ops.
+  -->
+  <script><![CDATA[
+    export default {
+      init(el) {
+        const r = (typeof window !== 'undefined') && window.renderMathInElement;
+        if (!r || !el.textContent || el.textContent.indexOf('$') === -1) return;
+        try {
+          r(el, {
+            delimiters: [
+              { left: '$$', right: '$$', display: true },
+              { left: '$', right: '$', display: false },
+              { left: '\\(', right: '\\)', display: false },
+              { left: '\\[', right: '\\]', display: true }
+            ],
+            throwOnError: false,
+            ignoredClasses: ['mdp-ref-link']
+          });
+        } catch (e) { /* leave raw $…$ visible on error */ }
+      }
+    }
+  ]]></script>
 </module>
