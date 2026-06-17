@@ -6,21 +6,21 @@
   <!-- Position and size are chosen on the preview (Edit layout). Rotation is the
        note's own `rotate` arg, not a manip handle, so the placement box stays
        axis-aligned while the note keeps its tilt. -->
-  <manipulate position="xy" size="xy" rotation="false" minW="10" maxW="100" minH="5" maxH="100" />
+  <manipulate position="xy" size="xy" rotation="true" minW="10" maxW="100" minH="5" maxH="100" />
 
   <parameters>
-    <param name="color" type="color" default="#fef08a" label="Note Color" required="false" />
+    <param name="color" type="color" default="#fef08a" label="Note Color" options="#fef08a:Yellow,#fde68a:Amber,#bbf7d0:Green,#bfdbfe:Blue,#fbcfe8:Pink,#fed7aa:Orange,#e9d5ff:Purple,#a5f3fc:Cyan,#e5e7eb:Gray" required="false" />
     <param name="rotate" type="number" default="-2" label="Rotation" desc="Tilt of the note in degrees" min="-45" max="45" required="false" />
   </parameters>
   <snippets>
     <snippet>
       <category>Presentation UI</category>
       <label>Sticky Note</label>
-      <text><![CDATA[<!-- @sticky rotate: 3 -->
+      <text><![CDATA[<!-- @sticky x: 76, y: 30, w: 28, h: 22, rotate: 3 -->
 **Memo**
 Please update these figures by the meeting next week!
 <!-- @end -->]]></text>
-      <description>A sticky note-style memo placed diagonally.</description>
+      <description>A sticky note-style memo, pre-placed top-right. Move/resize it in Edit layout.</description>
     </snippet>
   </snippets>
   <render><![CDATA[
@@ -41,8 +41,9 @@ Please update these figures by the meeting next week!
       position: relative;
     }
     /* When placed/sized in Edit layout, fill the manip box (otherwise keep the
-       default 250px note). */
-    .mdp-manip[data-lifted="1"] .mdp-mod-sticky { width: 100%; height: 100%; overflow: auto; }
+       default 250px note). Content that exceeds the box is shown, not clipped or
+       scrolled. */
+    .mdp-manip[data-lifted="1"] .mdp-mod-sticky { width: 100%; height: 100%; overflow: visible; }
     .mdp-mod-sticky::after {
       content: '';
       position: absolute;

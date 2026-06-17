@@ -1032,9 +1032,18 @@ export default function EditorPage() {
     const view = editorRef.current?.view;
     setModuleSettings((st) => {
       if (!view || !st) return null;
+      // Preserve any original args the dialog doesn't manage — notably the manip
+      // transform args (x/y/w/h/rot) and `id` — so editing parameters via the
+      // dialog never resets a module's on-preview position/size. Declared params
+      // come solely from the dialog (which already omits defaults).
+      const declared = new Set(st.params.map((p) => p.name));
+      const preserved = Object.fromEntries(
+        Object.entries(st.values).filter(([k]) => !declared.has(k)),
+      );
+      const merged = { ...preserved, ...vals };
       // Serialize back to `key: value, …`; quote values containing a comma so
       // the argument parser doesn't split them (e.g. rgba(…) colours).
-      const argStr = Object.entries(vals)
+      const argStr = Object.entries(merged)
         .map(([k, v]) => `${k}: ${/,/.test(v) ? `"${v}"` : v}`)
         .join(', ');
       const directive = `<!-- @${st.name}${argStr ? ' ' + argStr : ''} -->`;

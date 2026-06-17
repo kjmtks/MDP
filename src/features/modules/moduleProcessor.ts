@@ -117,6 +117,20 @@ function renderModuleTemplate(mod: ModuleData, sections: string[], argsStr: stri
         finalArgs[param.name] = param.default;
       }
     });
+
+    // A required parameter with no default that the directive doesn't provide
+    // can't be rendered meaningfully — surface it as a module error rather than
+    // silently passing `undefined` to the render function.
+    const missing = parameters.filter(p =>
+      p.required && p.default === undefined &&
+      (finalArgs[p.name] === undefined || String(finalArgs[p.name]).trim() === ''),
+    );
+    if (missing.length) {
+      return `<div style="color:red; border:1px solid red; padding:1em; margin:1em 0; border-radius:4px;">
+        <strong>Module Error (${mod.config.name})</strong><br/>
+        Missing required argument${missing.length > 1 ? 's' : ''}: ${missing.map(m => m.name).join(', ')}.
+      </div>`;
+    }
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

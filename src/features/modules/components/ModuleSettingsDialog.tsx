@@ -2,13 +2,13 @@ import React, { useMemo, useState } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField, Switch,
   MenuItem, Select, FormControlLabel, Typography, Box, Stack, InputAdornment, IconButton, Menu,
-  Popover, Chip,
+  Popover, Chip, Checkbox,
 } from '@mui/material';
 import PaletteIcon from '@mui/icons-material/Palette';
 import ImageIcon from '@mui/icons-material/Image';
 import SearchIcon from '@mui/icons-material/Search';
 import BrokenImageIcon from '@mui/icons-material/BrokenImage';
-import type { ModuleParam } from '../../../utils/moduleParser';
+import type { ModuleParam, ParamOption } from '../../../utils/moduleParser';
 import type { ImageEntry } from '../../images/imageRegistry';
 
 // Slide theme colour variables a `color` param can bind to (resolved on the
@@ -38,33 +38,51 @@ const fieldSx = {
   '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--app-border-strong)' },
 };
 
-const ColorField: React.FC<{ value: string; onChange: (v: string) => void }> = ({ value, onChange }) => {
+const ColorField: React.FC<{ value: string; options?: ParamOption[]; onChange: (v: string) => void }> = ({ value, options, onChange }) => {
   const [menuEl, setMenuEl] = useState<HTMLElement | null>(null);
+  const sel = value.trim().toLowerCase();
   return (
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-      <input
-        type="color"
-        value={isHex(value) ? value : '#000000'}
-        onChange={(e) => onChange(e.target.value)}
-        title="Pick a colour"
-        style={{ width: 34, height: 34, padding: 0, border: '1px solid var(--app-border-strong)', borderRadius: 4, background: 'transparent', cursor: 'pointer' }}
-      />
-      <TextField
-        size="small" fullWidth value={value} placeholder="#rrggbb, rgba(), transparent, var(--…)"
-        onChange={(e) => onChange(e.target.value)} variant="outlined" sx={fieldSx}
-      />
-      <IconButton size="small" title="Theme variable / transparent" onClick={(e) => setMenuEl(e.currentTarget)} sx={{ color: 'var(--app-text-muted)' }}>
-        <PaletteIcon fontSize="small" />
-      </IconButton>
-      <Menu anchorEl={menuEl} open={!!menuEl} onClose={() => setMenuEl(null)}>
-        <MenuItem onClick={() => { onChange('transparent'); setMenuEl(null); }}>Transparent</MenuItem>
-        {THEME_COLOR_VARS.map((c) => (
-          <MenuItem key={c.var} onClick={() => { onChange(`var(${c.var})`); setMenuEl(null); }}>
-            <Box sx={{ width: 12, height: 12, borderRadius: '50%', mr: 1, bgcolor: `var(${c.var})`, border: '1px solid var(--app-border)' }} />
-            {c.label} <Typography component="span" sx={{ ml: 0.5, color: 'var(--app-text-disabled)', fontSize: '0.75rem' }}>{c.var}</Typography>
-          </MenuItem>
-        ))}
-      </Menu>
+    <Box>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+        <input
+          type="color"
+          value={isHex(value) ? value : '#000000'}
+          onChange={(e) => onChange(e.target.value)}
+          title="Pick a colour"
+          style={{ width: 34, height: 34, padding: 0, border: '1px solid var(--app-border-strong)', borderRadius: 4, background: 'transparent', cursor: 'pointer' }}
+        />
+        <TextField
+          size="small" fullWidth value={value} placeholder="#rrggbb, rgba(), transparent, var(--…)"
+          onChange={(e) => onChange(e.target.value)} variant="outlined" sx={fieldSx}
+        />
+        <IconButton size="small" title="Theme variable / transparent" onClick={(e) => setMenuEl(e.currentTarget)} sx={{ color: 'var(--app-text-muted)' }}>
+          <PaletteIcon fontSize="small" />
+        </IconButton>
+        <Menu anchorEl={menuEl} open={!!menuEl} onClose={() => setMenuEl(null)}>
+          <MenuItem onClick={() => { onChange('transparent'); setMenuEl(null); }}>Transparent</MenuItem>
+          {THEME_COLOR_VARS.map((c) => (
+            <MenuItem key={c.var} onClick={() => { onChange(`var(${c.var})`); setMenuEl(null); }}>
+              <Box sx={{ width: 12, height: 12, borderRadius: '50%', mr: 1, bgcolor: `var(${c.var})`, border: '1px solid var(--app-border)' }} />
+              {c.label} <Typography component="span" sx={{ ml: 0.5, color: 'var(--app-text-disabled)', fontSize: '0.75rem' }}>{c.var}</Typography>
+            </MenuItem>
+          ))}
+        </Menu>
+      </Box>
+      {options && options.length > 0 && (
+        // Preset swatches declared on the <param options="#hex:Label,…">.
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.6, mt: 0.75 }}>
+          {options.map((o) => (
+            <Box
+              key={o.value} title={o.label} onClick={() => onChange(o.value)}
+              sx={{
+                width: 22, height: 22, borderRadius: '50%', bgcolor: o.value, cursor: 'pointer',
+                border: sel === o.value.trim().toLowerCase() ? '2px solid var(--app-accent)' : '1px solid var(--app-border-strong)',
+                boxShadow: '0 0 0 1px rgba(0,0,0,0.04)',
+              }}
+            />
+          ))}
+        </Box>
+      )}
     </Box>
   );
 };
@@ -164,22 +182,43 @@ export const ModuleSettingsDialog: React.FC<ModuleSettingsDialogProps> = ({
     params.forEach((p) => { v[p.name] = initialValues[p.name] ?? p.default ?? ''; });
     return v;
   }, [params, initialValues]);
+  // An optional param is "specified" iff it was present in the directive; required
+  // params are always specified. Unspecified optionals are omitted on save so the
+  // module falls back to its own default.
+  const seedSpec = useMemo(() => {
+    const s: Record<string, boolean> = {};
+    params.forEach((p) => { s[p.name] = !!p.required || initialValues[p.name] !== undefined; });
+    return s;
+  }, [params, initialValues]);
+
   const [values, setValues] = useState<Record<string, string>>(seed);
+  const [specified, setSpecified] = useState<Record<string, boolean>>(seedSpec);
   // Re-seed whenever a different directive is opened.
   const seedKey = `${moduleName}|${JSON.stringify(initialValues)}`;
   const lastSeed = React.useRef(seedKey);
-  if (lastSeed.current !== seedKey) { lastSeed.current = seedKey; setValues(seed); }
+  if (lastSeed.current !== seedKey) { lastSeed.current = seedKey; setValues(seed); setSpecified(seedSpec); }
 
-  const set = (name: string, v: string) => setValues((prev) => ({ ...prev, [name]: v }));
+  // Editing a control implies the param is specified.
+  const set = (name: string, v: string) => {
+    setValues((prev) => ({ ...prev, [name]: v }));
+    setSpecified((prev) => (prev[name] ? prev : { ...prev, [name]: true }));
+  };
+  const setSpec = (name: string, on: boolean) => setSpecified((prev) => ({ ...prev, [name]: on }));
 
   const handleSave = () => {
-    // Emit only values that differ from the param default (keeps directives
-    // clean); required params are always emitted.
     const out: Record<string, string> = {};
     params.forEach((p) => {
+      const spec = !!p.required || specified[p.name];
+      if (!spec) return;                          // optional + "Unset" → omit
       const v = (values[p.name] ?? '').trim();
       const def = (p.default ?? '').trim();
-      if (p.required ? v !== '' : (v !== '' && v !== def)) out[p.name] = v;
+      if (p.required) {
+        // Omit when equal to default (re-seeds on reopen); an empty
+        // required-without-default stays omitted so it surfaces as a render error.
+        if (v !== '' && v !== def) out[p.name] = v;
+      } else if (v !== '') {
+        out[p.name] = v;                          // specified optional (round-trips)
+      }
     });
     onSave(out);
   };
@@ -212,7 +251,7 @@ export const ModuleSettingsDialog: React.FC<ModuleSettingsDialogProps> = ({
           </Select>
         );
       case 'color':
-        return <ColorField value={val} onChange={(v) => set(p.name, v)} />;
+        return <ColorField value={val} options={p.options} onChange={(v) => set(p.name, v)} />;
       case 'image':
         return <ImageField value={val} entries={imageEntries} resolveThumb={resolveThumb} onChange={(v) => set(p.name, v)} />;
       default:
@@ -234,19 +273,44 @@ export const ModuleSettingsDialog: React.FC<ModuleSettingsDialogProps> = ({
           <Typography sx={{ color: 'var(--app-text-disabled)' }}>This module has no editable parameters.</Typography>
         ) : (
           <Stack spacing={2} sx={{ pt: 0.5 }}>
-            {params.map((p) => (
+            {params.map((p) => {
+              const active = !!p.required || specified[p.name];
+              const missingReq = p.required && p.default === undefined && (values[p.name] ?? '').trim() === '';
+              return (
               <Box key={p.name}>
-                <Typography sx={{ color: 'var(--app-text-secondary)', fontSize: '0.82rem', fontWeight: 600, mb: 0.4 }}>
-                  {labelOf(p)}
-                  {p.required && <Box component="span" sx={{ color: 'var(--app-danger)', ml: 0.4 }}>*</Box>}
-                  <Box component="span" sx={{ color: 'var(--app-text-disabled)', fontWeight: 400, ml: 0.6, fontSize: '0.72rem' }}>{p.name}</Box>
-                </Typography>
-                {renderControl(p)}
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.4, minHeight: 24 }}>
+                  <Typography sx={{ color: 'var(--app-text-secondary)', fontSize: '0.82rem', fontWeight: 600 }}>
+                    {labelOf(p)}
+                    {p.required && <Box component="span" title="Required" sx={{ color: 'var(--app-danger)', ml: 0.4 }}>*</Box>}
+                    <Box component="span" sx={{ color: 'var(--app-text-disabled)', fontWeight: 400, ml: 0.6, fontSize: '0.72rem' }}>{p.name}</Box>
+                  </Typography>
+                  <Box sx={{ flex: 1 }} />
+                  {p.required ? (
+                    <Box component="span" sx={{ color: 'var(--app-danger)', fontSize: '0.66rem', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase' }}>required</Box>
+                  ) : (
+                    <FormControlLabel
+                      sx={{ m: 0 }}
+                      control={<Checkbox size="small" checked={!specified[p.name]} onChange={(e) => setSpec(p.name, !e.target.checked)} sx={{ p: 0.25, color: 'var(--app-text-muted)' }} />}
+                      label={<Typography sx={{ color: 'var(--app-text-disabled)', fontSize: '0.7rem' }}>Unset</Typography>}
+                    />
+                  )}
+                </Box>
+                {active ? (
+                  renderControl(p)
+                ) : (
+                  <Typography sx={{ color: 'var(--app-text-disabled)', fontSize: '0.78rem', fontStyle: 'italic' }}>
+                    Not set — module uses its default{p.default !== undefined && p.default !== '' ? ` (${p.default})` : ''}.
+                  </Typography>
+                )}
+                {missingReq && (
+                  <Typography sx={{ color: 'var(--app-danger)', fontSize: '0.72rem', mt: 0.4 }}>This argument is required.</Typography>
+                )}
                 {p.description && (
                   <Typography sx={{ color: 'var(--app-text-disabled)', fontSize: '0.72rem', mt: 0.4 }}>{p.description}</Typography>
                 )}
               </Box>
-            ))}
+              );
+            })}
           </Stack>
         )}
       </DialogContent>
