@@ -96,6 +96,9 @@
       "path": "modules/checklist.mdpmod.xml"
     },
     {
+      "path": "modules/clock.mdpmod.xml"
+    },
+    {
       "path": "modules/columns.mdpmod.xml"
     },
     {

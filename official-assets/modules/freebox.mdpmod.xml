@@ -57,7 +57,8 @@ Positioned box
       padding: 0;
       margin: 0;
       border-radius: var(--radius-sm, 6px);
-      overflow: hidden;
+      /* Content that exceeds the box is shown, not clipped. */
+      overflow: visible;
     }
     /* Strip the content's outer block margins so it sits flush and valign stays
        accurate. */

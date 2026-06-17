@@ -57,7 +57,27 @@
   /* Effects */
   --radius-sm: 6px;
   --shadow-sm: 0 2px 4px rgba(0,0,0,0.05);
-  --bg-very-strong-underscore: linear-gradient(transparent 55%, rgba(59, 130, 246, 0.3) 55%)
+  --bg-very-strong-underscore: linear-gradient(transparent 55%, rgba(59, 130, 246, 0.3) 55%);
+
+  /* --- Module accent/style defaults ---
+   * Module-specific tokens chained to the standard tokens above, so every module
+   * renders sensibly even when the active theme doesn't define them (no missing
+   * variables / no white-on-white). A theme may still override any of these for
+   * fine control. Color tokens follow --accent-color; surface tokens follow the
+   * --panel-* pair so text stays legible on its background. */
+  --timeline-color: var(--accent-color);
+  --arr-color: var(--accent-color);
+  --arr-size: 12px;
+  --mod-color: var(--accent-color);
+  --prog-color: var(--accent-color);
+  --comp-color: var(--accent-color);
+  --proc-color: var(--accent-color);
+  --met-color: var(--accent-color);
+  --faq-color: var(--accent-color);
+  --step-bg: var(--panel-bg);
+  --step-text: var(--panel-text);
+  --sticky-color: #fff9c4;
+  --checklist-mark: var(--success-color);
 }
 
 /* =========================================

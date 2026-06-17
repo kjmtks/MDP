@@ -1,0 +1,104 @@
+<module>
+  <name>clock</name>
+  <type>inline</type>
+  <description>Live wall-clock that shows the current time and ticks every second. Fixed width so it never reflows. Interactive: it never advances the slide.</description>
+  <interactive>true</interactive>
+
+  <parameters>
+    <param name="format" default="24" />
+    <param name="seconds" default="true" />
+    <param name="size" default="md" />
+  </parameters>
+
+  <snippets>
+    <snippet>
+      <category>Interactive</category>
+      <label>Clock (24h)</label>
+      <text><![CDATA[<!-- @clock format: 24, seconds: true -->]]></text>
+      <description>Live clock. format: 24 | 12, seconds: true | false, size: sm | md | lg | xl.</description>
+    </snippet>
+    <snippet>
+      <category>Interactive</category>
+      <label>Clock (12h, large)</label>
+      <text><![CDATA[<!-- @clock format: 12, seconds: false, size: lg -->]]></text>
+      <description>12-hour clock with AM/PM, no seconds, large.</description>
+    </snippet>
+  </snippets>
+
+  <render><![CDATA[
+    const use12 = (String(args.format).toLowerCase().replace('h', '') === '12');
+    const showSec = !(String(args.seconds).toLowerCase() === 'false' || String(args.seconds) === '0');
+    const sizes = { sm: 'sm', md: 'md', lg: 'lg', xl: 'xl' };
+    const size = sizes[(args.size || 'md').toLowerCase()] || 'md';
+    // Fixed digit width: HH:MM:SS (8) or HH:MM (5). AM/PM lives in its own span.
+    const chars = showSec ? 8 : 5;
+    // Static zero placeholder keeps the width correct before the script paints
+    // (it repaints immediately on init, so this is never actually visible).
+    const placeholder = showSec ? '00:00:00' : '00:00';
+    return '<span class="mdp-mod-clock mdp-interactive mdp-size-' + size + '"'
+      + ' data-format="' + (use12 ? '12' : '24') + '" data-seconds="' + (showSec ? '1' : '0') + '">'
+      + '<span class="mdp-clock-time" style="width:' + chars + 'ch">' + placeholder + '</span>'
+      + (use12 ? '<span class="mdp-clock-ampm">&nbsp;</span>' : '')
+      + '</span>';
+  ]]></render>
+
+  <style><![CDATA[
+    .mdp-mod-clock {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 0.25em;
+      padding: 0.15em 0.55em;
+      border-radius: 0.5em;
+      background: rgba(0, 0, 0, 0.06);
+      font-variant-numeric: tabular-nums;
+      user-select: none;
+      vertical-align: middle;
+    }
+    /* Width is fixed inline (in ch); tabular-nums keeps each digit equal width so
+       the readout never shifts as the time ticks. */
+    .mdp-mod-clock .mdp-clock-time { font-weight: 700; text-align: center; }
+    .mdp-mod-clock .mdp-clock-ampm { font-size: 0.6em; font-weight: 600; opacity: 0.8; }
+
+    /* Sizes (sm | md | lg | xl). */
+    .mdp-mod-clock.mdp-size-sm { font-size: 0.8em; }
+    .mdp-mod-clock.mdp-size-md { font-size: 1em; }
+    .mdp-mod-clock.mdp-size-lg { font-size: 1.7em; }
+    .mdp-mod-clock.mdp-size-xl { font-size: 2.6em; }
+  ]]></style>
+
+  <!--
+    Each surface (main / presenter / remote) shows its own local wall-clock, so
+    there is no shared state to sync — every instance just runs its own 1s tick.
+    ctx.onCleanup clears the interval when the slide changes.
+  -->
+  <script><![CDATA[
+    export default {
+      init(el, ctx) {
+        const timeEl = el.querySelector('.mdp-clock-time');
+        const ampmEl = el.querySelector('.mdp-clock-ampm');
+        const use12 = el.dataset.format === '12';
+        const showSec = el.dataset.seconds === '1';
+        const pad = function (n) { return String(n).padStart(2, '0'); };
+
+        const paint = function () {
+          const now = new Date();
+          let h = now.getHours();
+          let ampm = '';
+          if (use12) {
+            ampm = h < 12 ? 'AM' : 'PM';
+            h = h % 12;
+            if (h === 0) h = 12;
+          }
+          let out = pad(h) + ':' + pad(now.getMinutes());
+          if (showSec) out += ':' + pad(now.getSeconds());
+          timeEl.textContent = out;
+          if (ampmEl) ampmEl.textContent = ampm;
+        };
+
+        paint();
+        const id = setInterval(paint, 1000);
+        ctx.onCleanup(function () { clearInterval(id); });
+      }
+    }
+  ]]></script>
+</module>
