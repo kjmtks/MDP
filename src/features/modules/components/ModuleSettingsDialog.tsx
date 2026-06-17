@@ -2,10 +2,14 @@ import React, { useMemo, useState } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField, Switch,
   MenuItem, Select, FormControlLabel, Typography, Box, Stack, InputAdornment, IconButton, Menu,
+  Popover, Chip,
 } from '@mui/material';
 import PaletteIcon from '@mui/icons-material/Palette';
 import ImageIcon from '@mui/icons-material/Image';
+import SearchIcon from '@mui/icons-material/Search';
+import BrokenImageIcon from '@mui/icons-material/BrokenImage';
 import type { ModuleParam } from '../../../utils/moduleParser';
+import type { ImageEntry } from '../../images/imageRegistry';
 
 // Slide theme colour variables a `color` param can bind to (resolved on the
 // slide, so they follow the active deck theme). Value stored as `var(--x)`.
@@ -65,28 +69,77 @@ const ColorField: React.FC<{ value: string; onChange: (v: string) => void }> = (
   );
 };
 
-const ImageField: React.FC<{ value: string; aliases: string[]; onChange: (v: string) => void }> = ({ value, aliases, onChange }) => {
-  const [menuEl, setMenuEl] = useState<HTMLElement | null>(null);
+const ImagePickRow: React.FC<{ entry: ImageEntry; src: string; onPick: () => void }> = ({ entry, src, onPick }) => {
+  const [broken, setBroken] = useState(false);
+  return (
+    <Box onClick={onPick} sx={{ display: 'flex', gap: 1, alignItems: 'flex-start', px: 1, py: 0.75, cursor: 'pointer', '&:hover': { bgcolor: 'var(--app-bg-hover)' } }}>
+      <Box sx={{ width: 40, height: 40, flexShrink: 0, bgcolor: '#fff', borderRadius: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+        {broken
+          ? <BrokenImageIcon sx={{ color: 'var(--app-text-disabled)' }} />
+          : <img src={src} alt={entry.alias} onError={() => setBroken(true)} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />}
+      </Box>
+      <Box sx={{ minWidth: 0, flex: 1 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+          <Typography sx={{ color: 'var(--app-text)', fontSize: '0.8rem', fontWeight: 700, wordBreak: 'break-all' }}>@{entry.alias}</Typography>
+          <Box component="span" sx={{ fontSize: '0.58rem', px: 0.5, borderRadius: 0.5, bgcolor: 'var(--app-bg-elevated)', color: 'var(--app-text-disabled)', flexShrink: 0 }}>{entry.scope}</Box>
+        </Box>
+        {entry.description && <Typography sx={{ color: 'var(--app-text-disabled)', fontSize: '0.7rem', wordBreak: 'break-word' }}>{entry.description}</Typography>}
+        {entry.tags && entry.tags.length > 0 && (
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.25, mt: 0.25 }}>
+            {entry.tags.map((t) => <Chip key={t} label={t} size="small" sx={{ height: 16, fontSize: '0.6rem', color: 'var(--app-accent)', bgcolor: 'var(--app-accent-soft)' }} />)}
+          </Box>
+        )}
+      </Box>
+    </Box>
+  );
+};
+
+const ImageField: React.FC<{ value: string; entries: ImageEntry[]; resolveThumb: (v: string) => string; onChange: (v: string) => void }> = ({ value, entries, resolveThumb, onChange }) => {
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  const [query, setQuery] = useState('');
+  // AND search across alias / description / tags (matches the Images panel).
+  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const filtered = entries.filter((e) => {
+    if (!terms.length) return true;
+    const hay = `${e.alias} ${e.description || ''} ${(e.tags || []).join(' ')}`.toLowerCase();
+    return terms.every((t) => hay.includes(t));
+  });
+  const pick = (alias: string) => { onChange(`@${alias}`); setAnchor(null); setQuery(''); };
   return (
     <>
       <TextField
         size="small" fullWidth value={value} placeholder="https://… , relative/path.png, or @alias"
         onChange={(e) => onChange(e.target.value)} variant="outlined" sx={fieldSx}
         slotProps={{ input: {
-          endAdornment: aliases.length ? (
+          endAdornment: entries.length ? (
             <InputAdornment position="end">
-              <IconButton size="small" title="Pick from image library" onClick={(e) => setMenuEl(e.currentTarget)} sx={{ color: 'var(--app-text-muted)' }}>
+              <IconButton size="small" title="Browse image library" onClick={(e) => setAnchor(e.currentTarget)} sx={{ color: 'var(--app-text-muted)' }}>
                 <ImageIcon fontSize="small" />
               </IconButton>
             </InputAdornment>
           ) : undefined,
         } }}
       />
-      <Menu anchorEl={menuEl} open={!!menuEl} onClose={() => setMenuEl(null)}>
-        {aliases.map((a) => (
-          <MenuItem key={a} onClick={() => { onChange(`@${a}`); setMenuEl(null); }}>@{a}</MenuItem>
-        ))}
-      </Menu>
+      <Popover
+        open={!!anchor} anchorEl={anchor} onClose={() => setAnchor(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }} transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+        slotProps={{ paper: { sx: { width: 360, maxWidth: '90vw', bgcolor: 'var(--app-bg-panel)', color: 'var(--app-text-secondary)', border: '1px solid var(--app-border-subtle)', backgroundImage: 'none' } } }}
+      >
+        <Box sx={{ p: 1, position: 'sticky', top: 0, zIndex: 1, bgcolor: 'var(--app-bg-panel)', borderBottom: '1px solid var(--app-border-subtle)' }}>
+          <TextField
+            autoFocus size="small" fullWidth value={query} onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search name / description / tag…" variant="outlined" sx={fieldSx}
+            slotProps={{ input: { startAdornment: (<InputAdornment position="start"><SearchIcon fontSize="small" sx={{ color: 'var(--app-text-disabled)' }} /></InputAdornment>) } }}
+          />
+        </Box>
+        <Box sx={{ maxHeight: 320, overflowY: 'auto' }}>
+          {filtered.length === 0 ? (
+            <Typography sx={{ p: 2, color: 'var(--app-text-disabled)', fontSize: '0.8rem' }}>No matching images.</Typography>
+          ) : filtered.map((e) => (
+            <ImagePickRow key={`${e.scope}:${e.alias}`} entry={e} src={resolveThumb(e.value)} onPick={() => pick(e.alias)} />
+          ))}
+        </Box>
+      </Popover>
     </>
   );
 };
@@ -96,13 +149,14 @@ export interface ModuleSettingsDialogProps {
   moduleName: string;
   params: ModuleParam[];
   initialValues: Record<string, string>;
-  imageAliases: string[];
+  imageEntries: ImageEntry[];
+  resolveThumb: (value: string) => string;
   onClose: () => void;
   onSave: (values: Record<string, string>) => void;
 }
 
 export const ModuleSettingsDialog: React.FC<ModuleSettingsDialogProps> = ({
-  open, moduleName, params, initialValues, imageAliases, onClose, onSave,
+  open, moduleName, params, initialValues, imageEntries, resolveThumb, onClose, onSave,
 }) => {
   // Seed each control from the current directive value, falling back to default.
   const seed = useMemo(() => {
@@ -160,7 +214,7 @@ export const ModuleSettingsDialog: React.FC<ModuleSettingsDialogProps> = ({
       case 'color':
         return <ColorField value={val} onChange={(v) => set(p.name, v)} />;
       case 'image':
-        return <ImageField value={val} aliases={imageAliases} onChange={(v) => set(p.name, v)} />;
+        return <ImageField value={val} entries={imageEntries} resolveThumb={resolveThumb} onChange={(v) => set(p.name, v)} />;
       default:
         return (
           <TextField size="small" fullWidth value={val} variant="outlined" sx={fieldSx}

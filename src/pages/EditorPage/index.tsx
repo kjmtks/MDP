@@ -1371,12 +1371,15 @@ export default function EditorPage() {
           moduleName={moduleSettings.name}
           params={moduleSettings.params}
           initialValues={moduleSettings.values}
-          // In-file `@image` aliases (active tab) first — they override the
-          // shared library on conflict — then the shared library aliases.
-          imageAliases={Array.from(new Set([
-            ...Object.keys(parseInFileImageDefs(markdown).defs),
-            ...Object.keys(imageLibrary),
-          ]))}
+          // In-file `@image` entries (active tab) first — they override the
+          // shared library on alias conflict — then the shared library, each
+          // with its thumbnail / description / tags for the searchable picker.
+          imageEntries={(() => {
+            const seen = new Set<string>();
+            return [...imagesSlice.fileImages, ...imagesSlice.libraryImages]
+              .filter((e) => (seen.has(e.alias) ? false : (seen.add(e.alias), true)));
+          })()}
+          resolveThumb={imagesSlice.resolveThumb}
           onClose={() => setModuleSettings(null)}
           onSave={handleModuleSettingsSave}
         />
