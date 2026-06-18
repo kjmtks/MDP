@@ -2,7 +2,7 @@
   <name>none</name>
   <description>No animation — switch instantly. Use to disable a global transition on a single slide.</description>
   <parameters>
-    <param name="duration" default="0" />
+    <param name="duration" type="number" default="0" label="Duration (ms)" desc="Animation length in milliseconds" min="0" integer="true" />
   </parameters>
   <snippets>
     <snippet>

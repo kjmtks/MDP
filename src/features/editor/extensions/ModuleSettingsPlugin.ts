@@ -78,11 +78,17 @@ export const moduleSettingsPlugin = ViewPlugin.fromClass(class {
         let m: RegExpExecArray | null;
         while ((m = re.exec(line.text)) !== null) {
           const name = m[1];
-          if (name === 'end' || !loadedModules[name]) continue;
-          // Skip modules with no declared parameters — nothing to edit.
-          if (!loadedModules[name].config.parameters?.length) continue;
+          if (name === 'end') continue;
+          // `@transition` / `@build` are effect directives — they always get a
+          // button (params are synthesised in EditorPage). Otherwise require a
+          // registered module that declares parameters.
+          const isEffect = name === 'transition' || name === 'build';
+          if (!isEffect) {
+            if (!loadedModules[name]) continue;
+            if (!loadedModules[name].config.parameters?.length) continue;
+          }
           const dirFrom = line.from + m.index;
-          // A directive inside a code block isn't a module — no button.
+          // A directive inside a code block isn't real — no button.
           if (isInCode(view, dirFrom)) continue;
           const dirTo = dirFrom + m[0].length;
           builder.add(

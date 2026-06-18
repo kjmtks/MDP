@@ -2,8 +2,16 @@
   <name>skew</name>
   <description>Skew in. The element slides in with a horizontal skew that straightens as it settles. Works as a slide transition and as a build (enter/exit).</description>
   <parameters>
-    <param name="duration" default="400" />
-    <param name="easing" default="ease" />
+    <param name="duration" type="number" default="400" label="Duration (ms)" desc="Animation length in milliseconds" min="0" integer="true" />
+    <param name="easing" type="select" default="ease" label="Easing">
+      <option value="ease" label="Ease" />
+      <option value="linear" label="Linear" />
+      <option value="ease-in" label="Ease in" />
+      <option value="ease-out" label="Ease out" />
+      <option value="ease-in-out" label="Ease in-out" />
+      <option value="cubic-bezier(0.34, 1.56, 0.64, 1)" label="Overshoot" />
+      <option value="cubic-bezier(0.68, -0.55, 0.27, 1.55)" label="Anticipate" />
+    </param>
   </parameters>
   <snippets>
     <snippet>

@@ -3,11 +3,11 @@
 // transform markdown). An effect defines enter / emphasis / leave phases via a
 // CSS phase-class convention and/or optional JS hooks.
 
-export interface EffectParam {
-  name: string;
-  default?: string;
-  required?: boolean;
-}
+import { parseParamElements, type ModuleParam } from './moduleParser';
+
+// Effect params share the module param shape (settings-UI metadata: type / label
+// / options / min / max …) so the same settings dialog can edit them.
+export type EffectParam = ModuleParam;
 
 export interface EffectConfig {
   name: string;
@@ -42,14 +42,7 @@ export const parseMdpfxXml = (content: string): EffectData | null => {
   const name = root.querySelector('name')?.textContent?.trim() || '';
   const description = root.querySelector('description')?.textContent?.trim() || '';
 
-  const parameters: EffectParam[] = [];
-  root.querySelectorAll('parameters > param').forEach((p) => {
-    parameters.push({
-      name: p.getAttribute('name') || '',
-      default: p.hasAttribute('default') ? p.getAttribute('default')! : undefined,
-      required: p.getAttribute('required') === 'true',
-    });
-  });
+  const parameters = parseParamElements(root);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const snippets: any[] = [];

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { TransformEdit, DirectiveSelector } from '../../modules/moduleDocEdits';
 import { useAppSettings } from '../../settings/AppSettingsContext';
 import { matchAction } from '../../settings/shortcuts/matcher';
@@ -12,6 +13,10 @@ export interface ManipRuntime {
   snapStep: number;       // percent
   onCommit: (edits: Array<{ sel: DirectiveSelector; t: TransformEdit }>) => void;
   onDelete: (sels: DirectiveSelector[]) => void;
+  // Selecting a single module moves the editor cursor to its directive.
+  onSelect?: (sel: DirectiveSelector) => void;
+  // Context-menu "Property" → open that module's settings dialog.
+  onRequestProperty?: (sel: DirectiveSelector) => void;
 }
 
 interface Props {
@@ -45,11 +50,32 @@ const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v
 const boxEq = (a: Box | undefined, b: Box) =>
   !!a && a.cx === b.cx && a.cy === b.cy && a.w === b.w && a.h === b.h && a.rot === b.rot;
 
+const CtxItem: React.FC<{ onClick: () => void; danger?: boolean; children: React.ReactNode }> = ({ onClick, danger, children }) => {
+  const [hover, setHover] = useState(false);
+  // Act on pointerdown (not onClick): the menu opens via a right-click and a
+  // focus shift can otherwise swallow the follow-up click. preventDefault keeps
+  // focus where it is; stopPropagation keeps the close-backdrop from firing.
+  const fire = (e: React.PointerEvent) => { e.preventDefault(); e.stopPropagation(); onClick(); };
+  return (
+    <div
+      onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+      onPointerDown={fire}
+      style={{
+        padding: '6px 14px', cursor: 'pointer', whiteSpace: 'nowrap',
+        color: danger ? 'var(--app-danger)' : 'var(--app-text-secondary)',
+        background: hover ? 'var(--app-bg-hover)' : 'transparent',
+      }}
+    >{children}</div>
+  );
+};
+
 export const ManipulationLayer: React.FC<Props> = ({ container, runtime }) => {
-  const { enabled, snap, snapStep, onCommit, onDelete } = runtime;
+  const { enabled, snap, snapStep, onCommit, onDelete, onSelect, onRequestProperty } = runtime;
   const { settings } = useAppSettings();
   const rootRef = useRef<HTMLDivElement>(null);
   const [selected, setSelected] = useState<string[]>([]);
+  // Right-click context menu (Property / Delete) for a single module.
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; key: string } | null>(null);
   // Frame boxes are kept in STATE (not read during render) so they reflect the
   // committed DOM after a re-render instead of lagging a frame behind.
   const [frameBoxes, setFrameBoxes] = useState<Record<string, Box>>({});
@@ -210,6 +236,8 @@ export const ManipulationLayer: React.FC<Props> = ({ container, runtime }) => {
   // ---- pointer interaction ---------------------------------------------------
   const onPointerDown = (e: React.PointerEvent) => {
     if (!enabled || !container) return;
+    if (e.button !== 0) return;   // right/middle handled by onContextMenu
+    setCtxMenu(null);
     const r = oRect();
     const px = pctX(e.clientX, r), py = pctY(e.clientY, r);
 
@@ -252,6 +280,8 @@ export const ManipulationLayer: React.FC<Props> = ({ container, runtime }) => {
         sel = [key];
         setSelected(sel);
       }
+      // A single (non-shift) selection jumps the editor cursor to its directive.
+      if (!e.shiftKey) onSelect?.(selOf(key));
       draggingRef.current = true;
       const items: DragItem[] = sel.map((k) => { const el = findEl(k); return el ? { key: k, el, start: readBox(el, r) } : null; }).filter(Boolean) as DragItem[];
       drag.current = { mode: 'move', items, psx: px, psy: py };
@@ -334,6 +364,20 @@ export const ManipulationLayer: React.FC<Props> = ({ container, runtime }) => {
     }
   };
 
+  const onContextMenu = (e: React.MouseEvent) => {
+    if (!enabled || !container) { setCtxMenu(null); return; }
+    let hit: HTMLElement | null = null;
+    for (const el of els()) {
+      const b = el.getBoundingClientRect();
+      if (e.clientX >= b.left && e.clientX <= b.right && e.clientY >= b.top && e.clientY <= b.bottom) hit = el;
+    }
+    if (!hit) { setCtxMenu(null); return; }
+    e.preventDefault();
+    const key = keyOf(hit);
+    setSelected([key]);   // visually select; don't steal editor focus on right-click
+    setCtxMenu({ x: e.clientX, y: e.clientY, key });
+  };
+
   // ---- keyboard --------------------------------------------------------------
   useEffect(() => {
     if (!enabled) return;
@@ -344,11 +388,11 @@ export const ManipulationLayer: React.FC<Props> = ({ container, runtime }) => {
       if (tag === 'input' || tag === 'textarea' || (document.activeElement as HTMLElement)?.isContentEditable) return;
 
       const action = matchAction(e, ACTIONS_BY_SCOPE.manipulation, settings);
-      if (action?.id === 'manip.deselect') { setSelected([]); return; }
+      if (action?.id === 'manip.deselect') { setSelected([]); setCtxMenu(null); return; }
       if (action?.id === 'manip.delete') {
         e.preventDefault();
         onDelete(sel.map(selOf));
-        setSelected([]);
+        setSelected([]); setCtxMenu(null);
         return;
       }
       const r = rootRef.current?.getBoundingClientRect();
@@ -381,10 +425,10 @@ export const ManipulationLayer: React.FC<Props> = ({ container, runtime }) => {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [enabled, snapStep, findEl, readBox, commitItems, onDelete, settings]);
+  }, [enabled, snapStep, findEl, readBox, commitItems, settings, onDelete]);
 
   // Drop selection when leaving edit mode.
-  useEffect(() => { if (!enabled) { setSelected([]); setMarquee(null); setFrameBoxes({}); } }, [enabled]);
+  useEffect(() => { if (!enabled) { setSelected([]); setMarquee(null); setFrameBoxes({}); setCtxMenu(null); } }, [enabled]);
 
   if (!enabled) return null;
 
@@ -408,6 +452,7 @@ export const ManipulationLayer: React.FC<Props> = ({ container, runtime }) => {
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
+      onContextMenu={onContextMenu}
       style={{ position: 'absolute', inset: 0, zIndex: 60, touchAction: 'none', cursor: 'default' }}
     >
       {frames.map(({ key, box }) => (
@@ -452,6 +497,29 @@ export const ManipulationLayer: React.FC<Props> = ({ container, runtime }) => {
           width: `${Math.abs(marquee.x1 - marquee.x0)}%`, height: `${Math.abs(marquee.y1 - marquee.y0)}%`,
           border: '1px dashed #3b82f6', background: 'rgba(59,130,246,0.1)', pointerEvents: 'none',
         }} />
+      )}
+
+      {/* Right-click menu — portalled to <body> so position:fixed uses viewport
+          coords (the slide overlay is transformed, which would otherwise re-anchor
+          a fixed element). */}
+      {ctxMenu && createPortal(
+        <>
+          <div
+            onPointerDown={() => setCtxMenu(null)}
+            onContextMenu={(e) => { e.preventDefault(); setCtxMenu(null); }}
+            style={{ position: 'fixed', inset: 0, zIndex: 10000 }}
+          />
+          <div style={{
+            position: 'fixed', left: ctxMenu.x, top: ctxMenu.y, zIndex: 10001, minWidth: 150,
+            background: 'var(--app-bg-panel)', color: 'var(--app-text-secondary)',
+            border: '1px solid var(--app-border)', borderRadius: 6, padding: '4px 0',
+            boxShadow: '0 6px 20px rgba(0,0,0,0.35)', fontSize: '0.85rem',
+          }}>
+            <CtxItem onClick={() => { onRequestProperty?.(selOf(ctxMenu.key)); setCtxMenu(null); }}>⚙  Property…</CtxItem>
+            <CtxItem danger onClick={() => { onDelete([selOf(ctxMenu.key)]); setSelected([]); setCtxMenu(null); }}>🗑  Delete</CtxItem>
+          </div>
+        </>,
+        document.body,
       )}
     </div>
   );

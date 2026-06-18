@@ -12,6 +12,8 @@
     <param name="title" type="text" default="" label="Title" desc="Heading shown at the top of the note (optional)" />
     <param name="titlecolor" type="color" default="" label="Title Color" desc="Title text colour (defaults to the note text colour)" options="#1f2937:Slate,#92400e:Brown,#991b1b:Red,#1e40af:Blue,#166534:Green,#6b21a8:Purple" />
     <param name="color" type="color" default="#fef08a" label="Note Color" options="#fef08a:Yellow,#fde68a:Amber,#bbf7d0:Green,#bfdbfe:Blue,#fbcfe8:Pink,#fed7aa:Orange,#e9d5ff:Purple,#a5f3fc:Cyan,#e5e7eb:Gray" />
+    <param name="halign" type="select" default="left" label="Horizontal Align" options="left,center,right" />
+    <param name="valign" type="select" default="top" label="Vertical Align" options="top,middle,bottom" />
     <param name="rotate" type="number" default="-2" label="Rotation" desc="Tilt of the note in degrees" min="-45" max="45" />
   </parameters>
   <snippets>
@@ -29,13 +31,20 @@ Please update these figures by the meeting next week!
     const rotate = args.rotate || '-2';
     const title = (args.title || '').trim();
     const titleColor = (args.titlecolor || '').trim();
+    // halign = horizontal (left/center/right) via text-align; valign = vertical
+    // (top/middle/bottom) via flex justify-content (only visible once the note has
+    // a fixed height in Edit layout).
+    const h = (args.halign || 'left').toLowerCase();
+    const v = (args.valign || 'top').toLowerCase();
+    const justify = v === 'middle' ? 'center' : v === 'bottom' ? 'flex-end' : 'flex-start';
+    const textAlign = h === 'center' ? 'center' : h === 'right' ? 'right' : 'left';
     const contentStr = sections[0] ? sections[0].trim() : '';
     // Title is a raw HTML heading (no blank line around it) so markdown leaves it
     // alone; the body below renders as markdown.
     const titleHtml = title
       ? `<div class="mdp-sticky-title"${titleColor ? ' style="color: ' + titleColor + ';"' : ''}>${title}</div>`
       : '';
-    return `\n\n<div class="mdp-mod-sticky" style="--sticky-color: ${color}; transform: rotate(${rotate}deg);">${titleHtml}\n\n${contentStr}\n\n</div>\n\n`;
+    return `\n\n<div class="mdp-mod-sticky" style="--sticky-color: ${color}; transform: rotate(${rotate}deg); justify-content: ${justify}; text-align: ${textAlign};">${titleHtml}\n\n${contentStr}\n\n</div>\n\n`;
   ]]></render>
   <style><![CDATA[
     .mdp-mod-sticky {
@@ -47,6 +56,9 @@ Please update these figures by the meeting next week!
       font-family: "Comic Sans MS", "Marker Felt", sans-serif;
       color: #333;
       position: relative;
+      /* Column flex so valign (justify-content) and halign (text-align) apply. */
+      display: flex;
+      flex-direction: column;
     }
     /* When placed/sized in Edit layout, fill the manip box (otherwise keep the
        default 250px note). Content that exceeds the box is shown, not clipped or

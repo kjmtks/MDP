@@ -1,0 +1,223 @@
+<module>
+  <name>bubble</name>
+  <type>block</type>
+  <description>A speech bubble / callout with a pointing tail. Body shape (ellipse, rectangle, rounded, cloud), tail direction/length, fill, border and text. Move / resize / rotate on the preview in Edit layout.</description>
+
+  <manipulate position="xy" size="xy" rotation="true" minW="6" maxW="100" minH="4" maxH="100" />
+
+  <parameters>
+    <param name="type" type="select" default="rounded" label="Shape" options="rounded:Rounded rectangle,rectangle:Rectangle,ellipse:Ellipse,cloud:Cloud" />
+    <param name="corner" type="number" default="14" label="Corner radius" desc="Rounded-rectangle corner size" min="0" max="50" />
+    <param name="cloudbumps" type="number" default="10" label="Cloud bumps" desc="Cloud complexity (number of bumps)" min="4" max="24" integer="true" />
+    <param name="angle" type="number" default="110" label="Tail angle (deg)" desc="Direction the tail points: 0=right, 90=down, 180=left, 270=up" min="0" max="360" />
+    <param name="tailtype" type="select" default="pointer" label="Tail type" options="pointer:Pointer,thought:Thought (puffs)" />
+    <param name="length" type="number" default="22" label="Tail length" desc="0 hides the tail" min="0" max="70" />
+    <param name="tailwidth" type="number" default="18" label="Tail width" desc="Pointer tail base width, in degrees" min="2" max="120" />
+    <param name="tailpuffs" type="number" default="3" label="Thought puffs" desc="Number of trailing circles (thought tail)" min="1" max="6" integer="true" />
+    <param name="fill" type="color" default="#ffffff" label="Fill" options="#ffffff:White,#fef9c3:Note,var(--accent-color):Accent,#3b82f6:Blue,#10b981:Green,#fee2e2:Pink,transparent:None" />
+    <param name="bordercolor" type="color" default="#333333" label="Border color" />
+    <param name="borderwidth" type="number" default="2" label="Border width (px)" min="0" max="30" />
+    <param name="textcolor" type="color" default="#333333" label="Text color" />
+    <param name="fontsize" type="text" default="1em" label="Font size" desc="CSS size, e.g. 1.1em or 18px" />
+    <param name="halign" type="select" default="center" label="Horizontal align" options="left,center,right" />
+    <param name="valign" type="select" default="middle" label="Vertical align" options="top,middle,bottom" />
+  </parameters>
+
+  <snippets>
+    <snippet>
+      <category>Layout</category>
+      <label>Speech bubble</label>
+      <text><![CDATA[<!-- @bubble type: rounded, x: 50, y: 35, w: 32, h: 18, angle: 110, length: 22 -->
+Hello!
+<!-- @end -->]]></text>
+      <description>A speech bubble with a tail. type: rounded|rectangle|ellipse|cloud.</description>
+    </snippet>
+    <snippet>
+      <category>Layout</category>
+      <label>Thought cloud</label>
+      <text><![CDATA[<!-- @bubble type: cloud, x: 50, y: 35, w: 30, h: 22, angle: 120, length: 18 -->
+Hmm…
+<!-- @end -->]]></text>
+      <description>A cloud-shaped thought bubble.</description>
+    </snippet>
+  </snippets>
+
+  <render><![CDATA[
+    const type = (args.type || 'rounded').toLowerCase();
+    const corner = parseFloat(args.corner || '14');
+    const bumps = Math.max(3, parseInt(args.cloudbumps || '10', 10) || 10);
+    const angleDeg = parseFloat(args.angle || '110') || 0;
+    const length = Math.max(0, parseFloat(args.length || '22') || 0);
+    const fill = args.fill || '#ffffff';
+    const bc = args.bordercolor || '#333333';
+    const bw = args.borderwidth || '2';
+    const tc = args.textcolor || '#333333';
+    const fs = args.fontsize || '1em';
+    const h = (args.halign || 'center').toLowerCase();
+    const v = (args.valign || 'middle').toLowerCase();
+    const justify = h === 'left' ? 'flex-start' : h === 'right' ? 'flex-end' : 'center';
+    const alignItems = v === 'top' ? 'flex-start' : v === 'bottom' ? 'flex-end' : 'center';
+    const textAlign = h === 'left' ? 'left' : h === 'right' ? 'right' : 'center';
+    const bodyStr = sections[0] ? sections[0].trim() : '';
+
+    // Build the outline in an ASPECT-CORRECT viewBox so the (preserveAspectRatio=
+    // "none") scaling to the box is UNIFORM in x and y — the rounded corners look
+    // identical in both directions and the tail angle is the true screen angle.
+    // Box pixel aspect = (w/h) * canvasAspect; canvas defaults to 16:9.
+    const TAU = Math.PI * 2;
+    const wv = parseFloat(args.w), hv = parseFloat(args.h);
+    let ar = (wv > 0 && hv > 0) ? (wv * 16) / (hv * 9) : 240 / 140;
+    ar = Math.max(0.12, Math.min(8, ar));
+    const VBW = 100 * ar, VBH = 100, CX = VBW / 2, CY = VBH / 2;
+    const m = 2.5, A = VBW / 2 - m, B = VBH / 2 - m;
+
+    const rEllipse = (a) => (A * B) / Math.sqrt(Math.pow(B * Math.cos(a), 2) + Math.pow(A * Math.sin(a), 2));
+    // True rounded rectangle: straight edges + circular-arc corners (R=0 → sharp).
+    const rRR = (a, R) => {
+      const c = Math.abs(Math.cos(a)), s = Math.abs(Math.sin(a));
+      const ax = A - R, by = B - R;
+      if (c > 1e-9) { const t = A / c; if (t * s <= by) return t; }
+      if (s > 1e-9) { const t = B / s; if (t * c <= ax) return t; }
+      const bq = c * ax + s * by, cq = ax * ax + by * by - R * R;
+      return bq + Math.sqrt(Math.max(0, bq * bq - cq));
+    };
+    // Cloud = the outer boundary of overlapping circles ("bumps") placed at EQUAL
+    // ARC LENGTH around an inner ellipse. Bump radius is capped below the smaller
+    // half-axis so bumps never reach across the centre (that crossing is what used
+    // to leave a boxy vertical column through the middle on non-square bubbles),
+    // and the bump count is raised if needed so neighbours always overlap.
+    const Rb = Math.min(A, B) * 0.45;
+    const Ac = Math.max(Rb * 0.5, A - Rb), Bc = Math.max(Rb * 0.5, B - Rb);
+    const ML = 720, ringAng = [], ringCum = [0];
+    for (let k = 0; k <= ML; k++) {
+      const t = (k / ML) * TAU; ringAng.push(t);
+      if (k > 0) {
+        const x0 = Ac * Math.cos(ringAng[k - 1]), y0 = Bc * Math.sin(ringAng[k - 1]);
+        const x1 = Ac * Math.cos(t), y1 = Bc * Math.sin(t);
+        ringCum.push(ringCum[k - 1] + Math.hypot(x1 - x0, y1 - y0));
+      }
+    }
+    const ringLen = ringCum[ML];
+    const nBumps = Math.max(bumps, Math.ceil(ringLen / (1.5 * Rb)));
+    const centers = [];
+    for (let i = 0; i < nBumps; i++) {
+      const target = (i / nBumps) * ringLen;
+      let lo = 0, hi = ML;
+      while (lo < hi) { const mid = (lo + hi) >> 1; if (ringCum[mid] < target) lo = mid + 1; else hi = mid; }
+      const t = ringAng[Math.min(ML, lo)];
+      centers.push([Ac * Math.cos(t), Bc * Math.sin(t)]);
+    }
+    const rCloud = (a) => {
+      let r = 0; const ca = Math.cos(a), sa = Math.sin(a);
+      for (let i = 0; i < centers.length; i++) {
+        const proj = centers[i][0] * ca + centers[i][1] * sa;
+        const perp = centers[i][0] * sa - centers[i][1] * ca;
+        if (Math.abs(perp) < Rb) { const rr = proj + Math.sqrt(Rb * Rb - perp * perp); if (rr > r) r = rr; }
+      }
+      return r || Math.min(A, B) * 0.6;
+    };
+
+    let rFn;
+    if (type === 'ellipse') rFn = rEllipse;
+    else if (type === 'rectangle' || type === 'rect') rFn = (a) => rRR(a, 0);
+    else if (type === 'cloud') rFn = rCloud;
+    else { const R = Math.max(0, Math.min(Math.min(A, B), corner)); rFn = (a) => rRR(a, R); }
+
+    const th = (angleDeg * Math.PI) / 180;
+    const P_ = (a, r) => [CX + r * Math.cos(a), CY + r * Math.sin(a)];
+    const tailType = (args.tailtype || 'pointer').toLowerCase();
+    // Sharp pointer tip (miter); body curves are tangent-continuous so miter only
+    // affects the genuinely sharp corners (the tail tip / mouth).
+    const A_ATTR = `fill="${fill}" stroke="${bc}" stroke-width="${bw}" vector-effect="non-scaling-stroke" stroke-linejoin="miter" stroke-miterlimit="10"`;
+    // CENTRIPETAL Catmull-Rom → cubic-bezier. Unlike the uniform variant it never
+    // overshoots, so a rounded rectangle's straight edge meets its corner cleanly
+    // (no bulge/dent) and the curve hugs the sampled boundary. Densely sampled so
+    // corners/cloud bumps are well defined.
+    const smooth = (pts, closed) => {
+      const n = pts.length;
+      const Pt = (i) => pts[closed ? ((i % n) + n) % n : Math.max(0, Math.min(n - 1, i))];
+      const dist = (a, b) => Math.max(1e-4, Math.pow(Math.hypot(b[0] - a[0], b[1] - a[1]), 0.5)); // alpha = 0.5
+      let d = 'M ' + Pt(0)[0].toFixed(2) + ' ' + Pt(0)[1].toFixed(2) + ' ';
+      const last = closed ? n : n - 1;
+      for (let i = 0; i < last; i++) {
+        const p0 = Pt(i - 1), p1 = Pt(i), p2 = Pt(i + 1), p3 = Pt(i + 2);
+        const d1 = dist(p0, p1), d2 = dist(p1, p2), d3 = dist(p2, p3);
+        const m1x = (p2[0] - p1[0]) / d2 - (p2[0] - p0[0]) / (d1 + d2) + (p1[0] - p0[0]) / d1;
+        const m1y = (p2[1] - p1[1]) / d2 - (p2[1] - p0[1]) / (d1 + d2) + (p1[1] - p0[1]) / d1;
+        const m2x = (p2[0] - p1[0]) / d2 - (p3[0] - p1[0]) / (d2 + d3) + (p3[0] - p2[0]) / d3;
+        const m2y = (p2[1] - p1[1]) / d2 - (p3[1] - p1[1]) / (d2 + d3) + (p3[1] - p2[1]) / d3;
+        const c1x = p1[0] + (m1x * d2) / 3, c1y = p1[1] + (m1y * d2) / 3;
+        const c2x = p2[0] - (m2x * d2) / 3, c2y = p2[1] - (m2y * d2) / 3;
+        d += 'C ' + c1x.toFixed(2) + ' ' + c1y.toFixed(2) + ' ' + c2x.toFixed(2) + ' ' + c2y.toFixed(2) + ' ' + p2[0].toFixed(2) + ' ' + p2[1].toFixed(2) + ' ';
+      }
+      if (closed) d += 'Z';
+      return d;
+    };
+
+    const N = 240;
+    let puffs = '';
+    let dPath;
+    if (length > 0 && tailType !== 'thought') {
+      // Pointer tail: smooth body arc from one mouth corner to the other (mouth
+      // left open), then a sharp line out to the tip — one continuous outline.
+      const tw = Math.max(2, Math.min(120, parseFloat(args.tailwidth || '18') || 18));
+      const delta = ((tw / 2) * Math.PI) / 180;
+      const tip = P_(th, rFn(th) + length);
+      const span = TAU - 2 * delta;
+      const body = [];
+      for (let i = 0; i <= N; i++) { const a = th + delta + (i / N) * span; body.push(P_(a, rFn(a))); }
+      dPath = smooth(body, false) + ' L ' + tip[0].toFixed(2) + ' ' + tip[1].toFixed(2) + ' Z';
+    } else {
+      const body = [];
+      for (let i = 0; i < N; i++) { const a = (i / N) * TAU; body.push(P_(a, rFn(a))); }
+      dPath = smooth(body, true);
+      if (length > 0 && tailType === 'thought') {
+        // Trailing, shrinking circles along the angle — a "thinking" bubble.
+        const P = Math.max(1, Math.min(6, parseInt(args.tailpuffs || '3', 10) || 3));
+        const cosT = Math.cos(th), sinT = Math.sin(th), edge = rFn(th);
+        for (let i = 0; i < P; i++) {
+          const rad = Math.max(2, length * 0.26 * (1 - i * 0.24));
+          const dist = edge + 3 + length * ((i + 0.6) / P);
+          const ex = (CX + dist * cosT).toFixed(2), ey = (CY + dist * sinT).toFixed(2);
+          puffs += `<ellipse cx="${ex}" cy="${ey}" rx="${rad.toFixed(2)}" ry="${rad.toFixed(2)}" ${A_ATTR}/>`;
+        }
+      }
+    }
+    const bodySvg = `<svg class="mdp-bubble-svg" viewBox="0 0 ${VBW.toFixed(2)} ${VBH}" preserveAspectRatio="none"><path d="${dPath}" ${A_ATTR}/>${puffs}</svg>`;
+
+    const textOpen = `<div class="mdp-bubble-text" style="color: ${tc}; font-size: ${fs}; justify-content: ${justify}; align-items: ${alignItems}; text-align: ${textAlign};">`;
+    // Text is a normal HTML layer (not SVG) stacked over the shape.
+    return `\n\n<div class="mdp-mod-bubble">${bodySvg}${textOpen}\n\n${bodyStr}\n\n</div></div>\n\n`;
+  ]]></render>
+
+  <style><![CDATA[
+    .mdp-mod-bubble {
+      position: relative;
+      width: 240px;
+      height: 140px;
+      box-sizing: border-box;
+    }
+    .mdp-manip[data-lifted="1"] .mdp-mod-bubble { width: 100%; height: 100%; }
+    .mdp-bubble-svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      overflow: visible;
+    }
+    .mdp-bubble-text {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      padding: 0.9em;
+      box-sizing: border-box;
+      line-height: 1.25;
+    }
+    .mdp-bubble-text > :first-child { margin-top: 0; }
+    .mdp-bubble-text > :last-child { margin-bottom: 0; }
+  ]]></style>
+
+  <script></script>
+</module>

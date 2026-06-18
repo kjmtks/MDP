@@ -32,12 +32,16 @@ import { useEditorIntegration } from '../../features/editor/hooks/useEditorInteg
 import { apiClient, isElectron } from '../../api/apiClient';
 import { clearAllModules, registerModule, getAllModuleSnippets, loadedModules } from '../../features/modules/moduleManager';
 import { ModuleSettingsDialog } from '../../features/modules/components/ModuleSettingsDialog';
+import { loadedEffects } from '../../features/effects/effectManager';
 import type { ModuleParam } from '../../utils/moduleParser';
+
+// Common CSS easings offered in the transition/build settings dialog.
+const FX_EASINGS = ['ease', 'linear', 'ease-in', 'ease-out', 'ease-in-out', 'cubic-bezier(0.4, 0, 0.2, 1)'];
 import { clearAllEffects, registerEffect, getAllEffectSnippets } from '../../features/effects/effectManager';
 import { applyModulesToMarkdown, parseArguments } from '../../features/modules/moduleProcessor';
 import { resolveImages, setLibraryImages, clearLibraryImages, parseInFileImageDefs, type ImageEntry } from '../../features/images/imageRegistry';
 import { addFileImageDef, editFileImageDef, deleteFileImageDef } from '../../features/images/imageDocEdits';
-import { updateModuleTransforms, removeModuleDirectives } from '../../features/modules/moduleDocEdits';
+import { updateModuleTransforms, removeModuleDirectives, parseModuleDirectives } from '../../features/modules/moduleDocEdits';
 import { prewarmSvgs } from '../../features/slide/inlineSvg';
 import type { ManipRuntime } from '../../features/slide/components/ManipulationLayer';
 import { storeLibraryImage, inlineLibraryImage, saveRegistry, deleteLibraryFile } from '../../features/images/imageLibraryStore';
@@ -298,6 +302,9 @@ export default function EditorPage() {
   // detect a pure move/resize/rotate change and suppress the slide re-render
   // (which would re-create inline drawio = flicker, and reset other elements).
   const lastManipDocRef = useRef<string | null>(null);
+  // Render-phase guard: when this key (active file + edit-layout) changes we clear
+  // the suppress baseline above so stale suppression can't blank the preview.
+  const manipBaselineKeyRef = useRef<string>('');
 
   // A library-image preview overlays the slides in the Preview panel. Dismiss it
   // when the active file changes, otherwise switching to a slide/image tab keeps
@@ -447,6 +454,20 @@ export default function EditorPage() {
   // re-creation flicker, no resetting other manip elements). Typing / undo /
   // manual edits differ → normal re-render. Flushed when edit-layout turns off,
   // the file changes, or slideshow/overview starts (effect below).
+  // Clear the transform-suppress baseline when the active file or edit-layout
+  // changes. Done DURING render (a ref write, before the manipSuppress test below)
+  // so the change is seen THIS pass — an effect would run too late and a ref write
+  // wouldn't re-trigger. Otherwise the baseline (set after the last transform
+  // commit, and often still == the doc) keeps suppressing LEGITIMATE re-renders:
+  // returning to a slide after editing a module file leaves the preview blank
+  // ("No slide preview"), and a module delete never shows. The genuine
+  // transform-commit suppression is unaffected — that path re-seeds the baseline
+  // and neither key changes in between.
+  const manipBaselineKey = `${currentFileName} ${editLayout}`;
+  if (manipBaselineKeyRef.current !== manipBaselineKey) {
+    manipBaselineKeyRef.current = manipBaselineKey;
+    lastManipDocRef.current = null;
+  }
   const fileChanged = previewSource.fileName !== currentFileName || previewSource.fileType !== effectiveFileType;
   const mdChanged = previewSource.md !== debouncedMarkdown;
   const manipSuppress = editLayout && mdChanged && !fileChanged && debouncedMarkdown === lastManipDocRef.current;
@@ -1006,19 +1027,62 @@ export default function EditorPage() {
     return () => document.removeEventListener('open-theme-selector', handleOpenThemeSelector);
   }, []);
 
-  // --- Module settings dialog (the ⚙ button on a module directive) ----------
+  // --- Module / effect settings dialog (the ⚙ button on a directive) ---------
   const [moduleSettings, setModuleSettings] = useState<{
-    name: string; params: ModuleParam[]; values: Record<string, string>;
+    name: string; kind: 'module' | 'transition' | 'build';
+    params: ModuleParam[]; values: Record<string, string>;
     from: number; to: number; original: string;
   } | null>(null);
 
   useEffect(() => {
     const handler = (e: Event) => {
       const d = (e as CustomEvent).detail as { name: string; args: string; from: number; to: number; original: string };
+      const fxOpts = Object.keys(loadedEffects).sort().map((n) => ({ value: n, label: n }));
+      const easeOpts = FX_EASINGS.map((x) => ({ value: x, label: x }));
+
+      if (d.name === 'transition') {
+        // `<!-- @transition <effect> key: val, … -->` — effect name is positional.
+        const m = (d.args || '').trim().match(/^(\S+)?\s*([\s\S]*)$/);
+        const effectName = m?.[1] || '';
+        const rest = parseArguments(m?.[2] || '');
+        // Use the selected effect's own (rich) params; fall back to generic
+        // duration/easing if the effect is unknown/not yet loaded.
+        const fxParams = (loadedEffects[effectName]?.config.parameters || []).filter((p) => p.name !== 'effect');
+        const params: ModuleParam[] = [
+          { name: 'effect', type: 'select', label: 'Effect', options: fxOpts, default: '' },
+          ...fxParams,
+        ];
+        if (!fxParams.length) params.push(
+          { name: 'duration', type: 'number', label: 'Duration (ms)', min: 0, integer: true },
+          { name: 'easing', type: 'select', label: 'Easing', options: easeOpts },
+        );
+        setModuleSettings({ name: 'transition', kind: 'transition', params, values: { effect: effectName, ...rest }, from: d.from, to: d.to, original: d.original });
+        return;
+      }
+      if (d.name === 'build') {
+        const parsed = parseArguments(d.args || '');
+        if (parsed.step != null && parsed.enter == null) parsed.enter = parsed.step;
+        delete parsed.step;
+        const params: ModuleParam[] = [
+          { name: 'enter', type: 'number', label: 'Enter step', description: 'Step at which this appears', min: 1, integer: true, default: '1' },
+          { name: 'emphasis', type: 'number', label: 'Emphasis step', min: 1, integer: true },
+          { name: 'exit', type: 'number', label: 'Exit step', min: 1, integer: true },
+          { name: 'effect', type: 'select', label: 'Enter effect', options: fxOpts, default: 'fade' },
+          { name: 'emphasisEffect', type: 'select', label: 'Emphasis effect', options: fxOpts },
+          { name: 'exitEffect', type: 'select', label: 'Exit effect', options: fxOpts },
+          { name: 'duration', type: 'text', label: 'Duration', description: 'e.g. 0.5s' },
+          { name: 'easing', type: 'select', label: 'Easing', options: easeOpts },
+          { name: 'stagger', type: 'text', label: 'Stagger', description: 'e.g. 0.1s between items' },
+          { name: 'auto', type: 'number', label: 'Auto-advance (ms)', min: 0, integer: true },
+        ];
+        setModuleSettings({ name: 'build', kind: 'build', params, values: parsed, from: d.from, to: d.to, original: d.original });
+        return;
+      }
+
       const mod = loadedModules[d.name];
       if (!mod) return;
       setModuleSettings({
-        name: d.name,
+        name: d.name, kind: 'module',
         params: mod.config.parameters || [],
         values: parseArguments(d.args || ''),
         from: d.from, to: d.to, original: d.original,
@@ -1041,12 +1105,21 @@ export default function EditorPage() {
         Object.entries(st.values).filter(([k]) => !declared.has(k)),
       );
       const merged = { ...preserved, ...vals };
-      // Serialize back to `key: value, …`; quote values containing a comma so
-      // the argument parser doesn't split them (e.g. rgba(…) colours).
-      const argStr = Object.entries(merged)
-        .map(([k, v]) => `${k}: ${/,/.test(v) ? `"${v}"` : v}`)
-        .join(', ');
-      const directive = `<!-- @${st.name}${argStr ? ' ' + argStr : ''} -->`;
+      const kv = (obj: Record<string, string>) => Object.entries(obj)
+        .map(([k, v]) => `${k}: ${/,/.test(v) ? `"${v}"` : v}`).join(', ');
+      let directive: string;
+      if (st.kind === 'transition') {
+        // Effect name is positional, not a `key: value` arg.
+        const effect = (vals.effect || st.values.effect || 'fade').trim();
+        const rest: Record<string, string> = {};
+        Object.entries(merged).forEach(([k, v]) => { if (k !== 'effect') rest[k] = v; });
+        const restStr = kv(rest);
+        directive = `<!-- @transition ${effect}${restStr ? ' ' + restStr : ''} -->`;
+      } else {
+        // Modules and @build: standard `<!-- @name key: value, … -->`.
+        const argStr = kv(merged);
+        directive = `<!-- @${st.name}${argStr ? ' ' + argStr : ''} -->`;
+      }
       const doc = view.state.doc;
       let from = st.from, to = st.to;
       // Positions may be stale if the doc changed while the dialog was open —
@@ -1098,7 +1171,36 @@ export default function EditorPage() {
     },
     onDelete: (sels) => {
       const view = editorRef.current?.view;
-      if (view) { removeModuleDirectives(view, sels); lastManipDocRef.current = view.state.doc.toString(); }
+      // Do NOT set lastManipDocRef here: a delete is a structural change that MUST
+      // re-render the preview (unlike a transform commit, which is suppressed to
+      // avoid flicker). Leaving the baseline stale lets the re-render through.
+      if (view) removeModuleDirectives(view, sels);
+    },
+    // Selecting a module on the preview jumps the editor cursor to its directive.
+    onSelect: (sel) => {
+      const view = editorRef.current?.view;
+      if (!view || sel.ord == null) return;
+      const dir = parseModuleDirectives(view.state.doc.toString()).find((d) => d.ord === sel.ord);
+      if (!dir) return;
+      view.dispatch({ selection: { anchor: dir.openFrom, head: dir.openFrom }, scrollIntoView: true });
+      view.focus();
+    },
+    // Context-menu "Property" → open that module's settings dialog.
+    onRequestProperty: (sel) => {
+      const view = editorRef.current?.view;
+      if (!view || sel.ord == null) return;
+      const doc = view.state.doc.toString();
+      const dir = parseModuleDirectives(doc).find((d) => d.ord === sel.ord);
+      if (!dir) return;
+      const mod = loadedModules[dir.name];
+      if (!mod) return;
+      setModuleSettings({
+        name: dir.name, kind: 'module',
+        params: mod.config.parameters || [],
+        values: dir.args,
+        from: dir.openFrom, to: dir.openTo,
+        original: doc.slice(dir.openFrom, dir.openTo),
+      });
     },
   }), [editLayout, canEditLayout, snapOn, editorRef]);
 

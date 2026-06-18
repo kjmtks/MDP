@@ -87,6 +87,9 @@
       "path": "modules/bignumber.mdpmod.xml"
     },
     {
+      "path": "modules/bubble.mdpmod.xml"
+    },
+    {
       "path": "modules/button.mdpmod.xml"
     },
     {
@@ -154,6 +157,9 @@
     },
     {
       "path": "modules/references.mdpmod.xml"
+    },
+    {
+      "path": "modules/shape.mdpmod.xml"
     },
     {
       "path": "modules/shortcut.mdpmod.xml"

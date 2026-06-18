@@ -57,56 +57,12 @@ export interface ModuleData {
   script: string;
 }
 
-export const parseMdmodXml = (content: string): ModuleData | null => {
-  if (!content) return null;
-  const cleanContent = content.replace(/^\uFEFF/, '').trim();
+const PARAM_TYPES = ['text', 'number', 'boolean', 'select', 'color', 'image'];
 
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(cleanContent, "application/xml");
-
-  const parseError = doc.querySelector("parsererror");
-  if (parseError) {
-    console.error("[MDP] XML Parse Error:", parseError.textContent);
-    return null;
-  }
-
-  const root = doc.querySelector("module");
-  if (!root) return null;
-
-  const name = root.querySelector("name")?.textContent?.trim() || "";
-  const type = (root.querySelector("type")?.textContent?.trim() || "block") as 'block' | 'inline';
-  const description = root.querySelector("description")?.textContent?.trim() || "";
-  const interactive = root.querySelector("interactive")?.textContent?.trim() === "true";
-
-  // Manipulation capability (block modules only). Axis tokens: 'x'|'y'|'xy';
-  // 'true'/'both' => 'xy'; '' / 'false' / 'none' => disabled.
-  let manipulate: ManipulateConfig | undefined;
-  const manipEl = root.querySelector("manipulate");
-  if (manipEl && type === 'block') {
-    const axis = (v: string | null): ManipAxis => {
-      const s = (v || '').trim().toLowerCase();
-      if (!s || s === 'false' || s === 'none') return '';
-      if (s === 'true' || s === 'both') return 'xy';
-      const hasX = s.includes('x'), hasY = s.includes('y');
-      return hasX && hasY ? 'xy' : hasX ? 'x' : hasY ? 'y' : '';
-    };
-    // XML attributes are case-sensitive; accept both `minW` and `minw`.
-    const attr = (a: string) => manipEl.getAttribute(a) ?? manipEl.getAttribute(a.toLowerCase());
-    const num = (a: string): number | undefined => {
-      const raw = attr(a);
-      const n = raw == null ? NaN : parseFloat(raw);
-      return Number.isFinite(n) ? n : undefined;
-    };
-    const move = axis(attr('position'));
-    const resize = axis(attr('size'));
-    const rotate = (attr('rotation') || '').trim().toLowerCase() === 'true';
-    if (move || resize || rotate) {
-      manipulate = { move, resize, rotate, minW: num('minW'), maxW: num('maxW'), minH: num('minH'), maxH: num('maxH') };
-    }
-  }
-
-  const parameters: ModuleParam[] = [];
-  const PARAM_TYPES = ['text', 'number', 'boolean', 'select', 'color', 'image'];
+// Parse `<parameters><param .../></parameters>` (settings-UI metadata) from any
+// container element. Shared by module and effect (.mdpfx) parsing.
+export const parseParamElements = (root: ParentNode): ModuleParam[] => {
+  const out: ModuleParam[] = [];
   root.querySelectorAll("parameters > param").forEach(p => {
     const rawType = (p.getAttribute("type") || "").trim().toLowerCase();
     const type = (PARAM_TYPES.includes(rawType) ? rawType : undefined) as ParamType | undefined;
@@ -133,7 +89,7 @@ export const parseMdmodXml = (content: string): ModuleData | null => {
       return Number.isFinite(n) ? n : undefined;
     };
 
-    parameters.push({
+    out.push({
       name: p.getAttribute("name") || "",
       default: p.hasAttribute("default") ? p.getAttribute("default")! : undefined,
       required: p.getAttribute("required") === "true",
@@ -145,6 +101,58 @@ export const parseMdmodXml = (content: string): ModuleData | null => {
       integer: p.getAttribute("integer") === "true",
     });
   });
+  return out;
+};
+
+export const parseMdmodXml = (content: string): ModuleData | null => {
+  if (!content) return null;
+  const cleanContent = content.replace(/^\uFEFF/, '').trim();
+
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(cleanContent, "application/xml");
+
+  const parseError = doc.querySelector("parsererror");
+  if (parseError) {
+    console.error("[MDP] XML Parse Error:", parseError.textContent);
+    return null;
+  }
+
+  const root = doc.querySelector("module");
+  if (!root) return null;
+
+  const name = root.querySelector("name")?.textContent?.trim() || "";
+  const type = (root.querySelector("type")?.textContent?.trim() || "block") as 'block' | 'inline';
+  const description = root.querySelector("description")?.textContent?.trim() || "";
+  const interactive = root.querySelector("interactive")?.textContent?.trim() === "true";
+
+  // Manipulation capability (block or inline modules). Axis tokens: 'x'|'y'|'xy';
+  // 'true'/'both' => 'xy'; '' / 'false' / 'none' => disabled.
+  let manipulate: ManipulateConfig | undefined;
+  const manipEl = root.querySelector("manipulate");
+  if (manipEl) {
+    const axis = (v: string | null): ManipAxis => {
+      const s = (v || '').trim().toLowerCase();
+      if (!s || s === 'false' || s === 'none') return '';
+      if (s === 'true' || s === 'both') return 'xy';
+      const hasX = s.includes('x'), hasY = s.includes('y');
+      return hasX && hasY ? 'xy' : hasX ? 'x' : hasY ? 'y' : '';
+    };
+    // XML attributes are case-sensitive; accept both `minW` and `minw`.
+    const attr = (a: string) => manipEl.getAttribute(a) ?? manipEl.getAttribute(a.toLowerCase());
+    const num = (a: string): number | undefined => {
+      const raw = attr(a);
+      const n = raw == null ? NaN : parseFloat(raw);
+      return Number.isFinite(n) ? n : undefined;
+    };
+    const move = axis(attr('position'));
+    const resize = axis(attr('size'));
+    const rotate = (attr('rotation') || '').trim().toLowerCase() === 'true';
+    if (move || resize || rotate) {
+      manipulate = { move, resize, rotate, minW: num('minW'), maxW: num('maxW'), minH: num('minH'), maxH: num('maxH') };
+    }
+  }
+
+  const parameters = parseParamElements(root);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const snippets: any[] = [];

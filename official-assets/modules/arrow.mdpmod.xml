@@ -1,9 +1,10 @@
 <module>
   <name>arrow</name>
   <type>inline</type>
-  <description>Arrows connecting elements</description>
+  <description>Arrow connecting elements. 8 directions and several shapes (triangle, chevron, line, double).</description>
   <parameters>
-    <param name="direction" type="select" default="down" label="Direction" options="down:Down,right:Right" />
+    <param name="direction" type="select" default="down" label="Direction" options="up:Up,down:Down,left:Left,right:Right,up-right:Up-right,up-left:Up-left,down-right:Down-right,down-left:Down-left" />
+    <param name="shape" type="select" default="triangle" label="Shape" options="triangle:Triangle,chevron:Chevron,line:Line arrow,double:Double chevron" />
     <param name="size" type="text" default="40px" label="Size" desc="CSS size, e.g. 40px" />
     <param name="margin" type="text" default="1rem 0 0 0" label="Margin" desc="CSS margin shorthand" />
     <param name="color" type="color" default="var(--accent-color)" label="Color" />
@@ -11,41 +12,50 @@
   <snippets>
     <snippet>
       <category>UI Parts</category>
-      <label>Down arrow</label>
-      <text><![CDATA[<!-- @arrow direction: down, size: 40px, color: var(--accent-color) -->]]></text>
-      <description>A down-pointing arrow connecting elements</description>
+      <label>Down arrow (triangle)</label>
+      <text><![CDATA[<!-- @arrow direction: down, shape: triangle, size: 40px -->]]></text>
+      <description>A down-pointing solid triangle arrow.</description>
     </snippet>
     <snippet>
       <category>UI Parts</category>
-      <label>Right arrow</label>
-      <text><![CDATA[<!-- @arrow direction: right, size: 40px, color: var(--accent-color) -->]]></text>
-      <description>A right-pointing arrow connecting elements</description>
+      <label>Right arrow (line)</label>
+      <text><![CDATA[<!-- @arrow direction: right, shape: line, size: 48px -->]]></text>
+      <description>A right-pointing line arrow (→).</description>
+    </snippet>
+    <snippet>
+      <category>UI Parts</category>
+      <label>Diagonal chevron</label>
+      <text><![CDATA[<!-- @arrow direction: down-right, shape: chevron, size: 44px -->]]></text>
+      <description>A chevron pointing down-right. direction: up|down|left|right|up-right|up-left|down-right|down-left.</description>
     </snippet>
   </snippets>
   <render><![CDATA[
     const size = args.size || '40px';
     const color = args.color || 'var(--accent-color)';
-    const margin = args.margin || '10px 0';
-    const direction = args.direction || 'down';
-    return `\n\n<div class="mdp-mod-arrow-wrap" style="--arr-size: ${size}; --arr-color: ${color}; --margin: ${margin};"><div class="mdp-mod-arrow mdp-mod-arrow-${direction}"></div></div>\n\n`;
+    const margin = args.margin || '1rem 0 0 0';
+    const direction = (args.direction || 'down').toLowerCase();
+    const shape = (args.shape || 'triangle').toLowerCase();
+    // Shapes are drawn pointing RIGHT (0deg); direction rotates the whole SVG.
+    const angles = {
+      right: 0, 'down-right': 45, down: 90, 'down-left': 135,
+      left: 180, 'up-left': 225, up: 270, 'up-right': 315
+    };
+    const angle = angles[direction] != null ? angles[direction] : 90;
+    const shapes = {
+      triangle: '<polygon points="22,14 86,50 22,86"/>',
+      chevron: '<polyline points="34,16 70,50 34,84" fill="none" stroke="currentColor" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>',
+      line: '<path d="M10 50 H72" fill="none" stroke="currentColor" stroke-width="12" stroke-linecap="round"/><polyline points="56,26 84,50 56,74" fill="none" stroke="currentColor" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>',
+      double: '<polyline points="20,18 52,50 20,82" fill="none" stroke="currentColor" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/><polyline points="48,18 80,50 48,82" fill="none" stroke="currentColor" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>'
+    };
+    const inner = shapes[shape] || shapes.triangle;
+    return `\n\n<div class="mdp-mod-arrow-wrap" style="margin: ${margin};"><svg viewBox="0 0 100 100" class="mdp-mod-arrow-svg" style="width: ${size}; height: ${size}; color: ${color}; transform: rotate(${angle}deg);" fill="currentColor">${inner}</svg></div>\n\n`;
   ]]></render>
   <style><![CDATA[
     .mdp-mod-arrow-wrap {
       display: flex;
       justify-content: center;
       align-items: center;
-      margin: var(--margin, 0);
     }
-    .mdp-mod-arrow {
-      width: 0; height: 0; border-style: solid;
-    }
-    .mdp-mod-arrow-down {
-      border-width: calc(var(--arr-size) * 0.8) calc(var(--arr-size) * 0.5) 0 calc(var(--arr-size) * 0.5);
-      border-color: var(--arr-color) transparent transparent transparent;
-    }
-    .mdp-mod-arrow-right {
-      border-width: calc(var(--arr-size) * 0.5) 0 calc(var(--arr-size) * 0.5) calc(var(--arr-size) * 0.8);
-      border-color: transparent transparent transparent var(--arr-color);
-    }
+    .mdp-mod-arrow-svg { display: block; }
   ]]></style>
 </module>

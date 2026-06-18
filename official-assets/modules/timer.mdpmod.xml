@@ -1,8 +1,12 @@
 <module>
   <name>timer</name>
   <type>inline</type>
-  <description>Countdown timer with start / pause / reset. Self-contained inline element (no closing tag). Interactive: clicking it does not advance the slide. Auto-starts when presenting if autostart:true. Use the size argument to scale it.</description>
+  <description>Countdown timer with start / pause / reset. Self-contained inline element (no closing tag). Movable on the preview in Edit layout; resize is horizontal-only. Interactive: clicking it does not advance the slide. Auto-starts when presenting if autostart:true.</description>
   <interactive>true</interactive>
+
+  <!-- Inline-manipulable: move freely, resize horizontally only (height follows
+       the font, so the readout is never vertically distorted). -->
+  <manipulate position="xy" size="x" rotation="false" minW="6" maxW="100" />
 
   <parameters>
     <param name="minutes" type="number" default="5" label="Minutes" min="0" integer="true" />
@@ -73,6 +77,9 @@
       line-height: 1; padding: 0.1em 0.3em; border-radius: 0.3em; color: inherit;
     }
     .mdp-mod-timer .mdp-timer-btn:hover { background: rgba(0, 0, 0, 0.14); }
+    /* When placed (lifted) in Edit layout, fill the box width and centre so the
+       horizontal resize is visible; height stays font-driven. */
+    .mdp-manip[data-lifted="1"] .mdp-mod-timer { display: flex; width: 100%; justify-content: center; box-sizing: border-box; }
 
     /* Sizes (sm | md | lg | xl). */
     .mdp-mod-timer.mdp-size-sm { font-size: 0.8em; }

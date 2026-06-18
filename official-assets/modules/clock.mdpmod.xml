@@ -1,8 +1,12 @@
 <module>
   <name>clock</name>
   <type>inline</type>
-  <description>Live wall-clock that shows the current time and ticks every second. Fixed width so it never reflows. Interactive: it never advances the slide.</description>
+  <description>Live wall-clock that shows the current time and ticks every second. Fixed width so it never reflows. Movable on the preview in Edit layout; resize is horizontal-only. Interactive: it never advances the slide.</description>
   <interactive>true</interactive>
+
+  <!-- Inline-manipulable: move freely, resize horizontally only (height follows
+       the font). -->
+  <manipulate position="xy" size="x" rotation="false" minW="5" maxW="100" />
 
   <parameters>
     <param name="format" type="select" default="24" label="Clock format" options="24:24-hour,12:12-hour (AM/PM)" />
@@ -58,6 +62,9 @@
        the readout never shifts as the time ticks. */
     .mdp-mod-clock .mdp-clock-time { font-weight: 700; text-align: center; }
     .mdp-mod-clock .mdp-clock-ampm { font-size: 0.6em; font-weight: 600; opacity: 0.8; }
+    /* When placed (lifted) in Edit layout, fill the box width and centre; height
+       stays font-driven (horizontal-only resize). */
+    .mdp-manip[data-lifted="1"] .mdp-mod-clock { display: flex; width: 100%; justify-content: center; box-sizing: border-box; }
 
     /* Sizes (sm | md | lg | xl). */
     .mdp-mod-clock.mdp-size-sm { font-size: 0.8em; }

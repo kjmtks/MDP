@@ -66,6 +66,7 @@ function wrapManipulable(
   manip: NonNullable<ModuleData['config']['manipulate']>,
   args: Record<string, string>,
   ord: number | undefined,
+  inlineModule: boolean,
 ): string {
   const num = (v: string | undefined): number | undefined => {
     const n = v == null ? NaN : parseFloat(v);
@@ -83,6 +84,10 @@ function wrapManipulable(
     styles.push(`transform:translate(-50%,-50%) rotate(${rot}deg)`, 'transform-origin:center center');
   } else {
     styles.push('position:relative');
+    // Inline modules stay in the text line until lifted (a div would force a
+    // block); display:inline-block keeps the flow while still being a box the
+    // ManipulationLayer can size.
+    if (inlineModule) styles.push('display:inline-block', 'vertical-align:middle');
   }
   if (manip.minW != null) styles.push(`min-width:${manip.minW}%`);
   if (manip.maxW != null) styles.push(`max-width:${manip.maxW}%`);
@@ -103,6 +108,10 @@ function wrapManipulable(
     manip.maxH != null ? `data-maxh="${manip.maxH}"` : '',
   ].filter(Boolean).join(' ');
 
+  // Inline modules: a <span> with no surrounding blank lines so markdown keeps it
+  // in the text flow (the inner is already final HTML). Block modules: a <div>
+  // padded with blank lines so the inner renders as markdown.
+  if (inlineModule) return `<span ${attrs} style="${styles.join('; ')}">${inner}</span>`;
   return `\n\n<div ${attrs} style="${styles.join('; ')}">\n\n${inner}\n\n</div>\n\n`;
 }
 
@@ -163,7 +172,7 @@ function renderModuleTemplate(mod: ModuleData, sections: string[], argsStr: stri
   try {
     const renderFn = new Function('args', 'sections', 'content', mod.render);
     const generatedHtml = renderFn(renderArgs, sections, (sections[0] || '').trim());
-    if (mod.config.manipulate) return wrapManipulable(generatedHtml, mod.config.manipulate, finalArgs, ord);
+    if (mod.config.manipulate) return wrapManipulable(generatedHtml, mod.config.manipulate, finalArgs, ord, mod.config.type === 'inline');
     return generatedHtml;
   } catch (e) {
     console.error(`[MDP] Module Render Error (${mod.config.name}):`, e);
@@ -194,26 +203,17 @@ interface StackContext {
 export const applyModulesToMarkdown = (markdown: string): string => {
   if (!markdown) return '';
   const codeBlocks: string[] = [];
-  let processed = markdown.replace(/```[\s\S]*?```|`[^`]+`/g, (match) => {
+  const processed = markdown.replace(/```[\s\S]*?```|`[^`]+`/g, (match) => {
     const index = codeBlocks.length;
     codeBlocks.push(match);
     return `__MDP_CODE_BLOCK_${index}__`;
   });
 
-  Object.values(loadedModules).forEach(mod => {
-    if (mod.config.type !== 'inline') return;
-    const { name } = mod.config;
-    const inlineStart = "([ \\t]*)<" + "!--\\s*@" + name + "\\s*(.*?)\\s*--" + ">";
-    const inlineRegex = new RegExp(inlineStart, "g");
-
-    processed = processed.replace(inlineRegex, (_match, indent, argsStr): string => {
-      let html = renderModuleTemplate(mod, [], argsStr);
-      if (indent) {
-        html = html.replace(/\n/g, '\n' + indent);
-      }
-      return indent + html;
-    });
-  });
+  // NOTE: inline modules are rendered INSIDE the token walk below (not in a
+  // separate pre-pass), so `manipOrd` is assigned to inline AND block manipulable
+  // directives in a single document-order sequence — matching
+  // parseModuleDirectives (moduleDocEdits.ts) so on-preview transforms write back
+  // to the right directive.
 
   const tokens: Token[] = [];
   const tokenRegex = /([ \t]*)<!--\s*@(end)?([a-zA-Z0-9_-]*)\s*(.*?)\s*-->/g;
@@ -264,6 +264,15 @@ export const applyModulesToMarkdown = (markdown: string): string => {
           indent: token.indent,
           ord: mod.config.manipulate ? manipOrd++ : undefined
         });
+      } else if (mod && mod.config.type === 'inline') {
+        // Self-contained inline module: render in place. Manipulable inline
+        // modules take an `ord` from the same document-order counter as blocks.
+        const ord = mod.config.manipulate ? manipOrd++ : undefined;
+        let html = renderModuleTemplate(mod, [], token.argsStr, ord);
+        if (token.indent) html = html.replace(/\n/g, '\n' + token.indent);
+        html = token.indent + html;
+        if (stack.length > 0) stack[stack.length - 1].currentSectionStr += html;
+        else rootStr += html;
       } else {
         const text = `${token.indent}<!-- @${token.name} ${token.argsStr} -->`;
         if (stack.length > 0) stack[stack.length - 1].currentSectionStr += text;

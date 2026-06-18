@@ -1,0 +1,123 @@
+<module>
+  <name>shape</name>
+  <type>block</type>
+  <description>A geometric shape (rectangle, triangle, ellipse, diamond, pentagon, hexagon, star) with fill, border and centred text. Move / resize / rotate it on the preview in Edit layout.</description>
+
+  <manipulate position="xy" size="xy" rotation="true" minW="5" maxW="100" minH="3" maxH="100" />
+
+  <parameters>
+    <param name="type" type="select" default="rectangle" label="Shape" options="rectangle:Rectangle,triangle:Triangle,ellipse:Ellipse,diamond:Diamond,pentagon:Pentagon,hexagon:Hexagon,star:Star" />
+    <param name="fill" type="color" default="var(--accent-color)" label="Fill" options="var(--accent-color):Accent,#3b82f6:Blue,#10b981:Green,#f59e0b:Amber,#ef4444:Red,#8b5cf6:Purple,#e5e7eb:Gray,transparent:None" />
+    <param name="borderwidth" type="number" default="0" label="Border width (px)" min="0" max="40" />
+    <param name="bordercolor" type="color" default="var(--border-color)" label="Border color" />
+    <param name="textcolor" type="color" default="#ffffff" label="Text color" />
+    <param name="fontsize" type="text" default="1em" label="Font size" desc="CSS size, e.g. 1.2em or 18px" />
+    <param name="halign" type="select" default="center" label="Horizontal align" options="left,center,right" />
+    <param name="valign" type="select" default="middle" label="Vertical align" options="top,middle,bottom" />
+  </parameters>
+
+  <snippets>
+    <snippet>
+      <category>Layout</category>
+      <label>Shape (star)</label>
+      <text><![CDATA[<!-- @shape type: star, fill: var(--accent-color), x: 50, y: 40, w: 18, h: 24 -->
+<!-- @end -->]]></text>
+      <description>A placed star. type: rectangle|triangle|ellipse|diamond|pentagon|hexagon|star.</description>
+    </snippet>
+    <snippet>
+      <category>Layout</category>
+      <label>Shape (labelled box)</label>
+      <text><![CDATA[<!-- @shape type: rectangle, fill: #3b82f6, x: 50, y: 40, w: 30, h: 16 -->
+**Label**
+<!-- @end -->]]></text>
+      <description>A rectangle with centred text. Move/resize in Edit layout.</description>
+    </snippet>
+  </snippets>
+
+  <render><![CDATA[
+    const type = (args.type || 'rectangle').toLowerCase();
+    const fill = args.fill || 'var(--accent-color)';
+    const bw = args.borderwidth || '0';
+    const bc = args.bordercolor || 'var(--border-color)';
+    const tc = args.textcolor || '#ffffff';
+    const fs = args.fontsize || '1em';
+    const h = (args.halign || 'center').toLowerCase();
+    const v = (args.valign || 'middle').toLowerCase();
+    const justify = h === 'left' ? 'flex-start' : h === 'right' ? 'flex-end' : 'center';
+    const alignItems = v === 'top' ? 'flex-start' : v === 'bottom' ? 'flex-end' : 'center';
+    const textAlign = h === 'left' ? 'left' : h === 'right' ? 'right' : 'center';
+    const bodyStr = sections[0] ? sections[0].trim() : '';
+
+    // Regular n-gon / star point strings in a 0..100 viewBox (centred at 50,50).
+    const ngon = function (n, r, rot) {
+      const p = [];
+      for (let i = 0; i < n; i++) {
+        const a = rot + (i * 2 * Math.PI) / n;
+        p.push((50 + r * Math.cos(a)).toFixed(2) + ',' + (50 + r * Math.sin(a)).toFixed(2));
+      }
+      return p.join(' ');
+    };
+    const starPts = function (n, ro, ri, rot) {
+      const p = [];
+      for (let i = 0; i < n * 2; i++) {
+        const r = i % 2 === 0 ? ro : ri;
+        const a = rot + (i * Math.PI) / n;
+        p.push((50 + r * Math.cos(a)).toFixed(2) + ',' + (50 + r * Math.sin(a)).toFixed(2));
+      }
+      return p.join(' ');
+    };
+    const top = -Math.PI / 2; // first vertex at the top
+    const common = `fill="${fill}" stroke="${bc}" stroke-width="${bw}" vector-effect="non-scaling-stroke" stroke-linejoin="round"`;
+    let inner;
+    if (type === 'ellipse') {
+      inner = `<ellipse cx="50" cy="50" rx="47" ry="47" ${common}/>`;
+    } else if (type === 'rectangle' || type === 'rect' || type === 'square') {
+      inner = `<rect x="3" y="3" width="94" height="94" ${common}/>`;
+    } else {
+      let pts;
+      if (type === 'triangle') pts = '50,5 95,95 5,95';
+      else if (type === 'diamond') pts = '50,4 96,50 50,96 4,50';
+      else if (type === 'pentagon') pts = ngon(5, 47, top);
+      else if (type === 'hexagon') pts = ngon(6, 47, top);
+      else if (type === 'star') pts = starPts(5, 48, 20, top);
+      else pts = '3,3 97,3 97,97 3,97';
+      inner = `<polygon points="${pts}" ${common}/>`;
+    }
+    const svg = `<svg class="mdp-shape-svg" viewBox="0 0 100 100" preserveAspectRatio="none">${inner}</svg>`;
+    const textOpen = `<div class="mdp-shape-text" style="color: ${tc}; font-size: ${fs}; justify-content: ${justify}; align-items: ${alignItems}; text-align: ${textAlign};">`;
+    // Blank lines around the content so markdown renders it inside the text layer.
+    return `\n\n<div class="mdp-mod-shape">${svg}${textOpen}\n\n${bodyStr}\n\n</div></div>\n\n`;
+  ]]></render>
+
+  <style><![CDATA[
+    .mdp-mod-shape {
+      position: relative;
+      width: 250px;
+      height: 150px;
+      box-sizing: border-box;
+    }
+    /* When placed/sized in Edit layout, fill the manip box. */
+    .mdp-manip[data-lifted="1"] .mdp-mod-shape { width: 100%; height: 100%; }
+    .mdp-shape-svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      overflow: visible;
+    }
+    .mdp-shape-text {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      padding: 0.6em;
+      box-sizing: border-box;
+      line-height: 1.25;
+    }
+    .mdp-shape-text > :first-child { margin-top: 0; }
+    .mdp-shape-text > :last-child { margin-bottom: 0; }
+  ]]></style>
+
+  <script></script>
+</module>

@@ -40,6 +40,8 @@ export function parseModuleDirectives(doc: string): ManipDirective[] {
     Object.values(loadedModules).filter((m) => m.config.type === 'block').map((m) => m.config.name),
   );
   const isManip = (name: string) => !!loadedModules[name]?.config.manipulate;
+  const isInlineManip = (name: string) =>
+    loadedModules[name]?.config.type === 'inline' && !!loadedModules[name]?.config.manipulate;
 
   const tokRe = new RegExp(RE_OPEN + '\\s*@(end)?([a-zA-Z0-9_-]*)\\s*(.*?)\\s*-->', 'g');
   interface Open { name: string; argsStr: string; from: number; to: number; ord: number | null }
@@ -69,6 +71,15 @@ export function parseModuleDirectives(doc: string): ManipDirective[] {
     if (!isEnd) {
       if (blockNames.has(name)) {
         stack.push({ name, argsStr, from, to, ord: isManip(name) ? manipOrd++ : null });
+      } else if (isInlineManip(name)) {
+        // A manipulable INLINE module is a self-contained directive (no @end).
+        // It takes an `ord` from the SAME document-order counter as blocks, so it
+        // matches the renderer's assignment in moduleProcessor.
+        const args = parseArguments(argsStr);
+        out.push({
+          name, ord: manipOrd++, id: (args.id || '').trim() || null, args,
+          openFrom: from, openTo: to, fullFrom: from, fullTo: to,
+        });
       }
     } else {
       // `<!-- @end -->` / `<!-- @endName -->`: close nearest matching open.
