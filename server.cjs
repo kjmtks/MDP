@@ -172,6 +172,37 @@ app.post('/api/move', (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Insert " copy" (then " copy 2", …) before the extension to avoid collisions;
+// the extension is taken from the FIRST dot so `.slide.md` / `.mdpmod.xml` stay intact.
+const uniqueCopyName = (targetDir, baseName) => {
+  const dot = baseName.indexOf('.');
+  const stem = dot > 0 ? baseName.slice(0, dot) : baseName;
+  const ext = dot > 0 ? baseName.slice(dot) : '';
+  let candidate = baseName;
+  let i = 0;
+  while (fs.existsSync(path.join(targetDir, candidate))) {
+    i += 1;
+    candidate = i === 1 ? `${stem} copy${ext}` : `${stem} copy ${i}${ext}`;
+  }
+  return candidate;
+};
+
+app.post('/api/copy', (req, res) => {
+  const { sourcePaths, targetPath } = req.body;
+  const targetDir = path.join(rootDir, targetPath || '');
+  try {
+    if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
+    const created = [];
+    sourcePaths.forEach(p => {
+      const src = path.join(rootDir, p);
+      const destName = uniqueCopyName(targetDir, path.basename(src));
+      fs.cpSync(src, path.join(targetDir, destName), { recursive: true });
+      created.push((targetPath ? `${targetPath}/${destName}` : destName).replace(/^\//, ''));
+    });
+    res.json({ success: true, paths: created });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.post('/api/create', (req, res) => {
   const { path: createPath, type } = req.body;
   const physicalPath = getSafePath(createPath);

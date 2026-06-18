@@ -294,6 +294,36 @@ ipcMain.handle('moveFile', async (event, { sourcePaths, targetPath }) => {
   return { success: true };
 });
 
+// Pick a name that doesn't collide in `targetDir`, inserting " copy" (then
+// " copy 2", …) before the extension. The extension is taken from the FIRST dot
+// so compound types (`.slide.md`, `.mdpmod.xml`) stay intact.
+const uniqueCopyName = (targetDir, baseName) => {
+  const dot = baseName.indexOf('.');
+  const stem = dot > 0 ? baseName.slice(0, dot) : baseName;
+  const ext = dot > 0 ? baseName.slice(dot) : '';
+  let candidate = baseName;
+  let i = 0;
+  while (fsSync.existsSync(path.join(targetDir, candidate))) {
+    i += 1;
+    candidate = i === 1 ? `${stem} copy${ext}` : `${stem} copy ${i}${ext}`;
+  }
+  return candidate;
+};
+
+ipcMain.handle('copyFiles', async (event, { sourcePaths, targetPath }) => {
+  if (!currentBaseDir) return { success: false };
+  const targetDir = path.join(currentBaseDir, targetPath || '');
+  await fs.mkdir(targetDir, { recursive: true });
+  const created = [];
+  for (const p of sourcePaths) {
+    const src = path.join(currentBaseDir, p);
+    const destName = uniqueCopyName(targetDir, path.basename(p));
+    await fs.cp(src, path.join(targetDir, destName), { recursive: true });
+    created.push((targetPath ? `${targetPath}/${destName}` : destName).replace(/^\//, ''));
+  }
+  return { success: true, paths: created };
+});
+
 const getAssetPath = (filename) => {
   return isDev
     ? path.join(process.cwd(), 'public', filename)

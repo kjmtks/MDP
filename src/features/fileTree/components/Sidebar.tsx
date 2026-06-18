@@ -5,6 +5,8 @@ import NoteAddIcon from '@mui/icons-material/NoteAdd';
 import CreateNewFolderIcon from '@mui/icons-material/CreateNewFolder';
 import DeleteIcon from '@mui/icons-material/Delete';
 import DriveFileRenameOutlineIcon from '@mui/icons-material/DriveFileRenameOutline';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import ContentPasteIcon from '@mui/icons-material/ContentPaste';
 import SlideshowIcon from '@mui/icons-material/Slideshow';
 import { CustomTabPanel } from '../../../components/common/CustomTabPanel';
 import { FileTreeItem } from './FileTreeItem';
@@ -79,6 +81,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
   const [dragOverPath, setDragOverPath] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  // Copy/paste clipboard: file-tree paths captured by Copy, pasted into a folder.
+  const [clipboard, setClipboard] = useState<string[]>([]);
 
   const [contextMenu, setContextMenu] = useState<{ mouseX: number; mouseY: number; node?: FileNode; path: string; isFolder: boolean } | null>(null);
   const [nodeToRename, setNodeToRename] = useState<FileNode | null>(null);
@@ -157,6 +161,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
     };
     walk(fileTree);
     return set;
+  }, [fileTree]);
+
+  const nodeByPath = React.useMemo(() => {
+    const map = new Map<string, FileNode>();
+    const walk = (nodes: FileNode[]) => {
+      for (const n of nodes) { map.set(n.path, n); if (n.children) walk(n.children); }
+    };
+    walk(fileTree);
+    return map;
   }, [fileTree]);
 
   const handleSelect = (e: React.MouseEvent, node: FileNode) => {
@@ -369,6 +382,44 @@ export const Sidebar: React.FC<SidebarProps> = ({
     setDeleteDialogOpen(false);
   };
 
+  // The folder a paste lands in: the context node's folder (its own path if it's
+  // a folder, its parent if it's a file), else the explicit menu path (root = '').
+  const pasteTargetDir = (): string => {
+    if (!contextMenu) return '';
+    if (contextMenu.node?.type === 'file') return contextMenu.path.substring(0, contextMenu.path.lastIndexOf('/'));
+    return contextMenu.path;
+  };
+
+  const handleCopy = () => {
+    const paths = selectedPaths.size > 0 ? Array.from(selectedPaths) : (contextMenu?.node ? [contextMenu.path] : []);
+    // Don't copy virtual placeholder folders (they have no on-disk counterpart).
+    const real = paths.filter(p => allPaths.has(p));
+    if (real.length) setClipboard(real);
+    setContextMenu(null);
+  };
+
+  const handlePaste = (targetDir: string) => {
+    if (!clipboard.length) return;
+    setContextMenu(null);
+    withProcessing(async () => {
+      const result = await apiClient.copyFiles(clipboard, targetDir);
+      if (targetDir) expandParentDir(targetDir);
+      // Select the freshly pasted items so they're easy to spot.
+      if (result?.paths?.length) setSelectedPaths(new Set(result.paths));
+    });
+  };
+
+  // Keyboard Ctrl/Cmd+V target: the selected folder, the parent of the selected
+  // file, else the workspace root.
+  const keyboardPasteTarget = (): string => {
+    const sel = Array.from(selectedPaths);
+    if (sel.length >= 1) {
+      const n = nodeByPath.get(sel[0]);
+      if (n) return n.type === 'directory' ? n.path : n.path.substring(0, n.path.lastIndexOf('/'));
+    }
+    return '';
+  };
+
   const handleDragStart = (e: React.DragEvent, node: FileNode) => {
     e.stopPropagation();
     const pathsToMove = selectedPaths.has(node.path) ? Array.from(selectedPaths) : [node.path];
@@ -519,6 +570,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         <CustomTabPanel value={activeIndex} index={1} noScroll>
           <Box
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (!(e.ctrlKey || e.metaKey)) return;
+              const k = e.key.toLowerCase();
+              if (k === 'c' && selectedPaths.size > 0) { e.preventDefault(); handleCopy(); }
+              else if (k === 'v' && clipboard.length > 0) { e.preventDefault(); handlePaste(keyboardPasteTarget()); }
+            }}
             onDragOver={handleDragOver} onDrop={handleDrop} onDragEnd={() => setDragOverPath(null)} onDragLeave={() => setDragOverPath(null)} onClick={() => setSelectedPaths(new Set())} onContextMenu={handleRootContextMenu}
             sx={{ p: 1, height: '100%', color: 'var(--app-text-secondary)', fontSize: '0.9rem', overflowY: 'auto', bgcolor: 'var(--app-bg-panel)', pb: 10, outline: dragOverPath === '' ? '2px dashed var(--app-accent)' : 'none', outlineOffset: '-2px' }}
           >
@@ -579,8 +637,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </MenuItem>
           ]
         )}
-        {(ctxFileInSpecial || ctxShowGenericNew) && contextMenu?.node && <Divider />}
+        {(ctxFileInSpecial || ctxShowGenericNew) && (contextMenu?.node || clipboard.length > 0) && <Divider />}
 
+        {contextMenu?.node && !contextMenu.node.isSpecial && (
+          <MenuItem onClick={handleCopy}>
+            <ListItemIcon><ContentCopyIcon fontSize="small" /></ListItemIcon>
+            Copy{selectedPaths.size > 1 ? ` (${selectedPaths.size})` : ''}
+          </MenuItem>
+        )}
+        {clipboard.length > 0 && (
+          <MenuItem onClick={() => handlePaste(pasteTargetDir())}>
+            <ListItemIcon><ContentPasteIcon fontSize="small" /></ListItemIcon>
+            Paste{clipboard.length > 1 ? ` (${clipboard.length})` : ''}
+          </MenuItem>
+        )}
         {contextMenu?.node && !contextMenu.node.isSpecial && (
           <MenuItem onClick={handleRenameClick} disabled={selectedPaths.size > 1}>
             <ListItemIcon><DriveFileRenameOutlineIcon fontSize="small" /></ListItemIcon> Rename

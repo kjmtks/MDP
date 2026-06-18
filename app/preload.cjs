@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveFile: (args) => ipcRenderer.invoke('saveFile', args),
   createFile: (args) => ipcRenderer.invoke('createFile', args),
   moveFile: (args) => ipcRenderer.invoke('moveFile', args),
+  copyFiles: (args) => ipcRenderer.invoke('copyFiles', args),
   renameFile: (args) => ipcRenderer.invoke('renameFile', args),
   deleteFiles: (args) => ipcRenderer.invoke('deleteFiles', args),
   readFileText: (filePath) => ipcRenderer.invoke('readFileText', filePath),

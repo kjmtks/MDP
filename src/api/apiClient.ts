@@ -50,6 +50,20 @@ export const apiClient = {
     return res.json();
   },
 
+  copyFiles: async (sourcePaths: string[], targetPath: string): Promise<{ success: boolean; paths?: string[] }> => {
+    if (isElectron()) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return await (window as any).electronAPI.copyFiles({ sourcePaths, targetPath });
+    }
+    const res = await fetch('/api/copy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sourcePaths, targetPath })
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+
   renameFile: async (oldPath: string, newPath: string) => {
     if (isElectron()) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
