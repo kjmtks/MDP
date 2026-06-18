@@ -25,6 +25,8 @@ import { MDP_DIR, SPECIAL_SUBFOLDERS } from '../../workspace/specialFolders';
 import BookmarkIcon from '@mui/icons-material/Bookmark';
 import BookmarkBorderIcon from '@mui/icons-material/BookmarkBorder';
 import { isFileTreeDrag } from '../dragUtils';
+import { useAppSettings } from '../../settings/AppSettingsContext';
+import { applyAuthorProfile } from '../../settings/types';
 
 interface SidebarProps {
   currentFileName: string | null;
@@ -70,6 +72,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   bookmarks, isBookmarked, onToggleBookmark, onReorderBookmark, onUpdateBookmark,
   onRenameFile, onDeleteFiles, section
 }) => {
+  const { settings } = useAppSettings();
   const [leftTabIndex, setLeftTabIndex] = useState(0);
   const activeIndex = section ? SECTION_INDEX[section] : leftTabIndex;
   // Keep the active thumbnail in view (e.g. when the active slide changes on tab switch).
@@ -319,7 +322,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
     await withProcessing(async () => {
       if (type === 'slide') {
         const templateContent = await apiClient.getTemplateContent(selectedTemplatePath).catch(() => '');
-        await apiClient.saveFile(newPath, templateContent);
+        // Pre-fill the cover meta (@presenter / @affiliation / @contact) from the
+        // configured author profile, leaving placeholders for any unset fields.
+        const filled = applyAuthorProfile(templateContent, settings);
+        await apiClient.saveFile(newPath, filled);
         if (parentPath) expandParentDir(parentPath);
         onFileSelect(newPath);
       } else if (type === 'file' || type === 'directory') {

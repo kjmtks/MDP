@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { IconButton, Tooltip } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import PaletteIcon from '@mui/icons-material/Palette';
+import PersonOutlineIcon from '@mui/icons-material/PersonOutline';
 import KeyboardIcon from '@mui/icons-material/Keyboard';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import MinimizeIcon from '@mui/icons-material/Remove';
@@ -11,14 +12,16 @@ import { isElectron } from '../../api/apiClient';
 import { isMac } from '../../utils/osUtils';
 import { closeSettings } from '../../features/settings/nav';
 import { AppearanceSection } from './sections/AppearanceSection';
+import { ProfileSection } from './sections/ProfileSection';
 import { ShortcutsSection } from './sections/ShortcutsSection';
 import { AboutSection } from './sections/AboutSection';
 import './SettingsPage.css';
 
-type SectionId = 'appearance' | 'shortcuts' | 'about';
+type SectionId = 'appearance' | 'profile' | 'shortcuts' | 'about';
 
 const NAV: { id: SectionId; label: string; Icon: typeof PaletteIcon }[] = [
   { id: 'appearance', label: 'Appearance', Icon: PaletteIcon },
+  { id: 'profile', label: 'Author profile', Icon: PersonOutlineIcon },
   { id: 'shortcuts', label: 'Shortcuts', Icon: KeyboardIcon },
   { id: 'about', label: 'About', Icon: InfoOutlinedIcon },
 ];
@@ -69,6 +72,7 @@ export const SettingsPage: React.FC = () => {
         </nav>
         <div className="settings-content">
           {section === 'appearance' && <AppearanceSection />}
+          {section === 'profile' && <ProfileSection />}
           {section === 'shortcuts' && <ShortcutsSection />}
           {section === 'about' && <AboutSection />}
         </div>
