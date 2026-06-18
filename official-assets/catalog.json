@@ -93,6 +93,9 @@
       "path": "modules/button.mdpmod.xml"
     },
     {
+      "path": "modules/callout.mdpmod.xml"
+    },
+    {
       "path": "modules/card.mdpmod.xml"
     },
     {
@@ -106,9 +109,6 @@
     },
     {
       "path": "modules/compare.mdpmod.xml"
-    },
-    {
-      "path": "modules/conclusion.mdpmod.xml"
     },
     {
       "path": "modules/definition.mdpmod.xml"
@@ -127,9 +127,6 @@
     },
     {
       "path": "modules/infobox.mdpmod.xml"
-    },
-    {
-      "path": "modules/introduction.mdpmod.xml"
     },
     {
       "path": "modules/kbd.mdpmod.xml"

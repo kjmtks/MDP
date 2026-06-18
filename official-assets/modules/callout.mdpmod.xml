@@ -1,0 +1,140 @@
+<module>
+  <name>callout</name>
+  <type>block</type>
+  <description>A highlighted box for emphasising a slide's key content — introductions, conclusions, takeaways or notes. Configurable visual style (outline / left-bar / filled / solid), optional title with an icon, and colour, border, radius, alignment and shadow controls. Replaces the old introduction / conclusion modules.</description>
+
+  <parameters>
+    <param name="variant" type="select" default="outline" label="Style"
+      options="outline:Outline (bordered),bar:Left bar,filled:Filled (tint),solid:Solid (accent)" />
+    <param name="title" type="text" default="" label="Title" desc="Optional heading shown above the body. Leave blank for none." />
+    <param name="icon" type="text" default="" label="Icon" desc="Optional emoji/character before the title, e.g. 💡 ✅ 📌 ⚠️." />
+    <param name="color" type="color" default="var(--accent-color)" label="Accent color"
+      options="var(--accent-color):Accent,#3b82f6:Blue,#10b981:Green,#f59e0b:Amber,#ef4444:Red,#8b5cf6:Purple,#0ea5e9:Sky,#64748b:Slate" />
+    <param name="align" type="select" default="left" label="Body alignment" options="left,center,right" />
+    <param name="borderwidth" type="number" default="3" label="Border / bar width (px)" min="0" max="20" integer="true" />
+    <param name="radius" type="number" default="8" label="Corner radius (px)" min="0" max="40" integer="true" />
+    <param name="textcolor" type="color" label="Body text color" desc="Optional. Defaults to the theme text color (white for the Solid style)." />
+    <param name="background" type="color" label="Background" desc="Optional. Overrides the style's default background." />
+    <param name="shadow" type="boolean" default="true" label="Drop shadow" />
+  </parameters>
+
+  <snippets>
+    <snippet>
+      <category>Layout</category>
+      <label>Callout — Introduction</label>
+      <text><![CDATA[<!-- @callout variant: outline, title: Introduction, icon: 💡 -->
+Write your introduction here
+<!-- @end -->
+]]></text>
+      <description>An outlined box highlighting the slide's introduction.</description>
+    </snippet>
+    <snippet>
+      <category>Layout</category>
+      <label>Callout — Conclusion</label>
+      <text><![CDATA[<!-- @callout variant: outline, title: Conclusion, icon: ✅, align: center -->
+Write your conclusion here
+<!-- @end -->
+]]></text>
+      <description>An outlined, centred box highlighting the slide's conclusion or key points.</description>
+    </snippet>
+    <snippet>
+      <category>Layout</category>
+      <label>Callout — Note (left bar)</label>
+      <text><![CDATA[<!-- @callout variant: bar, title: Note, icon: 📌, color: #0ea5e9 -->
+Write your note here
+<!-- @end -->
+]]></text>
+      <description>A left-bar note box. variant: outline | bar | filled | solid.</description>
+    </snippet>
+  </snippets>
+
+  <render><![CDATA[
+    const def = (v, d) => (v === undefined || v === '') ? d : v;
+    const variant = String(def(args.variant, 'outline')).toLowerCase();
+    const color = def(args.color, 'var(--accent-color)');
+    const bw = def(args.borderwidth, '3');
+    const radius = def(args.radius, '8');
+    const align = String(def(args.align, 'left')).toLowerCase();
+    const title = (args.title || '').trim();
+    const icon = (args.icon || '').trim();
+    const textcolor = (args.textcolor || '').trim();
+    const background = (args.background || '').trim();
+    const shadow = !(String(args.shadow).toLowerCase() === 'false' || String(args.shadow) === '0');
+    const bodyStr = sections[0] ? sections[0].trim() : '';
+
+    const vars = [
+      '--cl-color: ' + color,
+      '--cl-bw: ' + bw + 'px',
+      '--cl-radius: ' + radius + 'px',
+      '--cl-align: ' + align,
+    ];
+    if (textcolor) vars.push('--cl-text: ' + textcolor);
+    if (background) vars.push('--cl-bg: ' + background);
+
+    const cls = ['mdp-mod-callout', 'mdp-mod-callout--' + variant];
+    if (shadow) cls.push('mdp-mod-callout--shadow');
+
+    const head = (title || icon)
+      ? '<div class="mdp-mod-callout-title">'
+          + (icon ? '<span class="mdp-mod-callout-icon">' + icon + '</span>' : '')
+          + (title ? '<span>' + title + '</span>' : '')
+        + '</div>'
+      : '';
+
+    return '\n\n<div class="' + cls.join(' ') + '" style="' + vars.join('; ') + ';">'
+      + head
+      + '<div class="mdp-mod-callout-body">\n\n' + bodyStr + '\n\n</div></div>\n\n';
+  ]]></render>
+
+  <style><![CDATA[
+    .mdp-mod-callout {
+      margin: 1rem 0;
+      border-radius: var(--cl-radius);
+      overflow: hidden;
+      box-sizing: border-box;
+      background-color: var(--cl-bg, var(--panel-bg, #ffffff));
+    }
+    .mdp-mod-callout--shadow { box-shadow: 0 8px 15px rgba(0, 0, 0, 0.1); }
+
+    .mdp-mod-callout-title {
+      display: flex;
+      align-items: center;
+      gap: 0.5em;
+      padding: 0.5rem 1.15rem 0;
+      font-weight: 700;
+      font-size: 1.05em;
+      color: var(--cl-color);
+    }
+    .mdp-mod-callout-icon { font-size: 1.15em; line-height: 1; }
+
+    .mdp-mod-callout-body {
+      padding: 0.25rem 1rem;
+      margin: 0.5rem 1rem;
+      font-size: 1.1em;
+      line-height: 1.4;
+      color: var(--cl-text, var(--text-color));
+      text-align: var(--cl-align);
+    }
+    .mdp-mod-callout-body > *:first-child { margin-top: 0; padding-top: 0; }
+    .mdp-mod-callout-body > *:last-child { margin-bottom: 0; padding-bottom: 0; }
+
+    /* Variants ------------------------------------------------------------- */
+    .mdp-mod-callout--outline { border: var(--cl-bw) solid var(--cl-color); }
+
+    .mdp-mod-callout--bar {
+      border-left: max(var(--cl-bw), 5px) solid var(--cl-color);
+      border-radius: 0 var(--cl-radius) var(--cl-radius) 0;
+    }
+
+    .mdp-mod-callout--filled {
+      background-color: var(--cl-bg, color-mix(in srgb, var(--cl-color) 12%, transparent));
+      border: 1px solid color-mix(in srgb, var(--cl-color) 35%, transparent);
+    }
+
+    .mdp-mod-callout--solid { background-color: var(--cl-bg, var(--cl-color)); }
+    .mdp-mod-callout--solid .mdp-mod-callout-title { color: #ffffff; }
+    .mdp-mod-callout--solid .mdp-mod-callout-body { color: var(--cl-text, #ffffff); }
+  ]]></style>
+
+  <script></script>
+</module>
