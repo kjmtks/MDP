@@ -5,7 +5,7 @@
   <parameters>
     <param name="color" type="color" default="var(--accent-color)" label="Color" />
     <param name="active_index" type="number" default="0" label="Active Step" desc="Which step is highlighted (1-based; 0 = none)" min="0" integer="true" />
-    <param name="indexes" type="text" default="[]" label="Custom Labels" desc="Array of marker labels, e.g. [Phase1, Phase2, Phase3]" />
+    <param name="indexes" type="[text]" default="[]" label="Custom Labels" desc="Marker labels, e.g. [Phase 1, Phase 2, Phase 3]." />
   </parameters>
   <snippets>
     <snippet>

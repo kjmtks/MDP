@@ -150,6 +150,9 @@
       "path": "modules/progress.mdpmod.xml"
     },
     {
+      "path": "modules/qr.mdpmod.xml"
+    },
+    {
       "path": "modules/quote.mdpmod.xml"
     },
     {

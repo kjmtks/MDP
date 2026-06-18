@@ -6,7 +6,7 @@
   <parameters>
     <param name="gap" type="text" default="1.5rem" label="Gap" desc="CSS length for the space between columns (e.g. 1.5rem)" />
     <param name="align" type="select" default="flex-start" label="Vertical Alignment" options="flex-start:Top,center:Center,flex-end:Bottom,stretch:Stretch" />
-    <param name="ratio" type="text" default="[]" label="Column Ratios" desc="Array of flex ratios per column (e.g. [1,2,1])" />
+    <param name="ratio" type="[number]" default="[]" label="Column Ratios" desc="Flex ratio per column (e.g. [1, 2, 1])." />
   </parameters>
 
   <snippets>

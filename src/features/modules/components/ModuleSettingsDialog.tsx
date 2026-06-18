@@ -8,6 +8,10 @@ import PaletteIcon from '@mui/icons-material/Palette';
 import ImageIcon from '@mui/icons-material/Image';
 import SearchIcon from '@mui/icons-material/Search';
 import BrokenImageIcon from '@mui/icons-material/BrokenImage';
+import AddIcon from '@mui/icons-material/Add';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
+import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import type { ModuleParam, ParamOption } from '../../../utils/moduleParser';
 import type { ImageEntry } from '../../images/imageRegistry';
 
@@ -162,6 +166,95 @@ const ImageField: React.FC<{ value: string; entries: ImageEntry[]; resolveThumb:
   );
 };
 
+// --- array helpers: a `[a, b, c]` literal <-> string items (commas / brackets
+// inside an item are escaped as `\,` `\[` `\]`, matching the render-side split).
+const parseArrayLiteral = (val: string): string[] => {
+  const t = (val || '').trim();
+  if (!t.startsWith('[') || !t.endsWith(']')) return t === '' ? [] : [t];
+  const inner = t.slice(1, -1);
+  if (inner.trim() === '') return [];
+  return inner.split(/(?<!\\),/).map(s =>
+    s.trim().replace(/^["']|["']$/g, '').replace(/\\([,[\]])/g, '$1'),
+  );
+};
+const serializeArray = (items: string[]): string =>
+  '[' + items.map(s => String(s).replace(/[,[\]]/g, m => '\\' + m)).join(', ') + ']';
+const defaultItem = (p: ModuleParam): string => {
+  switch (p.type) {
+    case 'number': return p.min != null ? String(p.min) : '0';
+    case 'boolean': return 'false';
+    case 'select': return p.options?.[0]?.value ?? '';
+    case 'color': return p.options?.[0]?.value ?? '#000000';
+    default: return '';
+  }
+};
+
+interface ItemCtx { imageEntries: ImageEntry[]; resolveThumb: (v: string) => string; }
+
+// Render the control for ONE value of the param's (item) type. Reused for plain
+// params and — per item — by ArrayField.
+const renderTypedControl = (p: ModuleParam, val: string, onChange: (v: string) => void, ctx: ItemCtx): React.ReactNode => {
+  switch (p.type) {
+    case 'boolean':
+      return (
+        <FormControlLabel
+          control={<Switch checked={val === 'true' || val === '1'} onChange={(e) => onChange(e.target.checked ? 'true' : 'false')} />}
+          label={<Typography sx={{ color: 'var(--app-text-secondary)', fontSize: '0.85rem' }}>{val === 'true' || val === '1' ? 'On' : 'Off'}</Typography>}
+        />
+      );
+    case 'number':
+      return (
+        <TextField
+          size="small" type="number" fullWidth value={val} variant="outlined" sx={fieldSx}
+          onChange={(e) => onChange(e.target.value)}
+          slotProps={{ htmlInput: { min: p.min, max: p.max, step: p.step ?? (p.integer ? 1 : 'any') } }}
+        />
+      );
+    case 'select':
+      return (
+        <Select
+          size="small" fullWidth value={val} onChange={(e) => onChange(String(e.target.value))}
+          sx={{ color: 'var(--app-text-secondary)', fontSize: '0.85rem', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--app-border-subtle)' } }}
+        >
+          {(p.options || []).map((o) => <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>)}
+        </Select>
+      );
+    case 'color':
+      return <ColorField value={val} options={p.options} onChange={onChange} />;
+    case 'image':
+      return <ImageField value={val} entries={ctx.imageEntries} resolveThumb={ctx.resolveThumb} onChange={onChange} />;
+    default:
+      return <TextField size="small" fullWidth value={val} variant="outlined" sx={fieldSx} onChange={(e) => onChange(e.target.value)} />;
+  }
+};
+
+const ArrayField: React.FC<{ p: ModuleParam; value: string; onChange: (v: string) => void; ctx: ItemCtx }> = ({ p, value, onChange, ctx }) => {
+  const items = parseArrayLiteral(value);
+  const commit = (next: string[]) => onChange(serializeArray(next));
+  const swap = (i: number, j: number) => { const n = items.slice(); [n[i], n[j]] = [n[j], n[i]]; commit(n); };
+  return (
+    <Stack spacing={0.75} sx={{ border: '1px solid var(--app-border-subtle)', borderRadius: 1, p: 1 }}>
+      {items.length === 0 && (
+        <Typography sx={{ color: 'var(--app-text-disabled)', fontSize: '0.78rem', fontStyle: 'italic' }}>Empty list — add an item below.</Typography>
+      )}
+      {items.map((it, i) => (
+        <Box key={i} sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
+          <Typography sx={{ color: 'var(--app-text-disabled)', fontSize: '0.7rem', width: 16, textAlign: 'right', flexShrink: 0 }}>{i + 1}</Typography>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            {renderTypedControl(p, it, (v) => { const n = items.slice(); n[i] = v; commit(n); }, ctx)}
+          </Box>
+          <IconButton size="small" title="Move up" disabled={i === 0} onClick={() => swap(i, i - 1)} sx={{ color: 'var(--app-text-muted)' }}><ArrowUpwardIcon fontSize="inherit" /></IconButton>
+          <IconButton size="small" title="Move down" disabled={i === items.length - 1} onClick={() => swap(i, i + 1)} sx={{ color: 'var(--app-text-muted)' }}><ArrowDownwardIcon fontSize="inherit" /></IconButton>
+          <IconButton size="small" title="Remove" onClick={() => { const n = items.slice(); n.splice(i, 1); commit(n); }} sx={{ color: 'var(--app-danger)' }}><DeleteOutlineIcon fontSize="inherit" /></IconButton>
+        </Box>
+      ))}
+      <Button size="small" startIcon={<AddIcon />} onClick={() => commit([...items, defaultItem(p)])} sx={{ alignSelf: 'flex-start', textTransform: 'none', color: 'var(--app-accent)' }}>
+        Add item
+      </Button>
+    </Stack>
+  );
+};
+
 export interface ModuleSettingsDialogProps {
   open: boolean;
   moduleName: string;
@@ -223,43 +316,11 @@ export const ModuleSettingsDialog: React.FC<ModuleSettingsDialogProps> = ({
     onSave(out);
   };
 
+  const itemCtx = { imageEntries, resolveThumb };
   const renderControl = (p: ModuleParam) => {
     const val = values[p.name] ?? '';
-    switch (p.type) {
-      case 'boolean':
-        return (
-          <FormControlLabel
-            control={<Switch checked={val === 'true' || val === '1'} onChange={(e) => set(p.name, e.target.checked ? 'true' : 'false')} />}
-            label={<Typography sx={{ color: 'var(--app-text-secondary)', fontSize: '0.85rem' }}>{val === 'true' || val === '1' ? 'On' : 'Off'}</Typography>}
-          />
-        );
-      case 'number':
-        return (
-          <TextField
-            size="small" type="number" fullWidth value={val} variant="outlined" sx={fieldSx}
-            onChange={(e) => set(p.name, e.target.value)}
-            slotProps={{ htmlInput: { min: p.min, max: p.max, step: p.step ?? (p.integer ? 1 : 'any') } }}
-          />
-        );
-      case 'select':
-        return (
-          <Select
-            size="small" fullWidth value={val} onChange={(e) => set(p.name, String(e.target.value))}
-            sx={{ color: 'var(--app-text-secondary)', fontSize: '0.85rem', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--app-border-subtle)' } }}
-          >
-            {(p.options || []).map((o) => <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>)}
-          </Select>
-        );
-      case 'color':
-        return <ColorField value={val} options={p.options} onChange={(v) => set(p.name, v)} />;
-      case 'image':
-        return <ImageField value={val} entries={imageEntries} resolveThumb={resolveThumb} onChange={(v) => set(p.name, v)} />;
-      default:
-        return (
-          <TextField size="small" fullWidth value={val} variant="outlined" sx={fieldSx}
-            onChange={(e) => set(p.name, e.target.value)} />
-        );
-    }
+    if (p.isArray) return <ArrayField p={p} value={val} onChange={(v) => set(p.name, v)} ctx={itemCtx} />;
+    return renderTypedControl(p, val, (v) => set(p.name, v), itemCtx);
   };
 
   return (

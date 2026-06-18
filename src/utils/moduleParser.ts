@@ -12,6 +12,11 @@ export interface ModuleParam {
   required?: boolean;
   // Settings-UI metadata (all optional; absent → free-text input).
   type?: ParamType;
+  // When the declared type is wrapped in brackets — `[number]`, `[text]`,
+  // `[color]`, … — the value is a LIST whose items each have `type`. The value
+  // serialises in the directive as `[a, b, c]` (commas inside an item escaped
+  // as `\,`); the render fn receives a real JS array (numbers for `[number]`).
+  isArray?: boolean;
   label?: string;        // human label (defaults to `name`)
   description?: string;  // help text shown under the control
   options?: ParamOption[]; // for type="select"
@@ -65,7 +70,11 @@ export const parseParamElements = (root: ParentNode): ModuleParam[] => {
   const out: ModuleParam[] = [];
   root.querySelectorAll("parameters > param").forEach(p => {
     const rawType = (p.getAttribute("type") || "").trim().toLowerCase();
-    const type = (PARAM_TYPES.includes(rawType) ? rawType : undefined) as ParamType | undefined;
+    // `[number]` / `[text]` / … → an array whose items are of the inner type.
+    const arrMatch = rawType.match(/^\[\s*(.*?)\s*\]$/);
+    const isArray = arrMatch != null;
+    const baseType = isArray ? arrMatch![1] : rawType;
+    const type = (PARAM_TYPES.includes(baseType) ? baseType : undefined) as ParamType | undefined;
 
     // Options for type="select": child <option value=".." label=".."/> elements,
     // or an `options="a,b:Label,c"` attribute (token = value or value:label).
@@ -94,6 +103,7 @@ export const parseParamElements = (root: ParentNode): ModuleParam[] => {
       default: p.hasAttribute("default") ? p.getAttribute("default")! : undefined,
       required: p.getAttribute("required") === "true",
       type,
+      isArray,
       label: p.getAttribute("label") || undefined,
       description: p.getAttribute("desc") || p.getAttribute("description") || undefined,
       options,

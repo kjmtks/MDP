@@ -1,0 +1,99 @@
+<module>
+  <name>qr</name>
+  <type>block</type>
+  <description>Generates a QR code (offline, no internet) from the BODY text — the content between the directive and @end. Using the body means URLs with commas, "=", "&amp;" or quotes are encoded verbatim (they would otherwise break the comma-separated argument syntax). Choose error-correction level, pixel size, quiet-zone margin, colors and an optional caption. Emitted as inline SVG, so it shows in thumbnails, PDF export and presenter too.</description>
+
+  <parameters>
+    <param name="caption" type="text" label="Caption" desc="Optional label shown below the QR code." />
+    <param name="ec" type="select" default="M" label="Error correction"
+      options="L:L — 7% (smallest),M:M — 15%,Q:Q — 25%,H:H — 30% (most robust)" />
+    <param name="size" type="number" default="180" label="Size (px)" min="48" max="800" integer="true" />
+    <param name="margin" type="number" default="4" label="Quiet-zone margin (modules)" min="0" max="16" integer="true" />
+    <param name="dark" type="color" default="#000000" label="Module color"
+      options="#000000:Black,var(--text-color):Theme text,var(--accent-color):Accent,#1e3a8a:Navy,#7c3aed:Purple" />
+    <param name="light" type="color" default="#ffffff" label="Background"
+      options="#ffffff:White,transparent:Transparent,#f8fafc:Off-white" />
+    <param name="align" type="select" default="center" label="Alignment" options="left,center,right" />
+    <param name="text" type="text" label="Text (fallback)" desc="Used only when the body is empty. Prefer the body for anything with commas or special characters." />
+  </parameters>
+
+  <snippets>
+    <snippet>
+      <category>Content</category>
+      <label>QR code (with caption)</label>
+      <text><![CDATA[<!-- @qr ec: M, size: 180, caption: Scan to open -->
+https://github.com/kjmtks
+<!-- @end -->
+]]></text>
+      <description>QR from the body URL/text, with a caption. ec: L|M|Q|H.</description>
+    </snippet>
+  </snippets>
+
+  <render><![CDATA[
+    const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const errBox = (msg) => '\n\n<div style="color:#b91c1c; border:1px solid #b91c1c; padding:0.6em 0.9em; '
+      + 'border-radius:6px; font-size:0.95em;"><strong>QR module:</strong> ' + esc(msg) + '</div>\n\n';
+
+    // Data to encode = the BODY (raw, so commas / quotes / & survive). When the
+    // body is empty, fall back to the `text` param, then a sample placeholder.
+    const body = (sections[0] != null) ? String(sections[0]).trim() : '';
+    const fallback = (args.text != null && String(args.text).trim() !== '') ? String(args.text).trim() : '';
+    const text = body || fallback || 'https://example.com';
+    const caption = (args.caption != null) ? String(args.caption).trim() : '';
+    const ecRaw = String(args.ec || 'M').toUpperCase();
+    const ec = (['L', 'M', 'Q', 'H'].indexOf(ecRaw) >= 0) ? ecRaw : 'M';
+    const pxN = parseInt(args.size, 10);
+    const px = (pxN > 0) ? Math.max(48, Math.min(800, pxN)) : 180;
+    let marginN = parseInt(args.margin, 10);
+    const margin = isNaN(marginN) ? 4 : Math.max(0, Math.min(16, marginN));
+    const dark = (args.dark && String(args.dark).trim()) || '#000000';
+    const light = (args.light && String(args.light).trim()) || '#ffffff';
+    const alignRaw = String(args.align || 'center').toLowerCase();
+    const align = (['left', 'center', 'right'].indexOf(alignRaw) >= 0) ? alignRaw : 'center';
+
+    const gen = (typeof window !== 'undefined') ? window.mdpCreateQR : undefined;
+    if (typeof gen !== 'function') {
+      return errBox('QR generator is unavailable — update the MDP app to a version that provides it.');
+    }
+
+    let m;
+    try { m = gen(text, { errorCorrectionLevel: ec }); }
+    catch (e) { return errBox('Cannot encode this text (' + (e && e.message ? e.message : 'too long for a QR code') + ').'); }
+
+    const n = m.size, data = m.data, total = n + margin * 2;
+    let d = '';
+    for (let r = 0; r < n; r++) {
+      for (let c = 0; c < n; c++) {
+        if (data[r * n + c]) { d += 'M' + (c + margin) + ' ' + (r + margin) + 'h1v1h-1z'; }
+      }
+    }
+
+    const bg = (light === 'transparent') ? '' : '<rect width="' + total + '" height="' + total + '" fill="' + light + '"/>';
+    const svg = '<svg class="mdp-qr-svg" viewBox="0 0 ' + total + ' ' + total + '"'
+      + ' width="' + px + '" height="' + px + '" shape-rendering="crispEdges" role="img"'
+      + ' aria-label="' + esc(text) + '" xmlns="http://www.w3.org/2000/svg">'
+      + bg + '<path d="' + d + '" fill="' + dark + '"/></svg>';
+
+    const cap = caption ? '<div class="mdp-qr-caption">' + esc(caption) + '</div>' : '';
+    return '\n\n<div class="mdp-mod-qr" style="text-align:' + align + ';">'
+      + '<div class="mdp-qr-frame" style="width:' + px + 'px;">' + svg + cap + '</div></div>\n\n';
+  ]]></render>
+
+  <style><![CDATA[
+    .mdp-mod-qr { margin: 1rem 0; }
+    .mdp-qr-frame { display: inline-block; text-align: center; }
+    .mdp-qr-svg { display: block; max-width: 100%; height: auto; }
+    .mdp-qr-caption {
+      margin-top: 0.5em;
+      font-size: 0.95em;
+      line-height: 1.3;
+      color: var(--text-color);
+      word-break: break-word;
+    }
+    .mdp-qr-caption > *:first-child { margin-top: 0; }
+    .mdp-qr-caption > *:last-child { margin-bottom: 0; }
+  ]]></style>
+
+  <script></script>
+</module>

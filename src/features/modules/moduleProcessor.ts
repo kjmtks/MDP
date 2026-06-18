@@ -15,7 +15,9 @@ export function parseArguments(argString: string): Record<string, string> {
     const char = argString[i];
 
     if (escapeNext) {
-      currentPart += char;
+      // Inside an array literal, keep the backslash so the array splitter (not
+      // this pass) resolves `\,` `\[` `\]`; elsewhere it just escapes the char.
+      currentPart += inBracket ? '\\' + char : char;
       escapeNext = false;
       continue;
     }
@@ -50,7 +52,10 @@ export function parseArguments(argString: string): Record<string, string> {
       if (value.startsWith('"') && value.endsWith('"')) {
         value = value.slice(1, -1);
       }
-      args[key] = value.replace(/\\,/g, ',');
+      // Keep `\,` (and `\[` `\]`) intact inside an array literal so the array
+      // splitter — not this top-level pass — decides item boundaries. For plain
+      // values, `\,` still means a literal comma.
+      args[key] = (value.startsWith('[') && value.endsWith(']')) ? value : value.replace(/\\,/g, ',');
     }
   });
   return args;
@@ -144,21 +149,41 @@ function renderModuleTemplate(mod: ModuleData, sections: string[], argsStr: stri
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const renderArgs: Record<string, any> = { ...finalArgs };
+
+  // Split a `[a, b, c]` literal into trimmed, unescaped string items.
+  const splitArrayLiteral = (val: string): string[] => {
+    const inner = val.slice(1, -1);
+    if (inner.trim() === '') return [];
+    return inner.split(/(?<!\\),/).map(s =>
+      s.trim()
+        .replace(/^["']|["']$/g, '')
+        .replace(/\\,/g, ',')
+        .replace(/\\\]/g, ']')
+        .replace(/\\\[/g, '['),
+    );
+  };
+  // Coerce string items to the param's item type (numbers for `[number]`,
+  // booleans for `[boolean]`; everything else stays a string).
+  const coerceItems = (items: string[], itemType?: string): unknown[] => {
+    if (itemType === 'number') return items.map(s => { const n = parseFloat(s); return Number.isFinite(n) ? n : s; });
+    if (itemType === 'boolean') return items.map(s => s === 'true' || s === '1');
+    return items;
+  };
+
+  const paramByName = new Map((parameters || []).map(p => [p.name, p]));
   Object.keys(renderArgs).forEach(key => {
     const val = renderArgs[key];
-    if (typeof val === 'string' && val.startsWith('[') && val.endsWith(']')) {
-      const arrStr = val.substring(1, val.length - 1);
-      if (arrStr.trim() === '') {
-        renderArgs[key] = [];
-      } else {
-        renderArgs[key] = arrStr.split(/(?<!\\),/).map(s =>
-          s.trim()
-           .replace(/^["']|["']$/g, '')
-           .replace(/\\,/g, ',')
-           .replace(/\\\]/g, ']')
-           .replace(/\\\[/g, '[')
-        );
-      }
+    const meta = paramByName.get(key);
+    if (meta?.isArray) {
+      // Declared array: always pass a real array (typed items). A non-bracketed
+      // value is treated leniently as a single-item list.
+      if (typeof val !== 'string') return; // already an array (shouldn't happen)
+      const t = val.trim();
+      const items = (t.startsWith('[') && t.endsWith(']')) ? splitArrayLiteral(t) : (t === '' ? [] : [t]);
+      renderArgs[key] = coerceItems(items, meta.type);
+    } else if (typeof val === 'string' && val.startsWith('[') && val.endsWith(']')) {
+      // Backward-compat: an untyped `[...]` value still becomes a string array.
+      renderArgs[key] = splitArrayLiteral(val);
     }
   });
 
