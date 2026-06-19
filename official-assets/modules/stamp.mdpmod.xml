@@ -1,10 +1,9 @@
 <module>
   <name>stamp</name>
-  <type>inline</type>
-  <description>A decorated inline label — a "stamp" such as CONFIDENTIAL, DRAFT or INTERNAL. Designed to drop inside a slide's @header / @footer block, but works in body text too. The default "double" style reproduces the classic double-bordered header badge.</description>
+  <type>block</type>
+  <description>A decorated label — a "stamp" such as CONFIDENTIAL, DRAFT or INTERNAL. The label is the block BODY (so spaces, commas and symbols are fine). Designed to drop inside a slide's @header / @footer block, but works in body text too. The default "double" style reproduces the classic double-bordered header badge.</description>
 
   <parameters>
-    <param name="text" type="text" default="CONFIDENTIAL" label="Text" desc="The label, e.g. CONFIDENTIAL / DRAFT / INTERNAL." />
     <param name="variant" type="select" default="double" label="Style"
       options="double:Double border,solid:Solid fill,outline:Outline,plain:Plain text" />
     <param name="color" type="color" default="var(--accent-color)" label="Color"
@@ -15,14 +14,18 @@
     <snippet>
       <category>Content</category>
       <label>Stamp (CONFIDENTIAL)</label>
-      <text><![CDATA[<!-- @stamp text: CONFIDENTIAL, variant: double -->]]></text>
+      <text><![CDATA[<!-- @stamp variant: double -->
+CONFIDENTIAL
+<!-- @end -->]]></text>
       <description>A double-bordered badge. variant: double | solid | outline | plain.</description>
     </snippet>
     <snippet>
       <category>Content</category>
       <label>Header with stamp</label>
       <text><![CDATA[<!-- @header -->
-<!-- @stamp text: CONFIDENTIAL -->
+<!-- @stamp -->
+CONFIDENTIAL
+<!-- @end -->
 <!-- @end -->]]></text>
       <description>A slide header containing a CONFIDENTIAL stamp. In the meta page it applies to all slides; in a slide it applies to that slide only.</description>
     </snippet>
@@ -31,15 +34,19 @@
   <render><![CDATA[
     const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
       .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-    const text = (args.text != null && String(args.text).trim() !== '') ? String(args.text).trim() : 'CONFIDENTIAL';
+    const label = sections[0] ? sections[0].trim() : '';
+    const txt = label !== '' ? label : 'CONFIDENTIAL';
     const variant = (['double', 'solid', 'outline', 'plain'].indexOf(String(args.variant || 'double').toLowerCase()) >= 0)
       ? String(args.variant).toLowerCase() : 'double';
     const color = (args.color && String(args.color).trim()) || 'var(--accent-color)';
-    return '<span class="mdp-mod-stamp mdp-stamp--' + variant + '" style="--stamp-color: ' + color + ';">'
-      + esc(text) + '</span>';
+    return '\n\n<div class="mdp-mod-stamp-block">'
+      + '<span class="mdp-mod-stamp mdp-stamp--' + variant + '" style="--stamp-color: ' + color + ';">'
+      + esc(txt) + '</span></div>\n\n';
   ]]></render>
 
   <style><![CDATA[
+    /* Block wrapper is a plain pass-through; the badge itself is inline-block. */
+    .mdp-mod-stamp-block { margin: 0; }
     .mdp-mod-stamp {
       display: inline-block;
       font-weight: 900;
