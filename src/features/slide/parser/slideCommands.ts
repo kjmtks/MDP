@@ -41,14 +41,8 @@ export const parseCommand = (input: string): CommandResult | null => {
     return { type: 'BUILD', scope: 'GLOBAL', params: { argsStr: (matchBuild[1] || '').trim() } };
   }
 
-  const matchHeader = text.match(/^@header\s*([\s\S]*)$/);
-  if (matchHeader) {
-    return { type: 'HEADER', scope: 'GLOBAL', params: matchHeader[1].trim() };
-  }
-  const matchFooter = text.match(/^@footer\s*([\s\S]*)$/);
-  if (matchFooter) {
-    return { type: 'FOOTER', scope: 'GLOBAL', params: matchFooter[1].trim() };
-  }
+  // @header / @footer are BLOCK regions (`<!-- @header --> … <!-- @end -->`),
+  // extracted by extractDirectiveBlock in slideParser — not single-line commands.
 
   const matchCaption = text.match(/^@caption\s+(.*)$/);
   if (matchCaption) {

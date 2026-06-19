@@ -243,17 +243,8 @@
 }
 
 /* Persistent Slide Header/Footer Elements */
-.slide-header {
-  color: var(--accent-color);
-  font-weight: 900;
-  font-size: 1rem;
-  letter-spacing: 0.1em;
-  border: 4px double var(--accent-color);
-  padding: 4px 12px;
-  border-radius: 4px;
-  background-color: var(--bg-color);
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-}
+/* The header is a NEUTRAL container — decorate via a module (e.g. @stamp) inside
+ * the `<!-- @header --> … <!-- @end -->` block, not via theme CSS. */
 .slide-footer {
   font-size: 0.65rem;
   color: var(--text-color);

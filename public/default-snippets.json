@@ -45,8 +45,8 @@
     "category": "Meta",
     "items": [
       { "label": "Note", "text": "\n<!-- @note:\nnote\n-->\n", "description": "Insert speaker note" },
-      { "label": "Header", "text": "\n<!-- @header CONFIDENTIAL -->\n", "description": "Insert header" },
-      { "label": "Footer", "text": "\n<!-- @footer footer -->\n", "description": "Insert footer" },
+      { "label": "Header", "text": "\n<!-- @header -->\n<!-- @stamp -->\nCONFIDENTIAL\n<!-- @end -->\n<!-- @end -->\n", "description": "Insert header block (with a CONFIDENTIAL stamp). In the meta page = all slides; in a slide = that slide." },
+      { "label": "Footer", "text": "\n<!-- @footer -->\nfooter\n<!-- @end -->\n", "description": "Insert footer block. In the meta page = all slides; in a slide = that slide." },
       { "label": "Hidden Slide", "text": "\n<!-- @hide -->\n", "description": "Set the slide to be hidden" }
     ]
   },

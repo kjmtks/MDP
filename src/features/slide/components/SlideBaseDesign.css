@@ -284,17 +284,12 @@
   line-height: 1.4;
 }
 
-/* Persistent Slide Header/Footer Elements */
+/* Persistent Slide Header/Footer regions. These are NEUTRAL containers — put a
+ * module (e.g. @stamp for a "CONFIDENTIAL" badge, @qr, …) or markdown inside the
+ * `<!-- @header --> … <!-- @end -->` block to decorate them. */
 .slide-header {
-  color: var(--accent-color);
-  font-weight: 900;
   font-size: 1rem;
-  letter-spacing: 0.1em;
-  border: 4px double var(--accent-color);
-  padding: 4px 12px;
-  border-radius: 4px;
-  background-color: var(--bg-color);
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  color: var(--text-color);
 }
 .slide-footer {
   font-size: 0.65rem;
@@ -303,6 +298,11 @@
   border-top: 1px solid var(--border-color);
   padding-top: 4px;
 }
+/* Chrome is rendered as block markdown now — drop paragraph margins that would
+ * otherwise offset the positioned header/footer. */
+.slide-header > p, .slide-footer > p { margin: 0; }
+.slide-header > :first-child, .slide-footer > :first-child { margin-top: 0; }
+.slide-header > :last-child, .slide-footer > :last-child { margin-bottom: 0; }
 .slide-page-number {
   font-size: 0.6em;
   color: var(--muted-color);

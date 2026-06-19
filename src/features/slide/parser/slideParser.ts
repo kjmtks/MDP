@@ -68,16 +68,35 @@ export const splitMarkdownToBlocks = (markdown: string): RawBlock[] => {
 
 export const parseGlobalContext = (preambleRaw: string): SlideContext => {
   const context = createDefaultContext();
-  applyGlobalCommands(preambleRaw, context);
+  // Meta-page @header / @footer apply to ALL slides. Extract the block (or inline
+  // shorthand) first and stash the RAW content; renderSlideHTML renders it per
+  // slide. Then process the remaining single-line global commands.
+  let pre = preambleRaw;
+  const h = extractDirectiveBlock(pre, 'header');
+  if (h.content !== undefined) context.header = h.content;
+  pre = h.rest;
+  const f = extractDirectiveBlock(pre, 'footer');
+  if (f.content !== undefined) context.footer = f.content;
+  pre = f.rest;
+  applyGlobalCommands(pre, context);
   return context;
 };
 
-const renderInlineMarkdown = (text: string): string => {
-  if (!text) return "";
-  const texText = text
-      .replace(/\\\[([\s\S]*?)\\\]/g, '$$$$$1$$$$')
-      .replace(/\\\(([\s\S]*?)\\\)/g, '$$$1$$');
-  return marked.parseInline(texText) as string;
+// Extract a `@header` / `@footer` BLOCK region (`<!-- @header --> … <!-- @end -->`).
+// Returns the raw inner content (markdown + possibly already-expanded module HTML)
+// and `md` with the region removed. EMPTY content (`<!-- @header --><!-- @end -->`)
+// returns content === '' — meaningful: it SUPPRESSES an inherited global
+// header/footer on that slide. A bare opener with no `@end` is dropped (content
+// undefined → inherit). There is no inline `<!-- @header CONTENT -->` shorthand.
+export const extractDirectiveBlock = (md: string, name: 'header' | 'footer'): { content?: string; rest: string } => {
+  const block = new RegExp(`<!--\\s*@${name}\\s*-->([\\s\\S]*?)<!--\\s*@end\\s*-->`, 'i');
+  const bm = md.match(block);
+  if (bm) return { content: bm[1].trim(), rest: md.replace(bm[0], '') };
+  // A bare opener (no `@end`, no content after `@header`) is just dropped.
+  const bare = new RegExp(`<!--\\s*@${name}\\s*-->`, 'i');
+  const barem = md.match(bare);
+  if (barem) return { content: undefined, rest: md.replace(barem[0], '') };
+  return { content: undefined, rest: md };
 };
 
 export const renderSlideHTML = (block: RawBlock, globalContext: SlideContext, pageIndex: number, baseUrl: string, lastUpdated: number): SlideData => {
@@ -117,16 +136,14 @@ export const renderSlideHTML = (block: RawBlock, globalContext: SlideContext, pa
   if (/<!--\s*@cover\s*-->/.test(slideMarkdown)) {
     pageClassName = 'cover';
   }
-  const headerMatch = slideMarkdown.match(/<!--\s*@header\s*([\s\S]*?)\s*-->/);
-  if (headerMatch) {
-    localHeader = headerMatch[1].trim();
-    slideMarkdown = slideMarkdown.replace(headerMatch[0], "");
-  }
-  const footerMatch = slideMarkdown.match(/<!--\s*@footer\s*([\s\S]*?)\s*-->/);
-  if (footerMatch) {
-    localFooter = footerMatch[1].trim();
-    slideMarkdown = slideMarkdown.replace(footerMatch[0], "");
-  }
+  // Block-form (or inline-shorthand) @header / @footer scoped to THIS slide.
+  // Defined content (incl. empty = suppress) overrides the global one.
+  const headerEx = extractDirectiveBlock(slideMarkdown, 'header');
+  if (headerEx.content !== undefined) localHeader = headerEx.content;
+  slideMarkdown = headerEx.rest;
+  const footerEx = extractDirectiveBlock(slideMarkdown, 'footer');
+  if (footerEx.content !== undefined) localFooter = footerEx.content;
+  slideMarkdown = footerEx.rest;
 
   // Per-slide transition (overrides the global one for the transition INTO this slide).
   let localTransition: MotionSpec | undefined = undefined;
@@ -166,10 +183,20 @@ export const renderSlideHTML = (block: RawBlock, globalContext: SlideContext, pa
     async: false
   }) as string : "";
 
+  // Header/footer are now full block regions: run modules then markdown so a
+  // module (e.g. @stamp, @qr) placed inside renders. Idempotent if the document
+  // was already module-expanded upstream (directives are consumed on first pass).
+  const renderChrome = (content: string): string => {
+    if (!content) return '';
+    const chromeMd = applyModulesToMarkdown(content)
+      .replace(/\\\[([\s\S]*?)\\\]/g, '$$$$$1$$$$')
+      .replace(/\\\(([\s\S]*?)\\\)/g, '$$$1$$');
+    return marked.parse(chromeMd, { renderer, breaks: true, gfm: true, async: false }) as string;
+  };
   const finalHeaderRaw = localHeader !== undefined ? localHeader : globalContext.header;
   const finalFooterRaw = localFooter !== undefined ? localFooter : globalContext.footer;
-  const finalHeader = finalHeaderRaw ? renderInlineMarkdown(finalHeaderRaw) : undefined;
-  const finalFooter = finalFooterRaw ? renderInlineMarkdown(finalFooterRaw) : undefined;
+  const finalHeader = finalHeaderRaw ? renderChrome(finalHeaderRaw) : undefined;
+  const finalFooter = finalFooterRaw ? renderChrome(finalFooterRaw) : undefined;
 
   return {
     html: slideHtml,
@@ -205,12 +232,8 @@ const applyGlobalCommands = (text: string, context: SlideContext) => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (context.meta as any)[key] = value;
       }
-      else if (command.type === 'HEADER') {
-        context.header = command.params as string;
-      }
-      else if (command.type === 'FOOTER') {
-        context.footer = command.params as string;
-      }
+      // HEADER / FOOTER are handled by extractDirectiveBlock in parseGlobalContext
+      // (block form + inline shorthand), so they are intentionally not applied here.
       else if (command.type === 'TRANSITION') {
         context.transition = { name: command.params.name, args: parseArguments(command.params.argsStr || '') };
       }
