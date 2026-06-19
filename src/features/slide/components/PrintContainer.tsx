@@ -21,7 +21,7 @@ export const PrintContainer: React.FC<PrintContainerProps> = React.memo(({ slide
     `}</style>
     {slides.map((slide, index) => !slide.isHidden && (
         <div key={index} className="print-slide-page">
-          <SlideView html={slide.html} pageNumber={slide.pageNumber} isActive={true} className={`print-slide-content ${slide.className || 'normal'}`} style={slideStyleVariables} slideSize={slideSize} header={slide.header} footer={slide.footer} drawings={drawings[index]} />
+          <SlideView html={slide.html} pageNumber={slide.pageNumber} isActive={true} className={`print-slide-content ${slide.className || 'normal'}`} style={slideStyleVariables} slideSize={slideSize} header={slide.header} footer={slide.footer} drawings={drawings[index]} runScripts={false} />
         </div>
     ))}
   </div>

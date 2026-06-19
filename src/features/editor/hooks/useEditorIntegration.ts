@@ -13,6 +13,7 @@ import { noteCollapsePlugin } from '../extensions/NoteCollapsePlugin';
 import { themeCollapsePlugin } from '../extensions/ThemeCollapsePlugin';
 import { imageDefCollapsePlugin } from '../extensions/ImageDefCollapsePlugin';
 import { moduleSettingsPlugin } from '../extensions/ModuleSettingsPlugin';
+import { moduleRegionPlugin } from '../extensions/ModuleRegionPlugin';
 import { useAppSettings } from '../../settings/AppSettingsContext';
 import { resolveKeys } from '../../settings/shortcuts/matcher';
 import { actionById } from '../../settings/shortcuts/registry';
@@ -172,6 +173,7 @@ export const useEditorIntegration = ({
       noteCollapsePlugin,
       themeCollapsePlugin,
       moduleSettingsPlugin,
+      moduleRegionPlugin,
     ];
 
     const ext = currentFileName?.split('.').pop()?.toLowerCase();

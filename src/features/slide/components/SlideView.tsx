@@ -38,6 +38,10 @@ interface SlideViewProps {
   slideIndex?: number;
   // 'owner' runs interactive-module logic; 'mirror' only displays synced state.
   moduleRole?: 'owner' | 'mirror';
+  // STATIC surfaces (thumbnails, overview grid, print) set this false so they
+  // never run module scripts. Otherwise every thumbnail would run the timer/clock
+  // — N owners decrementing one shared timer = N× speed, plus wasted intervals.
+  runScripts?: boolean;
   // When provided (editor preview only), enables on-preview module manipulation.
   manipulate?: ManipRuntime;
 }
@@ -67,9 +71,14 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
   presenting,
   slideIndex,
   moduleRole,
+  runScripts = true,
   manipulate
 }) => {
   const [containerEl, setContainerEl] = useState<HTMLDivElement | null>(null);
+  // Header/footer DOM as state too, so the ManipulationLayer can manipulate their
+  // modules (in addition to the refs used for running their scripts).
+  const [headerEl, setHeaderEl] = useState<HTMLDivElement | null>(null);
+  const [footerEl, setFooterEl] = useState<HTMLDivElement | null>(null);
   const [svgVersion, setSvgVersion] = useState(0);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mountedRoots = useRef<any[]>([]);
@@ -85,27 +94,64 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
   presentingRef.current = presenting;
   const isActiveRef = useRef(isActive);
   isActiveRef.current = isActive;
+  const runScriptsRef = useRef(runScripts);
+  runScriptsRef.current = runScripts;
   const slideIndexRef = useRef(slideIndex);
   slideIndexRef.current = slideIndex;
   const moduleRoleRef = useRef(moduleRole);
   moduleRoleRef.current = moduleRole;
   const containerNodeRef = useRef<HTMLDivElement | null>(null);
   const moduleTeardownRef = useRef<(() => void) | undefined>(undefined);
+  // Header / footer are separate sibling nodes (not inside .slide-content), so
+  // their module scripts (timer/clock ticking, click handlers) must be run
+  // against those nodes too — otherwise modules placed in @header/@footer never
+  // initialise.
+  const headerNodeRef = useRef<HTMLDivElement | null>(null);
+  const footerNodeRef = useRef<HTMLDivElement | null>(null);
+  const headerTeardownRef = useRef<(() => void) | undefined>(undefined);
+  const footerTeardownRef = useRef<(() => void) | undefined>(undefined);
 
-  // Run (or re-run) the module scripts against the current content node, tearing
-  // down the previous run first. Driven off the actual DOM node (not state) so it
-  // works reliably even when the slide mounts mid-transition.
-  const runModuleScripts = useCallback(() => {
-    moduleTeardownRef.current?.();
-    moduleTeardownRef.current = undefined;
-    const node = containerNodeRef.current;
-    if (!node || !isActiveRef.current) return;
-    moduleTeardownRef.current = executeModuleScripts(node, {
+  // Run (or re-run) module scripts against a chrome node (header/footer).
+  const runChromeScripts = useCallback((node: HTMLElement | null, teardownRef: React.MutableRefObject<(() => void) | undefined>) => {
+    teardownRef.current?.();
+    teardownRef.current = undefined;
+    if (!node || !isActiveRef.current || !runScriptsRef.current) return;
+    teardownRef.current = executeModuleScripts(node, {
       presenting: presentingRef.current,
       slideIndex: slideIndexRef.current,
       role: moduleRoleRef.current,
     });
   }, []);
+  const setHeaderNode = useCallback((node: HTMLDivElement | null) => {
+    headerNodeRef.current = node;
+    setHeaderEl(node);
+    if (!node) { headerTeardownRef.current?.(); headerTeardownRef.current = undefined; }
+  }, []);
+  const setFooterNode = useCallback((node: HTMLDivElement | null) => {
+    footerNodeRef.current = node;
+    setFooterEl(node);
+    if (!node) { footerTeardownRef.current?.(); footerTeardownRef.current = undefined; }
+  }, []);
+
+  // Run (or re-run) the module scripts against the current content node, tearing
+  // down the previous run first. Driven off the actual DOM node (not state) so it
+  // works reliably even when the slide mounts mid-transition.
+  const runModuleScripts = useCallback(() => {
+    // Header/footer live in separate sibling nodes — run them via this SAME
+    // reliable trigger (rAF / effects / observer) so they initialise everywhere
+    // the content does (incl. the fullscreen slideshow), not a fragile side path.
+    runChromeScripts(headerNodeRef.current, headerTeardownRef);
+    runChromeScripts(footerNodeRef.current, footerTeardownRef);
+    moduleTeardownRef.current?.();
+    moduleTeardownRef.current = undefined;
+    const node = containerNodeRef.current;
+    if (!node || !isActiveRef.current || !runScriptsRef.current) return;
+    moduleTeardownRef.current = executeModuleScripts(node, {
+      presenting: presentingRef.current,
+      slideIndex: slideIndexRef.current,
+      role: moduleRoleRef.current,
+    });
+  }, [runChromeScripts]);
 
   // Stable ref callback for the content node. Besides exposing it as state (for
   // chart effects), it: (1) snaps in-slide builds to the current step
@@ -368,8 +414,25 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
     runModuleScripts();
   }, [moduleRole, runModuleScripts]);
 
+  // Safety net: reliably (re)run content module scripts after the rendered HTML or
+  // active state settles. Effects always fire after commit — unlike the rAF in
+  // setContent, which can be skipped during a fast re-render or a fullscreen
+  // transition (slideshow), leaving interactive modules (timer/clock) un-init'd
+  // ("stuck at the initial value"). runModuleScripts tears down first, so this is
+  // idempotent.
+  // Includes header/footer (runModuleScripts now runs them) and `presenting`, so
+  // they re-init when their HTML changes AND the timer autostart re-evaluates when
+  // a slide starts presenting (entering the fullscreen slideshow).
+  useEffect(() => {
+    if (isActive) runModuleScripts();
+  }, [processedHtml, header, footer, isActive, presenting, moduleRole, runModuleScripts]);
+
   // Tear down module scripts (clear timers etc.) when the slide unmounts.
-  useEffect(() => () => { moduleTeardownRef.current?.(); }, []);
+  useEffect(() => () => {
+    moduleTeardownRef.current?.();
+    headerTeardownRef.current?.();
+    footerTeardownRef.current?.();
+  }, []);
 
   // In-slide builds (slideshow only). Single before-paint effect: on content
   // (re)mount snap builds to the current step; on a step change animate. If the
@@ -426,7 +489,7 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
         } as React.CSSProperties)
       }}
     >
-      {header && <div className="slide-header" dangerouslySetInnerHTML={{ __html: header }} />}
+      {header && <div ref={setHeaderNode} className="slide-header" dangerouslySetInnerHTML={{ __html: header }} />}
 
       <div
         ref={setContent} className={`slide-content ${className} ${buildStep !== undefined ? 'mdp-build-active' : ''}`}
@@ -443,10 +506,10 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
       )}
 
       {manipulate && (
-        <ManipulationLayer container={containerEl} runtime={manipulate} />
+        <ManipulationLayer container={containerEl} headerContainer={headerEl} footerContainer={footerEl} runtime={manipulate} />
       )}
 
-      {footer && <div className="slide-footer" dangerouslySetInnerHTML={{ __html: footer }} />}
+      {footer && <div ref={setFooterNode} className="slide-footer" dangerouslySetInnerHTML={{ __html: footer }} />}
       {pageNumber && <div className="slide-page-number">{pageNumber}</div>}
     </div>
   );

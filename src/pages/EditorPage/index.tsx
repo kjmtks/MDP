@@ -31,6 +31,7 @@ import { useAppActions } from './hooks/useAppActions';
 import { useEditorIntegration } from '../../features/editor/hooks/useEditorIntegration';
 import { apiClient, isElectron } from '../../api/apiClient';
 import { clearAllModules, registerModule, getAllModuleSnippets, loadedModules } from '../../features/modules/moduleManager';
+import { refreshModuleRegions } from '../../features/editor/extensions/ModuleRegionPlugin';
 import { ModuleSettingsDialog } from '../../features/modules/components/ModuleSettingsDialog';
 import { loadedEffects } from '../../features/effects/effectManager';
 import type { ModuleParam } from '../../utils/moduleParser';
@@ -278,6 +279,10 @@ export default function EditorPage() {
   // generation so slides parsed before registration are re-parsed once their
   // markdown transforms (and CSS) are available — otherwise they stay raw.
   const [moduleEpoch, setModuleEpoch] = useState(0);
+  // Modules load asynchronously after the editor mounts; when they (re)load, ask
+  // the editor to re-scan so block/inline module directives get coloured/foldable
+  // (the initial scan ran before any module was registered).
+  useEffect(() => { refreshModuleRegions(editorRef.current?.view); }, [moduleEpoch, editorRef]);
 
   // Workspace-shared image-alias library (.mdp/images/registry.json). In-file `@image`
   // defs override these on alias conflict (see resolveImages).

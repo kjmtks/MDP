@@ -28,6 +28,7 @@ const ThumbnailContent = React.memo<ContentProps>(({ htmlContent, slideSize, cla
           footer={footer}
           drawings={drawings}
           isEnabledPointerEvents={false}
+          runScripts={false}
         />
       </SlideScaler>
     </div>

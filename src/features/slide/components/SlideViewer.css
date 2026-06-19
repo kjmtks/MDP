@@ -98,23 +98,34 @@
   vertical-align: top;
 }
 
-.slide-header {
-  position: absolute;
-  top: 25px;
-  right: 25px;
-  z-index: 20;
-  pointer-events: none;
-}
+/* Header/footer are FULL-SLIDE layers (padding 0, so a lifted module's left/top%
+ * resolve against the whole slide = slide-wide coordinates). Non-lifted (in-flow)
+ * content is pushed to the usual corner with flexbox; lifted (positioned) modules
+ * ignore flow and float anywhere on the slide. The layer is click-through. */
+.slide-header,
 .slide-footer {
   position: absolute;
-  bottom: 12px;
-  left: 40px;
-  right: 80px;
+  inset: 0;
   z-index: 20;
-  white-space: pre-wrap; 
+  pointer-events: none;
+  display: flex;
+  padding: 0;
+}
+.slide-header {
+  justify-content: flex-end;   /* default header content → top-right */
+  align-items: flex-start;
+}
+.slide-footer {
+  justify-content: flex-start; /* default footer content → bottom-left */
+  align-items: flex-end;
+  white-space: pre-wrap;
   word-wrap: break-word;
   text-align: left;
 }
+/* Inset for the in-flow (non-lifted) chrome content only — lifted modules are
+ * absolute and unaffected, so they stay in true slide coordinates. */
+.slide-header > :not([data-lifted="1"]) { margin: 25px; }
+.slide-footer > :not([data-lifted="1"]) { margin: 12px 80px 12px 40px; }
 .slide-page-number {
   position: absolute;
   bottom: 0.5em;

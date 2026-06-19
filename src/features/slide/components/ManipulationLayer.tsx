@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { TransformEdit, DirectiveSelector } from '../../modules/moduleDocEdits';
 import { useAppSettings } from '../../settings/AppSettingsContext';
@@ -21,8 +21,16 @@ export interface ManipRuntime {
 
 interface Props {
   container: HTMLElement | null;             // the .slide-content node holding .mdp-manip
+  // Header/footer chrome nodes — their modules are manipulable too (slide-wide
+  // coords, since the chrome layers span the whole slide). Framed in green/orange
+  // to distinguish them from content (blue/red).
+  headerContainer?: HTMLElement | null;
+  footerContainer?: HTMLElement | null;
   runtime: ManipRuntime;
 }
+
+// Is this manip element part of the header/footer chrome (vs the slide body)?
+const isChromeEl = (el: Element): boolean => !!el.closest('.slide-header, .slide-footer');
 
 interface Box { cx: number; cy: number; w: number; h: number; rot: number; lifted: boolean }
 
@@ -64,6 +72,14 @@ const snapAxis = (edges: number[], targets: number[], thresh: number): { delta: 
   return best ? { delta: best.delta, target: best.target } : null;
 };
 
+// Convert a CANVAS-% box to its containing block's relative % (identity when the
+// containing block IS the canvas, i.e. p = {0,0,100,100}).
+const toParentPct = (b: Box, p: { left: number; top: number; w: number; h: number }): Box =>
+  ({ cx: ((b.cx - p.left) / p.w) * 100, cy: ((b.cy - p.top) / p.h) * 100, w: (b.w / p.w) * 100, h: (b.h / p.h) * 100, rot: b.rot, lifted: b.lifted });
+// Inverse: a containing-block-relative % box (the element's inline style) → canvas %.
+const fromParentPct = (s: Box, p: { left: number; top: number; w: number; h: number }): Box =>
+  ({ cx: p.left + (s.cx / 100) * p.w, cy: p.top + (s.cy / 100) * p.h, w: (s.w / 100) * p.w, h: (s.h / 100) * p.h, rot: s.rot, lifted: true });
+
 const CtxItem: React.FC<{ onClick: () => void; danger?: boolean; children: React.ReactNode }> = ({ onClick, danger, children }) => {
   const [hover, setHover] = useState(false);
   // Act on pointerdown (not onClick): the menu opens via a right-click and a
@@ -83,7 +99,7 @@ const CtxItem: React.FC<{ onClick: () => void; danger?: boolean; children: React
   );
 };
 
-export const ManipulationLayer: React.FC<Props> = ({ container, runtime }) => {
+export const ManipulationLayer: React.FC<Props> = ({ container, headerContainer, footerContainer, runtime }) => {
   const { enabled, snap, snapStep, onCommit, onDelete, onSelect, onRequestProperty } = runtime;
   const { settings } = useAppSettings();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -111,14 +127,23 @@ export const ManipulationLayer: React.FC<Props> = ({ container, runtime }) => {
   const pctX = (clientX: number, r: DOMRect) => ((clientX - r.left) / r.width) * 100;
   const pctY = (clientY: number, r: DOMRect) => ((clientY - r.top) / r.height) * 100;
 
+  // Search the slide body PLUS the header/footer chrome (their modules are
+  // manipulable too). ords are global (whole-doc), so a key resolves uniquely.
+  const containers = useMemo(
+    () => [container, headerContainer, footerContainer].filter(Boolean) as HTMLElement[],
+    [container, headerContainer, footerContainer],
+  );
   const els = useCallback(
-    (): HTMLElement[] => (container ? Array.from(container.querySelectorAll<HTMLElement>('.mdp-manip')) : []),
-    [container],
+    (): HTMLElement[] => containers.flatMap((c) => Array.from(c.querySelectorAll<HTMLElement>('.mdp-manip'))),
+    [containers],
   );
   const findEl = useCallback(
-    (key: string): HTMLElement | null =>
-      container ? container.querySelector<HTMLElement>(`.mdp-manip[data-mdp-ord="${CSS.escape(key.slice(4))}"]`) : null,
-    [container],
+    (key: string): HTMLElement | null => {
+      const sel = `.mdp-manip[data-mdp-ord="${CSS.escape(key.slice(4))}"]`;
+      for (const c of containers) { const el = c.querySelector<HTMLElement>(sel); if (el) return el; }
+      return null;
+    },
+    [containers],
   );
 
   // The element to MEASURE / hit-test. A lifted element is its own box. Otherwise
@@ -131,20 +156,44 @@ export const ManipulationLayer: React.FC<Props> = ({ container, runtime }) => {
     return (el.firstElementChild as HTMLElement | null) || el;
   }, []);
 
+  // A module nested INSIDE another module's body positions against that module's
+  // box (its CSS containing block), not the canvas. The overlay works in canvas %,
+  // so for a nested element we convert between canvas % and parent % using its
+  // containing block (offsetParent). Top-level elements resolve against the canvas
+  // → this returns the identity {0,0,100,100}, making all conversions no-ops for
+  // the common (non-nested) case.
+  const parentRectPct = useCallback((el: HTMLElement): { left: number; top: number; w: number; h: number } => {
+    const root = rootRef.current;
+    const nested = el.parentElement?.closest('.mdp-manip');
+    const op = el.offsetParent as HTMLElement | null;
+    if (!nested || !root || !op) return { left: 0, top: 0, w: 100, h: 100 };
+    const o = op.getBoundingClientRect(), rr = root.getBoundingClientRect();
+    if (!o.width || !o.height) return { left: 0, top: 0, w: 100, h: 100 };
+    return {
+      left: ((o.left - rr.left) / rr.width) * 100,
+      top: ((o.top - rr.top) / rr.height) * 100,
+      w: (o.width / rr.width) * 100,
+      h: (o.height / rr.height) * 100,
+    };
+  }, []);
+
   const readBox = useCallback((el: HTMLElement, r: DOMRect): Box => {
-    // Fast path: a lifted element's box is fully described by its inline style
-    // (percent). Read those directly — deterministic and reflow-free, so frame
-    // sync converges instead of churning on sub-pixel getBoundingClientRect noise.
+    // A lifted element's box is fully described by its inline style: the TRUE
+    // width/height/centre (relative to its containing block) and rotation. Read
+    // those and convert to canvas % — never getBoundingClientRect, whose value for
+    // a ROTATED element is the inflated axis-aligned bounding box (which would make
+    // the size grow on every commit). For top-level elements the conversion is the
+    // identity, so this matches the previous fast path exactly.
     if (el.getAttribute('data-lifted') === '1') {
       const cx = parseFloat(el.style.left);
       const cy = parseFloat(el.style.top);
       const w = parseFloat(el.style.width);
       const h = parseFloat(el.style.height);
       if (!isNaN(cx) && !isNaN(cy) && !isNaN(w) && !isNaN(h)) {
-        return { cx, cy, w, h, rot: rotateOf(el.style.transform), lifted: true };
+        return fromParentPct({ cx, cy, w, h, rot: rotateOf(el.style.transform), lifted: true }, parentRectPct(el));
       }
     }
-    // Measure (unlifted, or lifted with incomplete style) — frame the inner box.
+    // Measure (unlifted — never rotated, so the bounding box IS the box).
     const b = measureEl(el).getBoundingClientRect();
     return {
       cx: ((b.left + b.width / 2 - r.left) / r.width) * 100,
@@ -152,17 +201,19 @@ export const ManipulationLayer: React.FC<Props> = ({ container, runtime }) => {
       w: (b.width / r.width) * 100,
       h: (b.height / r.height) * 100,
       rot: 0,
-      lifted: el.getAttribute('data-lifted') === '1',
+      lifted: false,
     };
-  }, [measureEl]);
+  }, [measureEl, parentRectPct]);
 
+  // `b` is a CANVAS-% box; write it as the element's containing-block-relative %.
   const applyLive = (el: HTMLElement, b: Box) => {
+    const q = toParentPct(b, parentRectPct(el));
     el.style.position = 'absolute';
     el.setAttribute('data-lifted', '1');
-    el.style.left = `${b.cx}%`;
-    el.style.top = `${b.cy}%`;
-    el.style.width = `${b.w}%`;
-    el.style.height = `${b.h}%`;
+    el.style.left = `${q.cx}%`;
+    el.style.top = `${q.cy}%`;
+    el.style.width = `${q.w}%`;
+    el.style.height = `${q.h}%`;
     el.style.transformOrigin = 'center center';
     el.style.transform = `translate(-50%,-50%) rotate(${b.rot}deg)`;
   };
@@ -270,15 +321,17 @@ export const ManipulationLayer: React.FC<Props> = ({ container, runtime }) => {
       const now = performance.now();
       const r2 = (n: number) => Math.round(n * 100) / 100; // match moduleDocEdits fmt
       const edits = items.map((it) => {
-        const b = readBox(it.el, r);
-        // Store the rounded box (as written to the doc) so the guard settles
-        // once the committed HTML lands instead of fighting rounding noise.
+        const b = readBox(it.el, r);                       // canvas %
+        const q = toParentPct(b, parentRectPct(it.el));    // containing-block %
+        // Store the rounded CANVAS box (applyLive re-converts) so the re-assert
+        // guard settles once the committed HTML lands instead of fighting noise.
         committedRef.current[it.key] = { box: { ...b, cx: r2(b.cx), cy: r2(b.cy), w: r2(b.w), h: r2(b.h), rot: r2(b.rot) }, t: now };
-        return { sel: selOf(it.key), t: { x: b.cx, y: b.cy, w: b.w, h: b.h, rot: b.rot } as TransformEdit };
+        // The directive stores parent-relative % (== canvas % when not nested).
+        return { sel: selOf(it.key), t: { x: q.cx, y: q.cy, w: q.w, h: q.h, rot: q.rot } as TransformEdit };
       });
       onCommit(edits);
     },
-    [onCommit, readBox],
+    [onCommit, readBox, parentRectPct],
   );
 
   // ---- pointer interaction ---------------------------------------------------
@@ -545,11 +598,17 @@ export const ManipulationLayer: React.FC<Props> = ({ container, runtime }) => {
     >
       {frames.map(({ key, box }) => {
         const fEl = findEl(key);
-        const selOnly = fEl ? !hasAxes(fEl) : false;   // non-manipulable → red dashed
+        const selOnly = fEl ? !hasAxes(fEl) : false;   // non-manipulable → dashed
+        const chrome = fEl ? isChromeEl(fEl) : false;  // header/footer → green/orange
         const isSingle = single && single.key === key;
+        // Content: blue (manip) / red (select-only). Chrome: green / orange.
+        const solid = chrome ? '#16a34a' : '#3b82f6';
+        const solidDim = chrome ? 'rgba(22,163,74,0.6)' : 'rgba(59,130,246,0.6)';
+        const dash = chrome ? '#f59e0b' : '#ef4444';
+        const dashDim = chrome ? 'rgba(245,158,11,0.6)' : 'rgba(239,68,68,0.6)';
         const border = selOnly
-          ? `1.5px dashed ${isSingle ? '#ef4444' : 'rgba(239,68,68,0.6)'}`
-          : `1.5px solid ${isSingle ? '#3b82f6' : 'rgba(59,130,246,0.6)'}`;
+          ? `1.5px dashed ${isSingle ? dash : dashDim}`
+          : `1.5px solid ${isSingle ? solid : solidDim}`;
         return (
         <div
           key={key}
