@@ -12,6 +12,10 @@
     <param name="format" type="select" default="24" label="Clock format" options="24:24-hour,12:12-hour (AM/PM)" />
     <param name="seconds" type="boolean" default="true" label="Show seconds" />
     <param name="size" type="select" default="md" label="Size" options="sm:Small,md:Medium,lg:Large,xl:Extra large" />
+    <param name="shape" type="select" default="rounded" label="Background shape" options="rounded:Rounded,pill:Pill,square:Square,none:None" />
+    <param name="bg" type="color" default="rgba(0,0,0,0.06)" label="Background color" />
+    <param name="border" type="color" label="Border color" />
+    <param name="color" type="color" label="Text color" />
   </parameters>
 
   <snippets>
@@ -34,12 +38,24 @@
     const showSec = !(String(args.seconds).toLowerCase() === 'false' || String(args.seconds) === '0');
     const sizes = { sm: 'sm', md: 'md', lg: 'lg', xl: 'xl' };
     const size = sizes[(args.size || 'md').toLowerCase()] || 'md';
+    // Appearance: shape (corner style / no box), background, border, text colour.
+    // Each is optional — omitted args fall back to the stylesheet defaults.
+    const shape = String(args.shape || 'rounded').toLowerCase();
+    const st = [];
+    if (args.bg) st.push('background:' + args.bg);
+    else if (shape === 'none') st.push('background:transparent');
+    if (args.border) st.push('border:1.5px solid ' + args.border);
+    if (args.color) st.push('color:' + args.color);
+    const radius = shape === 'pill' ? '999px' : (shape === 'square' || shape === 'none') ? '0' : '0.5em';
+    st.push('border-radius:' + radius);
+    if (shape === 'none') st.push('padding:0');
+    const styleAttr = st.length ? ' style="' + st.join(';') + '"' : '';
     // Fixed digit width: HH:MM:SS (8) or HH:MM (5). AM/PM lives in its own span.
     const chars = showSec ? 8 : 5;
     // Static zero placeholder keeps the width correct before the script paints
     // (it repaints immediately on init, so this is never actually visible).
     const placeholder = showSec ? '00:00:00' : '00:00';
-    return '<span class="mdp-mod-clock mdp-interactive mdp-size-' + size + '"'
+    return '<span class="mdp-mod-clock mdp-interactive mdp-size-' + size + '"' + styleAttr
       + ' data-format="' + (use12 ? '12' : '24') + '" data-seconds="' + (showSec ? '1' : '0') + '">'
       + '<span class="mdp-clock-time" style="width:' + chars + 'ch">' + placeholder + '</span>'
       + (use12 ? '<span class="mdp-clock-ampm">&nbsp;</span>' : '')

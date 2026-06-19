@@ -13,6 +13,10 @@
     <param name="seconds" type="number" default="0" label="Seconds" min="0" max="59" integer="true" />
     <param name="autostart" type="boolean" default="false" label="Auto-start when presenting" />
     <param name="size" type="select" default="md" label="Size" options="sm:Small,md:Medium,lg:Large,xl:Extra large" />
+    <param name="shape" type="select" default="rounded" label="Background shape" options="rounded:Rounded,pill:Pill,square:Square,none:None" />
+    <param name="bg" type="color" default="rgba(0,0,0,0.06)" label="Background color" />
+    <param name="border" type="color" label="Border color" />
+    <param name="color" type="color" label="Text color" />
   </parameters>
 
   <snippets>
@@ -44,12 +48,24 @@
     const autostart = (args.autostart === 'true' || args.autostart === '1') ? 'true' : 'false';
     const sizes = { sm: 'sm', md: 'md', lg: 'lg', xl: 'xl' };
     const size = sizes[(args.size || 'md').toLowerCase()] || 'md';
+    // Appearance: shape (corner style / no box), background, border, text colour.
+    // Each is optional — omitted args fall back to the stylesheet defaults.
+    const shape = String(args.shape || 'rounded').toLowerCase();
+    const st = [];
+    if (args.bg) st.push('background:' + args.bg);
+    else if (shape === 'none') st.push('background:transparent');
+    if (args.border) st.push('border:1.5px solid ' + args.border);
+    if (args.color) st.push('color:' + args.color);
+    const radius = shape === 'pill' ? '999px' : (shape === 'square' || shape === 'none') ? '0' : '0.5em';
+    st.push('border-radius:' + radius);
+    if (shape === 'none') st.push('padding:0');
+    const styleAttr = st.length ? ' style="' + st.join(';') + '"' : '';
     const mm = String(Math.floor(total / 60)).padStart(2, '0');
     const ss = String(total % 60).padStart(2, '0');
     // Fix the display width to the initial digit count (the value only counts
     // down, so this is the widest it ever gets) — the box never reflows / jitters.
     const chars = mm.length + 1 + ss.length;
-    return '<span class="mdp-mod-timer mdp-interactive mdp-size-' + size + '" data-seconds="' + total + '" data-autostart="' + autostart + '">'
+    return '<span class="mdp-mod-timer mdp-interactive mdp-size-' + size + '"' + styleAttr + ' data-seconds="' + total + '" data-autostart="' + autostart + '">'
       + '<button class="mdp-timer-btn mdp-timer-start" type="button" title="Start / Pause">&#9654;</button>'
       + '<span class="mdp-timer-display" style="width:' + chars + 'ch">' + mm + ':' + ss + '</span>'
       + '<button class="mdp-timer-btn mdp-timer-reset" type="button" title="Reset">&#8634;</button>'
