@@ -1,0 +1,74 @@
+<module>
+  <name>stamp</name>
+  <type>inline</type>
+  <description>A decorated inline label — a "stamp" such as CONFIDENTIAL, DRAFT or INTERNAL. Designed to drop inside a slide's @header / @footer block, but works in body text too. The default "double" style reproduces the classic double-bordered header badge.</description>
+
+  <parameters>
+    <param name="text" type="text" default="CONFIDENTIAL" label="Text" desc="The label, e.g. CONFIDENTIAL / DRAFT / INTERNAL." />
+    <param name="variant" type="select" default="double" label="Style"
+      options="double:Double border,solid:Solid fill,outline:Outline,plain:Plain text" />
+    <param name="color" type="color" default="var(--accent-color)" label="Color"
+      options="var(--accent-color):Accent,#ef4444:Red,#f59e0b:Amber,#10b981:Green,#3b82f6:Blue,#64748b:Slate" />
+  </parameters>
+
+  <snippets>
+    <snippet>
+      <category>Content</category>
+      <label>Stamp (CONFIDENTIAL)</label>
+      <text><![CDATA[<!-- @stamp text: CONFIDENTIAL, variant: double -->]]></text>
+      <description>A double-bordered badge. variant: double | solid | outline | plain.</description>
+    </snippet>
+    <snippet>
+      <category>Content</category>
+      <label>Header with stamp</label>
+      <text><![CDATA[<!-- @header -->
+<!-- @stamp text: CONFIDENTIAL -->
+<!-- @end -->]]></text>
+      <description>A slide header containing a CONFIDENTIAL stamp. In the meta page it applies to all slides; in a slide it applies to that slide only.</description>
+    </snippet>
+  </snippets>
+
+  <render><![CDATA[
+    const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const text = (args.text != null && String(args.text).trim() !== '') ? String(args.text).trim() : 'CONFIDENTIAL';
+    const variant = (['double', 'solid', 'outline', 'plain'].indexOf(String(args.variant || 'double').toLowerCase()) >= 0)
+      ? String(args.variant).toLowerCase() : 'double';
+    const color = (args.color && String(args.color).trim()) || 'var(--accent-color)';
+    return '<span class="mdp-mod-stamp mdp-stamp--' + variant + '" style="--stamp-color: ' + color + ';">'
+      + esc(text) + '</span>';
+  ]]></render>
+
+  <style><![CDATA[
+    .mdp-mod-stamp {
+      display: inline-block;
+      font-weight: 900;
+      letter-spacing: 0.1em;
+      line-height: 1.2;
+      padding: 2px 12px;
+      border-radius: 4px;
+      vertical-align: middle;
+    }
+    /* Classic double-bordered badge (the former built-in header look). */
+    .mdp-stamp--double {
+      color: var(--stamp-color);
+      border: 4px double var(--stamp-color);
+      background-color: var(--bg-color);
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+    .mdp-stamp--solid {
+      color: #ffffff;
+      background-color: var(--stamp-color);
+    }
+    .mdp-stamp--outline {
+      color: var(--stamp-color);
+      border: 2px solid var(--stamp-color);
+    }
+    .mdp-stamp--plain {
+      color: var(--stamp-color);
+      padding: 0;
+    }
+  ]]></style>
+
+  <script></script>
+</module>

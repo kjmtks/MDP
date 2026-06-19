@@ -299,8 +299,7 @@
  * Persistent header / footer / page number
  * ========================================= */
 .slide-header {
-  font-size: 11px;
-  border-width: 2px;
+  font-size: 11px;          /* neutral container; no border/emphasis */
 }
 .slide-footer {
   font-size: 10px;
