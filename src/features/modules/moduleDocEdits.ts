@@ -165,6 +165,112 @@ export function stripManipTransforms(doc: string): string {
   return out;
 }
 
+/** The innermost block whose range strictly contains `d` (its parent), or null
+ *  for a top-level directive. */
+function parentDirective(dirs: ManipDirective[], d: ManipDirective): ManipDirective | null {
+  let best: ManipDirective | null = null;
+  for (const p of dirs) {
+    if (p === d) continue;
+    if (p.fullFrom < d.fullFrom && d.fullTo <= p.fullTo) {
+      if (!best || p.fullFrom > best.fullFrom) best = p; // tightest container
+    }
+  }
+  return best;
+}
+
+/** Reorder a module by swapping its whole directive block with the ADJACENT
+ *  SIBLING (same parent / same nesting level) in `dir` (+1 = later in the
+ *  document → rendered on top, -1 = earlier → behind). Restricting to siblings
+ *  means a module only ever trades places within its own nesting level and never
+ *  slips into — or out of — another module's body. Returns the moved module's
+ *  NEW ord, or null if it's already first/last among its siblings (or not found). */
+export function moveModuleDirective(view: EditorView, sel: DirectiveSelector, dir: 1 | -1): number | null {
+  const doc = view.state.doc.toString();
+  const dirs = parseModuleDirectives(doc); // document order (by ord)
+  const cur = find(dirs, sel);
+  if (!cur) return null;
+  const curParent = parentDirective(dirs, cur);
+  // Siblings in document order = same immediate parent.
+  const siblings = dirs.filter((d) => parentDirective(dirs, d) === curParent);
+  const i = siblings.findIndex((d) => d.ord === cur.ord);
+  const other = siblings[i + dir];
+  if (!other) return null; // already at the start/end of this nesting level
+
+  const curText = doc.slice(cur.fullFrom, cur.fullTo);
+  const otherText = doc.slice(other.fullFrom, other.fullTo);
+  // After swapping the two blocks, cur's text lands either at the other block's
+  // old start (cur was later) or flush against the other block's old end (cur was
+  // earlier) — compute that precisely so the new ord is right even when `other`
+  // wraps children of its own.
+  const curLen = cur.fullTo - cur.fullFrom;
+  const curNewOpenFrom = cur.fullFrom < other.fullFrom ? other.fullTo - curLen : other.fullFrom;
+  view.dispatch({
+    changes: [
+      { from: cur.fullFrom, to: cur.fullTo, insert: otherText },
+      { from: other.fullFrom, to: other.fullTo, insert: curText },
+    ],
+  });
+  const moved = parseModuleDirectives(view.state.doc.toString()).find((d) => d.openFrom === curNewOpenFrom);
+  return moved ? moved.ord : null;
+}
+
+/** Full source text of a module's directive block (opening .. matching @end), for copy. */
+export function getModuleDirectiveText(doc: string, sel: DirectiveSelector): string | null {
+  const dirs = parseModuleDirectives(doc);
+  const d = find(dirs, sel);
+  return d ? doc.slice(d.fullFrom, d.fullTo) : null;
+}
+
+/** Bump the x/y transform args of a directive block's OPEN tag by (dx, dy) % so a
+ *  pasted copy is offset from the original. Modules with no x/y flow unchanged. */
+function offsetDirectiveText(text: string, dx: number, dy: number): string {
+  const m = new RegExp(RE_OPEN + '\\s*@([a-zA-Z0-9_-]+)\\s*(.*?)\\s*-->').exec(text);
+  if (!m) return text;
+  const args = parseArguments(m[2]);
+  if (args.x === undefined && args.y === undefined) return text;
+  if (args.x !== undefined) args.x = fmt((parseFloat(args.x) || 0) + dx);
+  if (args.y !== undefined) args.y = fmt((parseFloat(args.y) || 0) + dy);
+  return text.replace(m[0], buildOpen(m[1], args));
+}
+
+/** Set (override) the x/y transform args of a directive block's OPEN tag. */
+function setDirectiveXY(text: string, x: number, y: number): string {
+  const m = new RegExp(RE_OPEN + '\\s*@([a-zA-Z0-9_-]+)\\s*(.*?)\\s*-->').exec(text);
+  if (!m) return text;
+  const args = parseArguments(m[2]);
+  args.x = fmt(x);
+  args.y = fmt(y);
+  return text.replace(m[0], buildOpen(m[1], args));
+}
+
+/** Insert a copy of a directive block `text` at `offset` (e.g. the end of a
+ *  slide), positioned at (x, y) %. Used for "Paste here" on empty canvas — the
+ *  module lands where the user right-clicked. Returns the pasted copy's ord. */
+export function pasteModuleAt(view: EditorView, offset: number, text: string, x: number, y: number): number | null {
+  const lead = '\n\n';
+  const insert = lead + setDirectiveXY(text, x, y);
+  view.dispatch({ changes: { from: offset, insert } });
+  const openAt = offset + lead.length;
+  const pasted = parseModuleDirectives(view.state.doc.toString()).find((d) => d.openFrom === openAt);
+  return pasted ? pasted.ord : null;
+}
+
+/** Insert a copy of a directive block `text` right after the directive `afterSel`
+ *  (or at the end of the doc), nudging its x/y so the copy doesn't sit exactly on
+ *  the original. Returns the pasted copy's ord, or null. */
+export function pasteModuleDirective(view: EditorView, afterSel: DirectiveSelector, text: string): number | null {
+  const doc = view.state.doc.toString();
+  const dirs = parseModuleDirectives(doc);
+  const after = find(dirs, afterSel);
+  const at = after ? after.fullTo : doc.length;
+  const lead = '\n\n';
+  const insert = lead + offsetDirectiveText(text, 3, 3);
+  view.dispatch({ changes: { from: at, insert } });
+  const openAt = at + lead.length; // the copy's opening starts after the lead newlines
+  const pasted = parseModuleDirectives(view.state.doc.toString()).find((d) => d.openFrom === openAt);
+  return pasted ? pasted.ord : null;
+}
+
 /** Delete whole module directives (opening .. matching @end), swallowing up to
  *  two trailing newlines so no blank gap remains. Single transaction. */
 export function removeModuleDirectives(view: EditorView, sels: DirectiveSelector[]) {

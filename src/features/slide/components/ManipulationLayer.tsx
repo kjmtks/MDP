@@ -11,13 +11,26 @@ export interface ManipRuntime {
   enabled: boolean;       // edit-layout mode on
   snap: boolean;          // grid snap on
   snapStep: number;       // percent
-  onCommit: (edits: Array<{ sel: DirectiveSelector; t: TransformEdit }>) => void;
+  onCommit: (edits: Array<{ sel: DirectiveSelector; t: TransformEdit; chrome?: boolean }>) => void;
   onDelete: (sels: DirectiveSelector[]) => void;
   // Selecting a single module moves the editor cursor to its directive.
   onSelect?: (sel: DirectiveSelector) => void;
   // Context-menu "Property" → open that module's settings dialog.
   onRequestProperty?: (sel: DirectiveSelector) => void;
+  // Reorder: move the module's directive block earlier/later in the document
+  // (dir -1 = behind, +1 = on top). Returns the moved module's new ord.
+  onReorder?: (sel: DirectiveSelector, dir: 1 | -1) => number | null;
+  // Copy: return the module's directive source text (stored in the layer clipboard).
+  onCopyText?: (sel: DirectiveSelector) => string | null;
+  // Paste: insert a copy of `text` after `afterSel`. Returns the new copy's ord.
+  onPaste?: (afterSel: DirectiveSelector, text: string) => number | null;
+  // Paste on empty canvas: drop a copy of `text` into the current slide at (x, y) %.
+  onPasteAt?: (text: string, x: number, y: number) => number | null;
 }
+
+// Clipboard for module copy/paste. Module-level (not React state) so it persists
+// across slide switches — each SlideView mounts its own ManipulationLayer.
+let moduleClipboard: string | null = null;
 
 interface Props {
   container: HTMLElement | null;             // the .slide-content node holding .mdp-manip
@@ -100,12 +113,13 @@ const CtxItem: React.FC<{ onClick: () => void; danger?: boolean; children: React
 };
 
 export const ManipulationLayer: React.FC<Props> = ({ container, headerContainer, footerContainer, runtime }) => {
-  const { enabled, snap, snapStep, onCommit, onDelete, onSelect, onRequestProperty } = runtime;
+  const { enabled, snap, snapStep, onCommit, onDelete, onSelect, onRequestProperty, onReorder, onCopyText, onPaste, onPasteAt } = runtime;
   const { settings } = useAppSettings();
   const rootRef = useRef<HTMLDivElement>(null);
   const [selected, setSelected] = useState<string[]>([]);
-  // Right-click context menu (Property / Delete) for a single module.
-  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; key: string } | null>(null);
+  // Right-click context menu. On a module: key set (Property / Delete / reorder /
+  // copy). On empty canvas: key null + the click position (px, py %) for "Paste here".
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; key: string | null; px: number; py: number } | null>(null);
   // Frame boxes are kept in STATE (not read during render) so they reflect the
   // committed DOM after a re-render instead of lagging a frame behind.
   const [frameBoxes, setFrameBoxes] = useState<Record<string, Box>>({});
@@ -327,7 +341,10 @@ export const ManipulationLayer: React.FC<Props> = ({ container, headerContainer,
         // guard settles once the committed HTML lands instead of fighting noise.
         committedRef.current[it.key] = { box: { ...b, cx: r2(b.cx), cy: r2(b.cy), w: r2(b.w), h: r2(b.h), rot: r2(b.rot) }, t: now };
         // The directive stores parent-relative % (== canvas % when not nested).
-        return { sel: selOf(it.key), t: { x: q.cx, y: q.cy, w: q.w, h: q.h, rot: q.rot } as TransformEdit };
+        // `chrome`: a header/footer module — its commit must NOT be suppressed (it
+        // writes to the GLOBAL/meta directive shown on every slide, so the preview
+        // must re-render or other slides keep the stale position).
+        return { sel: selOf(it.key), t: { x: q.cx, y: q.cy, w: q.w, h: q.h, rot: q.rot } as TransformEdit, chrome: isChromeEl(it.el) };
       });
       onCommit(edits);
     },
@@ -381,8 +398,10 @@ export const ManipulationLayer: React.FC<Props> = ({ container, headerContainer,
         sel = [key];
         setSelected(sel);
       }
-      // A single (non-shift) selection jumps the editor cursor to its directive.
-      if (!e.shiftKey) onSelect?.(selOf(key));
+      // A single (non-shift) selection jumps the editor cursor to its directive —
+      // but NOT for chrome (header/footer) modules: a global header's directive
+      // lives in the meta page, so jumping there would yank the preview to slide 1.
+      if (!e.shiftKey && !isChromeEl(hit)) onSelect?.(selOf(key));
       // Select-only (non-manipulable) module: show the frame, but no drag/lift.
       if (!hasAxes(hit)) {
         draggingRef.current = false;
@@ -510,12 +529,44 @@ export const ManipulationLayer: React.FC<Props> = ({ container, headerContainer,
       const b = measureEl(el).getBoundingClientRect();
       if (e.clientX >= b.left && e.clientX <= b.right && e.clientY >= b.top && e.clientY <= b.bottom) hit = el;
     }
-    if (!hit) { setCtxMenu(null); return; }
     e.preventDefault();
-    const key = keyOf(hit);
-    setSelected([key]);   // visually select; don't steal editor focus on right-click
-    setCtxMenu({ x: e.clientX, y: e.clientY, key });
+    const r = oRect();
+    const px = pctX(e.clientX, r), py = pctY(e.clientY, r);
+    if (hit) {
+      const key = keyOf(hit);
+      setSelected([key]);   // visually select; don't steal editor focus on right-click
+      setCtxMenu({ x: e.clientX, y: e.clientY, key, px, py });
+    } else {
+      // Empty canvas: only a "Paste here" menu, and only if the clipboard has a
+      // module (else there's nothing to offer).
+      if (!moduleClipboard) { setCtxMenu(null); return; }
+      setSelected([]);
+      setCtxMenu({ x: e.clientX, y: e.clientY, key: null, px, py });
+    }
   };
+
+  // ---- reorder / copy / paste (shared by the context menu and keyboard) -------
+  // Reorder rewrites the directive's text position; the moved module takes a new
+  // ord, so re-point the selection to it.
+  const doReorder = useCallback((key: string, dir: 1 | -1) => {
+    const newOrd = onReorder?.(selOf(key), dir);
+    if (newOrd != null) setSelected([`ord:${newOrd}`]);
+  }, [onReorder]);
+  const doCopy = useCallback((key: string) => {
+    const t = onCopyText?.(selOf(key));
+    if (t != null) moduleClipboard = t;
+  }, [onCopyText]);
+  const doPaste = useCallback((afterKey: string) => {
+    if (!moduleClipboard) return;
+    const newOrd = onPaste?.(selOf(afterKey), moduleClipboard);
+    if (newOrd != null) setSelected([`ord:${newOrd}`]);
+  }, [onPaste]);
+  // Paste on empty canvas at the clicked (px, py) %.
+  const doPasteAt = useCallback((px: number, py: number) => {
+    if (!moduleClipboard) return;
+    const newOrd = onPasteAt?.(moduleClipboard, px, py);
+    if (newOrd != null) setSelected([`ord:${newOrd}`]);
+  }, [onPasteAt]);
 
   // ---- keyboard --------------------------------------------------------------
   useEffect(() => {
@@ -525,6 +576,14 @@ export const ManipulationLayer: React.FC<Props> = ({ container, headerContainer,
       if (!sel.length) return;
       const tag = (document.activeElement?.tagName || '').toLowerCase();
       if (tag === 'input' || tag === 'textarea' || (document.activeElement as HTMLElement)?.isContentEditable) return;
+
+      // Copy / paste / duplicate (Ctrl/Cmd + C / V / D) act on a single selection.
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) {
+        const k = e.key.toLowerCase();
+        if (k === 'c' && sel.length === 1) { e.preventDefault(); doCopy(sel[0]); return; }
+        if (k === 'v' && sel.length === 1 && moduleClipboard) { e.preventDefault(); doPaste(sel[0]); return; }
+        if (k === 'd' && sel.length === 1) { e.preventDefault(); doCopy(sel[0]); doPaste(sel[0]); return; }
+      }
 
       const action = matchAction(e, ACTIONS_BY_SCOPE.manipulation, settings);
       if (action?.id === 'manip.deselect') { setSelected([]); setCtxMenu(null); return; }
@@ -566,7 +625,7 @@ export const ManipulationLayer: React.FC<Props> = ({ container, headerContainer,
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [enabled, snapStep, findEl, readBox, commitItems, settings, onDelete]);
+  }, [enabled, snapStep, findEl, readBox, commitItems, settings, onDelete, doCopy, doPaste]);
 
   // Drop selection when leaving edit mode.
   useEffect(() => { if (!enabled) { setSelected([]); setMarquee(null); setFrameBoxes({}); setCtxMenu(null); setGuides([]); } }, [enabled]);
@@ -680,8 +739,23 @@ export const ManipulationLayer: React.FC<Props> = ({ container, headerContainer,
             border: '1px solid var(--app-border)', borderRadius: 6, padding: '4px 0',
             boxShadow: '0 6px 20px rgba(0,0,0,0.35)', fontSize: '0.85rem',
           }}>
-            <CtxItem onClick={() => { onRequestProperty?.(selOf(ctxMenu.key)); setCtxMenu(null); }}>⚙  Property…</CtxItem>
-            <CtxItem danger onClick={() => { onDelete([selOf(ctxMenu.key)]); setSelected([]); setCtxMenu(null); }}>🗑  Delete</CtxItem>
+            {ctxMenu.key === null ? (
+              <CtxItem onClick={() => { doPasteAt(ctxMenu.px, ctxMenu.py); setCtxMenu(null); }}>📋  Paste here</CtxItem>
+            ) : (
+            <>
+            <CtxItem onClick={() => { doReorder(ctxMenu.key!, 1); setCtxMenu(null); }}>⬆  Bring forward</CtxItem>
+            <CtxItem onClick={() => { doReorder(ctxMenu.key!, -1); setCtxMenu(null); }}>⬇  Send backward</CtxItem>
+            <div style={{ height: 1, background: 'var(--app-border)', margin: '4px 0' }} />
+            <CtxItem onClick={() => { doCopy(ctxMenu.key!); setCtxMenu(null); }}>⧉  Copy</CtxItem>
+            <CtxItem onClick={() => { doCopy(ctxMenu.key!); doPaste(ctxMenu.key!); setCtxMenu(null); }}>⧉  Duplicate</CtxItem>
+            {moduleClipboard && (
+              <CtxItem onClick={() => { doPaste(ctxMenu.key!); setCtxMenu(null); }}>📋  Paste</CtxItem>
+            )}
+            <div style={{ height: 1, background: 'var(--app-border)', margin: '4px 0' }} />
+            <CtxItem onClick={() => { onRequestProperty?.(selOf(ctxMenu.key!)); setCtxMenu(null); }}>⚙  Property…</CtxItem>
+            <CtxItem danger onClick={() => { onDelete([selOf(ctxMenu.key!)]); setSelected([]); setCtxMenu(null); }}>🗑  Delete</CtxItem>
+            </>
+            )}
           </div>
         </>,
         document.body,

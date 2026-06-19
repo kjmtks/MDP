@@ -295,17 +295,14 @@
   font-size: 0.65rem;
   color: var(--text-color);
   line-height: 1.3;
-  border-top: 1px solid var(--border-color);
-  padding-top: 4px;
 }
-/* The header is click-through (pointer-events:none in SlideViewer.css). Interactive
- * modules (timer/clock buttons) inside it must still receive clicks. */
+/* The chrome layer is click-through (pointer-events:none in SlideViewer.css).
+ * Interactive modules (timer/clock buttons) inside must still receive clicks. */
 .slide-header .mdp-interactive, .slide-footer .mdp-interactive { pointer-events: auto; }
-/* Chrome is rendered as block markdown now — drop paragraph margins that would
- * otherwise offset the positioned header/footer. */
-.slide-header > p, .slide-footer > p { margin: 0; }
-.slide-header > :first-child, .slide-footer > :first-child { margin-top: 0; }
-.slide-header > :last-child, .slide-footer > :last-child { margin-bottom: 0; }
+/* Tighten paragraph margins INSIDE the in-flow chrome content (its outer inset is
+ * set in SlideViewer.css); lifted modules are absolute and unaffected. */
+.slide-header > :not([data-lifted="1"]) > p,
+.slide-footer > :not([data-lifted="1"]) > p { margin: 0; }
 .slide-page-number {
   font-size: 0.6em;
   color: var(--muted-color);

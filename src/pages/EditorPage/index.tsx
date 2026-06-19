@@ -42,7 +42,8 @@ import { clearAllEffects, registerEffect, getAllEffectSnippets } from '../../fea
 import { applyModulesToMarkdown, parseArguments } from '../../features/modules/moduleProcessor';
 import { resolveImages, setLibraryImages, clearLibraryImages, parseInFileImageDefs, type ImageEntry } from '../../features/images/imageRegistry';
 import { addFileImageDef, editFileImageDef, deleteFileImageDef } from '../../features/images/imageDocEdits';
-import { updateModuleTransforms, removeModuleDirectives, parseModuleDirectives } from '../../features/modules/moduleDocEdits';
+import { updateModuleTransforms, removeModuleDirectives, parseModuleDirectives, moveModuleDirective, getModuleDirectiveText, pasteModuleDirective, pasteModuleAt } from '../../features/modules/moduleDocEdits';
+import { splitMarkdownToBlocks } from '../../features/slide/parser/slideParser';
 import { prewarmSvgs } from '../../features/slide/inlineSvg';
 import type { ManipRuntime } from '../../features/slide/components/ManipulationLayer';
 import { storeLibraryImage, inlineLibraryImage, saveRegistry, deleteLibraryFile } from '../../features/images/imageLibraryStore';
@@ -475,7 +476,12 @@ export default function EditorPage() {
   }
   const fileChanged = previewSource.fileName !== currentFileName || previewSource.fileType !== effectiveFileType;
   const mdChanged = previewSource.md !== debouncedMarkdown;
-  const manipSuppress = editLayout && mdChanged && !fileChanged && debouncedMarkdown === lastManipDocRef.current;
+  // Compare against the IMMEDIATE editor doc (`markdown`), not the debounced one:
+  // onCommit flushes previewSource to the committed doc, and `markdown` updates in
+  // the same batch — so this is true right after a transform commit (suppressing
+  // the lagging debounced markdown from reverting the flush) but false for typing
+  // (which moves `markdown` away from the baseline → normal re-render).
+  const manipSuppress = editLayout && mdChanged && !fileChanged && markdown === lastManipDocRef.current;
   // When live preview is off, freeze the preview on editor changes (no re-parse).
   // A file switch still updates so the preview follows the active tab.
   const liveSuppress = !livePreview && mdChanged && !fileChanged;
@@ -1166,20 +1172,68 @@ export default function EditorPage() {
   // transform write-back lands in the right document and the (live) preview
   // reflects it. Under preview-pinning they can diverge — then the toggle is off.
   const canEditLayout = previewFileType === 'markdown' && previewFileName === currentFileName;
+  // After a manip doc edit (commit/delete/reorder/paste), bake the new doc into the
+  // preview source immediately so it reflects on the FIRST action (the debounced
+  // markdown lags one edit behind) and doesn't revert on slide navigation. The
+  // manipSuppress baseline (compared against the immediate `markdown`) then stops
+  // the lagging debounced update from briefly reverting the flush.
+  const flushManipPreview = useCallback(() => {
+    const view = editorRef.current?.view;
+    if (!view) return;
+    const doc = view.state.doc.toString();
+    lastManipDocRef.current = doc;
+    setPreviewSource((prev) => (prev.md === doc ? prev : { ...prev, md: doc }));
+  }, [editorRef]);
   const manipulate = useMemo<ManipRuntime>(() => ({
     enabled: editLayout && canEditLayout,
     snap: snapOn,
     snapStep,
     onCommit: (edits) => {
       const view = editorRef.current?.view;
-      if (view) { updateModuleTransforms(view, edits); lastManipDocRef.current = view.state.doc.toString(); }
+      if (!view) return;
+      updateModuleTransforms(view, edits);
+      flushManipPreview();
     },
     onDelete: (sels) => {
       const view = editorRef.current?.view;
-      // Do NOT set lastManipDocRef here: a delete is a structural change that MUST
-      // re-render the preview (unlike a transform commit, which is suppressed to
-      // avoid flicker). Leaving the baseline stale lets the re-render through.
-      if (view) removeModuleDirectives(view, sels);
+      if (!view) return;
+      removeModuleDirectives(view, sels);
+      flushManipPreview();
+    },
+    // Reorder: move the module's directive block earlier/later in the document.
+    onReorder: (sel, dir) => {
+      const view = editorRef.current?.view;
+      if (!view) return null;
+      const newOrd = moveModuleDirective(view, sel, dir);
+      flushManipPreview();
+      return newOrd;
+    },
+    // Copy: hand the module's directive source text back to the overlay clipboard.
+    onCopyText: (sel) => {
+      const view = editorRef.current?.view;
+      return view ? getModuleDirectiveText(view.state.doc.toString(), sel) : null;
+    },
+    // Paste: insert an offset copy after the target module, return its new ord.
+    onPaste: (afterSel, text) => {
+      const view = editorRef.current?.view;
+      if (!view) return null;
+      const newOrd = pasteModuleDirective(view, afterSel, text);
+      flushManipPreview();
+      return newOrd;
+    },
+    // Paste on empty canvas: drop the copy into the CURRENT slide at the clicked
+    // (x, y) %. Block 0 is the meta page, so slide i lives in blocks[i + 1].
+    onPasteAt: (text, x, y) => {
+      const view = editorRef.current?.view;
+      if (!view) return null;
+      const doc = view.state.doc;
+      const blocks = splitMarkdownToBlocks(doc.toString());
+      const block = blocks[currentSlideIndexRef.current + 1] || blocks[blocks.length - 1];
+      if (!block) return null;
+      const offset = doc.line(Math.min(block.endLine, doc.lines)).to;
+      const newOrd = pasteModuleAt(view, offset, text, x, y);
+      flushManipPreview();
+      return newOrd;
     },
     // Selecting a module on the preview jumps the editor cursor to its directive.
     onSelect: (sel) => {
@@ -1207,7 +1261,7 @@ export default function EditorPage() {
         original: doc.slice(dir.openFrom, dir.openTo),
       });
     },
-  }), [editLayout, canEditLayout, snapOn, editorRef]);
+  }), [editLayout, canEditLayout, snapOn, snapStep, editorRef, flushManipPreview]);
 
   const sidebarSlice = useMemo<SidebarSharedProps>(() => ({
     currentFileName, currentFileType: previewFileType, slides, currentSlideIndex, slideSize,

@@ -1,5 +1,5 @@
 import { StateField, StateEffect, RangeSetBuilder, type EditorState, type Extension } from '@codemirror/state';
-import { Decoration, type DecorationSet, EditorView } from '@codemirror/view';
+import { Decoration, type DecorationSet, EditorView, gutter, GutterMarker } from '@codemirror/view';
 import { foldService } from '@codemirror/language';
 import { loadedModules } from '../../modules/moduleManager';
 
@@ -24,7 +24,14 @@ export function refreshModuleRegions(view: EditorView | null | undefined): void 
 // Only registered modules are decorated; `@theme`, `@header`, `@aspect`, … are not.
 
 interface FoldRange { openLineFrom: number; foldFrom: number; foldTo: number; }
-interface ModuleScan { decorations: DecorationSet; folds: FoldRange[]; }
+interface ModuleScan {
+  decorations: DecorationSet;
+  folds: FoldRange[];
+  // line number → depths of the block regions covering it (outermost first). Drawn
+  // as a vertical scope rail in the gutter so a block's start and @end are visibly
+  // connected by a continuous coloured line (one bar per nesting depth).
+  lineDepths: Map<number, number[]>;
+}
 
 const DEPTHS = 6; // distinct nesting colours before they cycle
 
@@ -53,6 +60,7 @@ function scan(state: EditorState): ModuleScan {
   const stack: Open[] = [];
   const marks: Array<{ from: number; to: number; cls: string }> = [];
   const folds: FoldRange[] = [];
+  const lineDepths = new Map<number, number[]>();
   let m: RegExpExecArray | null;
 
   while ((m = re.exec(text)) !== null) {
@@ -64,7 +72,7 @@ function scan(state: EditorState): ModuleScan {
     if (!isEnd && name === '') continue; // section separator `<!-- @ -->`
 
     if (!isEnd) {
-      if (blockNames.has(name)) {
+      if (blockNames.has(name) || SPECIAL_BLOCKS.has(name)) {
         stack.push({ from, to, depth: stack.length });
       } else if (isInline(name)) {
         marks.push({ from, to, cls: 'cm-mod-inline' });
@@ -82,13 +90,22 @@ function scan(state: EditorState): ModuleScan {
       if (endLine.number > openLine.number) {
         folds.push({ openLineFrom: openLine.from, foldFrom: openLine.to, foldTo: endLine.to });
       }
+      // Record this block's depth on every line it spans (start..@end) so the
+      // gutter can draw a continuous rail connecting the two.
+      for (let ln = openLine.number; ln <= endLine.number; ln++) {
+        const arr = lineDepths.get(ln);
+        if (arr) arr.push(open.depth); else lineDepths.set(ln, [open.depth]);
+      }
     }
   }
 
+  // @end pops innermost-first, so each line's depths arrive deepest-first — sort
+  // ascending so the outermost rail is drawn leftmost.
+  for (const arr of lineDepths.values()) arr.sort((a, b) => a - b);
   marks.sort((a, b) => a.from - b.from || a.to - b.to);
   const builder = new RangeSetBuilder<Decoration>();
   for (const mk of marks) builder.add(mk.from, mk.to, Decoration.mark({ class: mk.cls }));
-  return { decorations: builder.finish(), folds };
+  return { decorations: builder.finish(), folds, lineDepths };
 }
 
 const moduleRegionField = StateField.define<ModuleScan>({
@@ -96,6 +113,37 @@ const moduleRegionField = StateField.define<ModuleScan>({
   update: (val, tr) =>
     (tr.docChanged || tr.effects.some((e) => e.is(moduleRefreshEffect))) ? scan(tr.state) : val,
   provide: (f) => EditorView.decorations.from(f, (v) => v.decorations),
+});
+
+// One vertical bar per nesting depth, rendered in the scope gutter. Consecutive
+// lines' bars align, forming a continuous rail from a block's start to its @end.
+class ScopeMarker extends GutterMarker {
+  constructor(readonly depths: number[]) { super(); }
+  eq(o: ScopeMarker): boolean {
+    return o.depths.length === this.depths.length && o.depths.every((d, i) => d === this.depths[i]);
+  }
+  toDOM(): HTMLElement {
+    const el = document.createElement('div');
+    el.className = 'cm-mod-scope';
+    for (const d of this.depths) {
+      const bar = document.createElement('span');
+      bar.className = `cm-mod-scope-bar cm-mod-sd${d % DEPTHS}`;
+      el.appendChild(bar);
+    }
+    return el;
+  }
+}
+
+const moduleScopeGutter = gutter({
+  class: 'cm-mod-scope-gutter',
+  lineMarker(view, line) {
+    const s = view.state.field(moduleRegionField, false);
+    if (!s) return null;
+    const depths = s.lineDepths.get(view.state.doc.lineAt(line.from).number);
+    return depths && depths.length ? new ScopeMarker(depths) : null;
+  },
+  lineMarkerChange: (update) =>
+    update.docChanged || update.transactions.some((t) => t.effects.some((e) => e.is(moduleRefreshEffect))),
 });
 
 // A block-module start line is foldable down to its matching @end.
@@ -116,6 +164,19 @@ const moduleTheme = EditorView.baseTheme({
   '.cm-mod-block.cm-mod-d3': { backgroundColor: 'rgba(245, 158, 11, 0.18)', borderRadius: '3px' },
   '.cm-mod-block.cm-mod-d4': { backgroundColor: 'rgba(236, 72, 153, 0.18)', borderRadius: '3px' },
   '.cm-mod-block.cm-mod-d5': { backgroundColor: 'rgba(34, 197, 94, 0.18)', borderRadius: '3px' },
+  // Scope rail: thin full-height bars in the gutter, coloured by nesting depth to
+  // match the start/@end tag colours above.
+  '.cm-mod-scope-gutter': { paddingLeft: '3px' },
+  // No vertical padding on the per-line cell, else the bars break between lines.
+  '.cm-mod-scope-gutter .cm-gutterElement': { padding: '0' },
+  '.cm-mod-scope': { display: 'flex', gap: '2px', height: '100%', alignItems: 'stretch' },
+  '.cm-mod-scope-bar': { width: '2px', borderRadius: '1px' },
+  '.cm-mod-scope-bar.cm-mod-sd0': { backgroundColor: 'rgba(59, 130, 246, 0.85)' },
+  '.cm-mod-scope-bar.cm-mod-sd1': { backgroundColor: 'rgba(168, 85, 247, 0.85)' },
+  '.cm-mod-scope-bar.cm-mod-sd2': { backgroundColor: 'rgba(20, 184, 166, 0.85)' },
+  '.cm-mod-scope-bar.cm-mod-sd3': { backgroundColor: 'rgba(245, 158, 11, 0.85)' },
+  '.cm-mod-scope-bar.cm-mod-sd4': { backgroundColor: 'rgba(236, 72, 153, 0.85)' },
+  '.cm-mod-scope-bar.cm-mod-sd5': { backgroundColor: 'rgba(34, 197, 94, 0.85)' },
 });
 
-export const moduleRegionPlugin: Extension = [moduleRegionField, moduleFold, moduleTheme];
+export const moduleRegionPlugin: Extension = [moduleRegionField, moduleScopeGutter, moduleFold, moduleTheme];
