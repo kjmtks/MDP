@@ -31,7 +31,7 @@ CONFIDENTIAL
     </snippet>
   </snippets>
 
-  <render><![CDATA[
+  <render inline="true"><![CDATA[
     const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
       .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     const label = sections[0] ? sections[0].trim() : '';
@@ -39,14 +39,12 @@ CONFIDENTIAL
     const variant = (['double', 'solid', 'outline', 'plain'].indexOf(String(args.variant || 'double').toLowerCase()) >= 0)
       ? String(args.variant).toLowerCase() : 'double';
     const color = (args.color && String(args.color).trim()) || 'var(--accent-color)';
-    return '\n\n<div class="mdp-mod-stamp-block">'
-      + '<span class="mdp-mod-stamp mdp-stamp--' + variant + '" style="--stamp-color: ' + color + ';">'
-      + esc(txt) + '</span></div>\n\n';
+    // Inline element (block module + inline render): flows within the header/text.
+    return '<span class="mdp-mod-stamp mdp-stamp--' + variant + '" style="--stamp-color: ' + color + ';">'
+      + esc(txt) + '</span>';
   ]]></render>
 
   <style><![CDATA[
-    /* Block wrapper is a plain pass-through; the badge itself is inline-block. */
-    .mdp-mod-stamp-block { margin: 0; }
     .mdp-mod-stamp {
       display: inline-block;
       font-weight: 900;

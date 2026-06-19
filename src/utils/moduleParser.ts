@@ -51,6 +51,8 @@ export interface ModuleConfig {
   // When true, this module's regions capture pointer/keys so interacting with
   // them (e.g. clicking a timer button) does not advance the slide.
   interactive: boolean;
+  // A block module whose output should flow INLINE (`<render inline="true">`).
+  inlineRender?: boolean;
   // Present when the module opted into on-preview manipulation (block modules).
   manipulate?: ManipulateConfig;
 }
@@ -164,6 +166,11 @@ export const parseMdmodXml = (content: string): ModuleData | null => {
 
   const parameters = parseParamElements(root);
 
+  // A block module can opt into INLINE rendering via `<render inline="true">`:
+  // its body still supplies content/sections, but the output is wrapped as an
+  // inline element (no surrounding block) so it flows within text (e.g. @stamp).
+  const inlineRender = root.querySelector("render")?.getAttribute("inline") === "true";
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const snippets: any[] = [];
   root.querySelectorAll("snippets > snippet").forEach(s => {
@@ -177,7 +184,7 @@ export const parseMdmodXml = (content: string): ModuleData | null => {
   });
 
   return {
-    config: { name, type, description, parameters, snippets, interactive, manipulate },
+    config: { name, type, description, parameters, snippets, interactive, manipulate, inlineRender },
     render: root.querySelector("render")?.textContent?.trim() || "return '';",
     style: root.querySelector("style")?.textContent?.trim() || "",
     script: root.querySelector("script")?.textContent?.trim() || ""

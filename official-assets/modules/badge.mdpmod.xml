@@ -1,10 +1,9 @@
 <module>
   <name>badge</name>
-  <type>inline</type>
-  <description>Badge</description>
+  <type>block</type>
+  <description>A filled badge. The text is the block body (spaces / commas / inline Markdown allowed). Renders inline.</description>
 
   <parameters>
-    <param name="text" type="text" label="Text" required="true" />
     <param name="color" type="color" default="var(--accent-color)" label="Color" />
   </parameters>
 
@@ -12,28 +11,30 @@
     <snippet>
       <category>UI Parts</category>
       <label>Badge</label>
-      <text><![CDATA[<!-- @badge text: Text, color: var(--accent-color) -->]]></text>
-      <description>Badge</description>
+      <text><![CDATA[<!-- @badge color: var(--accent-color) -->
+Text
+<!-- @end -->]]></text>
+      <description>A filled badge. Body = the badge text.</description>
     </snippet>
   </snippets>
 
-  <render>
-  return `<![CDATA[<span class="mdp-mod-badge" style="background-color: ${args.color};">${args.text}</span>]]>`;
-  </render>
-  <style>
-    <![CDATA[
-      .mdp-mod-badge {
-        color: white;
-        padding: 2px 8px;
-        border-radius: 9999px;
-        font-size: 0.85em;
-        font-weight: 600;
-        display: inline-block;
-        line-height: 1.2;
-      }
-    ]]>
-  </style>
+  <render inline="true"><![CDATA[
+    const body = sections[0] ? sections[0].trim() : '';
+    const color = (args.color && String(args.color).trim()) || 'var(--accent-color)';
+    return '<span class="mdp-mod-badge" style="background-color: ' + color + ';">' + body + '</span>';
+  ]]></render>
 
-  <script>
-  </script>
+  <style><![CDATA[
+    .mdp-mod-badge {
+      color: white;
+      padding: 2px 8px;
+      border-radius: 9999px;
+      font-size: 0.85em;
+      font-weight: 600;
+      display: inline-block;
+      line-height: 1.2;
+    }
+  ]]></style>
+
+  <script></script>
 </module>

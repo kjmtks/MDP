@@ -1,28 +1,29 @@
 <module>
   <name>shortcut</name>
-  <type>inline</type>
-  <description>A keyboard shortcut as a sequence of keys</description>
+  <type>block</type>
+  <description>A keyboard shortcut as a sequence of keys. The key combination is the block body, joined with "+", e.g. Ctrl+Shift+P. Renders inline.</description>
 
-  <parameters>
-    <param name="keys" type="text" label="Keys" desc="Key combination joined with +, e.g. Ctrl+Shift+P" required="true" />
-  </parameters>
+  <parameters></parameters>
 
   <snippets>
     <snippet>
       <category>UI Parts</category>
       <label>Shortcut</label>
-      <text><![CDATA[<!-- @shortcut keys: Ctrl+Shift+P -->]]></text>
-      <description>Key combination rendered as styled keys</description>
+      <text><![CDATA[<!-- @shortcut -->
+Ctrl+Shift+P
+<!-- @end -->]]></text>
+      <description>Key combination rendered as styled keys. Body = the combo, joined with "+".</description>
     </snippet>
   </snippets>
 
-  <render><![CDATA[
-    const raw = (args.keys || '').toString();
+  <render inline="true"><![CDATA[
+    const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const raw = (sections[0] || '').toString();
     const parts = raw.split('+').map(function (k) { return k.trim(); }).filter(function (k) { return k.length > 0; });
     let html = '<span class="mdp-mod-shortcut">';
     parts.forEach(function (key, index) {
       if (index > 0) html += '<span class="shortcut-plus">+</span>';
-      html += '<kbd class="shortcut-key">' + key + '</kbd>';
+      html += '<kbd class="shortcut-key">' + esc(key) + '</kbd>';
     });
     html += '</span>';
     return html;

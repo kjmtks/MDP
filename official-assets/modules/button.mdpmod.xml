@@ -1,10 +1,9 @@
 <module>
   <name>button</name>
-  <type>inline</type>
-  <description>A styled pseudo-button link</description>
+  <type>block</type>
+  <description>A styled pseudo-button link. The label is the block body (spaces / commas / inline Markdown allowed); the destination is the href parameter. Renders inline.</description>
 
   <parameters>
-    <param name="text" type="text" label="Text" required="true" />
     <param name="href" type="text" default="#" label="Link URL" desc="Destination the button links to" />
     <param name="color" type="color" default="var(--accent-color)" label="Background Color" />
   </parameters>
@@ -13,15 +12,18 @@
     <snippet>
       <category>UI Parts</category>
       <label>Button</label>
-      <text><![CDATA[<!-- @button text: Get Started, href: #, color: var(--accent-color) -->]]></text>
-      <description>Styled button-like link</description>
+      <text><![CDATA[<!-- @button href: #, color: var(--accent-color) -->
+Get Started
+<!-- @end -->]]></text>
+      <description>Styled button-like link. Body = the button label.</description>
     </snippet>
   </snippets>
 
-  <render><![CDATA[
-    const href = args.href || '#';
-    const color = args.color || 'var(--accent-color)';
-    return `<a class="mdp-mod-button" href="${href}" style="background-color: ${color};">${args.text}</a>`;
+  <render inline="true"><![CDATA[
+    const body = sections[0] ? sections[0].trim() : '';
+    const href = (args.href && String(args.href).trim()) || '#';
+    const color = (args.color && String(args.color).trim()) || 'var(--accent-color)';
+    return '<a class="mdp-mod-button" href="' + href + '" style="background-color: ' + color + ';">' + body + '</a>';
   ]]></render>
 
   <style><![CDATA[

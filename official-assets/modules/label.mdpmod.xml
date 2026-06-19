@@ -1,10 +1,9 @@
 <module>
   <name>label</name>
-  <type>inline</type>
-  <description>An outlined tag/label</description>
+  <type>block</type>
+  <description>An outlined tag/label. The text is the block body (spaces / commas / inline Markdown allowed). Renders inline.</description>
 
   <parameters>
-    <param name="text" type="text" label="Text" required="true" />
     <param name="color" type="color" default="var(--accent-color)" label="Color" desc="Text and border color" />
   </parameters>
 
@@ -12,14 +11,17 @@
     <snippet>
       <category>UI Parts</category>
       <label>Label</label>
-      <text><![CDATA[<!-- @label text: New, color: var(--accent-color) -->]]></text>
-      <description>Outlined tag with transparent background</description>
+      <text><![CDATA[<!-- @label color: var(--accent-color) -->
+New
+<!-- @end -->]]></text>
+      <description>Outlined tag with transparent background. Body = the label text.</description>
     </snippet>
   </snippets>
 
-  <render><![CDATA[
-    const color = args.color || 'var(--accent-color)';
-    return `<span class="mdp-mod-label" style="color: ${color}; border-color: ${color};">${args.text}</span>`;
+  <render inline="true"><![CDATA[
+    const body = sections[0] ? sections[0].trim() : '';
+    const color = (args.color && String(args.color).trim()) || 'var(--accent-color)';
+    return '<span class="mdp-mod-label" style="color: ' + color + '; border-color: ' + color + ';">' + body + '</span>';
   ]]></render>
 
   <style><![CDATA[

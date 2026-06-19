@@ -39,9 +39,10 @@ export function parseModuleDirectives(doc: string): ManipDirective[] {
   const blockNames = new Set(
     Object.values(loadedModules).filter((m) => m.config.type === 'block').map((m) => m.config.name),
   );
-  const isManip = (name: string) => !!loadedModules[name]?.config.manipulate;
-  const isInlineManip = (name: string) =>
-    loadedModules[name]?.config.type === 'inline' && !!loadedModules[name]?.config.manipulate;
+  // Every module (manipulable or not) gets a document-order ord — non-manipulable
+  // ones are still selectable in Edit layout (red dashed frame + context menu),
+  // so they need an identity too. Must match moduleProcessor's assignment order.
+  const isInline = (name: string) => loadedModules[name]?.config.type === 'inline';
 
   const tokRe = new RegExp(RE_OPEN + '\\s*@(end)?([a-zA-Z0-9_-]*)\\s*(.*?)\\s*-->', 'g');
   interface Open { name: string; argsStr: string; from: number; to: number; ord: number | null }
@@ -70,11 +71,11 @@ export function parseModuleDirectives(doc: string): ManipDirective[] {
 
     if (!isEnd) {
       if (blockNames.has(name)) {
-        stack.push({ name, argsStr, from, to, ord: isManip(name) ? manipOrd++ : null });
-      } else if (isInlineManip(name)) {
-        // A manipulable INLINE module is a self-contained directive (no @end).
-        // It takes an `ord` from the SAME document-order counter as blocks, so it
-        // matches the renderer's assignment in moduleProcessor.
+        stack.push({ name, argsStr, from, to, ord: manipOrd++ });
+      } else if (isInline(name)) {
+        // An INLINE module is a self-contained directive (no @end). It takes an
+        // `ord` from the SAME document-order counter as blocks, matching the
+        // renderer's assignment in moduleProcessor.
         const args = parseArguments(argsStr);
         out.push({
           name, ord: manipOrd++, id: (args.id || '').trim() || null, args,

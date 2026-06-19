@@ -1,10 +1,9 @@
 <module>
   <name>mark</name>
-  <type>inline</type>
-  <description>Highlighted text</description>
+  <type>block</type>
+  <description>Highlighted text. The text to highlight is the block body, so it may contain spaces, commas and inline Markdown. Renders inline.</description>
 
   <parameters>
-    <param name="text" type="text" label="Text" required="true" />
     <param name="color" type="color" default="#fde68a" label="Highlight Color" />
   </parameters>
 
@@ -12,14 +11,17 @@
     <snippet>
       <category>UI Parts</category>
       <label>Highlight</label>
-      <text><![CDATA[<!-- @mark text: Important text, color: #fde68a -->]]></text>
-      <description>Highlighted (marked) text</description>
+      <text><![CDATA[<!-- @mark color: #fde68a -->
+Important text
+<!-- @end -->]]></text>
+      <description>Highlighted (marked) text. Body = the text to highlight.</description>
     </snippet>
   </snippets>
 
-  <render><![CDATA[
-    const color = args.color || '#fde68a';
-    return `<span class="mdp-mod-mark" style="background-color: ${color};">${args.text}</span>`;
+  <render inline="true"><![CDATA[
+    const body = sections[0] ? sections[0].trim() : '';
+    const color = (args.color && String(args.color).trim()) || '#fde68a';
+    return '<span class="mdp-mod-mark" style="background-color: ' + color + ';">' + body + '</span>';
   ]]></render>
 
   <style><![CDATA[

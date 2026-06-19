@@ -81,8 +81,17 @@ function wrapManipulable(
   const rot = num(args.rot) ?? 0;
   const hasPos = x !== undefined && y !== undefined;
 
+  // A module with NO move/resize/rotate axes is "select-only": it can be framed
+  // (red dashed) + given a context menu in Edit layout, but never dragged/lifted.
+  const selectOnly = !manip.move && !manip.resize && !manip.rotate;
+
   const styles: string[] = [];
-  if (hasPos) {
+  if (selectOnly) {
+    // display:contents → the wrapper generates NO box, so the module renders
+    // exactly as before (zero layout impact). The overlay measures the inner
+    // element instead. Keep it out of the text-selection / flow otherwise.
+    styles.push('display:contents');
+  } else if (hasPos) {
     styles.push('position:absolute', `left:${x}%`, `top:${y}%`);
     if (w !== undefined) styles.push(`width:${w}%`);
     if (h !== undefined) styles.push(`height:${h}%`);
@@ -94,10 +103,12 @@ function wrapManipulable(
     // ManipulationLayer can size.
     if (inlineModule) styles.push('display:inline-block', 'vertical-align:middle');
   }
-  if (manip.minW != null) styles.push(`min-width:${manip.minW}%`);
-  if (manip.maxW != null) styles.push(`max-width:${manip.maxW}%`);
-  if (manip.minH != null) styles.push(`min-height:${manip.minH}%`);
-  if (manip.maxH != null) styles.push(`max-height:${manip.maxH}%`);
+  if (!selectOnly) {
+    if (manip.minW != null) styles.push(`min-width:${manip.minW}%`);
+    if (manip.maxW != null) styles.push(`max-width:${manip.maxW}%`);
+    if (manip.minH != null) styles.push(`min-height:${manip.minH}%`);
+    if (manip.maxH != null) styles.push(`max-height:${manip.maxH}%`);
+  }
 
   const attrs = [
     'class="mdp-manip"',
@@ -197,8 +208,14 @@ function renderModuleTemplate(mod: ModuleData, sections: string[], argsStr: stri
   try {
     const renderFn = new Function('args', 'sections', 'content', mod.render);
     const generatedHtml = renderFn(renderArgs, sections, (sections[0] || '').trim());
-    if (mod.config.manipulate) return wrapManipulable(generatedHtml, mod.config.manipulate, finalArgs, ord, mod.config.type === 'inline');
-    return generatedHtml;
+    // Wrap EVERY module: manipulable ones get a real positioning wrapper; the
+    // rest get a layout-neutral select-only wrapper (display:contents) so they
+    // can still be framed + given a context menu in Edit layout.
+    const manip = mod.config.manipulate || { move: '' as const, resize: '' as const, rotate: false };
+    // Inline modules, and block modules that opted into inline rendering, get the
+    // inline (span, no surrounding blank lines) wrapper so they flow within text.
+    const asInline = mod.config.type === 'inline' || !!mod.config.inlineRender;
+    return wrapManipulable(generatedHtml, manip, finalArgs, ord, asInline);
   } catch (e) {
     console.error(`[MDP] Module Render Error (${mod.config.name}):`, e);
     return `<div style="color:red; border:1px solid red; padding:1em; margin:1em 0; border-radius:4px;">
@@ -287,12 +304,14 @@ export const applyModulesToMarkdown = (markdown: string): string => {
           sections: [],
           currentSectionStr: '',
           indent: token.indent,
-          ord: mod.config.manipulate ? manipOrd++ : undefined
+          // Every module gets a document-order ord (selectable in Edit layout);
+          // it identifies the directive for transforms / property / delete.
+          ord: manipOrd++
         });
       } else if (mod && mod.config.type === 'inline') {
-        // Self-contained inline module: render in place. Manipulable inline
-        // modules take an `ord` from the same document-order counter as blocks.
-        const ord = mod.config.manipulate ? manipOrd++ : undefined;
+        // Self-contained inline module: render in place. Takes an `ord` from the
+        // same document-order counter as blocks (so it's selectable too).
+        const ord = manipOrd++;
         let html = renderModuleTemplate(mod, [], token.argsStr, ord);
         if (token.indent) html = html.replace(/\n/g, '\n' + token.indent);
         html = token.indent + html;

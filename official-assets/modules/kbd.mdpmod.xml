@@ -1,23 +1,25 @@
 <module>
   <name>kbd</name>
-  <type>inline</type>
-  <description>A keyboard key</description>
+  <type>block</type>
+  <description>A keyboard key. The key label is the block body. Renders inline.</description>
 
-  <parameters>
-    <param name="keys" type="text" label="Key" desc="Single key label, e.g. Enter" required="true" />
-  </parameters>
+  <parameters></parameters>
 
   <snippets>
     <snippet>
       <category>UI Parts</category>
       <label>Keyboard Key</label>
-      <text><![CDATA[<!-- @kbd keys: Enter -->]]></text>
-      <description>A single physical keyboard key</description>
+      <text><![CDATA[<!-- @kbd -->
+Enter
+<!-- @end -->]]></text>
+      <description>A single physical keyboard key. Body = the key label.</description>
     </snippet>
   </snippets>
 
-  <render><![CDATA[
-    return `<kbd class="mdp-mod-kbd">${args.keys}</kbd>`;
+  <render inline="true"><![CDATA[
+    const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const body = sections[0] ? sections[0].trim() : '';
+    return '<kbd class="mdp-mod-kbd">' + esc(body) + '</kbd>';
   ]]></render>
 
   <style><![CDATA[

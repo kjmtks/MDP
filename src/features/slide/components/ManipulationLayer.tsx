@@ -50,6 +50,20 @@ const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v
 const boxEq = (a: Box | undefined, b: Box) =>
   !!a && a.cx === b.cx && a.cy === b.cy && a.w === b.w && a.h === b.h && a.rot === b.rot;
 
+// Smart-guide snapping: distance (px) within which a moved edge/centre snaps to
+// an alignment target (slide centre/edges, or another module's edge/centre).
+const SNAP_PX = 6;
+// Best snap of any `edge` to any `target` within `thresh`. Returns the correction
+// to add to the moved coordinate so the closest edge lands exactly on the target.
+const snapAxis = (edges: number[], targets: number[], thresh: number): { delta: number; target: number } | null => {
+  let best: { d: number; delta: number; target: number } | null = null;
+  for (const e of edges) for (const t of targets) {
+    const d = Math.abs(e - t);
+    if (d <= thresh && (!best || d < best.d)) best = { d, delta: t - e, target: t };
+  }
+  return best ? { delta: best.delta, target: best.target } : null;
+};
+
 const CtxItem: React.FC<{ onClick: () => void; danger?: boolean; children: React.ReactNode }> = ({ onClick, danger, children }) => {
   const [hover, setHover] = useState(false);
   // Act on pointerdown (not onClick): the menu opens via a right-click and a
@@ -80,6 +94,9 @@ export const ManipulationLayer: React.FC<Props> = ({ container, runtime }) => {
   // committed DOM after a re-render instead of lagging a frame behind.
   const [frameBoxes, setFrameBoxes] = useState<Record<string, Box>>({});
   const [marquee, setMarquee] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
+  // Smart alignment guides shown while dragging (slide centre/edges + other
+  // modules' edges/centres). `axis:'x'` = vertical line at x%, `axis:'y'` = horizontal at y%.
+  const [guides, setGuides] = useState<Array<{ axis: 'x' | 'y'; pos: number }>>([]);
 
   const selRef = useRef(selected);
   selRef.current = selected;
@@ -104,6 +121,16 @@ export const ManipulationLayer: React.FC<Props> = ({ container, runtime }) => {
     [container],
   );
 
+  // The element to MEASURE / hit-test. A lifted element is its own box. Otherwise
+  // measure the module's INNER element: the wrapper may be display:contents (a
+  // select-only module → no box at all) or a full-width block while the visible
+  // module is narrower (e.g. a 250px shape) — measuring the inner element makes
+  // the frame hug the module instead of leaving a gap.
+  const measureEl = useCallback((el: HTMLElement): HTMLElement => {
+    if (el.getAttribute('data-lifted') === '1') return el;
+    return (el.firstElementChild as HTMLElement | null) || el;
+  }, []);
+
   const readBox = useCallback((el: HTMLElement, r: DOMRect): Box => {
     // Fast path: a lifted element's box is fully described by its inline style
     // (percent). Read those directly — deterministic and reflow-free, so frame
@@ -117,8 +144,8 @@ export const ManipulationLayer: React.FC<Props> = ({ container, runtime }) => {
         return { cx, cy, w, h, rot: rotateOf(el.style.transform), lifted: true };
       }
     }
-    // Measure (unlifted, or lifted with incomplete style).
-    const b = el.getBoundingClientRect();
+    // Measure (unlifted, or lifted with incomplete style) — frame the inner box.
+    const b = measureEl(el).getBoundingClientRect();
     return {
       cx: ((b.left + b.width / 2 - r.left) / r.width) * 100,
       cy: ((b.top + b.height / 2 - r.top) / r.height) * 100,
@@ -127,7 +154,7 @@ export const ManipulationLayer: React.FC<Props> = ({ container, runtime }) => {
       rot: 0,
       lifted: el.getAttribute('data-lifted') === '1',
     };
-  }, []);
+  }, [measureEl]);
 
   const applyLive = (el: HTMLElement, b: Box) => {
     el.style.position = 'absolute';
@@ -149,6 +176,9 @@ export const ManipulationLayer: React.FC<Props> = ({ container, runtime }) => {
     resize: el.getAttribute('data-resize') || '',
     rotate: el.getAttribute('data-rotate') === '1',
   });
+  // A module with no move/resize/rotate is "select-only" (non-manipulable): it
+  // can be framed (red dashed) + given a context menu, but never dragged/lifted.
+  const hasAxes = (el: HTMLElement) => { const b = boundsOf(el); return !!(b.move || b.resize || b.rotate); };
 
   const snapTo = (v: number, useSnap: boolean) => (useSnap && snap && snapStep > 0 ? Math.round(v / snapStep) * snapStep : v);
 
@@ -200,12 +230,27 @@ export const ManipulationLayer: React.FC<Props> = ({ container, runtime }) => {
   // ---- drag state ------------------------------------------------------------
   interface DragItem { key: string; el: HTMLElement; start: Box }
   const drag = useRef<
-    | { mode: 'move'; items: DragItem[]; psx: number; psy: number }
+    | { mode: 'move'; items: DragItem[]; psx: number; psy: number; targets: { xs: number[]; ys: number[] } }
     | { mode: 'resize'; item: DragItem; handle: string; psx: number; psy: number }
     | { mode: 'rotate'; item: DragItem; ccx: number; ccy: number }
     | { mode: 'marquee'; sx: number; sy: number; additive: boolean }
     | null
   >(null);
+
+  // Alignment targets, captured once at drag start: slide centre/edges (0/50/100)
+  // plus every OTHER module's left/centre/right (x) and top/centre/bottom (y), in
+  // canvas %. The moved selection snaps its own edges/centre to these.
+  const collectTargets = useCallback((r: DOMRect, movedKeys: Set<string>): { xs: number[]; ys: number[] } => {
+    const xs = new Set<number>([0, 50, 100]);
+    const ys = new Set<number>([0, 50, 100]);
+    for (const el of els()) {
+      if (movedKeys.has(keyOf(el))) continue;
+      const b = readBox(el, r);
+      xs.add(b.cx - b.w / 2); xs.add(b.cx); xs.add(b.cx + b.w / 2);
+      ys.add(b.cy - b.h / 2); ys.add(b.cy); ys.add(b.cy + b.h / 2);
+    }
+    return { xs: [...xs], ys: [...ys] };
+  }, [els, readBox]);
 
   const liveSet = (updates: Array<{ key: string; el: HTMLElement; box: Box }>) => {
     for (const u of updates) applyLive(u.el, u.box);
@@ -217,7 +262,10 @@ export const ManipulationLayer: React.FC<Props> = ({ container, runtime }) => {
   };
 
   const commitItems = useCallback(
-    (items: DragItem[]) => {
+    (rawItems: DragItem[]) => {
+      // Select-only (non-manipulable) modules never get transform args written.
+      const items = rawItems.filter((it) => hasAxes(it.el));
+      if (!items.length) return;
       const r = oRect();
       const now = performance.now();
       const r2 = (n: number) => Math.round(n * 100) / 100; // match moduleDocEdits fmt
@@ -261,10 +309,10 @@ export const ManipulationLayer: React.FC<Props> = ({ container, runtime }) => {
       }
     }
 
-    // Hit-test manipulable elements (topmost in DOM order containing the point).
+    // Hit-test module elements (topmost in DOM order containing the point).
     let hit: HTMLElement | null = null;
     for (const el of els()) {
-      const b = el.getBoundingClientRect();
+      const b = measureEl(el).getBoundingClientRect();
       if (e.clientX >= b.left && e.clientX <= b.right && e.clientY >= b.top && e.clientY <= b.bottom) hit = el;
     }
 
@@ -282,9 +330,21 @@ export const ManipulationLayer: React.FC<Props> = ({ container, runtime }) => {
       }
       // A single (non-shift) selection jumps the editor cursor to its directive.
       if (!e.shiftKey) onSelect?.(selOf(key));
+      // Select-only (non-manipulable) module: show the frame, but no drag/lift.
+      if (!hasAxes(hit)) {
+        draggingRef.current = false;
+        drag.current = null;
+        setFrameBoxes(() => {
+          const next: Record<string, Box> = {};
+          for (const k of sel) { const el = findEl(k); if (el) next[k] = readBox(el, r); }
+          return next;
+        });
+        return;
+      }
       draggingRef.current = true;
       const items: DragItem[] = sel.map((k) => { const el = findEl(k); return el ? { key: k, el, start: readBox(el, r) } : null; }).filter(Boolean) as DragItem[];
-      drag.current = { mode: 'move', items, psx: px, psy: py };
+      const targets = collectTargets(r, new Set(items.map((i) => i.key)));
+      drag.current = { mode: 'move', items, psx: px, psy: py, targets };
       // Reveal the selection frame (+ resize/rotate handles) immediately on
       // press — a plain click now shows the box, instead of only once a drag
       // actually moves. (syncFrames is suppressed while draggingRef is set, so
@@ -310,12 +370,37 @@ export const ManipulationLayer: React.FC<Props> = ({ container, runtime }) => {
 
     if (d.mode === 'move') {
       const dx = px - d.psx, dy = py - d.psy;
-      liveSet(d.items.map((it) => {
+      // Proposed positions (grid snap applies only when its toggle is on; Alt = free).
+      const prop = d.items.map((it) => {
         const bnd = boundsOf(it.el);
-        const cx = bnd.move.includes('x') ? snapTo(it.start.cx + dx, !e.altKey) : it.start.cx;
-        const cy = bnd.move.includes('y') ? snapTo(it.start.cy + dy, !e.altKey) : it.start.cy;
-        return { key: it.key, el: it.el, box: { ...it.start, cx: clamp(cx, 0, 100), cy: clamp(cy, 0, 100) } };
-      }));
+        return {
+          it, bnd,
+          cx: bnd.move.includes('x') ? snapTo(it.start.cx + dx, !e.altKey) : it.start.cx,
+          cy: bnd.move.includes('y') ? snapTo(it.start.cy + dy, !e.altKey) : it.start.cy,
+        };
+      });
+      // Smart alignment guides (Alt bypasses). Snap the moved selection's
+      // bounding box (left/centre/right, top/centre/bottom) to the cached targets.
+      const nextGuides: Array<{ axis: 'x' | 'y'; pos: number }> = [];
+      if (!e.altKey) {
+        const xMov = prop.filter((p) => p.bnd.move.includes('x'));
+        const yMov = prop.filter((p) => p.bnd.move.includes('y'));
+        const thX = (SNAP_PX / r.width) * 100, thY = (SNAP_PX / r.height) * 100;
+        if (xMov.length) {
+          const left = Math.min(...xMov.map((p) => p.cx - p.it.start.w / 2));
+          const right = Math.max(...xMov.map((p) => p.cx + p.it.start.w / 2));
+          const s = snapAxis([left, (left + right) / 2, right], d.targets.xs, thX);
+          if (s) { for (const p of xMov) p.cx += s.delta; nextGuides.push({ axis: 'x', pos: s.target }); }
+        }
+        if (yMov.length) {
+          const top = Math.min(...yMov.map((p) => p.cy - p.it.start.h / 2));
+          const bottom = Math.max(...yMov.map((p) => p.cy + p.it.start.h / 2));
+          const s = snapAxis([top, (top + bottom) / 2, bottom], d.targets.ys, thY);
+          if (s) { for (const p of yMov) p.cy += s.delta; nextGuides.push({ axis: 'y', pos: s.target }); }
+        }
+      }
+      setGuides(nextGuides);
+      liveSet(prop.map((p) => ({ key: p.it.key, el: p.it.el, box: { ...p.it.start, cx: clamp(p.cx, 0, 100), cy: clamp(p.cy, 0, 100) } })));
     } else if (d.mode === 'resize') {
       const { item, handle } = d;
       const hd = HANDLES[handle];
@@ -345,6 +430,7 @@ export const ManipulationLayer: React.FC<Props> = ({ container, runtime }) => {
     const d = drag.current;
     drag.current = null;
     draggingRef.current = false;
+    setGuides([]);   // drop alignment guides once the drag ends
     try { rootRef.current?.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
     if (!d) return;
     if (d.mode === 'move') commitItems(d.items);
@@ -356,7 +442,7 @@ export const ManipulationLayer: React.FC<Props> = ({ container, runtime }) => {
       const my0 = (Math.min(d.sy, pctY(e.clientY, r)) / 100) * r.height + r.top;
       const my1 = (Math.max(d.sy, pctY(e.clientY, r)) / 100) * r.height + r.top;
       const hits = els().filter((el) => {
-        const b = el.getBoundingClientRect();
+        const b = measureEl(el).getBoundingClientRect();
         return b.left < mx1 && b.right > mx0 && b.top < my1 && b.bottom > my0;
       }).map(keyOf);
       setSelected((prev) => (d.additive ? Array.from(new Set([...prev, ...hits])) : hits));
@@ -368,7 +454,7 @@ export const ManipulationLayer: React.FC<Props> = ({ container, runtime }) => {
     if (!enabled || !container) { setCtxMenu(null); return; }
     let hit: HTMLElement | null = null;
     for (const el of els()) {
-      const b = el.getBoundingClientRect();
+      const b = measureEl(el).getBoundingClientRect();
       if (e.clientX >= b.left && e.clientX <= b.right && e.clientY >= b.top && e.clientY <= b.bottom) hit = el;
     }
     if (!hit) { setCtxMenu(null); return; }
@@ -397,7 +483,9 @@ export const ManipulationLayer: React.FC<Props> = ({ container, runtime }) => {
       }
       const r = rootRef.current?.getBoundingClientRect();
       if (!r) return;
-      const items = sel.map((k) => { const el = findEl(k); return el ? { key: k, el, start: readBox(el, r) } : null; }).filter(Boolean) as DragItem[];
+      const allItems = sel.map((k) => { const el = findEl(k); return el ? { key: k, el, start: readBox(el, r) } : null; }).filter(Boolean) as DragItem[];
+      // Only manipulable items respond to arrow-nudge / rotate keys.
+      const items = allItems.filter((it) => hasAxes(it.el));
       if (!items.length) return;
 
       const step = e.altKey ? 0.1 : e.shiftKey ? Math.max(snapStep, 1) : 0.5;
@@ -428,7 +516,7 @@ export const ManipulationLayer: React.FC<Props> = ({ container, runtime }) => {
   }, [enabled, snapStep, findEl, readBox, commitItems, settings, onDelete]);
 
   // Drop selection when leaving edit mode.
-  useEffect(() => { if (!enabled) { setSelected([]); setMarquee(null); setFrameBoxes({}); setCtxMenu(null); } }, [enabled]);
+  useEffect(() => { if (!enabled) { setSelected([]); setMarquee(null); setFrameBoxes({}); setCtxMenu(null); setGuides([]); } }, [enabled]);
 
   if (!enabled) return null;
 
@@ -455,13 +543,20 @@ export const ManipulationLayer: React.FC<Props> = ({ container, runtime }) => {
       onContextMenu={onContextMenu}
       style={{ position: 'absolute', inset: 0, zIndex: 60, touchAction: 'none', cursor: 'default' }}
     >
-      {frames.map(({ key, box }) => (
+      {frames.map(({ key, box }) => {
+        const fEl = findEl(key);
+        const selOnly = fEl ? !hasAxes(fEl) : false;   // non-manipulable → red dashed
+        const isSingle = single && single.key === key;
+        const border = selOnly
+          ? `1.5px dashed ${isSingle ? '#ef4444' : 'rgba(239,68,68,0.6)'}`
+          : `1.5px solid ${isSingle ? '#3b82f6' : 'rgba(59,130,246,0.6)'}`;
+        return (
         <div
           key={key}
           style={{
             position: 'absolute', left: `${box.cx}%`, top: `${box.cy}%`, width: `${box.w}%`, height: `${box.h}%`,
             transform: `translate(-50%,-50%) rotate(${box.rot}deg)`, transformOrigin: 'center center',
-            border: `1.5px solid ${single && single.key === key ? '#3b82f6' : 'rgba(59,130,246,0.6)'}`,
+            border,
             boxShadow: '0 0 0 1px rgba(255,255,255,0.5)', pointerEvents: 'none', boxSizing: 'border-box',
           }}
         >
@@ -489,7 +584,8 @@ export const ManipulationLayer: React.FC<Props> = ({ container, runtime }) => {
             </>
           )}
         </div>
-      ))}
+        );
+      })}
 
       {marquee && (
         <div style={{
@@ -498,6 +594,16 @@ export const ManipulationLayer: React.FC<Props> = ({ container, runtime }) => {
           border: '1px dashed #3b82f6', background: 'rgba(59,130,246,0.1)', pointerEvents: 'none',
         }} />
       )}
+
+      {/* Smart alignment guides (slide centre/edges + other modules). */}
+      {guides.map((g, i) => (
+        <div
+          key={`g${i}`}
+          style={g.axis === 'x'
+            ? { position: 'absolute', left: `${g.pos}%`, top: 0, bottom: 0, width: 0, borderLeft: '1px dashed #ff2d9b', pointerEvents: 'none', zIndex: 65 }
+            : { position: 'absolute', top: `${g.pos}%`, left: 0, right: 0, height: 0, borderTop: '1px dashed #ff2d9b', pointerEvents: 'none', zIndex: 65 }}
+        />
+      ))}
 
       {/* Right-click menu — portalled to <body> so position:fixed uses viewport
           coords (the slide overlay is transformed, which would otherwise re-anchor
