@@ -46,6 +46,53 @@ interface SlideViewProps {
   manipulate?: ManipRuntime;
 }
 
+// Render a Chart.js config (base64 JSON from the `@chartjs` fence) to a STATIC PNG
+// data-URL, off-screen, once — cached by config+size. Every surface (live preview,
+// thumbnail, print, overview) then just shows the SAME <img>, exactly like the
+// mermaid/plantuml pipeline. A live <canvas> chart was unreliable in thumbnails:
+// Chart.js `responsive` mode measures the on-screen rect (tiny inside the
+// thumbnail's CSS `transform: scale`) and its animation is rAF-driven (never
+// progresses for an off-screen/scaled canvas), so charts came out blank or tiny.
+// A static image has none of those problems.
+const chartImageCache = new Map<string, Promise<string>>();
+const renderChartImage = (base64: string, w: number, h: number): Promise<string> => {
+  const key = `${w}x${h}|${base64}`;
+  const cached = chartImageCache.get(key);
+  if (cached) return cached;
+  const p = import('chart.js/auto').then(({ default: Chart }) => {
+    const binString = atob(base64);
+    const bytes = new Uint8Array(binString.length);
+    for (let i = 0; i < binString.length; i++) bytes[i] = binString.charCodeAt(i);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const config: any = JSON.parse(new TextDecoder().decode(bytes));
+    if (!config.options) config.options = {};
+    config.options.responsive = false;
+    config.options.maintainAspectRatio = false;
+    config.options.animation = false;
+    // Attach the canvas off-screen (a fully detached canvas may not paint) and
+    // force a SYNCHRONOUS draw — Chart.js routes the initial render through its
+    // animation loop, so even with animation:false the paint can land a frame
+    // AFTER toDataURL, yielding a blank PNG. chart.draw() rasterises immediately.
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    canvas.style.cssText = `position:fixed;left:-99999px;top:0;width:${w}px;height:${h}px;`;
+    document.body.appendChild(canvas);
+    let url = '';
+    try {
+      const chart = new Chart(canvas, config);
+      chart.draw();
+      url = canvas.toDataURL('image/png');
+      chart.destroy();
+    } finally {
+      canvas.remove();
+    }
+    return url;
+  }).catch((err) => { console.warn('Chart render failed.', err); return ''; });
+  chartImageCache.set(key, p);
+  return p;
+};
+
 export const SlideView: React.FC<SlideViewProps> = memo(({
   html,
   raw,
@@ -158,17 +205,46 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
   // SYNCHRONOUSLY on attach (before paint) so backward nav doesn't flash; and
   // (2) runs module scripts on the real node (after paint) — reliable during
   // transitions where the containerEl state update could otherwise be missed.
+  // Replace every `@chartjs` placeholder under `node` with a static rendered image
+  // (renderChartImage). Driven from BOTH the content ref (below — fires reliably on
+  // the real mounted node, which the containerEl-state effect can miss for a
+  // thumbnail) and the post-render effect. Idempotent via `data-processed`.
+  const hydrateCharts = useCallback((node: HTMLElement | null) => {
+    if (!node) return;
+    node.querySelectorAll<HTMLElement>('.chartjs-render:not([data-processed="true"])').forEach(container => {
+      const base64 = container.getAttribute('data-chart');
+      if (!base64) return;
+      const w = container.clientWidth || 1280;
+      const h = container.clientHeight || 400;
+      renderChartImage(base64, w, h).then(url => {
+        if (!url) return;
+        // The content DOM may have been replaced while the image rendered — target
+        // the matching placeholder in the CURRENT node, not the captured one.
+        let target: HTMLElement | null = container.isConnected ? container : null;
+        const live = containerNodeRef.current;
+        if (!target && live) {
+          target = Array.from(live.querySelectorAll<HTMLElement>('.chartjs-render:not([data-processed="true"])'))
+            .find(el => el.getAttribute('data-chart') === base64) || null;
+        }
+        if (target && target.getAttribute('data-processed') !== 'true') {
+          target.setAttribute('data-processed', 'true');
+          target.innerHTML = `<img src="${url}" alt="chart" style="width:100%;height:100%;object-fit:contain;" />`;
+        }
+      });
+    });
+  }, []);
+
   const setContent = useCallback((node: HTMLDivElement | null) => {
     setContainerEl(node);
     containerNodeRef.current = node;
     if (node) {
       if (buildStepRef.current !== undefined) applyBuildStepInstant(node, buildStepRef.current);
-      requestAnimationFrame(() => { if (containerNodeRef.current === node) runModuleScripts(); });
+      requestAnimationFrame(() => { if (containerNodeRef.current === node) { runModuleScripts(); hydrateCharts(node); } });
     } else {
       moduleTeardownRef.current?.();
       moduleTeardownRef.current = undefined;
     }
-  }, [runModuleScripts]);
+  }, [runModuleScripts, hydrateCharts]);
 
   const processedHtml = useMemo(() => {
     if (!html) return '';
@@ -337,45 +413,16 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
     });
     mountedRoots.current = [];
 
-    const chartContainers = containerEl.querySelectorAll('.chartjs-render:not([data-processed="true"])');
-    if (chartContainers.length > 0) {
-      import('chart.js/auto').then(({ default: Chart }) => {
-        chartContainers.forEach(container => {
-          if ((container as HTMLElement).offsetParent === null && !isActive) return;
-          container.setAttribute('data-processed', 'true');
-          const canvas = container.querySelector('canvas');
-          const base64 = container.getAttribute('data-chart');
-          if (canvas && base64) {
-            try {
-              const binString = atob(base64);
-              const bytes = new Uint8Array(binString.length);
-              for (let i = 0; i < binString.length; i++) {
-                bytes[i] = binString.charCodeAt(i);
-              }
-              const jsonStr = new TextDecoder().decode(bytes);
-              const config = JSON.parse(jsonStr);
-              if (!config.options) config.options = {};
-              config.options.maintainAspectRatio = false;
-              config.options.responsive = true;
-
-              new Chart(canvas, config);
-            } catch (e) {
-              console.error("ChartJS render error:", e);
-              container.innerHTML = `<div style="color:red">Chart Render Error</div>`;
-            }
-          }
-        });
-      }).catch(err => {
-        console.warn("Chart.js not found.", err);
-      });
-    }
+    // Render @chartjs placeholders to static images (also driven by the content
+    // ref for reliable thumbnail mounts; idempotent via data-processed).
+    hydrateCharts(containerEl);
     return () => {
       mountedRoots.current.forEach(root => {
         try { root.unmount(); } catch { /* ignore */ }
       });
       mountedRoots.current = [];
     };
-  }, [processedHtml, containerEl, isActive]);
+  }, [processedHtml, containerEl, isActive, hydrateCharts]);
 
   // Re-run module scripts whenever the slide's top-level content DOM is replaced
   // (React re-sets innerHTML — e.g. a transition re-render), so interactive

@@ -17,20 +17,42 @@ import type { ThemeOption } from '../../types';
 
 export const PROMPT_INTRO = `# Authoring MDP presentation slides
 
-You are helping author a presentation for **MDP**, a Markdown-based slide tool.
-A presentation is a single \`.slide.md\` file written in Markdown plus a small set
-of HTML-comment directives (\`<!-- @name ... -->\`). Produce ONLY the file content.
-Follow the format below exactly. Keep slides concise and visual; prefer the
-installed modules over raw HTML.`;
+You are an expert author of presentations for **MDP**, a Markdown-based slide tool.
+A presentation is a single \`.slide.md\` file: Markdown plus a small set of
+HTML-comment directives (\`<!-- @name ... -->\`). Read the format, the rules, and the
+installed themes/effects/modules below, then write slides. Prefer the installed
+modules over raw HTML; keep slides concise and visual.
+
+## How to work
+
+- **Plan before generating.** Work from a per-slide plan — ideally a table giving,
+  for each slide: number, title, the key points IN ORDER, the module or diagram to
+  use, and any speaker note. If the user provides such a plan, follow it EXACTLY —
+  do not merge, split, reorder, or pad slides. If the user did NOT provide one,
+  first reply with a brief one-line-per-slide outline and get approval BEFORE
+  writing the full file.
+- **Be faithful to the source.** Treat any wording, numbers, equations,
+  definitions, and citations the user gives as authoritative: reproduce them
+  verbatim. Do not paraphrase, round, restate, or "improve" them unless explicitly
+  permitted. Honour any terminology rules and any "do not include / confidential"
+  boundaries the user sets. When something is ambiguous or missing, ASK rather than
+  guess.
+- **Output format.** When you write the file, output ONLY the raw \`.slide.md\`
+  content — no surrounding code fence, no commentary before or after it.`;
 
 export const SLIDE_FORMAT_SPEC = `## File structure
 
 - The file is split into blocks by a line containing exactly \`---\` (three
   dashes). A \`---\` inside a fenced code block does NOT split.
-- The FIRST block is the **meta / preamble page** — it is NOT a slide. It holds
-  global settings (title, theme, aspect, header/footer, …) that apply to every
-  slide.
-- Every block AFTER the first \`---\` is one slide, in order.
+- The FIRST block (everything before the first \`---\`) is the **meta page**. It is
+  CONFIGURATION ONLY and is NEVER displayed as a slide. Put the deck-wide settings
+  here (title, theme, aspect, transition, header/footer, …). Anything you write
+  before the first \`---\` — even plain text — is treated as meta and never shown.
+- Each block AFTER the first \`---\` is one slide, shown in order. So always lay the
+  file out as: meta page → \`---\` → slide 1 → \`---\` → slide 2 → …
+- Meta-page settings apply to the WHOLE deck. A \`@transition\` set on the meta page
+  is the DEFAULT transition for EVERY slide; a \`@transition\` (or \`@header\`/\`@footer\`)
+  repeated on an individual slide overrides it for that one slide only.
 
 ## Meta-page (global) commands — put these in the first block
 
@@ -42,9 +64,11 @@ Each is an HTML comment on its own line:
 - \`<!-- @aspect W:H -->\` — slide aspect ratio, e.g. \`<!-- @aspect 16:9 -->\`.
 - \`<!-- @theme NAME -->\` — apply a slide theme (NAME is one of the installed themes
   listed under "Themes" below). \`<!-- @css PATH -->\` — load extra CSS.
-- \`<!-- @transition NAME key: value, … -->\` — default slide transition; NAME is an
-  effect (see "Animation effects" below). Common args: \`duration\`, \`easing\`.
-- \`<!-- @build key: value, … -->\` — default settings for in-slide build animations.
+- \`<!-- @transition NAME key: value, … -->\` — sets the default transition applied
+  to EVERY slide. NAME is an effect (see "Animation effects" below). Common args:
+  \`duration\`, \`easing\`.
+- \`<!-- @build key: value, … -->\` — deck-wide default settings for in-slide build
+  animations (each \`@build\` block may still override them).
 
 ## Header / footer — block regions (meta page = all slides; a slide = that slide only)
 
@@ -106,8 +130,162 @@ Argument syntax (the \`key: value\` list):
 - Math (KaTeX): inline \`\\( … \\)\`, display \`\\[ … \\]\`.
 - Code fences with extras: \`\`\`lang:filename.ext start:10{2,4-6}\`\`\` — optional filename,
   starting line number, and \`{ }\` highlighted line ranges.
-- Diagram fences: \`\`\`@mermaid\`\`\`, \`\`\`@plantuml\`\`\`, \`\`\`@chartjs\`\`\` (Chart.js JSON config).
-- Images \`![alt](path)\`; embedded drawio diagrams use \`![@drawio](…)\` (tool-generated).`;
+- Images \`![alt](path)\`. For diagrams and charts, see the next section.
+
+## Diagrams & charts
+
+To ADD a diagram, prefer a TEXT-BASED diagram — those are easy to generate, edit,
+and theme. Put each in a fenced code block with a special language tag.
+
+### Mermaid — \`\`\`@mermaid  (recommended for generated diagrams)
+Flowcharts, sequence, class, state, ER, gantt, pie, mindmap, … Write Mermaid
+syntax as the fence body:
+
+\`\`\`@mermaid
+flowchart LR
+  A[Start] --> B{Decision}
+  B -->|yes| C[Do it]
+  B -->|no| D[Skip]
+\`\`\`
+
+\`\`\`@mermaid
+sequenceDiagram
+  Client->>Server: Request
+  Server-->>Client: Response
+\`\`\`
+
+### PlantUML — \`\`\`@plantuml
+UML diagrams (sequence, class, activity, component, use-case). Body is PlantUML:
+
+\`\`\`@plantuml
+@startuml
+Alice -> Bob: Request
+Bob --> Alice: Response
+@enduml
+\`\`\`
+
+### Chart.js — \`\`\`@chartjs  (data charts)
+Bar / line / pie / radar / … The fence body is a Chart.js config in JSON:
+
+\`\`\`@chartjs
+{ "type": "bar",
+  "data": { "labels": ["Q1", "Q2", "Q3"],
+            "datasets": [{ "label": "Sales", "data": [12, 19, 7] }] } }
+\`\`\`
+
+### drawio / inline SVG — \`![@drawio](SRC)\`
+Diagrams drawn in the app's built-in drawio editor are saved as an SVG and
+embedded as a data-URI image, e.g. \`![@drawio](data:image/svg+xml;base64,…)\`.
+SRC may be ANY SVG — a \`data:image/svg+xml\` data-URI OR a workspace \`.svg\` path —
+and is inlined into the slide so theme CSS can restyle its text.
+
+You cannot reproduce the editor's SVG by hand, so to GENERATE a vector diagram,
+embed your own SVG as a **base64** data-URI (base64 is safest — it contains no
+spaces or \`)\` that would break the \`![…](…)\` image parser):
+
+  \`![@drawio](data:image/svg+xml;base64,PHN2Zy4uLg==)\`   (base64 of your \`<svg>…</svg>\`)
+
+SVG tips: include a \`viewBox\`; do NOT hard-code text \`fill\` (leave it so the theme
+colours the labels). For most generated diagrams, **prefer \`@mermaid\`** — it is far
+less error-prone than emitting base64 SVG.
+
+## Putting it together — a complete file
+
+\`\`\`
+<!-- @title Quarterly Review -->
+<!-- @subtitle Q2 results -->
+<!-- @presenter Alice Smith -->
+<!-- @aspect 16:9 -->
+<!-- @theme dark -->
+<!-- @transition slide duration: 400ms -->
+<!-- @footer -->
+Acme Inc. — Confidential
+<!-- @end -->
+
+---
+<!-- @cover -->
+
+---
+## Agenda
+
+- Results
+- Roadmap
+- Q&A
+
+<!-- @build step: 2 -->
+…and one more thing
+<!-- @end -->
+
+<!-- @note: Pause here for questions. -->
+
+---
+## Side by side
+
+<!-- @multicolumn ratio: [1, 1] -->
+Left column
+<!-- @ -->
+Right column
+<!-- @end -->
+\`\`\`
+
+Everything above the first \`---\` is the (hidden) meta page; the slides that follow
+inherit its theme, 16:9 aspect, \`slide\` transition, and footer.`;
+
+// Authoring rules that prevent the most common MDP mistakes and keep output
+// consistent. These matter as much as the syntax spec for accuracy.
+export const AUTHORING_RULES = `## Authoring rules & common pitfalls
+
+Structure
+- Slides are separated by \`---\`; the block BEFORE the first \`---\` is the meta page
+  (config only, never shown). Count slide numbers from AFTER the first \`---\`. To
+  show a literal \`---\` line in body content, put it inside a fenced code block.
+
+Module sections (the #1 cause of broken layouts)
+- A block module that expects N sections needs EXACTLY N−1 \`<!-- @ -->\` separators
+  in its body. Each module's entry under "Installed modules" states how many it
+  expects — e.g. \`@card\`, \`@compare\`, \`@definition\`, \`@faq\`, \`@infobox\` take
+  exactly 2 sections; \`@bignumber\` up to 3; \`@columns\` / \`@multicolumn\` / \`@gallery\`
+  / \`@grid\` / \`@process\` / \`@timeline\` take ONE section per item. A missing
+  separator collapses the body into a single section and breaks the layout.
+
+Arguments vs. body
+- Arguments are a \`key: value\` list separated by commas. If a value would contain
+  \`,\` \`:\` \`[\` \`]\` or \`"\`, do NOT put it in an argument — put that text in the
+  module BODY instead (or escape a comma as \`\\,\`). This is exactly why \`@qr\`'s URL
+  and \`@references\`' BibTeX belong in the body, not in an argument.
+- Do NOT add position args (\`x\`/\`y\`/\`w\`/\`h\`/\`rot\`) unless a specific placement was
+  requested — let modules flow in document order. Stray coordinates misplace things.
+
+Math & references
+- Math is KaTeX with \`\\( … \\)\` (inline) and \`\\[ … \\]\` (display) — NOT \`$ … $\`.
+  Paste LaTeX sources unchanged; if the source uses \`$…$\`, only convert the
+  delimiters, never the math itself.
+- Render citations with \`@references\` and BibTeX entries in its body — don't retype
+  references by hand (it mis-attributes sources).
+
+Diagrams & images
+- Build diagrams as TEXT: \`@mermaid\` (flow/sequence/…), \`@chartjs\` (charts),
+  \`@plantuml\` (UML). Avoid hand-authored base64 SVG — it is error-prone. For a
+  chart, use the EXACT series/labels/values given; never invent numbers.
+- You cannot fetch external images. Use a workspace image path the user provides;
+  otherwise leave a clear placeholder. For SVG, include a \`viewBox\` and don't
+  hard-code text \`fill\` (let the theme colour it). For non-Latin (e.g. Japanese)
+  labels in a drawio/SVG, set the font with \`@addstyle\`, e.g. a CSS section of
+  \`.mdp-drawio-svg { --mdp-drawio-font: "Noto Sans JP"; }\`.
+
+Consistency
+- Set the theme and aspect ONCE on the meta page (don't repeat per slide); choose
+  the deck transition there too.
+- Use the SAME module for the same kind of content throughout (e.g. always
+  \`@callout\` for takeaways, \`@metrics\` for KPIs).
+- Prefer theme colour variables (e.g. \`var(--accent-color)\`) over hard-coded colours
+  so the palette stays consistent.
+- Keep each slide light (aim for ≤ ~5 bullets); split dense content across slides
+  only if the plan allows it.
+- If the user provides a sample slide they like, mirror its structure, density,
+  and style across the deck.
+- Header/footer go on the meta page for all slides; repeat on a slide to override,
+  or use an empty \`<!-- @header --><!-- @end -->\` to suppress it on that slide.`;
 
 const paramTypeName = (p: ModuleParam): string =>
   p.isArray ? `list of ${p.type || 'text'}` : (p.type || 'text');
@@ -203,7 +381,7 @@ export interface SlideSpecExtras {
 /** Assemble the full slide-authoring prompt: built-in format spec, then the
  *  workspace's installed themes, animation effects, and modules. */
 export function buildSlideSpecPrompt(modules: ModuleConfig[], extras: SlideSpecExtras = {}): string {
-  const parts: string[] = [PROMPT_INTRO, SLIDE_FORMAT_SPEC];
+  const parts: string[] = [PROMPT_INTRO, SLIDE_FORMAT_SPEC, AUTHORING_RULES];
 
   if (extras.themes && extras.themes.length) {
     parts.push(`## Themes\n\nApply with \`<!-- @theme NAME -->\` on the meta page. Installed themes:\n\n${describeThemesForAI(extras.themes)}`);
