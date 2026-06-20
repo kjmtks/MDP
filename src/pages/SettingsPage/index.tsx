@@ -4,6 +4,7 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import PaletteIcon from '@mui/icons-material/Palette';
 import PersonOutlineIcon from '@mui/icons-material/PersonOutline';
 import KeyboardIcon from '@mui/icons-material/Keyboard';
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import MinimizeIcon from '@mui/icons-material/Remove';
 import MaximizeIcon from '@mui/icons-material/CropSquare';
@@ -14,15 +15,17 @@ import { closeSettings } from '../../features/settings/nav';
 import { AppearanceSection } from './sections/AppearanceSection';
 import { ProfileSection } from './sections/ProfileSection';
 import { ShortcutsSection } from './sections/ShortcutsSection';
+import { AiSpecSection } from './sections/AiSpecSection';
 import { AboutSection } from './sections/AboutSection';
 import './SettingsPage.css';
 
-type SectionId = 'appearance' | 'profile' | 'shortcuts' | 'about';
+type SectionId = 'appearance' | 'profile' | 'shortcuts' | 'ai' | 'about';
 
 const NAV: { id: SectionId; label: string; Icon: typeof PaletteIcon }[] = [
   { id: 'appearance', label: 'Appearance', Icon: PaletteIcon },
   { id: 'profile', label: 'Author profile', Icon: PersonOutlineIcon },
   { id: 'shortcuts', label: 'Shortcuts', Icon: KeyboardIcon },
+  { id: 'ai', label: 'AI prompt', Icon: AutoAwesomeIcon },
   { id: 'about', label: 'About', Icon: InfoOutlinedIcon },
 ];
 
@@ -74,6 +77,7 @@ export const SettingsPage: React.FC = () => {
           {section === 'appearance' && <AppearanceSection />}
           {section === 'profile' && <ProfileSection />}
           {section === 'shortcuts' && <ShortcutsSection />}
+          {section === 'ai' && <AiSpecSection />}
           {section === 'about' && <AboutSection />}
         </div>
       </div>

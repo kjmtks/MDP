@@ -2,6 +2,14 @@
   <name>callout</name>
   <type>block</type>
   <description>A highlighted box for emphasising a slide's key content — introductions, conclusions, takeaways or notes. Configurable visual style (outline / left-bar / filled / solid), optional title with an icon, and colour, border, radius, alignment and shadow controls. Replaces the old introduction / conclusion modules.</description>
+  <aiSpec><![CDATA[
+A highlighted box to emphasise key content — introductions, conclusions,
+takeaways, or notes. Block module: the body is the box content (ordinary
+markdown). Optional `title` (with an `icon`) shows a heading above the body;
+`variant` picks the look (outline/bar/filled/solid). Prefer this over a plain
+paragraph when content should stand out. Example:
+`<!-- @callout variant: outline, title: Key Point, icon: 💡 -->` then the text.
+]]></aiSpec>
 
   <parameters>
     <param name="variant" type="select" default="outline" label="Style"

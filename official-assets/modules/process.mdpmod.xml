@@ -2,6 +2,12 @@
   <name>process</name>
   <type>block</type>
   <description>Displays a horizontal chevron-style process flow.</description>
+  <aiSpec><![CDATA[
+Show a horizontal chevron/arrow flow for pipelines, workflows or step
+sequences. Block module: split the body with `<!-- @ -->` — one section per
+step, in order, left to right. Use `active` (1-based indices) to highlight the
+current step(s); omit it to highlight all. Each section is the step label.
+]]></aiSpec>
   <parameters>
     <param name="color" type="color" default="var(--accent-color)" label="Accent Color" desc="Color of active steps" />
     <param name="active" type="[number]" default="[]" label="Active Steps" desc="1-based step numbers, e.g. [1] or [1, 3]." />

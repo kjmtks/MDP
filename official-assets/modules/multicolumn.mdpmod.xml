@@ -2,7 +2,13 @@
   <name>multicolumn</name>
   <type>block</type>
   <description>Multi-column</description>
-  
+  <aiSpec><![CDATA[
+Lay out content in side-by-side columns. Block module: split the body with
+`<!-- @ -->` — one section per column. Each section is ordinary markdown (text,
+lists, images, even other modules). Use `ratio` to size columns relatively
+(e.g. ratio: [1,2,1] for a wider middle column).
+]]></aiSpec>
+
   <parameters>
     <param name="gap" type="text" default="1.5rem" label="Gap" desc="CSS length for the space between columns (e.g. 1.5rem)" />
     <param name="align" type="select" default="flex-start" label="Vertical Alignment" options="flex-start:Top,center:Center,flex-end:Bottom,stretch:Stretch" />

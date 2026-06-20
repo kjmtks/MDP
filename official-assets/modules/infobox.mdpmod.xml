@@ -2,7 +2,13 @@
   <name>infobox</name>
   <type>block</type>
   <description>Information box</description>
-  
+  <aiSpec><![CDATA[
+Call out important info in a bordered, titled panel — good for notes, tips,
+warnings, danger callouts. Block module: split the body with `<!-- @ -->` into
+two sections — section 1 is the box title (header), section 2 is the body text.
+Set `color` to signal intent (e.g. var(--warning-color) for a warning).
+]]></aiSpec>
+
   <parameters>
     <param name="color" type="color" default="var(--success-color)" label="Accent Color" desc="Border and header color of the box" />
   </parameters>

@@ -2,6 +2,12 @@
   <name>label</name>
   <type>block</type>
   <description>An outlined tag/label. The text is the block body (spaces / commas / inline Markdown allowed). Renders inline.</description>
+  <aiSpec><![CDATA[
+A small pill-shaped tag/badge (e.g. New, Beta, v2.0). The body text is the
+label content; it may contain spaces, commas and inline Markdown. Renders
+inline despite being a block module, so it flows within a heading or sentence.
+Set `color` to tint the text and outline.
+]]></aiSpec>
 
   <parameters>
     <param name="color" type="color" default="var(--accent-color)" label="Color" desc="Text and border color" />

@@ -12,6 +12,9 @@ export type EffectParam = ModuleParam;
 export interface EffectConfig {
   name: string;
   description: string;
+  // Optional hand-written self-description for the AI slide-authoring prompt
+  // (features/ai/slideSpecPrompt.ts). Falls back to description + params when absent.
+  aiSpec?: string;
   parameters: EffectParam[];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   snippets: any[];
@@ -41,6 +44,7 @@ export const parseMdpfxXml = (content: string): EffectData | null => {
 
   const name = root.querySelector('name')?.textContent?.trim() || '';
   const description = root.querySelector('description')?.textContent?.trim() || '';
+  const aiSpec = root.querySelector('aiSpec')?.textContent?.trim() || undefined;
 
   const parameters = parseParamElements(root);
 
@@ -57,7 +61,7 @@ export const parseMdpfxXml = (content: string): EffectData | null => {
   });
 
   return {
-    config: { name, description, parameters, snippets },
+    config: { name, description, aiSpec, parameters, snippets },
     style: root.querySelector('style')?.textContent?.trim() || '',
     script: root.querySelector('script')?.textContent?.trim() || '',
   };

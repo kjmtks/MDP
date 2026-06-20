@@ -2,6 +2,14 @@
   <name>bubble</name>
   <type>block</type>
   <description>A speech bubble / callout with a pointing tail. Body shape (ellipse, rectangle, rounded, cloud), tail direction/length, fill, border and text. Move / resize / rotate on the preview in Edit layout.</description>
+  <aiSpec><![CDATA[
+A free-floating speech or thought bubble with a pointing tail — for annotating
+or commenting on something on the slide. Block module: the body is the text
+inside the bubble. Shape (`type`: rounded/rectangle/ellipse/cloud) and tail
+`angle`/`length` are parameters; position/size come from x/y/w/h and it can be
+moved/resized/rotated on the preview. Use `tailtype: thought` for a thinking cloud.
+Example: `<!-- @bubble type: rounded, x: 50, y: 35, w: 32, h: 18, angle: 110 -->`.
+]]></aiSpec>
 
   <manipulate position="xy" size="xy" rotation="true" minW="6" maxW="100" minH="4" maxH="100" />
 

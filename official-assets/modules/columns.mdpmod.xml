@@ -2,6 +2,12 @@
   <name>columns</name>
   <type>block</type>
   <description>A simple even N-column text layout</description>
+  <aiSpec><![CDATA[
+Lay out content in evenly sized side-by-side columns. Block module: split the body
+into columns with `<!-- @ -->` — one section per column. Each section is ordinary
+markdown (text, lists, images, even other modules). Wraps to one column on narrow
+screens. If `count` is omitted it uses the number of sections.
+]]></aiSpec>
 
   <parameters>
     <param name="count" type="number" default="2" label="Columns" desc="Number of columns" min="1" max="6" integer="true" />

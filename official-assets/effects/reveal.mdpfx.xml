@@ -1,6 +1,11 @@
 <effect>
   <name>reveal</name>
   <description>Wipe-reveal from left to right using a clip-path. The content is uncovered progressively. Works as a slide transition and as a build (enter/exit).</description>
+  <aiSpec><![CDATA[
+Content is uncovered left-to-right by a moving clip edge, with no movement or fade —
+crisp and editorial. Good as a slide transition and as a build enter/exit. Choose it
+over zoom/fade when you want a directional, "drawing in" feel; close cousin of wipe.
+]]></aiSpec>
   <parameters>
     <param name="duration" type="number" default="400" label="Duration (ms)" desc="Animation length in milliseconds" min="0" integer="true" />
     <param name="easing" type="select" default="ease" label="Easing">

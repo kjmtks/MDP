@@ -2,6 +2,12 @@
   <name>grid</name>
   <type>block</type>
   <description>Responsive equal card grid</description>
+  <aiSpec><![CDATA[
+Use to lay out several equal-sized content cards in a responsive grid. Block
+module: split the body with `<!-- @ -->` — one section per card. Each section is
+ordinary markdown (e.g. a bold heading line plus body text). Set `columns` for the
+grid width; collapses to one column on narrow screens.
+]]></aiSpec>
 
   <parameters>
     <param name="columns" type="number" default="3" label="Columns" desc="Number of columns in the card grid" min="1" max="6" integer="true" />

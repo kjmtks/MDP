@@ -1,6 +1,12 @@
 <effect>
   <name>blur</name>
   <description>Blur in/out. The element fades from a soft blur into focus. Works as a slide transition and as a build (enter/exit).</description>
+  <aiSpec><![CDATA[
+Content defocuses from a soft blur into sharp focus (and back out on leave), combined with a fade.
+Works both as a slide transition and as a build enter/exit. Dreamy and a touch cinematic, slightly
+heavier than a plain fade. Choose it when you want a soft, atmospheric reveal rather than a neutral
+cut; prefer fade for the most subtle, default option.
+]]></aiSpec>
   <parameters>
     <param name="duration" type="number" default="400" label="Duration (ms)" desc="Animation length in milliseconds" min="0" integer="true" />
     <param name="easing" type="select" default="ease" label="Easing">

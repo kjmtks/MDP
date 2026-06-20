@@ -2,6 +2,13 @@
   <name>bignumber</name>
   <type>block</type>
   <description>A single large highlighted statistic</description>
+  <aiSpec><![CDATA[
+Showcase one headline statistic or KPI in large type with supporting text.
+Block module split by `<!-- @ -->` into up to three sections: section 1 = the
+big number/value (e.g. "98%"), section 2 = a label, section 3 = a smaller
+caption. Only the number is required; label and caption are optional.
+Example: `98%` `<!-- @ -->` `Customer satisfaction` `<!-- @ -->` `1,200 responses`.
+]]></aiSpec>
 
   <parameters>
     <param name="color" type="color" default="var(--accent-color)" label="Number Color" />

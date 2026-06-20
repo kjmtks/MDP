@@ -1,6 +1,11 @@
 <effect>
   <name>pulse</name>
   <description>A one-shot scale pulse — intended for build emphasis.</description>
+  <aiSpec><![CDATA[
+A single gentle scale-up-and-back "heartbeat". Attention effect — use as a build
+emphasis to draw the eye to existing content without moving it around. Subtler than
+tada or shake. Not suited as a slide transition.
+]]></aiSpec>
   <parameters>
     <param name="duration" type="number" default="500" label="Duration (ms)" desc="Animation length in milliseconds" min="0" integer="true" />
     <param name="easing" type="select" default="ease-in-out" label="Easing">

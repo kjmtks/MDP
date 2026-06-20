@@ -1,6 +1,11 @@
 <effect>
   <name>slide</name>
   <description>Horizontal slide. As a transition it follows the navigation direction (forward/back).</description>
+  <aiSpec><![CDATA[
+Content slides horizontally on/off screen. Direction-aware as a transition: moves
+left going forward, right going back, giving a natural deck-paging feel. Excellent,
+familiar default slide transition; also works as a build enter. Neutral and clean.
+]]></aiSpec>
   <parameters>
     <param name="duration" type="number" default="450" label="Duration (ms)" desc="Animation length in milliseconds" min="0" integer="true" />
     <param name="easing" type="select" default="ease" label="Easing">

@@ -2,6 +2,12 @@
   <name>clock</name>
   <type>inline</type>
   <description>Live wall-clock that shows the current time and ticks every second. Fixed width so it never reflows. Movable on the preview in Edit layout; resize is horizontal-only. Interactive: it never advances the slide.</description>
+  <aiSpec><![CDATA[
+Use to show a live, ticking wall-clock of the current local time. Inline module:
+it takes no body and flows within text or sits on its own line; configure it
+purely through its parameters (format, seconds, size, shape, colors).
+Example: `<!-- @clock format: 12, size: lg -->`.
+]]></aiSpec>
   <interactive>true</interactive>
 
   <!-- Inline-manipulable: move freely, resize horizontally only (height follows

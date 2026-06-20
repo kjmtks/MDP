@@ -2,6 +2,12 @@
   <name>qr</name>
   <type>block</type>
   <description>Generates a QR code (offline, no internet) from the BODY text — the content between the directive and @end. Using the body means URLs with commas, "=", "&amp;" or quotes are encoded verbatim (they would otherwise break the comma-separated argument syntax). Choose error-correction level, pixel size, quiet-zone margin, colors and an optional caption. Emitted as inline SVG, so it shows in thumbnails, PDF export and presenter too.</description>
+  <aiSpec><![CDATA[
+Generate a scannable QR code offline, e.g. to link a slide to a URL. Block
+module: put the data to encode (URL or text) in the body, between the directive
+and @end — this lets URLs with commas, "=", "&" or quotes encode verbatim
+without breaking the comma-separated arg syntax. Set `caption` for a label below.
+]]></aiSpec>
 
   <parameters>
     <param name="caption" type="text" label="Caption" desc="Optional label shown below the QR code." />

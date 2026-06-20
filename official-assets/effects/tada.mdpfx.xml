@@ -1,6 +1,11 @@
 <effect>
   <name>tada</name>
   <description>Celebratory scale-and-rotate wobble for emphasis. Falls back to a fade when used as a transition. Works as an emphasis, a slide transition, and a build (enter/exit).</description>
+  <aiSpec><![CDATA[
+A bouncy grow-and-wobble that reads as "ta-da!" — the most celebratory emphasis here.
+Best as a build emphasis for reveals, wins, or punchlines. As a transition it just
+fades. Use pulse or swing when you want something more subtle and less showy.
+]]></aiSpec>
   <parameters>
     <param name="duration" type="number" default="400" label="Duration (ms)" desc="Animation length in milliseconds" min="0" integer="true" />
     <param name="easing" type="select" default="ease" label="Easing">

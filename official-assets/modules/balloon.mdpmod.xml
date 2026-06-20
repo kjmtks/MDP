@@ -2,6 +2,13 @@
   <name>balloon</name>
   <type>block</type>
   <description>Creates an interactive chat balloon UI with optional avatar image.</description>
+  <aiSpec><![CDATA[
+Show a chat/speech balloon with a speaker avatar and name — ideal for
+dialogues, Q&A, or persona quotes. Block module: the body is the spoken message
+(ordinary markdown). `direction` (left/right) places the avatar and tail side;
+`name` and optional `image` set the speaker. For a back-and-forth conversation,
+stack several @balloon blocks alternating direction.
+]]></aiSpec>
   <parameters>
     <param name="direction" type="select" default="left" label="Direction" options="left:Left,right:Right" />
     <param name="name" type="text" default="User" label="Name" />

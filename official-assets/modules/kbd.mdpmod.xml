@@ -2,6 +2,12 @@
   <name>kbd</name>
   <type>block</type>
   <description>A keyboard key. The key label is the block body. Renders inline.</description>
+  <aiSpec><![CDATA[
+Render text as a physical keyboard key (e.g. Enter, Ctrl, Esc). The body
+(between the directive and @end) is the key label. Although it's a block
+module it renders inline, so it sits within a sentence. Use one per key; for a
+combo, place several side by side (e.g. Ctrl + C).
+]]></aiSpec>
 
   <parameters></parameters>
 

@@ -1,6 +1,11 @@
 <effect>
   <name>wipe</name>
   <description>Reveal with a left-to-right clip wipe.</description>
+  <aiSpec><![CDATA[
+A hard clip edge sweeps left-to-right to reveal, then off to the right to leave — clean
+and directional, no fade or movement. Strong as a slide transition; also fine as a
+build enter/exit. Very close to reveal; choose either for an editorial, "swept-in" look.
+]]></aiSpec>
   <parameters>
     <param name="duration" type="number" default="450" label="Duration (ms)" desc="Animation length in milliseconds" min="0" integer="true" />
     <param name="easing" type="select" default="ease" label="Easing">

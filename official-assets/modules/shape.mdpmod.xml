@@ -2,6 +2,13 @@
   <name>shape</name>
   <type>block</type>
   <description>A geometric shape (rectangle, triangle, ellipse, diamond, pentagon, hexagon, star) with fill, border and centred text. Move / resize / rotate it on the preview in Edit layout.</description>
+  <aiSpec><![CDATA[
+Use to draw a labelled geometric shape (callout box, badge, diagram node) placed on a
+slide. The shape fills its box and is positioned/sized via x/y/w/h args (percent of the
+slide, center origin). Block module: the body is the centred label text (markdown), and
+may be empty for a blank shape. Example:
+`<!-- @shape type: diamond, fill: #3b82f6, x: 50, y: 40, w: 30, h: 24 -->\n**Decision**\n<!-- @end -->`
+]]></aiSpec>
 
   <manipulate position="xy" size="xy" rotation="true" minW="5" maxW="100" minH="3" maxH="100" />
 

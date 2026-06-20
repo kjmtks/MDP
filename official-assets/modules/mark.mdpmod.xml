@@ -2,6 +2,12 @@
   <name>mark</name>
   <type>block</type>
   <description>Highlighted text. The text to highlight is the block body, so it may contain spaces, commas and inline Markdown. Renders inline.</description>
+  <aiSpec><![CDATA[
+Highlight (marker-pen) a span of text to draw attention to it. The body is the
+text to highlight; it may contain spaces, commas and inline Markdown. Renders
+inline despite being a block module, so it flows mid-sentence. Set `color` for
+the highlight background.
+]]></aiSpec>
 
   <parameters>
     <param name="color" type="color" default="#fde68a" label="Highlight Color" />

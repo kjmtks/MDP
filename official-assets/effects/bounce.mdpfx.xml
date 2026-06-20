@@ -1,6 +1,12 @@
 <effect>
   <name>bounce</name>
   <description>JavaScript-driven bounce (Web Animations API). Tests the JS-hook path. Best as a build.</description>
+  <aiSpec><![CDATA[
+Element springs in from above, overshoots, and bounces a few times before settling; leave drops it
+downward. There is also a lively in-place emphasis bounce. Best as a build (enter, exit, or emphasis)
+for playful, attention-getting reveals. Avoid as a whole-slide transition for serious content;
+choose it when you want energy and personality rather than a calm, neutral motion.
+]]></aiSpec>
   <parameters>
     <param name="duration" type="number" default="750" label="Duration (ms)" desc="Animation length in milliseconds" min="0" integer="true" />
     <param name="easing" type="select" default="ease-out" label="Easing">

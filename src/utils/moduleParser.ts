@@ -45,6 +45,11 @@ export interface ModuleConfig {
   name: string;
   type: 'block' | 'inline';
   description: string;
+  // Optional hand-written spec for the AI slide-authoring prompt. When present it
+  // REPLACES the auto-synthesized parameter dump for this module (the module
+  // "describes itself"); when absent, the description + parameters + snippets are
+  // synthesized instead. See features/ai/slideSpecPrompt.ts.
+  aiSpec?: string;
   parameters: ModuleParam[];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   snippets: any[];
@@ -135,6 +140,7 @@ export const parseMdmodXml = (content: string): ModuleData | null => {
   const name = root.querySelector("name")?.textContent?.trim() || "";
   const type = (root.querySelector("type")?.textContent?.trim() || "block") as 'block' | 'inline';
   const description = root.querySelector("description")?.textContent?.trim() || "";
+  const aiSpec = root.querySelector("aiSpec")?.textContent?.trim() || undefined;
   const interactive = root.querySelector("interactive")?.textContent?.trim() === "true";
 
   // Manipulation capability (block or inline modules). Axis tokens: 'x'|'y'|'xy';
@@ -184,7 +190,7 @@ export const parseMdmodXml = (content: string): ModuleData | null => {
   });
 
   return {
-    config: { name, type, description, parameters, snippets, interactive, manipulate, inlineRender },
+    config: { name, type, description, aiSpec, parameters, snippets, interactive, manipulate, inlineRender },
     render: root.querySelector("render")?.textContent?.trim() || "return '';",
     style: root.querySelector("style")?.textContent?.trim() || "",
     script: root.querySelector("script")?.textContent?.trim() || ""

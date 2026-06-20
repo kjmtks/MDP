@@ -1,6 +1,11 @@
 <effect>
   <name>shake</name>
   <description>Horizontal shake for emphasis. Falls back to a fade when used as a transition. Works as an emphasis, a slide transition, and a build (enter/exit).</description>
+  <aiSpec><![CDATA[
+A quick side-to-side wobble that settles back in place. Attention effect — best as a
+build emphasis to flag an error, warning, or "look here" moment. As a transition it
+just fades. Reach for tada/pulse instead for a positive or celebratory accent.
+]]></aiSpec>
   <parameters>
     <param name="duration" type="number" default="400" label="Duration (ms)" desc="Animation length in milliseconds" min="0" integer="true" />
     <param name="easing" type="select" default="ease" label="Easing">

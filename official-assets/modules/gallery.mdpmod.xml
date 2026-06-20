@@ -2,6 +2,12 @@
   <name>gallery</name>
   <type>block</type>
   <description>Beautifully arranges a set of images and captions in a grid.</description>
+  <aiSpec><![CDATA[
+Use to arrange several images (each with an optional caption) in an even grid.
+Block module: split the body with `<!-- @ -->` — one section per gallery item.
+Each section is markdown holding an image plus an optional caption line below it.
+Set `columns` for the grid width; collapses to one column on narrow screens.
+]]></aiSpec>
   <parameters>
     <param name="columns" type="number" default="2" label="Columns" desc="Number of columns in the gallery grid" min="1" max="6" integer="true" />
   </parameters>

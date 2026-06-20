@@ -2,6 +2,13 @@
   <name>arrow</name>
   <type>inline</type>
   <description>Arrow connecting elements. 8 directions and several shapes (triangle, chevron, line, double).</description>
+  <aiSpec><![CDATA[
+Insert a directional arrow glyph to point between or connect items (e.g. show
+flow or a "leads to" relationship). Inline module with no body — everything is
+controlled by parameters: `direction` (8 compass directions) and `shape`
+(triangle/chevron/line/double). Often placed on its own between two blocks.
+Example: `<!-- @arrow direction: down, shape: triangle -->`.
+]]></aiSpec>
   <parameters>
     <param name="direction" type="select" default="down" label="Direction" options="up:Up,down:Down,left:Left,right:Right,up-right:Up-right,up-left:Up-left,down-right:Down-right,down-left:Down-left" />
     <param name="shape" type="select" default="triangle" label="Shape" options="triangle:Triangle,chevron:Chevron,line:Line arrow,double:Double chevron" />

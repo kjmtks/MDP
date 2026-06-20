@@ -2,6 +2,13 @@
   <name>sticky</name>
   <type>block</type>
   <description>A sticky-note memo you place and size yourself in Edit layout (move + resize freely). Tilt with the rotate argument.</description>
+  <aiSpec><![CDATA[
+Use for a sticky-note memo / annotation placed on a slide (a casual aside, reminder, or
+callout). Position and size come from x/y/w/h args (percent of the slide); `rotate` tilts
+the note. Block module: the body is the note's content (markdown); an optional `title` arg
+adds a heading. Example:
+`<!-- @sticky title: Memo, x: 76, y: 30, w: 28, h: 22, rotate: 3 -->\nFix these figures!\n<!-- @end -->`
+]]></aiSpec>
 
   <!-- Position and size are chosen on the preview (Edit layout). Rotation is the
        note's own `rotate` arg, not a manip handle, so the placement box stays

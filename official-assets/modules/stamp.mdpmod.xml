@@ -2,6 +2,12 @@
   <name>stamp</name>
   <type>block</type>
   <description>A decorated label — a "stamp" such as CONFIDENTIAL, DRAFT or INTERNAL. The label is the block BODY (so spaces, commas and symbols are fine). Designed to drop inside a slide's @header / @footer block, but works in body text too. The default "double" style reproduces the classic double-bordered header badge.</description>
+  <aiSpec><![CDATA[
+Use for a decorated status label / badge such as CONFIDENTIAL, DRAFT, INTERNAL. The body
+is the label text (spaces, commas and symbols are fine; defaults to CONFIDENTIAL if empty).
+Block module but renders INLINE (a decorated span), so it sits within a header/footer or
+body text rather than as its own block. Often dropped inside a slide's @header / @footer.
+]]></aiSpec>
 
   <parameters>
     <param name="variant" type="select" default="double" label="Style"

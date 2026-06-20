@@ -2,6 +2,13 @@
   <name>timer</name>
   <type>inline</type>
   <description>Countdown timer with start / pause / reset. Self-contained inline element (no closing tag). Movable on the preview in Edit layout; resize is horizontal-only. Interactive: clicking it does not advance the slide. Auto-starts when presenting if autostart:true.</description>
+  <aiSpec><![CDATA[
+Use to drop a live countdown timer on a slide (e.g. for exercises, breaks, timed Q&A).
+Inline module with NO body and no closing tag — just the directive; set the duration via
+`minutes`/`seconds`. Interactive: it has start/pause/reset controls and clicking it never
+advances the slide. Set `autostart: true` to begin counting automatically when presenting.
+Example: `<!-- @timer minutes: 5, autostart: true -->`
+]]></aiSpec>
   <interactive>true</interactive>
 
   <!-- Inline-manipulable: move freely, resize horizontally only (height follows

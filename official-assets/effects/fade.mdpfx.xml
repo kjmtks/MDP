@@ -1,6 +1,12 @@
 <effect>
   <name>fade</name>
   <description>Cross-fade. Works as a slide transition and as a build (enter/exit).</description>
+  <aiSpec><![CDATA[
+Soft opacity cross-fade with no motion or directional bias. The most subtle, neutral option and a
+safe default for both slide transitions and build enter/exit. Choose it whenever you want a clean,
+calm reveal that does not distract from content; pick a directional or physical effect (slide, drop,
+zoom) only when you specifically want visible motion.
+]]></aiSpec>
   <parameters>
     <param name="duration" type="number" default="400" label="Duration (ms)" desc="Animation length in milliseconds" min="0" integer="true" />
     <param name="easing" type="select" default="ease" label="Easing">

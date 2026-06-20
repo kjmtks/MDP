@@ -2,6 +2,12 @@
   <name>progress</name>
   <type>inline</type>
   <description>Visually displays a percentage as a progress bar.</description>
+  <aiSpec><![CDATA[
+Render a horizontal progress bar for a single percentage (completion, scores,
+capacity). Inline module with no body — all input comes from params: `percent`
+(0-100) sets the fill, `label` names what it measures. Use one bar per metric;
+for several, stack multiple progress directives.
+]]></aiSpec>
   <parameters>
     <param name="percent" type="number" default="50" label="Percent" desc="Fill of the bar, 0-100" min="0" max="100" integer="true" />
     <param name="label" type="text" default="" label="Label" />

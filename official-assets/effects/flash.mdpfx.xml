@@ -1,6 +1,12 @@
 <effect>
   <name>flash</name>
   <description>Opacity flicker for emphasis. Falls back to a fade when used as a transition. Works as an emphasis, a slide transition, and a build (enter/exit).</description>
+  <aiSpec><![CDATA[
+Quick opacity flicker (blink on/off a couple of times) that draws the eye. Primarily an emphasis
+effect — best as a build emphasis to call attention to an existing element. As a slide transition or
+build enter/exit it gracefully falls back to a plain fade. Choose it to grab attention; for steady,
+non-flickering reveals prefer fade, and for a colored highlight use glow.
+]]></aiSpec>
   <parameters>
     <param name="duration" type="number" default="400" label="Duration (ms)" desc="Animation length in milliseconds" min="0" integer="true" />
     <param name="easing" type="select" default="ease" label="Easing">

@@ -2,6 +2,12 @@
   <name>definition</name>
   <type>block</type>
   <description>Dictionary-style term and definition entry</description>
+  <aiSpec><![CDATA[
+Use to present a term and its definition in a dictionary/glossary style with an
+accent-colored heading and a vertical rule beside the body. Block module: the body
+has exactly two sections split by `<!-- @ -->` — the first is the term, the second
+is its definition (ordinary markdown).
+]]></aiSpec>
 
   <parameters>
     <param name="color" type="color" default="var(--accent-color)" label="Accent Color" />

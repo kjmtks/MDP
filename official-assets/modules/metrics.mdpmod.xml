@@ -2,6 +2,12 @@
   <name>metrics</name>
   <type>block</type>
   <description>Displays important numbers gigantically for a strong impact.</description>
+  <aiSpec><![CDATA[
+Show a single headline number at huge size for impact (KPIs, results, stats).
+The big number and caption come from the `value` and `label` params; the body
+(between the directive and @end) is an optional supporting description shown
+below in smaller text. Use one metrics block per number.
+]]></aiSpec>
   <parameters>
     <param name="value" type="text" label="Value" desc="The big number to display (e.g. 100%, 1/10)" required="true" />
     <param name="label" type="text" default="Achievement Rate" label="Label" />

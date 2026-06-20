@@ -2,6 +2,11 @@
   <name>checklist</name>
   <type>block</type>
   <description>A markdown list rendered as a styled checklist</description>
+  <aiSpec><![CDATA[
+Use to present a list of tasks or steps as a checklist with colored checkmark
+squares. Block module: the body is a single ordinary markdown bullet list — each
+list item becomes one checked row. Write normal `-` bullets between the tags.
+]]></aiSpec>
 
   <parameters>
     <param name="color" type="color" default="var(--accent-color)" label="Mark Color" desc="Color of the checkmark squares" />

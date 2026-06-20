@@ -1,6 +1,12 @@
 <effect>
   <name>drop</name>
   <description>Drop in from above with a slight overshoot, then settle. On leave it drops downward out of view. Works as a slide transition and as a build (enter/exit).</description>
+  <aiSpec><![CDATA[
+Content falls in from above with a slight overshoot and settles, then drops downward out of view on
+leave (paired with a fade). Works as both a slide transition and a build enter/exit. Gives a sense of
+things arriving with light physical weight. Choose it for a gravity-themed, top-down feel; for purely
+horizontal motion use slide/glide, and for the calmest neutral reveal use fade.
+]]></aiSpec>
   <parameters>
     <param name="duration" type="number" default="400" label="Duration (ms)" desc="Animation length in milliseconds" min="0" integer="true" />
     <param name="easing" type="select" default="ease" label="Easing">

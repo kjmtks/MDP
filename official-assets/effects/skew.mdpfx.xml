@@ -1,6 +1,11 @@
 <effect>
   <name>skew</name>
   <description>Skew in. The element slides in with a horizontal skew that straightens as it settles. Works as a slide transition and as a build (enter/exit).</description>
+  <aiSpec><![CDATA[
+Content slants in from the right and straightens as it lands, fading up — a snappy,
+slightly stylish entrance. Works as a slide transition and as a build enter/exit.
+Choose it for a modern/energetic look; use slide or fade for something more neutral.
+]]></aiSpec>
   <parameters>
     <param name="duration" type="number" default="400" label="Duration (ms)" desc="Animation length in milliseconds" min="0" integer="true" />
     <param name="easing" type="select" default="ease" label="Easing">

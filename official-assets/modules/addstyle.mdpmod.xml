@@ -2,6 +2,14 @@
   <name>addstyle</name>
   <type>block</type>
   <description>Apply scoped CSS to a region. Section 1 = CSS, section 2 = content. Selectors are auto-prefixed with a unique scope class, so the CSS only affects this block (e.g. override drawio fonts per diagram).</description>
+  <aiSpec><![CDATA[
+Apply CSS that affects only one block of content (selectors are auto-scoped to
+this instance, so they never leak to other slides/diagrams). Block module split
+by `<!-- @ -->` into two sections: section 1 = raw CSS rules, section 2 = the
+markdown content the CSS applies to. Common use: resize an image or override a
+drawio diagram's font. Gotcha: omit the `<!-- @ -->` separator and the single
+section is treated as content (no CSS applied).
+]]></aiSpec>
 
   <snippets>
     <snippet>

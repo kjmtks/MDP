@@ -1,6 +1,12 @@
 <effect>
   <name>fly</name>
   <description>Slide up + fade. Good as a build for revealing list items / paragraphs.</description>
+  <aiSpec><![CDATA[
+Content rises a short distance upward while fading in, and drifts up and out on leave. Best as a build
+enter/exit — ideal for revealing list items, bullet points, or paragraphs one step at a time. Subtle
+and clean with a gentle upward bias. Can also serve as a soft slide transition; choose it for staged
+text reveals where fade alone feels too static.
+]]></aiSpec>
   <parameters>
     <param name="duration" type="number" default="420" label="Duration (ms)" desc="Animation length in milliseconds" min="0" integer="true" />
     <param name="easing" type="select" default="ease" label="Easing">

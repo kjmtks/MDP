@@ -2,6 +2,12 @@
   <name>faq</name>
   <type>block</type>
   <description>Displays a set of Questions (Q) and Answers (A) beautifully.</description>
+  <aiSpec><![CDATA[
+Use to present one question-and-answer pair with styled Q and A icons. Block
+module: the body has exactly two sections split by `<!-- @ -->` — the first is the
+question, the second is the answer (ordinary markdown). For multiple Q&A pairs,
+stack several faq blocks.
+]]></aiSpec>
   <parameters>
     <param name="color" type="color" default="var(--accent-color)" label="Color" />
   </parameters>

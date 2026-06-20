@@ -2,6 +2,12 @@
   <name>freebox</name>
   <type>block</type>
   <description>Free-floating box you can move, resize and rotate directly on the preview (Edit layout mode).</description>
+  <aiSpec><![CDATA[
+Use to place a freely positioned container that the user can drag, resize and
+rotate on the preview, or pre-place via x/y/w/h args (percentages, center origin).
+Block module: the body is a single section of ordinary markdown shown inside the
+box; halign/valign control how that content sits within the box.
+]]></aiSpec>
 
   <manipulate position="xy" size="xy" rotation="true" minW="5" maxW="100" minH="3" maxH="100" />
 

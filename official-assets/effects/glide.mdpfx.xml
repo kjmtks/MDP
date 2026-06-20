@@ -1,6 +1,12 @@
 <effect>
   <name>glide</name>
   <description>Gentle horizontal glide with a fade. The element eases in from the right and leaves to the left. Softer than the hard slide. Works as a slide transition and as a build (enter/exit).</description>
+  <aiSpec><![CDATA[
+Gentle horizontal glide with a fade: content eases in from the right and leaves to the left over a
+short distance. Softer and shorter than a hard slide. Works as a slide transition and as a build
+enter/exit. Choose it for a smooth, understated lateral motion; use slide for a stronger full-width
+travel, or fade for no motion at all.
+]]></aiSpec>
   <parameters>
     <param name="duration" type="number" default="400" label="Duration (ms)" desc="Animation length in milliseconds" min="0" integer="true" />
     <param name="easing" type="select" default="ease" label="Easing">

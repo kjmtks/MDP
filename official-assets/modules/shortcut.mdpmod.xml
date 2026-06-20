@@ -2,6 +2,11 @@
   <name>shortcut</name>
   <type>block</type>
   <description>A keyboard shortcut as a sequence of keys. The key combination is the block body, joined with "+", e.g. Ctrl+Shift+P. Renders inline.</description>
+  <aiSpec><![CDATA[
+Use to show a keyboard shortcut as styled <kbd> keys (e.g. for docs/tutorials). The body
+is the key combo written with "+" separators (e.g. `Ctrl+Shift+P`); each key is rendered
+as a separate styled key cap. Block module but renders INLINE, so it flows within text.
+]]></aiSpec>
 
   <parameters></parameters>
 

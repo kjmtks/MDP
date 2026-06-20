@@ -2,6 +2,12 @@
   <name>timeline</name>
   <type>block</type>
   <description>Displays multiple contents beautifully as a vertical timeline (steps).</description>
+  <aiSpec><![CDATA[
+Use to present a sequence of steps / phases / milestones as a vertical timeline with
+numbered (or custom-labelled) markers. Block module: split the body into steps with
+`<!-- @ -->` — one section per step, in order. Each section is ordinary markdown (a
+heading + description works well). `active_index` highlights one step (1-based).
+]]></aiSpec>
   <parameters>
     <param name="color" type="color" default="var(--accent-color)" label="Color" />
     <param name="active_index" type="number" default="0" label="Active Step" desc="Which step is highlighted (1-based; 0 = none)" min="0" integer="true" />

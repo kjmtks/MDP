@@ -2,6 +2,13 @@
   <name>button</name>
   <type>block</type>
   <description>A styled pseudo-button link. The label is the block body (spaces / commas / inline Markdown allowed); the destination is the href parameter. Renders inline.</description>
+  <aiSpec><![CDATA[
+A styled button-like link for calls to action or navigation. The body text is
+the button label; the `href` parameter is the link destination. Gotcha:
+declared as a block module but renders inline, so it sits within the surrounding
+flow. Example: `<!-- @button href: https://example.com -->` then `Get Started`
+then `<!-- @end -->`.
+]]></aiSpec>
 
   <parameters>
     <param name="href" type="text" default="#" label="Link URL" desc="Destination the button links to" />

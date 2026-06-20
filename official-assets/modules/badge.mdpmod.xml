@@ -2,6 +2,13 @@
   <name>badge</name>
   <type>block</type>
   <description>A filled badge. The text is the block body (spaces / commas / inline Markdown allowed). Renders inline.</description>
+  <aiSpec><![CDATA[
+A small filled pill/label for tags, statuses, or short emphasis (e.g. "New",
+"v2.0"). The body text is the badge label and may contain spaces, commas and
+inline markdown. Gotcha: declared as a block module but renders inline, so it
+sits within surrounding text/flow rather than on its own line.
+Example: `<!-- @badge color: #10b981 -->` then `Beta` then `<!-- @end -->`.
+]]></aiSpec>
 
   <parameters>
     <param name="color" type="color" default="var(--accent-color)" label="Color" />

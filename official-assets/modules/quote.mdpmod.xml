@@ -2,6 +2,12 @@
   <name>quote</name>
   <type>block</type>
   <description>Beautifully displays quotes from papers or books.</description>
+  <aiSpec><![CDATA[
+Display a styled pull-quote with a large decorative quotation mark — good for
+citing papers, books or notable people. Block module: the body (between the
+directive and @end) is the quoted text. Set the `author` param to show an
+attribution line beneath the quote.
+]]></aiSpec>
   <parameters>
     <param name="author" type="text" default="" label="Author" />
   </parameters>

@@ -2,6 +2,12 @@
   <name>card</name>
   <type>block</type>
   <description>Elevated card with a title bar and body</description>
+  <aiSpec><![CDATA[
+Use to highlight a titled chunk of content in a raised card with a colored header
+bar. Block module: the body has exactly two sections split by `<!-- @ -->` — the
+first is the header title, the second is the card body (ordinary markdown).
+Example: `<!-- @card color: #2563eb -->` then `Title` `<!-- @ -->` `Body text`.
+]]></aiSpec>
 
   <parameters>
     <param name="color" type="color" default="var(--accent-color)" label="Header Color" />

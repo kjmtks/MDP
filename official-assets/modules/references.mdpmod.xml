@@ -2,6 +2,13 @@
   <name>references</name>
   <type>block</type>
   <description>Bibliography from raw BibTeX. Independent knobs: layout (list|cards), notation (ieee|apa), marker (number|key|bullet|none), and a custom/omittable header. Handles any entry type with type-aware formatting (place: publisher, In ... for chapters/proceedings, thesis/report types), @string macros, # concatenation, crossref/xdata inheritance, biblatex fields, LaTeX accents and $math$.</description>
+  <aiSpec><![CDATA[
+Use to render a bibliography / reference list on a slide. Block module: the body
+(between the opening tag and `<!-- @end -->`) is RAW BibTeX entries pasted verbatim
+(@article{...}, @book{...}, etc.) — not markdown and not split into sections. Each
+BibTeX entry becomes one formatted reference; the chosen notation (IEEE/APA/etc.) is
+applied automatically. LaTeX accents and $math$ are handled.
+]]></aiSpec>
   <interactive>false</interactive>
 
   <parameters>

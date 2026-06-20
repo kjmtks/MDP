@@ -1,6 +1,12 @@
 <effect>
   <name>flip</name>
   <description>3D flip around the Y axis. Works as a slide transition or a build.</description>
+  <aiSpec><![CDATA[
+Content rotates in 3D around the vertical (Y) axis, like turning a card, fading as it swings into and
+out of view. Works as a slide transition or a build enter/exit. Bold and dynamic with clear depth.
+Choose it for an energetic, dimensional reveal or to suggest flipping to a new side; for flatter,
+subtler motion use fade, slide, or glide.
+]]></aiSpec>
   <parameters>
     <param name="duration" type="number" default="500" label="Duration (ms)" desc="Animation length in milliseconds" min="0" integer="true" />
     <param name="easing" type="select" default="ease-in-out" label="Easing">
