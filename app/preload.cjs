@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   maximize: () => ipcRenderer.send('window-maximize'),
   close: () => ipcRenderer.send('window-close'),
   exportPdf: (filename) => ipcRenderer.send('export-pdf', filename),
+  saveBinaryDialog: (args) => ipcRenderer.invoke('saveBinaryDialog', args),
   getSnipets: () => ipcRenderer.invoke('getSnipets'),
   getTemplates: () => ipcRenderer.invoke('getTemplates'),
   getTemplateContent: (path) => ipcRenderer.invoke('getTemplateContent', path),

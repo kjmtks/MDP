@@ -51,6 +51,7 @@ import { useBookmarks } from './hooks/useBookmarks';
 import { useCatalogSync } from '../../features/catalog/hooks/useCatalogSync';
 import { syncOfficialCatalog } from '../../features/catalog/syncService';
 import { useSlideRasterizer } from '../../features/remote/capture/useSlideRasterizer';
+import { usePptxExport, type PptxMode } from '../../features/export/usePptxExport';
 import { DockProvider } from './dock/DockProvider';
 import type { SidebarSharedProps, PreviewSharedProps, SnippetsShared, ImagesShared, HeaderActions, EditorSharedProps } from './dock/DockContext';
 import { EditorDock } from './dock/EditorDock';
@@ -780,6 +781,13 @@ export default function EditorPage() {
   }, [editorRef]);
 
   const { rasterize, host: rasterHost } = useSlideRasterizer();
+  const pptxTitle = useMemo(() => {
+    const n = currentFileName?.split('/').pop() || 'MDP_Presentation';
+    return n.replace(/\.slide\.md$/i, '').replace(/\.md$/i, '') || 'MDP_Presentation';
+  }, [currentFileName]);
+  const { exportPptx, exporting: pptxExporting, host: pptxHost } = usePptxExport({
+    slides, slideSize, basePath, themeCssUrl, title: pptxTitle, rasterize, onSaved: () => fetchFileTree(),
+  });
 
   const [remoteActive, setRemoteActive] = useState(false);
   const [remotePort, setRemotePort] = useState<number | null>(null);
@@ -1512,11 +1520,13 @@ export default function EditorPage() {
     onOpenPresenter: openPresenterTool,
     onToggleSlideshow: toggleSlideshow,
     onPrint: handlePrint,
+    onExportPptx: (mode: PptxMode) => { void exportPptx(mode); },
+    pptxBusy: !!pptxExporting,
     onToggleOverview: toggleSlideOverview,
     isSlideOverview,
     canPresent: slides.length > 0,
   }), [handleOpenFolderWithFlag, handleManualSync, handleSwitchToRemote, openConnectDialog,
-    openPresenterTool, toggleSlideshow, handlePrint, toggleSlideOverview, isSlideOverview, slides.length]);
+    openPresenterTool, toggleSlideshow, handlePrint, exportPptx, pptxExporting, toggleSlideOverview, isSlideOverview, slides.length]);
 
   const editorSlice: EditorSharedProps = {
     tabs, activeTabIndex, currentFileName, effectiveFileType, markdown, lastUpdated,
@@ -1556,6 +1566,7 @@ export default function EditorPage() {
       )}
 
       {rasterHost}
+      {pptxHost}
 
       {imagePrep && (
         <div style={{ position: 'fixed', bottom: 20, left: '50%', transform: 'translateX(-50%)', zIndex: 2000, background: 'rgba(30,30,30,0.92)', color: '#fff', padding: '10px 18px', borderRadius: 8, fontSize: '0.85rem', boxShadow: '0 4px 16px rgba(0,0,0,0.4)' }}>

@@ -501,6 +501,27 @@ ipcMain.on('export-pdf', async (event, filename) => {
   }
 });
 
+// Save arbitrary BASE64 binary content via a native "Save As" dialog (used by the
+// PowerPoint/PPTX export). Returns { saved, filePath } or { saved:false, canceled }.
+ipcMain.handle('saveBinaryDialog', async (event, { suggestedName, content, filterName, ext }) => {
+  const { BrowserWindow, dialog } = require('electron');
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win || win.isDestroyed()) return { saved: false };
+  try {
+    const { filePath, canceled } = await dialog.showSaveDialog(win, {
+      title: 'Export',
+      defaultPath: currentBaseDir ? path.join(currentBaseDir, suggestedName || 'export') : (suggestedName || 'export'),
+      filters: [{ name: filterName || 'File', extensions: [ext || 'bin'] }],
+    });
+    if (canceled || !filePath) return { saved: false, canceled: true };
+    await fs.writeFile(filePath, Buffer.from(content, 'base64'));
+    return { saved: true, filePath };
+  } catch (error) {
+    console.error('saveBinaryDialog Error:', error);
+    return { saved: false, error: String(error) };
+  }
+});
+
 ipcMain.handle('getThemes', async () => {
   let themes = [];
 

@@ -141,6 +141,33 @@ export const apiClient = {
     if (isElectron()) (window as any).electronAPI.exportPdf(filename);
   },
 
+  // Save base64 binary content. Electron shows a native "Save As" dialog; the web
+  // build triggers a browser download. Returns true if the file was written/started.
+  saveBinaryWithDialog: async (
+    suggestedName: string,
+    base64: string,
+    filter: { name: string; ext: string; mime: string },
+  ): Promise<boolean> => {
+    if (isElectron()) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const res = await (window as any).electronAPI.saveBinaryDialog({
+        suggestedName, content: base64, filterName: filter.name, ext: filter.ext,
+      });
+      return !!(res && res.saved);
+    }
+    // Web: decode base64 → Blob → download (the browser provides the save UI).
+    const bin = atob(base64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const url = URL.createObjectURL(new Blob([bytes], { type: filter.mime }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = suggestedName;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    return true;
+  },
+
   getSnipets: async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     if (isElectron()) return await (window as any).electronAPI.getSnipets();

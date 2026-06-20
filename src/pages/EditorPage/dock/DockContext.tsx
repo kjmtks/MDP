@@ -147,6 +147,8 @@ export interface HeaderActions {
   onOpenPresenter: () => void;
   onToggleSlideshow: () => void;
   onPrint: () => void;
+  onExportPptx?: (mode: 'image' | 'editable') => void;
+  pptxBusy?: boolean;
   onToggleOverview: () => void;
   isSlideOverview: boolean;
   canPresent: boolean;

@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Box, Typography, Button, IconButton, Tooltip, Stack, List, ListItem, ListItemButton, ListItemText, ListSubheader, Divider, Menu, MenuItem, ListItemIcon, TextField, InputAdornment } from '@mui/material';
+import { Box, Typography, Button, IconButton, Tooltip, Stack, List, ListItem, ListItemButton, ListItemText, ListSubheader, Divider, Menu, MenuItem, ListItemIcon, TextField, InputAdornment, CircularProgress } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import EditIcon from '@mui/icons-material/Edit';
 import CloseIcon from '@mui/icons-material/Close';
@@ -12,6 +12,8 @@ import DevicesIcon from '@mui/icons-material/Devices';
 import PresentToAllIcon from '@mui/icons-material/PresentToAll';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import PrintIcon from '@mui/icons-material/Print';
+import FileDownloadIcon from '@mui/icons-material/FileDownload';
+import SlideshowIcon from '@mui/icons-material/Slideshow';
 import GridViewIcon from '@mui/icons-material/GridView';
 import ControlCameraIcon from '@mui/icons-material/ControlCamera';
 import GridOnIcon from '@mui/icons-material/GridOn';
@@ -502,6 +504,7 @@ export const ImagesPanel: React.FC = () => {
 export const PreviewPanel: React.FC = () => {
   const p = usePreview();
   const h = useHeaderActions();
+  const [exportAnchor, setExportAnchor] = useState<null | HTMLElement>(null);
 
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -530,7 +533,27 @@ export const PreviewPanel: React.FC = () => {
         <Tooltip title="Open Presenter View"><span><IconButton size="small" sx={toolBtnSx} disabled={!h.canPresent} onClick={h.onOpenPresenter}><PresentToAllIcon fontSize="small" /></IconButton></span></Tooltip>
         <Tooltip title="Start Slideshow (F5)"><span><IconButton size="small" sx={toolBtnSx} disabled={!h.canPresent} onClick={h.onToggleSlideshow}><PlayArrowIcon fontSize="small" /></IconButton></span></Tooltip>
         <Tooltip title="Slide Overview"><span><IconButton size="small" sx={{ ...toolBtnSx, color: h.isSlideOverview ? 'var(--app-text-strong)' : 'var(--app-text-muted)' }} disabled={!h.canPresent} onClick={h.onToggleOverview}><GridViewIcon fontSize="small" /></IconButton></span></Tooltip>
-        <Tooltip title="Print / Export PDF"><span><IconButton size="small" sx={toolBtnSx} disabled={!h.canPresent} onClick={h.onPrint}><PrintIcon fontSize="small" /></IconButton></span></Tooltip>
+        <Tooltip title="Export (PDF / PowerPoint)">
+          <span><IconButton size="small" sx={toolBtnSx} disabled={!h.canPresent || h.pptxBusy} onClick={(e) => setExportAnchor(e.currentTarget)}>
+            {h.pptxBusy ? <CircularProgress size={16} sx={{ color: 'var(--app-accent)' }} /> : <FileDownloadIcon fontSize="small" />}
+          </IconButton></span>
+        </Tooltip>
+        <Menu anchorEl={exportAnchor} open={!!exportAnchor} onClose={() => setExportAnchor(null)}>
+          <MenuItem onClick={() => { setExportAnchor(null); h.onPrint(); }} dense>
+            <ListItemIcon><PrintIcon fontSize="small" /></ListItemIcon>Export PDF
+          </MenuItem>
+          {h.onExportPptx && <Divider />}
+          {h.onExportPptx && (
+            <MenuItem onClick={() => { setExportAnchor(null); h.onExportPptx!('image'); }} dense>
+              <ListItemIcon><SlideshowIcon fontSize="small" /></ListItemIcon>PowerPoint — image (exact, math-perfect)
+            </MenuItem>
+          )}
+          {h.onExportPptx && (
+            <MenuItem onClick={() => { setExportAnchor(null); h.onExportPptx!('editable'); }} dense>
+              <ListItemIcon><SlideshowIcon fontSize="small" /></ListItemIcon>PowerPoint — editable text (beta)
+            </MenuItem>
+          )}
+        </Menu>
         {p.onEditDrawio && (
           <Button variant="text" size="small" startIcon={<EditIcon fontSize="small" />} onClick={p.onEditDrawio} sx={{ ...toolBtnSx, ml: 1, textTransform: 'none', fontSize: '0.75rem' }}>Edit Diagram</Button>
         )}
