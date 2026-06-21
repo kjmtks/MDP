@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback, useMemo } from 'react';
 import { ViewUpdate } from '@uiw/react-codemirror';
 import { markdown as markdownLang } from '@codemirror/lang-markdown';
-import { StateField, StateEffect, Prec, type Extension } from '@codemirror/state';
+import { StateField, StateEffect, Prec, type Extension, type Text } from '@codemirror/state';
 import { Decoration, type DecorationSet, EditorView, keymap } from '@codemirror/view';
 import { loadLanguage } from '@uiw/codemirror-extensions-langs';
 
@@ -64,6 +64,40 @@ function moveSlideInEditor(view: EditorView, dir: number): boolean {
   return true;
 }
 
+// Line numbers (1-based) of `---` slide separators, fence-aware (mirrors
+// splitMarkdownToBlocks). Drives the live active-slide sync below.
+function computeSeparatorLines(doc: Text): number[] {
+  const seps: number[] = [];
+  let inCode = false;
+  for (let i = 1; i <= doc.lines; i++) {
+    const t = doc.line(i).text.trim();
+    if (t.startsWith('```')) inCode = !inCode;
+    else if (!inCode && t === '---') seps.push(i);
+  }
+  return seps;
+}
+
+// True when an edit may have added/removed/altered a `---` separator or a ```
+// fence line (→ the cached separator list must be recomputed). Plain text edits
+// that keep the line count and don't touch a `---`/``` line return false, so the
+// cache is reused and active-slide sync stays O(log n).
+function separatorsMayHaveChanged(vu: ViewUpdate): boolean {
+  if (vu.startState.doc.lines !== vu.state.doc.lines) return true;
+  const hasMarker = (doc: Text, from: number, to: number): boolean => {
+    const s = doc.lineAt(from).number, e = doc.lineAt(to).number;
+    for (let i = s; i <= e; i++) {
+      const t = doc.line(i).text.trim();
+      if (t === '---' || t.startsWith('```')) return true;
+    }
+    return false;
+  };
+  let maybe = false;
+  vu.changes.iterChanges((fromA, toA, fromB, toB) => {
+    if (!maybe && (hasMarker(vu.startState.doc, fromA, toA) || hasMarker(vu.state.doc, fromB, toB))) maybe = true;
+  });
+  return maybe;
+}
+
 export const activeSlideEffect = StateEffect.define<{from: number, to: number}>();
 
 export const activeSlideTheme = StateField.define<DecorationSet>({
@@ -99,6 +133,9 @@ export const useEditorIntegration = ({
   const { settings } = useAppSettings();
   const isSyncingFromEditor = useRef(false);
   const prevActiveFileRef = useRef(currentFileName);
+  // Cached `---` separator line numbers for the live active-slide sync, with the
+  // doc line count they were computed for (recomputed only on separator-changing edits).
+  const sepCacheRef = useRef<{ lines: number; seps: number[] } | null>(null);
 
   const onEditorUpdate = useCallback((viewUpdate: ViewUpdate) => {
     if (currentFileType !== 'markdown' || isLoadingFile.current || !viewUpdate.view.hasFocus) return;
@@ -119,30 +156,30 @@ export const useEditorIntegration = ({
     }
 
     if (viewUpdate.selectionSet || viewUpdate.docChanged) {
-      // Map the caret to its slide via the already-parsed slide ranges
-      // (slides[i].range = {startLine,endLine}). O(slides) — avoids re-scanning the
-      // whole document for `---` on every keystroke AND every caret move (the old
-      // line-1→caret scan was O(document)). Ranges come from the debounced parse so
-      // they can lag a beat while typing; the active-slide sync then settles.
-      const currentLine = viewUpdate.state.doc.lineAt(viewUpdate.state.selection.main.head).number;
-      let newIndex = currentSlideIndex;
-      if (slides.length > 0) {
-        let found = -1;
-        for (let i = 0; i < slides.length; i++) {
-          const r = slides[i]?.range;
-          if (!r) continue;
-          // caret inside slide i, or in the gap/meta page before it → slide i
-          if (currentLine <= r.endLine) { found = i; break; }
-        }
-        newIndex = found === -1 ? slides.length - 1 : found;
-      }
+      // LIVE active-slide sync: count `---` separators before the caret from the
+      // CURRENT doc, so the preview/thumbnail follow the caret immediately (no
+      // debounce lag). The separator-line list is cached and only recomputed when
+      // an edit could have changed it (line-count change, or a `---`/``` line
+      // touched) — so plain typing and caret moves stay O(log n), not O(document).
+      const doc = viewUpdate.state.doc;
+      const cache = sepCacheRef.current;
+      const seps = (cache && cache.lines === doc.lines && !(viewUpdate.docChanged && separatorsMayHaveChanged(viewUpdate)))
+        ? cache.seps
+        : computeSeparatorLines(doc);
+      sepCacheRef.current = { lines: doc.lines, seps };
+
+      const currentLine = doc.lineAt(viewUpdate.state.selection.main.head).number;
+      // upper bound: number of separators on a line <= currentLine
+      let lo = 0, hi = seps.length;
+      while (lo < hi) { const mid = (lo + hi) >> 1; if (seps[mid] <= currentLine) lo = mid + 1; else hi = mid; }
+      const newIndex = Math.min(Math.max(0, lo - 1), Math.max(0, slides.length - 1));
 
       if (newIndex !== currentSlideIndex) {
         isSyncingFromEditor.current = true;
         setCurrentSlideIndex(newIndex);
       }
     }
-  }, [currentSlideIndex, currentFileType, slides, setCurrentSlideIndex, isLoadingFile, setDrawioButtonPos, setDrawioEditTarget]);
+  }, [currentSlideIndex, currentFileType, slides.length, setCurrentSlideIndex, isLoadingFile, setDrawioButtonPos, setDrawioEditTarget]);
 
   // Editor keymaps are built from the central shortcut registry (combos use the
   // CodeMirror `Mod-` syntax), so remapping `editor.save` / slide-nav in Settings
