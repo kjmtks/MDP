@@ -10,7 +10,6 @@ import SettingsIcon from '@mui/icons-material/Settings';
 import { isElectron } from '../../api/apiClient';
 import { isMac } from '../../utils/osUtils';
 import { openSettings } from '../../features/settings/nav';
-import mdpIcon from '../../assets/icon.svg';
 import { STATIC_PANELS, TOGGLE_PANEL_EVENT, VISIBLE_PANELS_EVENT, REQUEST_VISIBLE_EVENT } from '../../pages/EditorPage/dock/dockShared';
 import { darkMenuSlotProps } from '../../pages/EditorPage/dock/darkMenu';
 
@@ -76,7 +75,20 @@ export const MainHeader: React.FC<MainHeaderProps> = ({
           pointerEvents: 'none'
         }}
       >
-        <img src={mdpIcon} alt="MDP Logo" style={{ width: '20px', height: '20px', objectFit: 'contain' }} />
+        {/* Monochrome logo (icon-mono) inlined so `currentColor` follows the app
+            theme's text colour — stays visible on any theme (light/dark). */}
+        <svg
+          width="20" height="20" viewBox="0 0 512 512" role="img" aria-label="MDP Logo"
+          fill="none" stroke="currentColor" strokeWidth={24} strokeLinecap="round" strokeLinejoin="round"
+          style={{ color: 'var(--app-text, #eee)', flexShrink: 0 }}
+        >
+          <rect x="56" y="72" width="400" height="336" rx="84" />
+          <path d="M186,408 L150,452" />
+          <path d="M326,408 L362,452" />
+          <path d="M176,200 L136,240 L176,280" />
+          <path d="M336,200 L376,240 L336,280" />
+          <path d="M288,184 L224,296" />
+        </svg>
         <span style={{ fontWeight: 800, fontSize: '0.9rem', letterSpacing: '1px' }}>
           MDP
         </span>

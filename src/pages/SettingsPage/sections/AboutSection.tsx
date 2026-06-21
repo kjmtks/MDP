@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { apiClient } from '../../../api/apiClient';
 import licensesText from '../../../../public/ThirdPartyNotices.txt?raw';
-import mdpIcon from '../../../assets/icon.svg';
+import mdpIcon from '../../../assets/icon-filled.svg';
 
 export const AboutSection: React.FC = () => {
   const [version, setVersion] = useState<string>('');

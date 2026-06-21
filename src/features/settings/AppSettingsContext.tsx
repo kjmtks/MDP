@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
 import { apiClient } from '../../api/apiClient';
-import { AppSettings, DEFAULT_SETTINGS, SETTINGS_PATH, normalizeSettings } from './types';
+import { type AppSettings, DEFAULT_SETTINGS, SETTINGS_PATH, normalizeSettings } from './types';
 import { appThemeVariant } from '../../styles/appThemes';
 
 interface AppSettingsContextValue {

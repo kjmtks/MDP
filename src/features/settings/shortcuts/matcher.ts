@@ -1,5 +1,5 @@
 import { isMac } from '../../../utils/osUtils';
-import { ActionDef, ACTIONS, ShortcutScope } from './registry';
+import { type ActionDef, ACTIONS, type ShortcutScope } from './registry';
 import type { AppSettings } from '../types';
 
 // Normalize a KeyboardEvent into a combo string (see registry.ts for the format).
