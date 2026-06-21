@@ -6,6 +6,7 @@
 <!-- @presenter Your Name -->
 <!-- @affiliation Your Affiliation -->
 <!-- @contact Your Address -->
+<!-- @tags  -->
 
 <!-- @aspect 16:9 -->
 <!-- @theme default.css -->

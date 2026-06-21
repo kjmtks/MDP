@@ -29,6 +29,13 @@ export interface SidebarSharedProps {
   onUpdateBookmark?: (path: string, changes: { icon?: string; color?: string }) => void;
   onRenameFile?: (oldPath: string, newPath: string) => void;
   onDeleteFiles?: (paths: string[]) => void;
+
+  // Slide search + tags. onOpenDeck opens a deck and jumps to a matched slide;
+  // onSetDeckTags writes the active deck's `@tags` (only valid when canEditTags).
+  onOpenDeck?: (path: string, slideIndex?: number) => void;
+  canEditTags?: boolean;
+  currentDeckTags?: string[];
+  onSetDeckTags?: (tags: string[]) => void;
 }
 
 export interface PreviewSharedProps {

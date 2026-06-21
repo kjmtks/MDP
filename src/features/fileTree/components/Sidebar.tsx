@@ -27,6 +27,11 @@ import BookmarkBorderIcon from '@mui/icons-material/BookmarkBorder';
 import { isFileTreeDrag } from '../dragUtils';
 import { useAppSettings } from '../../settings/AppSettingsContext';
 import { applyAuthorProfile } from '../../settings/types';
+import { useDeckIndex } from '../../search/useDeckIndex';
+import { searchDecks, allTagsOf } from '../../search/searchEngine';
+import { SearchBox } from '../../search/components/SearchBox';
+import { SearchResults } from '../../search/components/SearchResults';
+import { TagEditor } from '../../search/components/TagEditor';
 
 interface SidebarProps {
   currentFileName: string | null;
@@ -50,6 +55,12 @@ interface SidebarProps {
   onRenameFile?: (oldPath: string, newPath: string) => void;
   onDeleteFiles?: (paths: string[]) => void;
 
+  // Slide search + tags
+  onOpenDeck?: (path: string, slideIndex?: number) => void;
+  canEditTags?: boolean;
+  currentDeckTags?: string[];
+  onSetDeckTags?: (tags: string[]) => void;
+
   section?: 'thumbnail' | 'files' | 'bookmarks';
 }
 
@@ -70,11 +81,36 @@ export const Sidebar: React.FC<SidebarProps> = ({
   drawings, fileTree, onSlideSelect, onFileSelect,
   onManualRefresh, onNav,
   bookmarks, isBookmarked, onToggleBookmark, onReorderBookmark, onUpdateBookmark,
-  onRenameFile, onDeleteFiles, section
+  onRenameFile, onDeleteFiles,
+  onOpenDeck, canEditTags, currentDeckTags, onSetDeckTags,
+  section
 }) => {
   const { settings } = useAppSettings();
   const [leftTabIndex, setLeftTabIndex] = useState(0);
   const activeIndex = section ? SECTION_INDEX[section] : leftTabIndex;
+
+  // --- slide search (shared workspace deck index) ---
+  const { entries: deckEntries, status: indexStatus } = useDeckIndex();
+  const [query, setQuery] = useState('');
+  const [activeTags, setActiveTags] = useState<string[]>([]);
+  const suggestedTags = React.useMemo(() => allTagsOf(deckEntries), [deckEntries]);
+  const bookmarkPaths = React.useMemo(() => new Set(bookmarks.map((b) => b.path)), [bookmarks]);
+  // The Bookmarks panel searches only bookmarked decks; the Files panel searches all.
+  const scopedEntries = React.useMemo(
+    () => (activeIndex === 2 ? deckEntries.filter((e) => bookmarkPaths.has(e.path)) : deckEntries),
+    [deckEntries, activeIndex, bookmarkPaths],
+  );
+  const searchActive = query.trim().length > 0 || activeTags.length > 0;
+  const searchResults = React.useMemo(
+    () => (searchActive ? searchDecks(scopedEntries, query, activeTags) : []),
+    [scopedEntries, query, activeTags, searchActive],
+  );
+  const toggleTag = (tag: string) =>
+    setActiveTags((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]));
+  const handleOpenResult = (path: string, slideIndex?: number) => {
+    if (slideIndex != null && onOpenDeck) onOpenDeck(path, slideIndex);
+    else onFileSelect(path);
+  };
   // Keep the active thumbnail in view (e.g. when the active slide changes on tab switch).
   const activeThumbRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -537,6 +573,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       <Box sx={{ flexGrow: 1, overflow: 'hidden' }}>
         <CustomTabPanel value={activeIndex} index={0}>
+          {currentFileName?.endsWith('.slide.md') && onSetDeckTags && (
+            <TagEditor
+              tags={currentDeckTags || []}
+              suggestedTags={suggestedTags}
+              canEdit={!!canEditTags}
+              onChange={onSetDeckTags}
+            />
+          )}
           {currentFileName && currentFileType === 'markdown' ? (
             <div
               className="thumbnail-list"
@@ -575,41 +619,67 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </CustomTabPanel>
 
         <CustomTabPanel value={activeIndex} index={1} noScroll>
-          <Box
-            tabIndex={0}
-            onKeyDown={(e) => {
-              if (!(e.ctrlKey || e.metaKey)) return;
-              const k = e.key.toLowerCase();
-              if (k === 'c' && selectedPaths.size > 0) { e.preventDefault(); handleCopy(); }
-              else if (k === 'v' && clipboard.length > 0) { e.preventDefault(); handlePaste(keyboardPasteTarget()); }
-            }}
-            onDragOver={handleDragOver} onDrop={handleDrop} onDragEnd={() => setDragOverPath(null)} onDragLeave={() => setDragOverPath(null)} onClick={() => setSelectedPaths(new Set())} onContextMenu={handleRootContextMenu}
-            sx={{ p: 1, height: '100%', color: 'var(--app-text-secondary)', fontSize: '0.9rem', overflowY: 'auto', bgcolor: 'var(--app-bg-panel)', pb: 10, outline: dragOverPath === '' ? '2px dashed var(--app-accent)' : 'none', outlineOffset: '-2px' }}
-          >
-            {visibleFileTree.length > 0 ? (
-              visibleFileTree.map(node => (
-                <FileTreeItem
-                  key={node.path} node={node} level={0}
-                  selectedPaths={selectedPaths} expandedDirs={expandedDirs} dragOverPath={dragOverPath}
-                  onSelect={handleSelect} onDoubleClick={handleDoubleClick} onToggleExpand={handleToggleExpand} onContextMenu={handleContextMenu}
-                  onDragStart={handleDragStart} onDragOver={handleDragOver} onDrop={handleDrop}
-                />
-              ))
+          <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+            <SearchBox
+              query={query} onQueryChange={setQuery}
+              suggestedTags={suggestedTags} activeTags={activeTags} onToggleTag={toggleTag}
+              status={indexStatus} placeholder="Search slides — title, subtitle, tag, text…"
+            />
+            {searchActive ? (
+              <Box sx={{ flex: 1, minHeight: 0, overflowY: 'auto', bgcolor: 'var(--app-bg-panel)', pb: 10 }}>
+                <SearchResults results={searchResults} onOpen={handleOpenResult} activeTags={activeTags} onToggleTag={toggleTag} />
+              </Box>
             ) : (
-              <Typography variant="body1" sx={{ color: 'var(--app-text-disabled)', textAlign: 'center', p: 2, pointerEvents: 'none' }}>Drag & Drop files here</Typography>
+            <Box
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (!(e.ctrlKey || e.metaKey)) return;
+                const k = e.key.toLowerCase();
+                if (k === 'c' && selectedPaths.size > 0) { e.preventDefault(); handleCopy(); }
+                else if (k === 'v' && clipboard.length > 0) { e.preventDefault(); handlePaste(keyboardPasteTarget()); }
+              }}
+              onDragOver={handleDragOver} onDrop={handleDrop} onDragEnd={() => setDragOverPath(null)} onDragLeave={() => setDragOverPath(null)} onClick={() => setSelectedPaths(new Set())} onContextMenu={handleRootContextMenu}
+              sx={{ p: 1, flex: 1, minHeight: 0, color: 'var(--app-text-secondary)', fontSize: '0.9rem', overflowY: 'auto', bgcolor: 'var(--app-bg-panel)', pb: 10, outline: dragOverPath === '' ? '2px dashed var(--app-accent)' : 'none', outlineOffset: '-2px' }}
+            >
+              {visibleFileTree.length > 0 ? (
+                visibleFileTree.map(node => (
+                  <FileTreeItem
+                    key={node.path} node={node} level={0}
+                    selectedPaths={selectedPaths} expandedDirs={expandedDirs} dragOverPath={dragOverPath}
+                    onSelect={handleSelect} onDoubleClick={handleDoubleClick} onToggleExpand={handleToggleExpand} onContextMenu={handleContextMenu}
+                    onDragStart={handleDragStart} onDragOver={handleDragOver} onDrop={handleDrop}
+                  />
+                ))
+              ) : (
+                <Typography variant="body1" sx={{ color: 'var(--app-text-disabled)', textAlign: 'center', p: 2, pointerEvents: 'none' }}>Drag & Drop files here</Typography>
+              )}
+            </Box>
             )}
           </Box>
         </CustomTabPanel>
 
         <CustomTabPanel value={activeIndex} index={2} noScroll>
-          <Box sx={{ p: 1, height: '100%', color: 'var(--app-text-secondary)', overflowY: 'auto', bgcolor: 'var(--app-bg-panel)', pb: 10 }}>
-            <BookmarkList
-              bookmarks={bookmarks}
-              onFileSelect={onFileSelect}
-              onRemove={onToggleBookmark}
-              onReorder={(from, to) => onReorderBookmark?.(from, to)}
-              onUpdate={(path, changes) => onUpdateBookmark?.(path, changes)}
+          <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+            <SearchBox
+              query={query} onQueryChange={setQuery}
+              suggestedTags={suggestedTags} activeTags={activeTags} onToggleTag={toggleTag}
+              status={indexStatus} placeholder="Search bookmarks — title, subtitle, tag, text…"
             />
+            {searchActive ? (
+              <Box sx={{ flex: 1, minHeight: 0, overflowY: 'auto', bgcolor: 'var(--app-bg-panel)', pb: 10 }}>
+                <SearchResults results={searchResults} onOpen={handleOpenResult} activeTags={activeTags} onToggleTag={toggleTag} />
+              </Box>
+            ) : (
+              <Box sx={{ p: 1, flex: 1, minHeight: 0, color: 'var(--app-text-secondary)', overflowY: 'auto', bgcolor: 'var(--app-bg-panel)', pb: 10 }}>
+                <BookmarkList
+                  bookmarks={bookmarks}
+                  onFileSelect={onFileSelect}
+                  onRemove={onToggleBookmark}
+                  onReorder={(from, to) => onReorderBookmark?.(from, to)}
+                  onUpdate={(path, changes) => onUpdateBookmark?.(path, changes)}
+                />
+              </Box>
+            )}
           </Box>
         </CustomTabPanel>
       </Box>

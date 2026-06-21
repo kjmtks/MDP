@@ -32,3 +32,4 @@ tmp
 .env.local
 
 docs
+.claude/*

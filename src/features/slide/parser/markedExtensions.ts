@@ -24,10 +24,9 @@ const parseLineRanges = (rangeStr: string | undefined): Set<number> => {
 
 const renderMeta = (text: string | undefined): string => {
   if (!text) return "";
-  const texText = text
-      .replace(/\\\[([\s\S]*?)\\\]/g, '$$$$$1$$$$')
-      .replace(/\\\(([\s\S]*?)\\\)/g, '$$$1$$');
-  return marked.parseInline(texText) as string;
+  // `\(…\)` / `\[…\]` are handled by the marked katex extensions (katexExtensions.ts),
+  // so no `$…$` conversion is needed here.
+  return marked.parseInline(text) as string;
 };
 
 export const slideRenderer = (context: SlideContext, baseUrl: string = "", lastUpdated: number = 0): RendererObject => ({

@@ -5,6 +5,9 @@ export interface SlideContextMeta {
   presenter?: string;
   affiliation?: string;
   contact?: string;
+  // Deck tags (from `<!-- @tags a, b, c -->`). Used for search/organization only;
+  // not rendered on slides.
+  tags?: string[];
 }
 
 // A reference to an effect (from the .effect folder) plus its resolved args.

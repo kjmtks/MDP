@@ -1,17 +1,21 @@
 import { marked } from 'marked';
 import { slideRenderer } from './markedExtensions';
 import { parseCommand } from './slideCommands';
+import { splitTags } from './tags';
 import { createDefaultContext } from './SlideContext';
 import type { SlideContext, MotionSpec } from './SlideContext';
 import type { Stroke } from '../../drawing/components/DrawingOverlay';
 import { applyModulesToMarkdown, parseArguments } from '../../modules/moduleProcessor';
 import { applyBuildsToMarkdown } from './buildProcessor';
 import markedKatex from "marked-katex-extension";
+import { registerMdpKatex } from "./katexExtensions";
 
 marked.use(markedKatex({
   throwOnError: false,
   output: 'html'
 }));
+// `\( … \)` / `\[ … \]` with unrestricted neighbours (marked-katex only does `$…$`).
+registerMdpKatex();
 
 export interface RawBlock {
   id: string;
@@ -195,9 +199,8 @@ export const renderSlideHTML = (block: RawBlock, globalContext: SlideContext, pa
   // markdown pipeline (which do their OWN fence handling) see real fences.
   slideMarkdown = restore(slideMarkdown);
 
-  slideMarkdown = slideMarkdown
-    .replace(/\\\[([\s\S]*?)\\\]/g, '$$$$$1$$$$')
-    .replace(/\\\(([\s\S]*?)\\\)/g, '$$$1$$');
+  // `\(…\)` / `\[…\]` are rendered by the marked katex extensions (katexExtensions.ts)
+  // — no `$…$` conversion, so any neighbouring character is allowed.
   const localContext: SlideContext = {
     ...globalContext,
     numberOfPages: pageIndex,
@@ -230,9 +233,7 @@ export const renderSlideHTML = (block: RawBlock, globalContext: SlideContext, pa
   // was already module-expanded upstream (directives are consumed on first pass).
   const renderChrome = (content: string): string => {
     if (!content) return '';
-    const chromeMd = applyModulesToMarkdown(content)
-      .replace(/\\\[([\s\S]*?)\\\]/g, '$$$$$1$$$$')
-      .replace(/\\\(([\s\S]*?)\\\)/g, '$$$1$$');
+    const chromeMd = applyModulesToMarkdown(content);
     return marked.parse(chromeMd, { renderer, breaks: true, gfm: true, async: false }) as string;
   };
   const finalHeaderRaw = localHeader !== undefined ? localHeader : globalContext.header;
@@ -271,8 +272,12 @@ const applyGlobalCommands = (text: string, context: SlideContext) => {
       }
       if (command.type === 'META') {
         const { key, value } = command.params;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (context.meta as any)[key] = value;
+        if (key === 'tags') {
+          context.meta.tags = splitTags(value);
+        } else {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (context.meta as any)[key] = value;
+        }
       }
       // HEADER / FOOTER are handled by extractDirectiveBlock in parseGlobalContext
       // (block form + inline shorthand), so they are intentionally not applied here.

@@ -28,7 +28,7 @@ export const parseCommand = (input: string): CommandResult | null => {
   if (matchCss) {
     return { type: 'CSS', scope: 'GLOBAL', params: matchCss[1].trim() };
   }
-  const matchMeta = text.match(/^@(date|title|subtitle|presenter|contact|affiliation)\s+(.*)$/);
+  const matchMeta = text.match(/^@(date|title|subtitle|presenter|contact|affiliation|tags)\s+(.*)$/);
   if (matchMeta) {
     return { type: 'META', scope: 'GLOBAL', params: { key: matchMeta[1], value: matchMeta[2] } };
   }

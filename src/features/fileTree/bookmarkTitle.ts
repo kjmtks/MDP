@@ -1,10 +1,12 @@
 import { marked } from 'marked';
 import markedKatex from 'marked-katex-extension';
+import { registerMdpKatex } from '../slide/parser/katexExtensions';
 
 // The slide parser configures the shared `marked` singleton with the KaTeX
 // extension on load. Configure it here too so this module works regardless of
 // import order; re-registration is harmless (the first tokenizer wins).
 marked.use(markedKatex({ throwOnError: false, output: 'html' }));
+registerMdpKatex();
 
 // Builds a regex for a single-line `<!-- @<key> ... -->` meta command. The
 // content group is optional so an empty value still matches and can be told
@@ -16,13 +18,10 @@ const SUBTITLE_RE = metaRe('subtitle');
 const escapeHtml = (s: string): string =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-// Mirrors renderMeta() in markedExtensions: normalise \[..\] / \(..\) to $$/$
-// then render inline markdown, turning $..$ into KaTeX HTML.
+// Mirrors renderMeta() in markedExtensions: render inline markdown, with `\(..\)` /
+// `\[..\]` typeset by the marked katex extensions (katexExtensions.ts).
 const renderTitleInline = (text: string): string => {
-  const texText = text
-    .replace(/\\\[([\s\S]*?)\\\]/g, '$$$$$1$$$$')
-    .replace(/\\\(([\s\S]*?)\\\)/g, '$$$1$$');
-  return marked.parseInline(texText) as string;
+  return marked.parseInline(text) as string;
 };
 
 // From rendered title HTML, drop <br> and decoration tags (keeping their inner

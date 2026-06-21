@@ -44,6 +44,8 @@ import { resolveImages, setLibraryImages, clearLibraryImages, parseInFileImageDe
 import { addFileImageDef, editFileImageDef, deleteFileImageDef } from '../../features/images/imageDocEdits';
 import { updateModuleTransforms, removeModuleDirectives, parseModuleDirectives, moveModuleDirective, getModuleDirectiveText, pasteModuleDirective, pasteModuleAt } from '../../features/modules/moduleDocEdits';
 import { splitMarkdownToBlocks } from '../../features/slide/parser/slideParser';
+import { readTagsFromDoc, upsertTags } from '../../features/slide/parser/tagDocEdits';
+import { useDeckIndexBuilder } from '../../features/search/useDeckIndexBuilder';
 import { prewarmSvgs } from '../../features/slide/inlineSvg';
 import type { ManipRuntime } from '../../features/slide/components/ManipulationLayer';
 import { storeLibraryImage, inlineLibraryImage, saveRegistry, deleteLibraryFile } from '../../features/images/imageLibraryStore';
@@ -176,6 +178,8 @@ export default function EditorPage() {
   };
 
   useCatalogSync(fileTree, handleManualRefresh);
+  // Build / maintain the workspace deck search index (title/subtitle/tags + body).
+  useDeckIndexBuilder(fileTree);
 
   useEffect(() => {
     const handleSyncStart = () => {
@@ -1271,6 +1275,29 @@ export default function EditorPage() {
     },
   }), [editLayout, canEditLayout, snapOn, snapStep, editorRef, flushManipPreview]);
 
+  // --- Slide tags (current deck) ---
+  // Parse the active deck's tags from the (debounced) doc. Using debouncedMarkdown
+  // avoids re-parsing — and re-rendering the sidebar — on every keystroke.
+  const currentDeckTags = useMemo(
+    () => (currentFileName?.endsWith('.slide.md') ? readTagsFromDoc(debouncedMarkdown) : []),
+    [currentFileName, debouncedMarkdown],
+  );
+  // Tag edits write to the ACTIVE editor tab's doc, so only allow them when the
+  // previewed deck IS the active deck (same guard as canEditLayout).
+  const canEditTags = !!currentFileName?.endsWith('.slide.md') && previewFileName === currentFileName;
+  const handleSetDeckTags = useCallback((tags: string[]) => {
+    const view = editorRef.current?.view;
+    if (view) upsertTags(view, tags);
+  }, [editorRef]);
+  // Open a deck from a search result and jump to the matched slide. loadFile seeks
+  // for a freshly-opened deck (initialPage); for an already-open one it only
+  // switches tabs, so re-seek after the switch.
+  const handleOpenDeck = useCallback((path: string, slideIndex?: number) => {
+    const alreadyOpen = tabsRef.current.some((t) => t.path === path);
+    loadFile(path, false, slideIndex ?? 0);
+    if (alreadyOpen && slideIndex != null) setTimeout(() => setCurrentSlideIndex(slideIndex), 0);
+  }, [loadFile, setCurrentSlideIndex]);
+
   const sidebarSlice = useMemo<SidebarSharedProps>(() => ({
     currentFileName, currentFileType: previewFileType, slides, currentSlideIndex, slideSize,
     drawings, fileTree, onSlideSelect: setCurrentSlideIndex, onFileSelect: handleFileSelect,
@@ -1278,9 +1305,11 @@ export default function EditorPage() {
     bookmarks, isBookmarked, onToggleBookmark: toggleBookmark,
     onReorderBookmark: reorderBookmarks, onUpdateBookmark: updateBookmark,
     onRenameFile: renameTab, onDeleteFiles: closeTabsByPaths,
+    onOpenDeck: handleOpenDeck, canEditTags, currentDeckTags, onSetDeckTags: handleSetDeckTags,
   }), [currentFileName, previewFileType, slides, currentSlideIndex, slideSize, drawings, fileTree,
     setCurrentSlideIndex, handleFileSelect, handleManualRefresh, moveSlide, handleOpenFolder,
-    bookmarks, isBookmarked, toggleBookmark, reorderBookmarks, updateBookmark, renameTab, closeTabsByPaths]);
+    bookmarks, isBookmarked, toggleBookmark, reorderBookmarks, updateBookmark, renameTab, closeTabsByPaths,
+    handleOpenDeck, canEditTags, currentDeckTags, handleSetDeckTags]);
 
   const previewSlice = useMemo<PreviewSharedProps>(() => ({
     effectiveFileType: previewFileType, slides, currentSlideIndex, slideSize, basePath, drawings,

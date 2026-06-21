@@ -61,6 +61,8 @@ Each is an HTML comment on its own line:
 - \`<!-- @title TEXT -->\`, \`<!-- @subtitle TEXT -->\`, \`<!-- @date TEXT -->\`,
   \`<!-- @presenter TEXT -->\`, \`<!-- @affiliation TEXT -->\`, \`<!-- @contact TEXT -->\`
   — presentation metadata, shown on the cover slide.
+- \`<!-- @tags TAG1, TAG2, … -->\` — comma-separated deck tags for search and
+  organization (quote a tag that contains a comma, e.g. \`"a, b"\`). Not shown on slides.
 - \`<!-- @aspect W:H -->\` — slide aspect ratio, e.g. \`<!-- @aspect 16:9 -->\`.
 - \`<!-- @theme NAME -->\` — apply a slide theme (NAME is one of the installed themes
   listed under "Themes" below). \`<!-- @css PATH -->\` — load extra CSS.
@@ -194,6 +196,7 @@ less error-prone than emitting base64 SVG.
 \`\`\`
 <!-- @title Quarterly Review -->
 <!-- @subtitle Q2 results -->
+<!-- @tags finance, quarterly, review -->
 <!-- @presenter Alice Smith -->
 <!-- @aspect 16:9 -->
 <!-- @theme dark -->
