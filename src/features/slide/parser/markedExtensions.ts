@@ -31,6 +31,14 @@ const renderMeta = (text: string | undefined): string => {
 };
 
 export const slideRenderer = (context: SlideContext, baseUrl: string = "", lastUpdated: number = 0): RendererObject => ({
+  // Inline code (`…`) keeps its raw content — do NOT HTML-escape it. The deck
+  // renders HTML everywhere else (see `html` below, which passes tags through), so
+  // inline code should be consistent: `<span>` inside backticks renders as HTML
+  // instead of showing the escaped literal `&lt;span&gt;`. (marked's default
+  // codespan escapes it.) To show literal tags, escape them in the source.
+  codespan({ text }) {
+    return `<code>${text}</code>`;
+  },
   html(token) {
     if (!token.text.trim().startsWith('<!--')) {
        return token.text;
