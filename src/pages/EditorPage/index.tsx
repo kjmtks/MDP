@@ -45,7 +45,11 @@ import { addFileImageDef, editFileImageDef, deleteFileImageDef } from '../../fea
 import { updateModuleTransforms, removeModuleDirectives, parseModuleDirectives, moveModuleDirective, getModuleDirectiveText, pasteModuleDirective, pasteModuleAt } from '../../features/modules/moduleDocEdits';
 import { splitMarkdownToBlocks } from '../../features/slide/parser/slideParser';
 import { readTagsFromDoc, upsertTags } from '../../features/slide/parser/tagDocEdits';
+import { splitTags } from '../../features/slide/parser/tags';
 import { useDeckIndexBuilder } from '../../features/search/useDeckIndexBuilder';
+import { deckIndexStore } from '../../features/search/deckIndexStore';
+import { allTagsOf } from '../../features/search/searchEngine';
+import { TagSettingsDialog } from '../../features/search/components/TagSettingsDialog';
 import { prewarmSvgs } from '../../features/slide/inlineSvg';
 import type { ManipRuntime } from '../../features/slide/components/ManipulationLayer';
 import { storeLibraryImage, inlineLibraryImage, saveRegistry, deleteLibraryFile } from '../../features/images/imageLibraryStore';
@@ -474,7 +478,7 @@ export default function EditorPage() {
   // ("No slide preview"), and a module delete never shows. The genuine
   // transform-commit suppression is unaffected — that path re-seeds the baseline
   // and neither key changes in between.
-  const manipBaselineKey = `${currentFileName} ${editLayout}`;
+  const manipBaselineKey = `${currentFileName}|${editLayout}`;
   if (manipBaselineKeyRef.current !== manipBaselineKey) {
     manipBaselineKeyRef.current = manipBaselineKey;
     lastManipDocRef.current = null;
@@ -1157,6 +1161,22 @@ export default function EditorPage() {
     });
   }, [editorRef]);
 
+  // --- Tag settings dialog (the 🏷 button on the meta-page `@tags` directive) ----
+  const [tagSettings, setTagSettings] = useState<{ tags: string[]; suggestions: string[] } | null>(null);
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const d = (e as CustomEvent).detail as { value?: string };
+      setTagSettings({ tags: splitTags(d.value || ''), suggestions: allTagsOf(deckIndexStore.getEntries()) });
+    };
+    document.addEventListener('open-tag-settings', handler);
+    return () => document.removeEventListener('open-tag-settings', handler);
+  }, []);
+  const handleTagSettingsSave = useCallback((tags: string[]) => {
+    const view = editorRef.current?.view;
+    if (view) upsertTags(view, tags);
+    setTagSettings(null);
+  }, [editorRef]);
+
   const handleThemeChange = (newThemeName: string) => {
     if (editorRef.current?.view) {
       const view = editorRef.current.view;
@@ -1591,6 +1611,16 @@ export default function EditorPage() {
           resolveThumb={imagesSlice.resolveThumb}
           onClose={() => setModuleSettings(null)}
           onSave={handleModuleSettingsSave}
+        />
+      )}
+
+      {tagSettings && (
+        <TagSettingsDialog
+          open
+          initialTags={tagSettings.tags}
+          suggestedTags={tagSettings.suggestions}
+          onClose={() => setTagSettings(null)}
+          onSave={handleTagSettingsSave}
         />
       )}
 

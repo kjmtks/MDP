@@ -32,4 +32,4 @@ tmp
 .env.local
 
 docs
-.claude/*
+.claude
