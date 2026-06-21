@@ -47,6 +47,8 @@ class NoteWidget extends WidgetType {
 function buildDecorations(state: EditorState) {
   const builder = new RangeSetBuilder<Decoration>();
   const docStr = state.doc.toString();
+  // Fast path: no speaker-note directives → skip the whole-doc regex.
+  if (!docStr.includes('@note:')) return builder.finish();
 
   const regex = new RegExp('<' + '!--\\s*@note:([\\s\\S]{0,10000}?)--' + '>', 'g');
   let match;

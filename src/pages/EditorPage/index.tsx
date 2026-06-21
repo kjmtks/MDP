@@ -1455,7 +1455,9 @@ export default function EditorPage() {
   }, []);
 
   const imagesSlice = useMemo<ImagesShared>(() => {
-    const fileImages: ImageEntry[] = parseInFileImageDefs(markdown).ranges.map(
+    // Use the debounced doc: the Images panel's in-file list doesn't need to
+    // re-parse `@image` defs (a whole-doc regex) on every keystroke.
+    const fileImages: ImageEntry[] = parseInFileImageDefs(debouncedMarkdown).ranges.map(
       (r) => ({ alias: r.alias, value: r.value, scope: 'file' as const, description: r.description, tags: r.tags }),
     );
     const libraryImagesArr: ImageEntry[] = Object.entries(imageLibrary).map(
@@ -1559,7 +1561,7 @@ export default function EditorPage() {
         }
       },
     };
-  }, [markdown, imageLibrary, imageLibraryDesc, imageLibraryTags, imageFocusAlias, imageEditRequest, handleInsertText, baseUrl, commitLibrary, handleEditImageDrawio, editorRef]);
+  }, [debouncedMarkdown, imageLibrary, imageLibraryDesc, imageLibraryTags, imageFocusAlias, imageEditRequest, handleInsertText, baseUrl, commitLibrary, handleEditImageDrawio, editorRef]);
 
   const headerSlice = useMemo<HeaderActions>(() => ({
     onOpenFolder: isElectron() ? handleOpenFolderWithFlag : undefined,

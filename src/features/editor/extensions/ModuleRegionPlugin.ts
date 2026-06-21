@@ -1,4 +1,4 @@
-import { StateField, StateEffect, RangeSetBuilder, type EditorState, type Extension } from '@codemirror/state';
+import { StateField, StateEffect, RangeSetBuilder, type EditorState, type Extension, type Transaction, type ChangeSet } from '@codemirror/state';
 import { Decoration, type DecorationSet, EditorView, gutter, GutterMarker } from '@codemirror/view';
 import { foldService } from '@codemirror/language';
 import { loadedModules } from '../../modules/moduleManager';
@@ -42,6 +42,12 @@ const SPECIAL_BLOCKS = new Set(['build', 'header', 'footer']);
 function scan(state: EditorState): ModuleScan {
   const doc = state.doc;
   const text = doc.toString();
+
+  // Fast path: no HTML-comment directive at all → nothing to colour/fold, skip the
+  // two whole-doc regex passes and the build.
+  if (!text.includes('<!--')) {
+    return { decorations: Decoration.none, folds: [], lineDepths: new Map() };
+  }
 
   // Directives inside code spans are literal text, not modules — skip them.
   const codeSpans: Array<[number, number]> = [];
@@ -108,10 +114,47 @@ function scan(state: EditorState): ModuleScan {
   return { decorations: builder.finish(), folds, lineDepths };
 }
 
+// Shift a cached scan through a doc change WITHOUT re-scanning. Only valid when the
+// change can't have altered the module structure (see changeKeepsModules): line
+// numbers are unchanged, so lineDepths is reused as-is and only char offsets move.
+const mapScan = (prev: ModuleScan, changes: ChangeSet): ModuleScan => ({
+  decorations: prev.decorations.map(changes),
+  folds: prev.folds.map((f) => ({
+    openLineFrom: changes.mapPos(f.openLineFrom),
+    foldFrom: changes.mapPos(f.foldFrom),
+    foldTo: changes.mapPos(f.foldTo),
+  })),
+  lineDepths: prev.lineDepths,
+});
+
+// True when an edit CANNOT have created / removed / renamed a directive: the line
+// count is unchanged AND neither the inserted text nor the edited old lines contain
+// directive syntax (`<!--`, `-->`, `@`, `--`). Plain typing on a content line — the
+// common case — qualifies, letting us skip the O(document) re-scan and just map the
+// cached scan through the change.
+const changeKeepsModules = (tr: Transaction): boolean => {
+  if (tr.startState.doc.lines !== tr.state.doc.lines) return false;
+  let keeps = true;
+  tr.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
+    if (!keeps) return;
+    if (/[<>@]|--/.test(inserted.toString())) { keeps = false; return; }
+    const fromLine = tr.startState.doc.lineAt(fromA).number;
+    const toLine = tr.startState.doc.lineAt(toA).number;
+    for (let i = fromLine; i <= toLine; i++) {
+      if (/<!--|-->|@/.test(tr.startState.doc.line(i).text)) { keeps = false; return; }
+    }
+  });
+  return keeps;
+};
+
 const moduleRegionField = StateField.define<ModuleScan>({
   create: (state) => scan(state),
-  update: (val, tr) =>
-    (tr.docChanged || tr.effects.some((e) => e.is(moduleRefreshEffect))) ? scan(tr.state) : val,
+  update: (val, tr) => {
+    if (tr.effects.some((e) => e.is(moduleRefreshEffect))) return scan(tr.state);
+    if (!tr.docChanged) return val;
+    if (changeKeepsModules(tr)) return mapScan(val, tr.changes);
+    return scan(tr.state);
+  },
   provide: (f) => EditorView.decorations.from(f, (v) => v.decorations),
 });
 

@@ -119,24 +119,30 @@ export const useEditorIntegration = ({
     }
 
     if (viewUpdate.selectionSet || viewUpdate.docChanged) {
-      let separatorCount = 0;
-      let inCodeBlock = false;
+      // Map the caret to its slide via the already-parsed slide ranges
+      // (slides[i].range = {startLine,endLine}). O(slides) — avoids re-scanning the
+      // whole document for `---` on every keystroke AND every caret move (the old
+      // line-1→caret scan was O(document)). Ranges come from the debounced parse so
+      // they can lag a beat while typing; the active-slide sync then settles.
       const currentLine = viewUpdate.state.doc.lineAt(viewUpdate.state.selection.main.head).number;
-
-      for (let i = 1; i <= currentLine; i++) {
-          const text = viewUpdate.state.doc.line(i).text.trim();
-          if (text.startsWith('```')) inCodeBlock = !inCodeBlock;
-          if (!inCodeBlock && /^---$/.test(text)) separatorCount++;
+      let newIndex = currentSlideIndex;
+      if (slides.length > 0) {
+        let found = -1;
+        for (let i = 0; i < slides.length; i++) {
+          const r = slides[i]?.range;
+          if (!r) continue;
+          // caret inside slide i, or in the gap/meta page before it → slide i
+          if (currentLine <= r.endLine) { found = i; break; }
+        }
+        newIndex = found === -1 ? slides.length - 1 : found;
       }
-
-      const newIndex = Math.min(Math.max(0, separatorCount - 1), Math.max(0, slides.length - 1));
 
       if (newIndex !== currentSlideIndex) {
         isSyncingFromEditor.current = true;
         setCurrentSlideIndex(newIndex);
       }
     }
-  }, [currentSlideIndex, currentFileType, slides.length, setCurrentSlideIndex, isLoadingFile, setDrawioButtonPos, setDrawioEditTarget]);
+  }, [currentSlideIndex, currentFileType, slides, setCurrentSlideIndex, isLoadingFile, setDrawioButtonPos, setDrawioEditTarget]);
 
   // Editor keymaps are built from the central shortcut registry (combos use the
   // CodeMirror `Mod-` syntax), so remapping `editor.save` / slide-nav in Settings

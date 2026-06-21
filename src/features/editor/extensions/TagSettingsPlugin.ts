@@ -47,14 +47,20 @@ export const tagSettingsPlugin = ViewPlugin.fromClass(class {
     const doc = view.state.doc;
 
     // `@tags` only applies on the meta page (before the first `---` separator);
-    // find that boundary line so the button never appears on a slide body.
+    // find that boundary line so the button never appears on a slide body. The
+    // meta page is always at the very top, so cap the search at a small budget —
+    // otherwise a large doc with no `---` (e.g. a plain .md) would be scanned in
+    // full on every keystroke.
+    const SCAN_CAP = 500;
     let metaEnd = Infinity;
     let inFence = false;
-    for (let i = 1; i <= doc.lines; i++) {
+    const scanTo = Math.min(doc.lines, SCAN_CAP);
+    for (let i = 1; i <= scanTo; i++) {
       const t = doc.line(i).text.trim();
       if (t.startsWith('```')) inFence = !inFence;
       else if (!inFence && t === '---') { metaEnd = i; break; }
     }
+    if (metaEnd === Infinity && doc.lines > SCAN_CAP) metaEnd = SCAN_CAP;
 
     for (const { from, to } of view.visibleRanges) {
       const startLine = doc.lineAt(from).number;

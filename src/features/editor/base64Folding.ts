@@ -29,9 +29,12 @@ const hideBase64Deco = Decoration.replace({
 const base64Regex = /data:image\/[a-zA-Z0-9+.-]+;base64,[a-zA-Z0-9+/=]+/g;
 
 function buildBase64Decorations(state: EditorState): DecorationSet {
+  const docStr = state.doc.toString();
+  // Fast path: no data URIs → nothing to fold, skip the whole-doc line scan.
+  if (!docStr.includes('data:image/')) return Decoration.none;
   // `@image` def blocks are collapsed whole by ImageDefCollapsePlugin; skip any
   // data URI inside one so the two `Decoration.replace` ranges don't overlap.
-  const imageRanges = findImageDefRanges(state.doc.toString());
+  const imageRanges = findImageDefRanges(docStr);
   const insideImageDef = (from: number, to: number) =>
     imageRanges.some((r) => r.from <= from && to <= r.to);
 

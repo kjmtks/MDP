@@ -46,8 +46,11 @@ class ImageDefWidget extends WidgetType {
 
 function buildDecorations(state: EditorState): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>();
+  const docStr = state.doc.toString();
+  // Fast path: no `@image` defs → skip the whole-doc scan.
+  if (!docStr.includes('@image')) return builder.finish();
   // findImageDefRanges returns blocks in document order (sorted by `from`).
-  for (const r of findImageDefRanges(state.doc.toString())) {
+  for (const r of findImageDefRanges(docStr)) {
     builder.add(r.from, r.to, Decoration.replace({ widget: new ImageDefWidget(r.alias), inclusive: false }));
   }
   return builder.finish();

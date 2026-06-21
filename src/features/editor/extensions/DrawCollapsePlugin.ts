@@ -36,15 +36,24 @@ export const drawingCollapsePlugin = ViewPlugin.fromClass(class {
   }
   build(view: EditorView) {
     const builder = new RangeSetBuilder<Decoration>();
-    const text = view.state.doc.toString();
-    const regex = new RegExp("<" + "!--\\s*@drawing:([\\s\\S]*?)--" + ">", "g");
-    let match;
-    while ((match = regex.exec(text))) {
-      const start = match.index;
-      const end = start + match[0].length;
-      builder.add(start, end, Decoration.replace({
-        widget: new DrawDataCollapseWidget(),
-      }));
+    const doc = view.state.doc;
+    // `@drawing:` anchors are single-line, so decorate only the VISIBLE lines —
+    // no whole-document scan on every keystroke (recomputed on viewportChanged).
+    const re = new RegExp("<" + "!--\\s*@drawing:[^\\n]*?--" + ">", "g");
+    for (const { from, to } of view.visibleRanges) {
+      const startLine = doc.lineAt(from).number;
+      const endLine = doc.lineAt(to).number;
+      for (let i = startLine; i <= endLine; i++) {
+        const line = doc.line(i);
+        if (!line.text.includes('@drawing:')) continue;
+        re.lastIndex = 0;
+        let match;
+        while ((match = re.exec(line.text)) !== null) {
+          const start = line.from + match.index;
+          const end = start + match[0].length;
+          builder.add(start, end, Decoration.replace({ widget: new DrawDataCollapseWidget() }));
+        }
+      }
     }
     return builder.finish();
   }
