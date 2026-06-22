@@ -123,12 +123,12 @@ export const useFileManager = ({ setCurrentSlideIndex, syncDrawings, onFileLoade
     setTabState(prev => {
       if (prev.activeIndex === -1) return prev;
       const newTabs = [...prev.tabs];
-      const cleanNew = newContent.replace(/\r/g, '');
-      const cleanInitial = newTabs[prev.activeIndex].initialContent.replace(/\r/g, '');
+      // initialContent is stored CR-stripped and editor content is always LF, so a
+      // direct compare is correct and avoids an O(document) `.replace` per keystroke.
       newTabs[prev.activeIndex] = {
         ...newTabs[prev.activeIndex],
         content: newContent,
-        isModified: cleanNew !== cleanInitial
+        isModified: newContent !== newTabs[prev.activeIndex].initialContent
       };
       return { tabs: newTabs, activeIndex: prev.activeIndex };
     });
@@ -285,7 +285,10 @@ export const useFileManager = ({ setCurrentSlideIndex, syncDrawings, onFileLoade
       const hasDraft = draftContent != null && draftContent !== editorText;
       const contentToUse = hasDraft ? draftContent! : editorText;
 
-      const newTab: OpenTab = { id: createTabId(), path: fileName, type, content: contentToUse, initialContent: editorText, isModified: hasDraft, currentSlideIndex: initialPage, drawings: newDrawings, editorRef: createRef() };
+      // Store the baseline CR-stripped: the editor (CodeMirror) always reports LF
+      // content, so a CR-free baseline lets the per-keystroke "modified?" check be a
+      // direct compare instead of a whole-document `.replace(/\r/g, '')` each time.
+      const newTab: OpenTab = { id: createTabId(), path: fileName, type, content: contentToUse, initialContent: editorText.replace(/\r/g, ''), isModified: hasDraft, currentSlideIndex: initialPage, drawings: newDrawings, editorRef: createRef() };
 
       setTabState(prev => {
         if (prev.tabs.some(t => t.path === fileName)) return prev;
@@ -364,7 +367,7 @@ export const useFileManager = ({ setCurrentSlideIndex, syncDrawings, onFileLoade
         const newTabs = [...prev.tabs];
         const idx = newTabs.findIndex(t => t.path === saveFileName);
         if (idx !== -1) {
-          newTabs[idx] = { ...newTabs[idx], initialContent: saveMarkdown, isModified: false };
+          newTabs[idx] = { ...newTabs[idx], initialContent: saveMarkdown.replace(/\r/g, ''), isModified: false };
         }
         return { tabs: newTabs, activeIndex: prev.activeIndex };
       });
@@ -400,12 +403,12 @@ const updateTabContent = useCallback((path: string, newContent: string) => {
       const idx = prev.tabs.findIndex(t => t.path === path);
       if (idx === -1) return prev;
       const newTabs = [...prev.tabs];
-      const cleanNew = newContent.replace(/\r/g, '');
-      const cleanInitial = newTabs[idx].initialContent.replace(/\r/g, '');
+      // initialContent is stored CR-stripped and editor content is always LF, so a
+      // direct compare is correct and avoids an O(document) `.replace` per keystroke.
       newTabs[idx] = {
         ...newTabs[idx],
         content: newContent,
-        isModified: cleanNew !== cleanInitial
+        isModified: newContent !== newTabs[idx].initialContent
       };
       return { tabs: newTabs, activeIndex: prev.activeIndex };
     });

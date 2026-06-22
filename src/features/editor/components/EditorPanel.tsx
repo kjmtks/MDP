@@ -37,7 +37,7 @@ interface EditorPanelProps {
   onUpdateBookmark?: (changes: { icon?: string; color?: string }) => void;
 }
 
-export const EditorPanel: React.FC<EditorPanelProps> = ({
+const EditorPanelImpl: React.FC<EditorPanelProps> = ({
   currentFileName, currentFileType, editorRef, editorInitialValue,
   extensions, onChangeEditor, onEditorUpdate, onInsertText, onSave, onMoveSlide, isBookmarked, onToggleBookmark,
   bookmark, onUpdateBookmark
@@ -48,7 +48,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
   const { appThemeVariant, settings, update } = useAppSettings();
   const editorFontSize = settings.editorFontSize;
   const fontRef = useRef(editorFontSize);
-  fontRef.current = editorFontSize;
+  useEffect(() => { fontRef.current = editorFontSize; }, [editorFontSize]);
   const setFont = useCallback((v: number) => update({ editorFontSize: Math.max(10, Math.min(v, 40)) }), [update]);
   const [bookmarkPickerAnchor, setBookmarkPickerAnchor] = useState<HTMLElement | null>(null);
   const editorAreaRef = useRef<HTMLDivElement>(null);
@@ -365,3 +365,9 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
     </Box>
   );
 };
+
+// Memoised: the editor panel is a context consumer that the parent re-renders on
+// every keystroke. With stable props (frozen value + useCallback'd handlers from
+// FileEditorPanel) this lets the whole editor subtree skip re-rendering while
+// typing — CodeMirror owns its own DOM and reports changes via onChange.
+export const EditorPanel = React.memo(EditorPanelImpl);

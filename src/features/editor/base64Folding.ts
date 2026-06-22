@@ -1,6 +1,7 @@
 import { StateField, type EditorState } from '@codemirror/state';
 import { Decoration, type DecorationSet, WidgetType, EditorView } from '@codemirror/view';
 import { findImageDefRanges } from '../images/imageRegistry';
+import { changeCannotAffectMarkers } from './extensions/decoChangeMap';
 
 class Base64Widget extends WidgetType {
   toDOM() {
@@ -59,12 +60,21 @@ function buildBase64Decorations(state: EditorState): DecorationSet {
   return Decoration.set(widgets);
 }
 
+// Substrings whose presence in a change means the data-URI folding MIGHT differ
+// (a new/edited data URI, or an `@image`/`@drawio`/comment boundary that governs
+// which data URIs are skipped). If a plain edit touches none of these, the fold
+// set is structurally unchanged and only its offsets move.
+const BASE64_MARKERS = /data:image\/|@image|@end|@drawio|<!--|-->/;
+
 export const base64Folding = StateField.define<DecorationSet>({
   create(state) {
     return buildBase64Decorations(state);
   },
   update(decorations, tr) {
     if (!tr.docChanged) return decorations;
+    // Fast path: plain typing that can't affect any data URI → map the existing
+    // ranges through the change instead of rescanning the whole document.
+    if (changeCannotAffectMarkers(tr, BASE64_MARKERS)) return decorations.map(tr.changes);
     return buildBase64Decorations(tr.state);
   },
   provide: f => EditorView.decorations.from(f)

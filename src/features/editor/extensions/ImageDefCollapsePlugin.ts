@@ -1,6 +1,7 @@
 import { Decoration, type DecorationSet, EditorView, WidgetType } from '@codemirror/view';
 import { RangeSetBuilder, StateField, type EditorState } from '@codemirror/state';
 import { findImageDefRanges } from '../../images/imageRegistry';
+import { changeCannotAffectMarkers } from './decoChangeMap';
 
 // Collapses a multi-line `@image` definition block
 //   <!-- @image logo -->
@@ -56,11 +57,18 @@ function buildDecorations(state: EditorState): DecorationSet {
   return builder.finish();
 }
 
+// An `@image` def block is delimited by `<!-- @image … -->` … `<!-- @end -->`, so
+// only a change touching one of these substrings can alter the collapsed ranges.
+const IMAGE_DEF_MARKERS = /@image|@end|<!--|-->/;
+
 export const imageDefCollapsePlugin = StateField.define<DecorationSet>({
   create(state) { return buildDecorations(state); },
   update(value, tr) {
-    if (tr.docChanged) return buildDecorations(tr.state);
-    return value;
+    if (!tr.docChanged) return value;
+    // Fast path: plain typing that can't touch an `@image` block → map existing
+    // ranges through the change instead of rescanning the whole document.
+    if (changeCannotAffectMarkers(tr, IMAGE_DEF_MARKERS)) return value.map(tr.changes);
+    return buildDecorations(tr.state);
   },
   provide(field) { return EditorView.decorations.from(field); },
 });

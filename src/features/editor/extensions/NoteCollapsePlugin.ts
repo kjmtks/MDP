@@ -1,5 +1,6 @@
 import { Decoration, type DecorationSet, EditorView, WidgetType } from '@codemirror/view';
 import { RangeSetBuilder, StateField, type EditorState } from '@codemirror/state';
+import { changeCannotAffectMarkers } from './decoChangeMap';
 
 class NoteWidget extends WidgetType {
   readonly pos: number;
@@ -44,11 +45,16 @@ class NoteWidget extends WidgetType {
   }
 }
 
-function buildDecorations(state: EditorState) {
+// The decoration set plus whether the doc contains ANY `@note:` directive. The
+// flag lets the caret-move (selection) handler skip the whole-doc rescan entirely
+// when there are no notes — the common case for a large prose document.
+interface NoteState { deco: DecorationSet; hasNotes: boolean; }
+
+function buildNoteState(state: EditorState): NoteState {
   const builder = new RangeSetBuilder<Decoration>();
   const docStr = state.doc.toString();
   // Fast path: no speaker-note directives → skip the whole-doc regex.
-  if (!docStr.includes('@note:')) return builder.finish();
+  if (!docStr.includes('@note:')) return { deco: builder.finish(), hasNotes: false };
 
   const regex = new RegExp('<' + '!--\\s*@note:([\\s\\S]{0,10000}?)--' + '>', 'g');
   let match;
@@ -69,20 +75,29 @@ function buildDecorations(state: EditorState) {
     }));
   }
 
-  return builder.finish();
+  return { deco: builder.finish(), hasNotes: true };
 }
 
-export const noteCollapsePlugin = StateField.define<DecorationSet>({
+// Only an edit touching one of these can add/remove/alter a note directive.
+const NOTE_MARKERS = /@note:|<!--|-->/;
+
+export const noteCollapsePlugin = StateField.define<NoteState>({
   create(state) {
-    return buildDecorations(state);
+    return buildNoteState(state);
   },
   update(value, tr) {
-    if (tr.docChanged || tr.selection) {
-      return buildDecorations(tr.state);
+    if (tr.docChanged) {
+      // A change that touches note syntax must rescan; otherwise just shift the
+      // existing widgets through the change (no whole-doc toString/regex).
+      if (!changeCannotAffectMarkers(tr, NOTE_MARKERS)) return buildNoteState(tr.state);
+      value = { deco: value.deco.map(tr.changes), hasNotes: value.hasNotes };
     }
+    // The note under the caret is shown expanded, so a caret move must re-evaluate
+    // which note is collapsed — but only when the doc actually has notes.
+    if (tr.selection && value.hasNotes) return buildNoteState(tr.state);
     return value;
   },
   provide(field) {
-    return EditorView.decorations.from(field);
+    return EditorView.decorations.from(field, v => v.deco);
   }
 });

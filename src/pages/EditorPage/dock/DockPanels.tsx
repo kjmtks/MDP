@@ -1,4 +1,5 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import type { ViewUpdate } from '@uiw/react-codemirror';
 import { Box, Typography, Button, IconButton, Tooltip, Stack, List, ListItem, ListItemButton, ListItemText, ListSubheader, Divider, Menu, MenuItem, ListItemIcon, TextField, InputAdornment, CircularProgress } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import EditIcon from '@mui/icons-material/Edit';
@@ -42,6 +43,8 @@ import { SlideView } from '../../../features/slide/components/SlideView';
 import { SlideScaler } from '../../../features/slide/components/SlideScaler';
 import { SlideControls } from '../../../features/drawing/components/SlideControls';
 import { useSidebar, usePreview, useEditor, useSnippets, useImages, useHeaderActions } from './DockContext';
+import type { EditorSharedProps } from './DockContext';
+import type { OpenTab } from '../../../features/fileTree/hooks/useFileManager';
 import type { ImageEntry } from '../../../features/images/imageRegistry';
 import { compressImageToBase64 } from '../../../utils/imageUtils';
 
@@ -621,6 +624,48 @@ export const PreviewPanel: React.FC = () => {
   );
 };
 
+// Inner editor: receives a guaranteed tab so it can use hooks unconditionally, and
+// is keyed by tab.id in the parent so it remounts (re-capturing content) if a
+// Dockview panel is ever reused for a different tab.
+const FileEditorPanelInner: React.FC<{ tab: OpenTab; e: EditorSharedProps; isActive: boolean }> = ({ tab, e, isActive }) => {
+  // Freeze the value handed to CodeMirror at (re)mount: CodeMirror then OWNS the
+  // document and reports edits out via onChange. Pushing the live `tab.content`
+  // back in on every keystroke made @uiw/react-codemirror run `doc.toString()`
+  // (O(document)) every keystroke and — with the fresh closures the old code passed
+  // — reconfigure the whole editor every keystroke too. A Dockview remount re-runs
+  // this initialiser, so unsaved edits (held in tab.content) are still restored.
+  const [initialValue] = useState(tab.content);
+
+  const { updateTabContent, onEditorUpdate, toggleBookmark, updateBookmark } = e;
+  const path = tab.path;
+
+  // Stable handlers so neither @uiw's config effect (keyed on onChange/onUpdate)
+  // nor the memoised EditorPanel re-runs while typing.
+  const onChangeEditor = useCallback((val: string) => updateTabContent(path, val), [updateTabContent, path]);
+  const handleEditorUpdate = useCallback((vu: ViewUpdate) => { if (isActive) onEditorUpdate(vu); }, [onEditorUpdate, isActive]);
+  const onToggleBookmark = useCallback(() => toggleBookmark(path), [toggleBookmark, path]);
+  const onUpdateBookmark = useCallback((changes: { icon?: string; color?: string }) => updateBookmark(path, changes), [updateBookmark, path]);
+
+  return (
+    <EditorPanel
+      currentFileName={path}
+      currentFileType={tab.type}
+      editorRef={tab.editorRef}
+      editorInitialValue={initialValue}
+      extensions={e.extensions}
+      onChangeEditor={onChangeEditor}
+      onEditorUpdate={handleEditorUpdate}
+      onInsertText={e.onInsertText}
+      onSave={e.onSave}
+      onMoveSlide={e.moveSlide}
+      isBookmarked={e.isBookmarked(path)}
+      onToggleBookmark={onToggleBookmark}
+      bookmark={e.bookmarks.find((b) => b.path === path)}
+      onUpdateBookmark={onUpdateBookmark}
+    />
+  );
+};
+
 export const FileEditorPanel: React.FC<IDockviewPanelProps<{ tabId: string }>> = (props) => {
   const e = useEditor();
   const tab = e.tabs.find(t => t.id === props.params.tabId);
@@ -631,22 +676,7 @@ export const FileEditorPanel: React.FC<IDockviewPanelProps<{ tabId: string }>> =
 
   return (
     <div style={{ height: '100%', backgroundColor: 'var(--app-bg-editor)' }}>
-      <EditorPanel
-        currentFileName={tab.path}
-        currentFileType={tab.type}
-        editorRef={tab.editorRef}
-        editorInitialValue={tab.content}
-        extensions={e.extensions}
-        onChangeEditor={(val) => e.updateTabContent(tab.path, val)}
-        onEditorUpdate={(vu) => { if (isActive) e.onEditorUpdate(vu); }}
-        onInsertText={e.onInsertText}
-        onSave={e.onSave}
-        onMoveSlide={e.moveSlide}
-        isBookmarked={e.isBookmarked(tab.path)}
-        onToggleBookmark={() => e.toggleBookmark(tab.path)}
-        bookmark={e.bookmarks.find((b) => b.path === tab.path)}
-        onUpdateBookmark={(changes) => e.updateBookmark(tab.path, changes)}
-      />
+      <FileEditorPanelInner key={tab.id} tab={tab} e={e} isActive={isActive} />
     </div>
   );
 };
