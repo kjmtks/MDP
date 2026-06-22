@@ -20,6 +20,10 @@ export interface FileNode {
   children?: FileNode[];
   isSpecial?: boolean;
   isVirtual?: boolean;
+  // Set by the backend on a directory that contains a `.mdpignore` file: the
+  // directory and everything beneath it is excluded from the workspace slide
+  // search, while staying browsable in the tree and usable as image/link targets.
+  slideIgnored?: boolean;
 }
 
 export interface TabPanelProps {

@@ -443,9 +443,11 @@ async function buildFileTree(dir, basePath = '') {
     const entries = await fs.readdir(dir, { withFileTypes: true });
     const nodes = [];
     for (const entry of entries) {
-      // App-managed folders now live under a single `.mdp/` directory; keep it
-      // (its non-dot subfolders pass naturally) and skip all other dotfiles.
-      if (entry.name.startsWith('.') && entry.name !== '.mdp') {
+      // App-managed folders live under a single `.mdp/` directory; keep it (its
+      // non-dot subfolders pass naturally). Also keep `.mdpignore` so the
+      // search-exclusion marker is visible/manageable in the tree (matches the web
+      // backend, which does not filter dotfiles). Skip all other dotfiles.
+      if (entry.name.startsWith('.') && entry.name !== '.mdp' && entry.name !== '.mdpignore') {
         continue;
       }
       const nodePath = basePath ? `${basePath}/${entry.name}` : entry.name;
@@ -458,6 +460,10 @@ async function buildFileTree(dir, basePath = '') {
       };
       if (isDir) {
         node.children = await buildFileTree(path.join(dir, entry.name), nodePath);
+        // A `.mdpignore` file excludes this directory (and its subtree) from the
+        // workspace slide search; it stays browsable / referenceable. (`.mdpignore`
+        // is a dotfile, skipped above, so check the filesystem directly.)
+        if (fsSync.existsSync(path.join(dir, entry.name, '.mdpignore'))) node.slideIgnored = true;
       }
       nodes.push(node);
     }

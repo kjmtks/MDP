@@ -10,8 +10,14 @@ import { deckIndexStore, buildEntry } from './deckIndexStore';
 
 const SLIDE_EXT = '.slide.md';
 
+// A directory carrying a `.mdpignore` file (flagged `slideIgnored` by the backend)
+// is skipped whole: that directory and everything beneath it is excluded from the
+// workspace slide search, while remaining browsable in the file tree and usable as
+// image / link targets. (reconcilePaths then prunes any decks that just became
+// ignored from the index.)
 const collectSlidePaths = (nodes: FileNode[], acc: string[]): void => {
   for (const n of nodes) {
+    if (n.type === 'directory' && n.slideIgnored) continue;
     if (n.type === 'file' && n.path.endsWith(SLIDE_EXT)) acc.push(n.path);
     if (n.children) collectSlidePaths(n.children, acc);
   }

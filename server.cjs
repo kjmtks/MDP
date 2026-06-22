@@ -62,12 +62,16 @@ const getFileTree = (dir, baseDir = dir) => {
       const relativePath = path.relative(baseDir, filePath).replace(/\\/g, '/');
       
       if (stat && stat.isDirectory()) {
-        results.push({
+        const node = {
           name: file,
           path: relativePath,
           type: 'directory',
           children: getFileTree(filePath, baseDir)
-        });
+        };
+        // A `.mdpignore` file marks a directory (and its subtree) to be excluded
+        // from the workspace slide search — it stays browsable / referenceable.
+        if (fs.existsSync(path.join(filePath, '.mdpignore'))) node.slideIgnored = true;
+        results.push(node);
       } else {
         const isImage = /\.(png|jpe?g|gif|svg|webp)$/i.test(file);
         results.push({
