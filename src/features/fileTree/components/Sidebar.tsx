@@ -94,16 +94,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [query, setQuery] = useState('');
   const [activeTags, setActiveTags] = useState<string[]>([]);
   const suggestedTags = React.useMemo(() => allTagsOf(deckEntries), [deckEntries]);
-  const bookmarkPaths = React.useMemo(() => new Set(bookmarks.map((b) => b.path)), [bookmarks]);
-  // The Bookmarks panel searches only bookmarked decks; the Files panel searches all.
-  const scopedEntries = React.useMemo(
-    () => (activeIndex === 2 ? deckEntries.filter((e) => bookmarkPaths.has(e.path)) : deckEntries),
-    [deckEntries, activeIndex, bookmarkPaths],
-  );
+  // Slide search lives only in the Files panel (searches all decks).
   const searchActive = query.trim().length > 0 || activeTags.length > 0;
   const searchResults = React.useMemo(
-    () => (searchActive ? searchDecks(scopedEntries, query, activeTags) : []),
-    [scopedEntries, query, activeTags, searchActive],
+    () => (searchActive ? searchDecks(deckEntries, query, activeTags) : []),
+    [deckEntries, query, activeTags, searchActive],
   );
   const toggleTag = (tag: string) =>
     setActiveTags((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]));
@@ -659,27 +654,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </CustomTabPanel>
 
         <CustomTabPanel value={activeIndex} index={2} noScroll>
-          <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-            <SearchBox
-              query={query} onQueryChange={setQuery}
-              suggestedTags={suggestedTags} activeTags={activeTags} onToggleTag={toggleTag}
-              status={indexStatus} placeholder="Search bookmarks — title, subtitle, tag, text…"
+          <Box sx={{ p: 1, height: '100%', color: 'var(--app-text-secondary)', overflowY: 'auto', bgcolor: 'var(--app-bg-panel)', pb: 10 }}>
+            <BookmarkList
+              bookmarks={bookmarks}
+              onFileSelect={onFileSelect}
+              onRemove={onToggleBookmark}
+              onReorder={(from, to) => onReorderBookmark?.(from, to)}
+              onUpdate={(path, changes) => onUpdateBookmark?.(path, changes)}
             />
-            {searchActive ? (
-              <Box sx={{ flex: 1, minHeight: 0, overflowY: 'auto', bgcolor: 'var(--app-bg-panel)', pb: 10 }}>
-                <SearchResults results={searchResults} onOpen={handleOpenResult} activeTags={activeTags} onToggleTag={toggleTag} />
-              </Box>
-            ) : (
-              <Box sx={{ p: 1, flex: 1, minHeight: 0, color: 'var(--app-text-secondary)', overflowY: 'auto', bgcolor: 'var(--app-bg-panel)', pb: 10 }}>
-                <BookmarkList
-                  bookmarks={bookmarks}
-                  onFileSelect={onFileSelect}
-                  onRemove={onToggleBookmark}
-                  onReorder={(from, to) => onReorderBookmark?.(from, to)}
-                  onUpdate={(path, changes) => onUpdateBookmark?.(path, changes)}
-                />
-              </Box>
-            )}
           </Box>
         </CustomTabPanel>
       </Box>
