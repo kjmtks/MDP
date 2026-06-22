@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { isElectron } from '../../../api/apiClient';
+import type { SlideLinkRect } from '../capture/captureTypes';
 
 declare const __API_PORT__: string;
 
@@ -12,6 +13,8 @@ export interface ImageSyncPayload {
   nextImage: string | null;
   allDrawings?: Record<number, unknown[]>;
   isOverview?: boolean;
+  // Clickable hyperlink hotspots for the CURRENT slide image (fractions of size).
+  links?: SlideLinkRect[];
   channelId?: string;
 }
 
@@ -37,6 +40,9 @@ export type SyncMessage =
   | { type: 'UPDATE_NOTE'; pageIndex: number; note: string; channelId?: string }
   | { type: 'TOGGLE_OVERVIEW'; channelId?: string }
   | { type: 'SELECT_SLIDE'; index: number; channelId?: string }
+  // Hyperlink navigation (mirror→host): jump to a link target / move through history.
+  | { type: 'LINK_NAV'; target: string; channelId?: string }
+  | { type: 'HISTORY_NAV'; dir: 1 | -1; channelId?: string }
   | { type: 'OVERVIEW_GRID'; payload: OverviewGridPayload; channelId?: string }
   // Interactive-module state sync (shared state + actions across surfaces).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

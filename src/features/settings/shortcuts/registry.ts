@@ -31,6 +31,8 @@ export const ACTIONS: ActionDef[] = [
   { id: 'global.slideshowToggle', label: 'Start / stop slideshow', scope: 'global', defaultKeys: ['F5'] },
   { id: 'global.overviewExit', label: 'Close slide overview', scope: 'global', defaultKeys: ['Escape'] },
   { id: 'global.previewPenToggle', label: 'Toggle pen (preview)', scope: 'global', defaultKeys: ['p'] },
+  { id: 'global.historyBack', label: 'Navigate back (hyperlink history)', scope: 'global', defaultKeys: ['Alt-ArrowLeft'] },
+  { id: 'global.historyForward', label: 'Navigate forward (hyperlink history)', scope: 'global', defaultKeys: ['Alt-ArrowRight'] },
   { id: 'global.editorFontIncrease', label: 'Increase editor font', scope: 'global', defaultKeys: ['Mod-=', 'Mod-;'] },
   { id: 'global.editorFontDecrease', label: 'Decrease editor font', scope: 'global', defaultKeys: ['Mod--'] },
 
@@ -56,6 +58,8 @@ export const ACTIONS: ActionDef[] = [
   { id: 'presenter.addSlide', label: 'Add blank slide', scope: 'presenter', defaultKeys: ['n'] },
   { id: 'presenter.next', label: 'Next slide', scope: 'presenter', defaultKeys: ['ArrowRight', 'ArrowDown', 'Space', 'Enter', 'PageDown'] },
   { id: 'presenter.prev', label: 'Previous slide', scope: 'presenter', defaultKeys: ['ArrowLeft', 'ArrowUp', 'PageUp'] },
+  { id: 'presenter.historyBack', label: 'Navigate back (hyperlink history)', scope: 'presenter', defaultKeys: ['Alt-ArrowLeft'] },
+  { id: 'presenter.historyForward', label: 'Navigate forward (hyperlink history)', scope: 'presenter', defaultKeys: ['Alt-ArrowRight'] },
 
   // ---- manipulation (edit-layout overlay) ----------------------------------
   { id: 'manip.deselect', label: 'Deselect', scope: 'manipulation', defaultKeys: ['Escape'] },

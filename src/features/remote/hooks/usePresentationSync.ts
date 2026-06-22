@@ -4,12 +4,13 @@ import type { Stroke } from '../../drawing/components/DrawingOverlay';
 import { moduleSyncBus } from '../../modules/moduleSyncBus';
 import { loadedModules } from '../../modules/moduleManager';
 import { loadedEffects } from '../../effects/effectManager';
+import type { RasterizeResult } from '../capture/captureTypes';
 
 type Rasterize = (
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   slide: any,
   opts: { width: number; height: number; basePath?: string; themeCssUrl?: string },
-) => Promise<string>;
+) => Promise<RasterizeResult>;
 
 function hashStr(s: string): number {
   let h = 0;
@@ -31,6 +32,11 @@ export const usePresentationSync = (
   toggleSlideOverview?: () => void,
   onSelectSlide?: (index: number) => void,
   step?: number,
+  // Hyperlink nav from mirrors (presenter/remote): host resolves relative to its
+  // current deck, navigates, and re-syncs.
+  onSlideLink?: (target: string) => void,
+  historyBack?: () => void,
+  historyForward?: () => void,
 ) => {
   const [channelId] = useState<string>(() => {
     const query = window.location.hash.split('?')[1] || window.location.search;
@@ -47,7 +53,7 @@ export const usePresentationSync = (
   const [imagePrep, setImagePrep] = useState<{ done: number; total: number } | null>(null);
 
   const sendRef = useRef<((msg: SyncMessage, target?: 'all' | 'local' | 'remote') => void) | null>(null);
-  const cacheRef = useRef<Map<string, string>>(new Map());
+  const cacheRef = useRef<Map<string, RasterizeResult>>(new Map());
   const queueRef = useRef<Promise<unknown>>(Promise.resolve());
 
   // Live presenter state (BroadcastChannel, same machine). The presenter renders
@@ -67,7 +73,7 @@ export const usePresentationSync = (
     return n < slides.length ? n : -1;
   }, [slides]);
 
-  const rasterizeSlide = useCallback((i: number): Promise<string | null> => {
+  const rasterizeSlide = useCallback((i: number): Promise<RasterizeResult | null> => {
     if (!rasterize) return Promise.resolve(null);
     const slide = slides[i];
     if (!slide) return Promise.resolve(null);
@@ -75,8 +81,8 @@ export const usePresentationSync = (
     const cached = cacheRef.current.get(key);
     if (cached) return Promise.resolve(cached);
     const run = () => rasterize(slide, { width: slideSize.width, height: slideSize.height, basePath, themeCssUrl })
-      .then((dataUrl) => { cacheRef.current.set(key, dataUrl); return dataUrl; });
-    const p = queueRef.current.then(run, run) as Promise<string>;
+      .then((res) => { cacheRef.current.set(key, res); return res; });
+    const p = queueRef.current.then(run, run) as Promise<RasterizeResult>;
     queueRef.current = p.catch(() => undefined);
     return p;
   }, [rasterize, slides, themeCssUrl, slideSize.width, slideSize.height, basePath]);
@@ -84,11 +90,11 @@ export const usePresentationSync = (
   const sendRemoteImages = useCallback(async () => {
     if (!rasterize || !remoteActive) return;
     const ni = nextVisibleIndex(currentSlideIndex);
-    const curImage = await rasterizeSlide(currentSlideIndex);
-    const nextImage = ni !== -1 ? await rasterizeSlide(ni) : null;
+    const cur = await rasterizeSlide(currentSlideIndex);
+    const next = ni !== -1 ? await rasterizeSlide(ni) : null;
     sendRef.current?.({
       type: 'SYNC_STATE_IMAGE',
-      payload: { index: currentSlideIndex, nextIndex: ni, slideCount: slides.length, slideSize, curImage, nextImage, allDrawings: drawings, isOverview: isSlideOverview },
+      payload: { index: currentSlideIndex, nextIndex: ni, slideCount: slides.length, slideSize, curImage: cur?.dataUrl ?? null, nextImage: next?.dataUrl ?? null, links: cur?.links ?? [], allDrawings: drawings, isOverview: isSlideOverview },
       channelId,
     }, 'remote');
   }, [rasterize, remoteActive, nextVisibleIndex, currentSlideIndex, rasterizeSlide, slides.length, slideSize, drawings, channelId, isSlideOverview]);
@@ -156,6 +162,12 @@ export const usePresentationSync = (
         break;
       case 'SELECT_SLIDE':
         onSelectSlide?.(msg.index);
+        break;
+      case 'LINK_NAV':
+        onSlideLink?.(msg.target);
+        break;
+      case 'HISTORY_NAV':
+        if (msg.dir === 1) historyForward?.(); else historyBack?.();
         break;
     }
   }, electronWsPort);

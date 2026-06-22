@@ -44,6 +44,9 @@ interface SlideViewProps {
   runScripts?: boolean;
   // When provided (editor preview only), enables on-preview module manipulation.
   manipulate?: ManipRuntime;
+  // Called when an internal slide hyperlink (`a.mdp-slide-link`) is clicked, with
+  // its raw target (`#5`, `#id`, `deck.slide.md#…`). Host navigates; mirrors relay.
+  onSlideLink?: (target: string) => void;
 }
 
 // Render a Chart.js config (base64 JSON from the `@chartjs` fence) to a STATIC PNG
@@ -119,7 +122,8 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
   slideIndex,
   moduleRole,
   runScripts = true,
-  manipulate
+  manipulate,
+  onSlideLink
 }) => {
   const [containerEl, setContainerEl] = useState<HTMLDivElement | null>(null);
   // Header/footer DOM as state too, so the ManipulationLayer can manipulate their
@@ -540,6 +544,10 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
 
       <div
         ref={setContent} className={`slide-content ${className} ${buildStep !== undefined ? 'mdp-build-active' : ''}`}
+        onClick={onSlideLink ? (e) => {
+          const a = (e.target as HTMLElement).closest('a.mdp-slide-link') as HTMLElement | null;
+          if (a) { e.preventDefault(); e.stopPropagation(); onSlideLink(a.dataset.mdpTarget || ''); }
+        } : undefined}
         dangerouslySetInnerHTML={{ __html: processedHtml }}
         style={{ width: '100%', height: '100%' }}
       />

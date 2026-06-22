@@ -25,6 +25,7 @@ import { useFileManager } from '../../features/fileTree/hooks/useFileManager';
 import { useAppInit } from './hooks/useAppInit';
 import { usePresentationSync } from '../../features/remote/hooks/usePresentationSync';
 import { useShortcuts } from './hooks/useShortcuts';
+import { useSlideNavigation } from './hooks/useSlideNavigation';
 import { useSlideProcessor } from '../../features/slide/hooks/useSlideProcessor';
 import { useDrawio } from '../../features/drawio/hooks/useDrawio';
 import { useAppActions } from './hooks/useAppActions';
@@ -832,11 +833,25 @@ export default function EditorPage() {
     setIsSlideOverview(false);
   }, [setIsSlideOverview, setStep, setCurrentSlideIndex]);
 
+  // Open a deck and jump to a slide. loadFile seeks a freshly-opened deck via
+  // initialPage; an already-open deck only switches tabs, so re-seek after.
+  const handleOpenDeck = useCallback((path: string, slideIndex?: number) => {
+    const alreadyOpen = tabsRef.current.some((t) => t.path === path);
+    loadFile(path, false, slideIndex ?? 0);
+    if (alreadyOpen && slideIndex != null) setTimeout(() => setCurrentSlideIndex(slideIndex), 0);
+  }, [loadFile, setCurrentSlideIndex]);
+
+  // Slide hyperlinks (`[x](#5 | #id | deck.slide.md#…)`) + back/forward history.
+  // Destructured into stable callbacks so effect/memo deps don't fight the object identity.
+  const { onSlideLink: navLink, historyBack: navBack, historyForward: navForward, canBack: navCanBack, canForward: navCanForward } = useSlideNavigation({
+    slides, currentFileName, currentSlideIndex, setCurrentSlideIndex, setStep, openDeck: handleOpenDeck,
+  });
+
   const { channelId, token, send, imagePrep } = usePresentationSync(
     syncSlides, currentSlideIndex, slideSize, globalContext, baseUrl, themeCssUrl, lastUpdated, drawings,
     moveSlide, addStroke, clear, undo, redo, handleAddBlankSlide, updateStrokes, handleUpdateNote,
     remotePort, rasterize, remoteActive, basePath, isSlideOverview, toggleSlideOverview, selectSlideFromOverview,
-    step
+    step, navLink, navBack, navForward
   );
 
   const handleUpdateStrokes = useCallback((pageIndex: number, indices: number[], dx: number, dy: number) => {
@@ -897,12 +912,18 @@ export default function EditorPage() {
       } else if (action?.id === 'global.overviewExit' && isSlideOverview) {
         e.preventDefault();
         setIsSlideOverview(false);
+      } else if (action?.id === 'global.historyBack') {
+        e.preventDefault();
+        navBack();
+      } else if (action?.id === 'global.historyForward') {
+        e.preventDefault();
+        navForward();
       }
     };
 
     window.addEventListener('keydown', handleGlobalKeyDown, { passive: false });
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [isSlideshow, toggleSlideshow, isSlideOverview, setIsSlideOverview, appSettings]);
+  }, [isSlideshow, toggleSlideshow, isSlideOverview, setIsSlideOverview, appSettings, navBack, navForward]);
 
   const { onEditorUpdate, extensions, handleInsertText } = useEditorIntegration({
     editorRef, currentFileName,
@@ -1309,14 +1330,6 @@ export default function EditorPage() {
     const view = editorRef.current?.view;
     if (view) upsertTags(view, tags);
   }, [editorRef]);
-  // Open a deck from a search result and jump to the matched slide. loadFile seeks
-  // for a freshly-opened deck (initialPage); for an already-open one it only
-  // switches tabs, so re-seek after the switch.
-  const handleOpenDeck = useCallback((path: string, slideIndex?: number) => {
-    const alreadyOpen = tabsRef.current.some((t) => t.path === path);
-    loadFile(path, false, slideIndex ?? 0);
-    if (alreadyOpen && slideIndex != null) setTimeout(() => setCurrentSlideIndex(slideIndex), 0);
-  }, [loadFile, setCurrentSlideIndex]);
 
   const sidebarSlice = useMemo<SidebarSharedProps>(() => ({
     currentFileName, currentFileType: previewFileType, slides, currentSlideIndex, slideSize,
@@ -1342,6 +1355,10 @@ export default function EditorPage() {
     previewImage,
     onClosePreviewImage: () => setPreviewImage(null),
     onEditDrawio,
+    // Slide hyperlinks + navigation history (back/forward).
+    onSlideLink: navLink,
+    onHistoryBack: navBack, onHistoryForward: navForward,
+    canHistoryBack: navCanBack, canHistoryForward: navCanForward,
     manipulate, editLayout, canEditLayout, snapOn,
     onToggleEditLayout: () => setEditLayout((v) => !v),
     onToggleSnap: () => setSnapOn((v) => !v),
@@ -1354,7 +1371,8 @@ export default function EditorPage() {
     penColor, setPenColor, penWidth, setPenWidth, canUndo, canRedo, undo, redo, stylusOnly,
     setStylusOnly, addStroke, handleUpdateStrokes, isSlideshow, onEditDrawio, previewImage,
     manipulate, editLayout, canEditLayout, snapOn, livePreview, previewStale,
-    currentFileName, effectiveFileType, markdownRef]);
+    currentFileName, effectiveFileType, markdownRef,
+    navLink, navBack, navForward, navCanBack, navCanForward]);
 
   const snippetsSlice = useMemo<SnippetsShared>(() => ({
     snippets: snipets, onInsertText: handleInsertText,
@@ -1668,6 +1686,7 @@ export default function EditorPage() {
             <>
               <SlideControls
                 mode={mode} setMode={setMode} pageIndex={currentSlideIndex} totalSlides={slides.length} visible={showControls} onNav={moveSlide} onAddSlide={() => handleAddBlankSlide(currentSlideIndex)} onClearDrawing={() => { clear(currentSlideIndex); send({ type: 'CLEAR_DRAWING', channelId, pageIndex: currentSlideIndex }); }} onClose={() => { document.exitFullscreen(); setMode('view'); }} toolType={toolType} setToolType={setToolType} penColor={penColor} setPenColor={setPenColor} penWidth={penWidth} setPenWidth={setPenWidth} canUndo={canUndo(currentSlideIndex)} canRedo={canRedo(currentSlideIndex)} onUndo={() => undo(currentSlideIndex)} onRedo={() => redo(currentSlideIndex)} useLaserPointerMode={true} stylusOnly={stylusOnly} setStylusOnly={setStylusOnly} containerStyle={{ bottom: '20px' }}
+                onHistoryBack={navBack} onHistoryForward={navForward} canHistoryBack={navCanBack} canHistoryForward={navCanForward}
               />
               <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <SlideEffectLayer
@@ -1686,7 +1705,7 @@ export default function EditorPage() {
                       {slide && !slide.isHidden && (
                         <div style={{ position: 'relative', width: '100%', height: '100%' }}>
                           <SlideView
-                            html={slide.html} raw={slide.raw} basePath={basePath} pageNumber={slide.pageNumber} className={slide.className} isActive={true} slideSize={slideSize} isEnabledPointerEvents={opts.interactive && mode === 'view'} header={slide.header} footer={slide.footer} drawings={drawings[idx] || []} buildStep={opts.buildStep} onStepAutoAdvance={opts.onStepAutoAdvance} presenting={opts.interactive} slideIndex={idx} moduleRole="owner"
+                            html={slide.html} raw={slide.raw} basePath={basePath} pageNumber={slide.pageNumber} className={slide.className} isActive={true} slideSize={slideSize} isEnabledPointerEvents={opts.interactive && mode === 'view'} header={slide.header} footer={slide.footer} drawings={drawings[idx] || []} buildStep={opts.buildStep} onStepAutoAdvance={opts.onStepAutoAdvance} presenting={opts.interactive} slideIndex={idx} moduleRole="owner" onSlideLink={navLink}
                             onAddStroke={opts.interactive ? (stroke) => { addStroke(idx, stroke); send({ type: 'DRAW_STROKE', channelId, pageIndex: idx, stroke }); } : undefined}
                             isInteracting={opts.interactive && mode === 'pen'} toolType={toolType} color={penColor} lineWidth={penWidth} penOnly={stylusOnly}
                             onUpdateStrokes={opts.interactive ? (indices, dx, dy) => handleUpdateStrokes(idx, indices, dx, dy) : undefined}

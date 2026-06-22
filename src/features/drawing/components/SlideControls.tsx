@@ -2,6 +2,8 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { ToggleButton, ToggleButtonGroup, IconButton, Stack, Tooltip, Divider } from '@mui/material';
 import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew';
 import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import NoteAddIcon from '@mui/icons-material/NoteAdd';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import EditIcon from '@mui/icons-material/Edit';
@@ -37,6 +39,11 @@ interface SlideControlsProps {
   useLaserPointerMode?: boolean;
   stylusOnly?: boolean;
   setStylusOnly?: (val: boolean) => void;
+  // Hyperlink navigation history (back/forward through link-jumps).
+  onHistoryBack?: () => void;
+  onHistoryForward?: () => void;
+  canHistoryBack?: boolean;
+  canHistoryForward?: boolean;
 }
 
 export const SlideControls: React.FC<SlideControlsProps> = ({
@@ -46,7 +53,8 @@ export const SlideControls: React.FC<SlideControlsProps> = ({
   toolType, setToolType, penColor, setPenColor, penWidth, setPenWidth,
   canUndo, canRedo, onUndo, onRedo,
   containerStyle, useLaserPointerMode,
-  stylusOnly, setStylusOnly
+  stylusOnly, setStylusOnly,
+  onHistoryBack, onHistoryForward, canHistoryBack, canHistoryForward
 }) => {
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const isDragging = useRef(false);
@@ -222,6 +230,20 @@ export const SlideControls: React.FC<SlideControlsProps> = ({
           </div>
           <IconButton onClick={() => onNav(1)} color="primary" size="small"><ArrowForwardIosIcon fontSize="small" /></IconButton>
         </Stack>
+
+        {(onHistoryBack || onHistoryForward) && (
+          <>
+            <Divider orientation="vertical" flexItem sx={{ bgcolor: 'rgba(255,255,255,0.2)', mx: 1, my: 1 }} />
+            <Stack direction="row" spacing={0.5} alignItems="center">
+              <Tooltip title="Back (hyperlink history)">
+                <span><IconButton onClick={onHistoryBack} disabled={!canHistoryBack} size="small" sx={{ color: '#aaa', '&:hover': { color: '#fff' }, '&.Mui-disabled': { color: 'rgba(255,255,255,0.25)' } }}><ArrowBackIcon fontSize="small" /></IconButton></span>
+              </Tooltip>
+              <Tooltip title="Forward (hyperlink history)">
+                <span><IconButton onClick={onHistoryForward} disabled={!canHistoryForward} size="small" sx={{ color: '#aaa', '&:hover': { color: '#fff' }, '&.Mui-disabled': { color: 'rgba(255,255,255,0.25)' } }}><ArrowForwardIcon fontSize="small" /></IconButton></span>
+              </Tooltip>
+            </Stack>
+          </>
+        )}
 
         {(onAddSlide || onClearDrawing) && (
            <Divider orientation="vertical" flexItem sx={{ bgcolor: 'rgba(255,255,255,0.2)', mx: 1, my: 1 }} />

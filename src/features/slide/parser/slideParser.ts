@@ -29,6 +29,7 @@ export interface SlideData {
   noteHtml: string;
   raw: string;
   className: string;
+  id?: string;                 // `<!-- @id name -->` — hyperlink anchor target
   range: { startLine: number; endLine: number };
   header?: string;
   footer?: string;
@@ -145,6 +146,7 @@ export const renderSlideHTML = (block: RawBlock, globalContext: SlideContext, pa
   let slideMarkdown = masked;
   const extractedNotes: string[] = [];
   let pageClassName = "normal";
+  let slideId: string | undefined = undefined;
   let localHeader: string | undefined = undefined;
   let localFooter: string | undefined = undefined;
   let drawingData: Stroke[] = [];
@@ -173,6 +175,12 @@ export const renderSlideHTML = (block: RawBlock, globalContext: SlideContext, pa
   const pageClassRegex = /<!--\s*@pageclass\s*([\s\S]*?)\s*-->/g;
   slideMarkdown = slideMarkdown.replace(pageClassRegex, (_, pageClassContent) => {
     pageClassName = pageClassContent.trim();
+    return "";
+  });
+  // `<!-- @id name -->` — a stable anchor a hyperlink can target (`[x](#name)`).
+  const idRegex = /<!--\s*@id\s+([\w-]+)\s*-->/g;
+  slideMarkdown = slideMarkdown.replace(idRegex, (_, idVal) => {
+    slideId = idVal.trim();
     return "";
   });
   if (/<!--\s*@cover\s*-->/.test(slideMarkdown)) {
@@ -247,6 +255,7 @@ export const renderSlideHTML = (block: RawBlock, globalContext: SlideContext, pa
     raw: block.rawContent,
     range: { startLine: block.startLine, endLine: block.endLine },
     className: pageClassName,
+    id: slideId,
     header: finalHeader,
     footer: finalFooter,
     drawingData,

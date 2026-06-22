@@ -3,7 +3,7 @@ import { SlideView } from '../../slide/components/SlideView';
 import { isElectron } from '../../../api/apiClient';
 import { loadedModules } from '../../modules/moduleManager';
 import { waitForRenderReady, dataUrlToWebp } from './captureReady';
-import type { RasterizeOptions } from './captureTypes';
+import type { RasterizeOptions, RasterizeResult, SlideLinkRect } from './captureTypes';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Slide = any;
@@ -11,7 +11,7 @@ type Slide = any;
 interface Job {
   slide: Slide;
   opts: Required<Pick<RasterizeOptions, 'width' | 'height' | 'scale'>> & RasterizeOptions;
-  resolve: (dataUrl: string) => void;
+  resolve: (res: RasterizeResult) => void;
   reject: (err: unknown) => void;
 }
 
@@ -32,6 +32,7 @@ export function useSlideRasterizer() {
 
     (async () => {
       const { width, height, scale, basePath, themeCssUrl } = job.opts;
+      const node = nodeRef.current;
       let src: string;
 
       if (isElectron()) {
@@ -54,8 +55,10 @@ export function useSlideRasterizer() {
           width,
           height,
         });
+        // The image comes from the offscreen window, but link rects are measured
+        // from the (always-mounted) web node below — settle it first.
+        if (node) await waitForRenderReady(node);
       } else {
-        const node = nodeRef.current;
         if (!node) throw new Error('capture node missing');
         await waitForRenderReady(node);
         const htmlToImage = await import('html-to-image');
@@ -63,9 +66,23 @@ export function useSlideRasterizer() {
       }
 
       if (cancelled) return;
+
+      // Collect clickable hyperlink hotspots (fractions of the slide size) so the
+      // image-based remote can overlay tap targets.
+      const links: SlideLinkRect[] = [];
+      if (node && width > 0 && height > 0) {
+        const base = node.getBoundingClientRect();
+        node.querySelectorAll('a.mdp-slide-link').forEach((el) => {
+          const target = (el as HTMLElement).dataset.mdpTarget;
+          if (!target) return;
+          const r = (el as HTMLElement).getBoundingClientRect();
+          links.push({ x: (r.left - base.left) / width, y: (r.top - base.top) / height, w: r.width / width, h: r.height / height, target });
+        });
+      }
+
       const webp = await dataUrlToWebp(src, width, height, scale);
       if (cancelled) return;
-      job.resolve(webp);
+      job.resolve({ dataUrl: webp, links });
       setJob(null);
     })().catch((err) => {
       if (!cancelled) { job.reject(err); setJob(null); }
@@ -76,7 +93,7 @@ export function useSlideRasterizer() {
 
   const rasterize = useCallback(
     (slide: Slide, opts: RasterizeOptions) =>
-      new Promise<string>((resolve, reject) => {
+      new Promise<RasterizeResult>((resolve, reject) => {
         setJob({
           slide,
           opts: { scale: 1.5, ...opts },
@@ -87,8 +104,10 @@ export function useSlideRasterizer() {
     [],
   );
 
+  // Mount the measurement node whenever a job is active (both platforms) so link
+  // hotspots can be read from it. On Electron the PNG still comes from captureSlide.
   const host =
-    !isElectron() && job ? (
+    job ? (
       <div style={{ position: 'fixed', left: -100000, top: 0, width: job.opts.width, height: job.opts.height, pointerEvents: 'none', opacity: 0, zIndex: -1 }} aria-hidden>
         <div ref={nodeRef}>
           <SlideView

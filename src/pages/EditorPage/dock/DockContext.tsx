@@ -80,6 +80,13 @@ export interface PreviewSharedProps {
 
   onEditDrawio?: () => void;
 
+  // Slide hyperlinks + back/forward navigation history.
+  onSlideLink?: (target: string) => void;
+  onHistoryBack?: () => void;
+  onHistoryForward?: () => void;
+  canHistoryBack?: boolean;
+  canHistoryForward?: boolean;
+
   // On-preview module manipulation (move/resize/rotate). `manipulate` is passed
   // to SlideView; the toggles drive the edit-layout mode. `canEditLayout` is
   // false when the previewed slide isn't the active editor tab (so writes would

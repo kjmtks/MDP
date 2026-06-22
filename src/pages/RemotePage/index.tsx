@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useSync, type SyncMessage, type ImageSyncPayload, type OverviewGridPayload } from '../../features/remote/hooks/useSync';
+import type { SlideLinkRect } from '../../features/remote/capture/captureTypes';
 import { SlideScaler } from '../../features/slide/components/SlideScaler';
 import { DrawingOverlay, type Stroke } from '../../features/drawing/components/DrawingOverlay';
 import { useDrawing } from '../../features/drawing/hooks/useDrawing';
@@ -40,6 +41,7 @@ export default function RemotePage() {
   const [slideSize, setSlideSize] = useState({ width: 1280, height: 720 });
   const [isOverview, setIsOverview] = useState(false);
   const [gridImages, setGridImages] = useState<(string | null)[]>([]);
+  const [links, setLinks] = useState<SlideLinkRect[]>([]);
 
   const { drawings, addStroke, updateStrokes, syncDrawings, clear } = useDrawing();
 
@@ -59,6 +61,7 @@ export default function RemotePage() {
         if (typeof p.slideCount === 'number') setSlideCount(p.slideCount);
         if (p.slideSize) setSlideSize(p.slideSize);
         if (p.allDrawings) syncDrawings(p.allDrawings as Record<number, Stroke[]>);
+        setLinks(p.links || []);
         setIsOverview(!!p.isOverview);
         break;
       }
@@ -218,6 +221,8 @@ export default function RemotePage() {
   const handleRedo = () => { if (channelId) send({ type: 'REDO', pageIndex: index, channelId }); };
   const handleToggleOverview = () => { if (channelId) send({ type: 'TOGGLE_OVERVIEW', channelId }); };
   const handleSelectSlide = (i: number) => { if (channelId) send({ type: 'SELECT_SLIDE', index: i, channelId }); };
+  const handleLinkNav = (target: string) => { if (channelId) send({ type: 'LINK_NAV', target, channelId }); };
+  const handleHistoryNav = (dir: 1 | -1) => { if (channelId) send({ type: 'HISTORY_NAV', dir, channelId }); };
 
   const touchStartPos = useRef<{ x: number, y: number } | null>(null);
 
@@ -332,6 +337,7 @@ export default function RemotePage() {
             stylusOnly={stylusOnly}
             setStylusOnly={setStylusOnly}
             containerStyle={{ bottom: 30 }}
+            onHistoryBack={() => handleHistoryNav(-1)} onHistoryForward={() => handleHistoryNav(1)} canHistoryBack canHistoryForward
          />
 
          <SlideScaler width={slideSize.width} height={slideSize.height}>
@@ -349,6 +355,15 @@ export default function RemotePage() {
                   lineWidth={penWidth}
                   penOnly={stylusOnly}
                 />
+                {/* Hyperlink hotspots — clickable only in view mode (pen mode draws). */}
+                {mode === 'view' && links.map((lk, i) => (
+                  <div
+                    key={i}
+                    onClick={() => handleLinkNav(lk.target)}
+                    title={lk.target}
+                    style={{ position: 'absolute', left: `${lk.x * 100}%`, top: `${lk.y * 100}%`, width: `${lk.w * 100}%`, height: `${lk.h * 100}%`, cursor: 'pointer', pointerEvents: 'auto', zIndex: 5 }}
+                  />
+                ))}
              </div>
          </SlideScaler>
       </div>

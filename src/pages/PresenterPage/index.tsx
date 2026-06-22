@@ -271,6 +271,14 @@ export default function PresenterPage() {
     if (channelId) send({ type: 'SELECT_SLIDE', index: idx, channelId });
   }, [channelId, send]);
 
+  const sendLinkNav = useCallback((target: string) => {
+    if (channelId) send({ type: 'LINK_NAV', target, channelId });
+  }, [channelId, send]);
+
+  const sendHistoryNav = useCallback((dir: 1 | -1) => {
+    if (channelId) send({ type: 'HISTORY_NAV', dir, channelId });
+  }, [channelId, send]);
+
   const handleAddStroke = useCallback((stroke: Stroke) => {
     if (!channelId) return;
     addStroke(currentIndex, stroke, true);
@@ -309,11 +317,13 @@ export default function PresenterPage() {
         case 'presenter.addSlide': handleAddSlide(); break;
         case 'presenter.next': e.preventDefault(); sendNav(1); break;
         case 'presenter.prev': e.preventDefault(); sendNav(-1); break;
+        case 'presenter.historyBack': e.preventDefault(); sendHistoryNav(-1); break;
+        case 'presenter.historyForward': e.preventDefault(); sendHistoryNav(1); break;
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [sendNav, handleUndo, handleRedo, handleClear, handleAddSlide, appSettings]);
+  }, [sendNav, handleUndo, handleRedo, handleClear, handleAddSlide, sendHistoryNav, appSettings]);
 
   useEffect(() => {
     const handleTouch = (e: TouchEvent) => {
@@ -380,6 +390,7 @@ export default function PresenterPage() {
           containerStyle={{ position: 'absolute', bottom: 30, zIndex: 100 }}
           stylusOnly={stylusOnly}
           setStylusOnly={setStylusOnly}
+          onHistoryBack={() => sendHistoryNav(-1)} onHistoryForward={() => sendHistoryNav(1)} canHistoryBack canHistoryForward
         />
 
         <Group orientation="horizontal" style={{ height: '100%' }}>
@@ -406,6 +417,7 @@ export default function PresenterPage() {
                       slideIndex={currentIndex}
                       moduleRole="mirror"
                       presenting={true}
+                      onSlideLink={sendLinkNav}
                       onAddStroke={handleAddStroke}
                       onUpdateStrokes={(indices, dx, dy) => handleUpdateStrokes(currentIndex, indices, dx, dy)}
                       isInteracting={mode === 'pen'}

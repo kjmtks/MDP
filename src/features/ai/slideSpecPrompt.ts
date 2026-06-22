@@ -92,6 +92,8 @@ block on a single slide OVERRIDES the global one for that slide; an EMPTY block
 
 - \`<!-- @cover -->\` — render this slide as the title/cover page (uses the meta fields).
 - \`<!-- @pageclass NAME -->\` — add a CSS class to the slide (theme-specific styling).
+- \`<!-- @id NAME -->\` — give this slide a stable anchor a hyperlink can target
+  (\`[text](#NAME)\`). NAME is unique within the deck (letters/digits/-/_).
 - \`<!-- @caption TEXT -->\` — placed immediately BEFORE an image or table to caption it.
 - \`<!-- @transition NAME key: value -->\` — override the transition for this slide.
 - \`<!-- @note: TEXT -->\` — speaker note (hidden on the slide; shown in presenter view).
@@ -133,6 +135,10 @@ Argument syntax (the \`key: value\` list):
 - Code fences with extras: \`\`\`lang:filename.ext start:10{2,4-6}\`\`\` — optional filename,
   starting line number, and \`{ }\` highlighted line ranges.
 - Images \`![alt](path)\`. For diagrams and charts, see the next section.
+- Slide hyperlinks (jump to a page; the viewer can then go Back/Forward through the
+  jump history): \`[text](#5)\` → page 5 of THIS deck; \`[text](#NAME)\` → the slide with
+  \`<!-- @id NAME -->\`; \`[text](other.slide.md)\` / \`other.slide.md#5\` / \`other.slide.md#NAME\`
+  → another deck (path relative to this deck's folder). Other URLs open externally.
 
 ## Diagrams & charts
 
@@ -211,7 +217,7 @@ Acme Inc. — Confidential
 ---
 ## Agenda
 
-- Results
+- [Results](#details)
 - Roadmap
 - Q&A
 
@@ -222,6 +228,7 @@ Acme Inc. — Confidential
 <!-- @note: Pause here for questions. -->
 
 ---
+<!-- @id details -->
 ## Side by side
 
 <!-- @multicolumn ratio: [1, 1] -->

@@ -196,6 +196,21 @@ export const slideRenderer = (context: SlideContext, baseUrl: string = "", lastU
     }
   },
 
+  // Slide hyperlinks. INTERNAL targets — `#page`, `#id`, or `…deck.slide.md[#…]`
+  // — become a marked link the app intercepts (data-mdp-target). `.mdp-interactive`
+  // stops the click from also advancing the slide. Everything else opens normally.
+  link({ href, title, tokens }) {
+    const text = this.parser.parseInline(tokens);
+    const url = href || '';
+    const titleAttr = title ? ` title="${title}"` : '';
+    const internal = /^#/.test(url) || /\.slide\.md(#[^\s)]+)?$/i.test(url);
+    if (internal) {
+      const target = url.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+      return `<a href="#" class="mdp-slide-link mdp-interactive" data-mdp-target="${target}"${titleAttr}>${text}</a>`;
+    }
+    return `<a href="${url.replace(/"/g, '&quot;')}" target="_blank" rel="noopener noreferrer"${titleAttr}>${text}</a>`;
+  },
+
   code({ text, lang }: { text: string, lang?: string }) {
     if (lang === '@mermaid') {
       return `<div class="mermaid">${text}</div>`;

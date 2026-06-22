@@ -21,3 +21,18 @@ export interface RasterizeOptions {
   themeCssUrl?: string;
   scale?: number;
 }
+
+// A clickable slide-hyperlink hotspot, in FRACTIONS of the slide size (0..1), so
+// the remote (which renders the slide image at an arbitrary size) can place it.
+export interface SlideLinkRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  target: string; // raw `data-mdp-target` (`#5` | `#id` | `deck.slide.md#…`)
+}
+
+export interface RasterizeResult {
+  dataUrl: string;
+  links: SlideLinkRect[];
+}

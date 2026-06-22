@@ -594,6 +594,7 @@ export const PreviewPanel: React.FC = () => {
             penWidth={p.penWidth} setPenWidth={p.setPenWidth} canUndo={p.canUndo(p.currentSlideIndex)} canRedo={p.canRedo(p.currentSlideIndex)}
             onUndo={() => p.undo(p.currentSlideIndex)} onRedo={() => p.redo(p.currentSlideIndex)} containerStyle={{ bottom: '20px' }}
             stylusOnly={p.stylusOnly} setStylusOnly={p.setStylusOnly}
+            onHistoryBack={p.onHistoryBack} onHistoryForward={p.onHistoryForward} canHistoryBack={p.canHistoryBack} canHistoryForward={p.canHistoryForward}
           />
           <SlideScaler width={p.slideSize.width} height={p.slideSize.height}>
             {p.slides.map((slide, index) => (
@@ -605,6 +606,7 @@ export const PreviewPanel: React.FC = () => {
                     drawings={p.drawings[index] || []}
                     slideIndex={index} moduleRole={p.moduleRole}
                     manipulate={p.manipulate}
+                    onSlideLink={p.onSlideLink}
                     onAddStroke={(stroke) => { p.addStroke(index, stroke); p.send({ type: 'DRAW_STROKE', channelId: p.channelId, pageIndex: index, stroke }); }}
                     isInteracting={p.mode === 'pen'} toolType={p.toolType} color={p.penColor} lineWidth={p.penWidth} penOnly={p.stylusOnly}
                     onUpdateStrokes={(indices, dx, dy) => p.handleUpdateStrokes(index, indices, dx, dy)}
