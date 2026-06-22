@@ -1,0 +1,187 @@
+<module>
+  <name>graph</name>
+  <type>block</type>
+  <description>A graph / plot image with optional x-axis and y-axis labels (params) and an optional caption (a second body section) — each independent and optional, rendered with Markdown + KaTeX. Image, label and caption sizes are configurable.</description>
+  <aiSpec><![CDATA[
+Wrap a graph / plot / figure IMAGE with optional axis labels and a caption. Block
+module. The FIRST body section is the image (ordinary markdown, e.g. `![](plot.png)`
+or an `![](@alias)` library reference). An OPTIONAL caption is a SECOND body section
+after a `<!-- @ -->` separator (so it can be long and contain commas — Markdown +
+$KaTeX$). The axis labels are params (also Markdown + $KaTeX$, each optional):
+- `xlabel` — centred UNDER the image (the horizontal axis).
+- `ylabel` — to the LEFT of the image, rotated 90° (the vertical axis).
+Sizes (all optional CSS lengths): `imagesize` (image width — e.g. `400px`, `30em`,
+or a `%` of the slide like `70%`; blank = natural size), `labelsize` (axis-label
+font size), `captionsize` (caption font size).
+Quote any LABEL value that contains a comma. Example:
+`<!-- @graph ylabel: "$y$ [m]", xlabel: "$t$ [s]" -->`
+then `![](traj.png)` then `<!-- @ -->` then `Fig. 1: trajectory, with $g = 9.8$.`
+then `<!-- @end -->`.
+]]></aiSpec>
+
+  <parameters>
+    <param name="xlabel" type="text" default="" label="X-axis label" desc="Centred under the image (horizontal axis). Markdown + $KaTeX$. Blank = none. Quote it if it contains a comma." />
+    <param name="ylabel" type="text" default="" label="Y-axis label" desc="Left of the image, rotated (vertical axis). Markdown + $KaTeX$. Blank = none. Quote it if it contains a comma." />
+    <param name="imagesize" type="text" default="" label="Image size" desc="Image width: a CSS length (e.g. 400px, 30em) or a % of the slide (e.g. 70%). Blank = natural size." />
+    <param name="labelsize" type="text" default="1em" label="Label size" desc="Font size of the axis labels (CSS length, e.g. 1.1em, 18px)." />
+    <param name="captionsize" type="text" default="0.9em" label="Caption size" desc="Font size of the caption (CSS length, e.g. 0.85em, 14px)." />
+  </parameters>
+
+  <snippets>
+    <snippet>
+      <category>Media</category>
+      <label>Graph — axis labels + caption</label>
+      <text><![CDATA[<!-- @graph ylabel: "$y$", xlabel: "$x$" -->
+![](image.png)
+<!-- @ -->
+Figure 1: result
+<!-- @end -->]]></text>
+      <description>A graph image with x/y axis labels and a caption (second section; Markdown + KaTeX).</description>
+    </snippet>
+    <snippet>
+      <category>Media</category>
+      <label>Graph — sized, x-axis only</label>
+      <text><![CDATA[<!-- @graph xlabel: "Time [s]", imagesize: 70% -->
+![](image.png)
+<!-- @end -->]]></text>
+      <description>A graph at 70% of the slide width with only an x-axis label.</description>
+    </snippet>
+  </snippets>
+
+  <render><![CDATA[
+    const def = (v, d) => (v === undefined || v === '') ? d : v;
+    // Size values land in a style attribute, so strip characters that could break
+    // out of it (author content, but keep it tidy). Labels/caption go through
+    // markdown instead, so they are not touched here.
+    const cssLen = (v) => String(v || '').replace(/[<>"';]/g, '').trim();
+
+    const xlabel = (args.xlabel || '').trim();
+    const ylabel = (args.ylabel || '').trim();
+    const imagesize = cssLen(args.imagesize);
+    const labelsize = cssLen(def(args.labelsize, '1em')) || '1em';
+    const captionsize = cssLen(def(args.captionsize, '0.9em')) || '0.9em';
+    // First body section = the image; OPTIONAL second section (after `<!-- @ -->`)
+    // = the caption (kept as a section so it can be long / contain commas).
+    const image = (sections[0] || '').trim();
+    const caption = (sections[1] || '').trim();
+
+    // A "%" image width is taken relative to the slide (applied to the figure area
+    // so the columns stay adjacent); any other length is applied to the image
+    // itself; blank keeps the image's natural size.
+    const isPct = /%$/.test(imagesize);
+    const areaWidth = (imagesize && isPct) ? imagesize : 'fit-content';
+    const imgWidth = imagesize ? (isPct ? '100%' : imagesize) : 'auto';
+
+    const vars = [
+      '--graph-label-size: ' + labelsize,
+      '--graph-caption-size: ' + captionsize,
+      '--graph-area-width: ' + areaWidth,
+      '--graph-img-width: ' + imgWidth
+    ].join('; ');
+
+    // Each label/caption is wrapped in a block padded with blank lines so the
+    // Markdown (and KaTeX) inside it is rendered — `<div>` content without blank
+    // lines would stay literal. Empty fields are omitted entirely.
+    const yl = ylabel ? '<div class="mdp-mod-graph-ylabel"><div class="mdp-mod-graph-ylabel-rot">\n\n' + ylabel + '\n\n</div></div>' : '';
+    const img = '<div class="mdp-mod-graph-image">\n\n' + image + '\n\n</div>';
+    const xl = xlabel ? '<div class="mdp-mod-graph-xlabel">\n\n' + xlabel + '\n\n</div>' : '';
+    const cap = caption ? '<figcaption class="mdp-mod-graph-caption">\n\n' + caption + '\n\n</figcaption>' : '';
+
+    return '\n\n<figure class="mdp-mod-graph" style="' + vars + ';">'
+      + '<div class="mdp-mod-graph-area">' + yl + img + xl + '</div>'
+      + cap
+      + '</figure>\n\n';
+  ]]></render>
+
+  <style><![CDATA[
+    .mdp-mod-graph {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.5em;
+      width: 100%;
+      margin: 1rem 0;
+      color: var(--text-color);
+      box-sizing: border-box;
+    }
+    /* y-label | image  (row 1)
+              | x-label (row 2) */
+    .mdp-mod-graph-area {
+      display: grid;
+      grid-template-columns: auto auto;
+      grid-template-rows: auto auto;
+      align-items: center;
+      justify-items: center;
+      width: var(--graph-area-width, fit-content);
+      max-width: 100%;
+    }
+    .mdp-mod-graph-ylabel {
+      grid-column: 1;
+      grid-row: 1;
+      align-self: stretch;            /* fill the image row so the label centres on it */
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      /* slim column ≈ the rotated label's height; scales with the label size */
+      width: calc(var(--graph-label-size, 1em) * 1.9);
+    }
+    .mdp-mod-graph-ylabel-rot {
+      /* Rotate the whole (markdown + KaTeX) label so math stays correctly typeset —
+         writing-mode would set each glyph vertical and break the math. */
+      transform: rotate(-90deg);
+      transform-origin: center;
+      white-space: nowrap;
+      font-size: var(--graph-label-size, 1em);
+      line-height: 1.2;
+      text-align: center;
+    }
+    .mdp-mod-graph-image {
+      grid-column: 2;
+      grid-row: 1;
+      min-width: 0;
+      max-width: 100%;
+    }
+    .mdp-mod-graph-image img {
+      display: block;
+      width: var(--graph-img-width, auto);
+      max-width: 100%;
+      height: auto;
+      margin: 0 auto;
+    }
+    .mdp-mod-graph-xlabel {
+      grid-column: 2;
+      grid-row: 2;
+      text-align: center;
+      font-size: var(--graph-label-size, 1em);
+      line-height: 1.2;
+      margin-top: 0.35em;
+      max-width: 100%;
+    }
+    .mdp-mod-graph-caption {
+      text-align: center;
+      font-size: var(--graph-caption-size, 0.9em);
+      line-height: 1.35;
+      opacity: 0.85;
+      max-width: 100%;
+    }
+    /* The fields are markdown-rendered (wrapped in <p>); drop block margins so they
+       sit cleanly, and tame display-math spacing. */
+    .mdp-mod-graph-ylabel-rot > :first-child,
+    .mdp-mod-graph-image > :first-child,
+    .mdp-mod-graph-xlabel > :first-child,
+    .mdp-mod-graph-caption > :first-child { margin-top: 0; }
+    .mdp-mod-graph-ylabel-rot > :last-child,
+    .mdp-mod-graph-image > :last-child,
+    .mdp-mod-graph-xlabel > :last-child,
+    .mdp-mod-graph-caption > :last-child { margin-bottom: 0; }
+    .mdp-mod-graph-ylabel-rot p,
+    .mdp-mod-graph-image p,
+    .mdp-mod-graph-xlabel p,
+    .mdp-mod-graph-caption p { margin: 0; }
+    .mdp-mod-graph-ylabel-rot .katex-display,
+    .mdp-mod-graph-xlabel .katex-display,
+    .mdp-mod-graph-caption .katex-display { margin: 0; }
+  ]]></style>
+
+  <script></script>
+</module>
