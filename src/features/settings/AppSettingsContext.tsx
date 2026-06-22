@@ -73,7 +73,9 @@ export const AppSettingsProvider: React.FC<{ children: React.ReactNode }> = ({ c
     el.setAttribute('data-app-theme', settings.appTheme);
     el.style.setProperty('--app-font-size', `${settings.appFontSize}px`);
     el.style.setProperty('--app-editor-font-size', `${settings.editorFontSize}px`);
-  }, [settings.appTheme, settings.appFontSize, settings.editorFontSize]);
+    el.style.setProperty('--app-editor-caret-width', `${settings.editorCaretWidth}px`);
+    el.style.setProperty('--app-editor-line-height', `${settings.editorLineHeight}`);
+  }, [settings.appTheme, settings.appFontSize, settings.editorFontSize, settings.editorCaretWidth, settings.editorLineHeight]);
 
   const persist = useCallback((next: AppSettings) => {
     if (!hasWorkspace()) return; // in-memory only until a workspace exists

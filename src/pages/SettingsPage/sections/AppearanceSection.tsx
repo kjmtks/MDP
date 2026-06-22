@@ -63,6 +63,30 @@ export const AppearanceSection: React.FC = () => {
         />
         <div className="settings-field-hint">Code editor font size (also adjustable with Ctrl + mouse wheel).</div>
       </div>
+
+      <div className="settings-field">
+        <div className="settings-field-label">Cursor thickness — {settings.editorCaretWidth}px</div>
+        <Slider
+          value={settings.editorCaretWidth}
+          min={1} max={6} step={1} marks
+          valueLabelDisplay="auto"
+          onChange={(_e, v) => update({ editorCaretWidth: v as number })}
+          sx={{ maxWidth: 360, color: 'var(--app-accent)' }}
+        />
+        <div className="settings-field-hint">Width of the text cursor (caret) in the editor.</div>
+      </div>
+
+      <div className="settings-field">
+        <div className="settings-field-label">Editor line height — {settings.editorLineHeight.toFixed(1)}</div>
+        <Slider
+          value={settings.editorLineHeight}
+          min={1.2} max={2.4} step={0.1}
+          valueLabelDisplay="auto"
+          onChange={(_e, v) => update({ editorLineHeight: v as number })}
+          sx={{ maxWidth: 360, color: 'var(--app-accent)' }}
+        />
+        <div className="settings-field-hint">Line spacing in the code editor.</div>
+      </div>
     </div>
   );
 };

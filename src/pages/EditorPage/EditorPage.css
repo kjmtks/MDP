@@ -144,6 +144,17 @@
 .cm-activeSlide {
   background-color: rgba(59, 130, 246, 0.1) !important;
 }
+/* Text cursor (caret) thickness — user-adjustable in Settings → Appearance.
+   Override only the WIDTH so the theme's caret colour is kept. */
+.cm-cursor,
+.cm-cursor-primary {
+  border-left-width: var(--app-editor-caret-width, 2px) !important;
+}
+/* Editor line height — user-adjustable. Unitless so it scales with the font size. */
+.cm-content,
+.cm-content .cm-line {
+  line-height: var(--app-editor-line-height, 1.6) !important;
+}
 
 .slideshow-overlay {
   position: fixed;

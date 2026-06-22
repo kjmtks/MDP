@@ -7,6 +7,8 @@ export interface AppSettings {
   appTheme: string;                      // AppThemeDef.id (e.g. 'dark' | 'light')
   appFontSize: number;                   // app UI base font size, px
   editorFontSize: number;                // CodeMirror editor font size, px
+  editorCaretWidth: number;              // text cursor (caret) thickness, px
+  editorLineHeight: number;              // editor line height (unitless multiplier)
   // Sparse keybinding OVERRIDES: actionId -> list of key combos. Unspecified
   // actions fall back to the registry defaults, so "reset" = delete the key.
   shortcuts: Record<string, string[]>;
@@ -25,6 +27,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   appTheme: 'dark',
   appFontSize: 14,
   editorFontSize: 16,
+  editorCaretWidth: 2,                    // thicker than CodeMirror's ~1.2px default for visibility
+  editorLineHeight: 1.6,
   shortcuts: {},
   authorName: '',
   authorAffiliation: '',
@@ -39,6 +43,8 @@ export function normalizeSettings(raw: unknown): AppSettings {
     appTheme: typeof r.appTheme === 'string' ? r.appTheme : DEFAULT_SETTINGS.appTheme,
     appFontSize: typeof r.appFontSize === 'number' ? r.appFontSize : DEFAULT_SETTINGS.appFontSize,
     editorFontSize: typeof r.editorFontSize === 'number' ? r.editorFontSize : DEFAULT_SETTINGS.editorFontSize,
+    editorCaretWidth: typeof r.editorCaretWidth === 'number' ? r.editorCaretWidth : DEFAULT_SETTINGS.editorCaretWidth,
+    editorLineHeight: typeof r.editorLineHeight === 'number' ? r.editorLineHeight : DEFAULT_SETTINGS.editorLineHeight,
     shortcuts: (r.shortcuts && typeof r.shortcuts === 'object') ? r.shortcuts as Record<string, string[]> : {},
     authorName: typeof r.authorName === 'string' ? r.authorName : '',
     authorAffiliation: typeof r.authorAffiliation === 'string' ? r.authorAffiliation : '',
