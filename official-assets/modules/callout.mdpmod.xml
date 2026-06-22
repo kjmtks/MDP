@@ -82,10 +82,13 @@ Write your note here
     const cls = ['mdp-mod-callout', 'mdp-mod-callout--' + variant];
     if (shadow) cls.push('mdp-mod-callout--shadow');
 
+    // The title is wrapped in a block with surrounding blank lines so markdown
+    // (and KaTeX) inside it is rendered, exactly like the body — `<span>` would be
+    // raw HTML and stay literal.
     const head = (title || icon)
       ? '<div class="mdp-mod-callout-title">'
           + (icon ? '<span class="mdp-mod-callout-icon">' + icon + '</span>' : '')
-          + (title ? '<span>' + title + '</span>' : '')
+          + (title ? '<div class="mdp-mod-callout-titletext">\n\n' + title + '\n\n</div>' : '')
         + '</div>'
       : '';
 
@@ -114,6 +117,11 @@ Write your note here
       color: var(--cl-color);
     }
     .mdp-mod-callout-icon { font-size: 1.15em; line-height: 1; }
+    /* The title is markdown-rendered (so it gets wrapped in <p>); keep it on the
+       title row by stripping the paragraph's block margins. */
+    .mdp-mod-callout-titletext { min-width: 0; }
+    .mdp-mod-callout-title p { margin: 0; }
+    .mdp-mod-callout-title .katex-display { margin: 0; }
 
     .mdp-mod-callout-body {
       padding: 0.25rem 1rem;
@@ -125,6 +133,8 @@ Write your note here
     }
     .mdp-mod-callout-body > *:first-child { margin-top: 0; padding-top: 0; }
     .mdp-mod-callout-body > *:last-child { margin-bottom: 0; padding-bottom: 0; }
+    /* Tighten display-math spacing inside the box (KaTeX's default is 1em 0). */
+    .mdp-mod-callout-body .katex-display { margin: 0.4em 0; }
 
     /* Variants ------------------------------------------------------------- */
     .mdp-mod-callout--outline { border: var(--cl-bw) solid var(--cl-color); }

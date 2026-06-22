@@ -8,6 +8,7 @@ MDP allows you to write in Markdown, seamlessly insert diagrams, and present you
 - **Markdown-Driven Slides**: Create clean and beautiful slides using standard Markdown syntax.
 - **Live Preview & Split Pane**: Edit your Markdown on the upper pane and see the real-time slide preview on the lower pane.
 - **Built-in Draw.io Integration**: Easily insert, edit, and save Draw.io diagrams directly within the editor.
+- **Slide Hyperlinks & History**: Link to any page — in this deck or another — and step back/forward through your jumps like a browser, for non-linear presentations.
 - **Advanced Presenter Mode**: 
   - Dual-screen setup (Presenter view & Audience view).
   - Built-in timer and next-slide preview.
@@ -55,12 +56,35 @@ npm run start
 
 After the server starts, open the following URL in your browser: http://localhost:3000
 
+## 🔗 Slide Hyperlinks & Navigation History
+
+Turn a deck into an interactive, non-linear presentation: use standard Markdown links to jump to a specific page — in the same deck or another one — and step back through your jumps like a web browser.
+
+**Link targets** — write them as a normal Markdown link `[text](target)`:
+
+| Example | Jumps to |
+| :--- | :--- |
+| `[Details](#5)` | Page 5 of the current deck |
+| `[Intro](#intro)` | The slide tagged `<!-- @id intro -->` |
+| `[Appendix](appendix.slide.md)` | Another deck (its first page) |
+| `[Q3](appendix.slide.md#3)` | Another deck, page 3 |
+| `[Method](appendix.slide.md#intro)` | Another deck, the `#intro` anchor |
+
+- **Anchors**: add `<!-- @id NAME -->` to a slide to give it a stable name that survives slide reordering. `NAME` is unique within the deck (letters, digits, `-`, `_`).
+- **Other-deck paths** are resolved relative to the current deck's folder (e.g. `../shared/refs.slide.md#2`).
+- **History**: following a link records where you came from. **Back / Forward** (`Alt + ←` / `Alt + →`, or the on-screen buttons next to the slide counter) return you to the previous page — across decks too. Normal next/previous navigation is unaffected.
+- **Works everywhere**: the editor preview, the fullscreen slideshow, the Presenter view, and the Remote display (tap the link on the mirrored slide). External `http(s)://` links open in your browser.
+
+> The **Back / Forward** keys are remappable in **Settings → Shortcuts**.
+
 ## ⌨️ Shortcuts (Presenter Mode)
 
 | Key | Action |
 | :--- | :--- |
 | `Right` / `Down` / `Space` | Next Slide |
 | `Left` / `Up` | Previous Slide |
+| `Alt + Left` | Navigate back (hyperlink history) |
+| `Alt + Right` | Navigate forward (hyperlink history) |
 | `P` | Toggle Pen / View mode |
 | `C` | Clear all drawings on current slide |
 | `N` | Insert a blank slide |

@@ -76,6 +76,10 @@ ${contentStr}
     }
     .mdp-mod-column > :first-child { margin-top: 0; padding-top: 0; }
     .mdp-mod-column > :last-child { margin-bottom: 0; padding-bottom: 0; }
+    /* Tighten the vertical rhythm inside columns — the slide default (1rem per
+       paragraph) is too airy in narrow columns. The block itself has no margin. */
+    .mdp-mod-column p { margin: 0.5em 0; }
+    .mdp-mod-column ul, .mdp-mod-column ol { margin: 0.4em 0; }
   ]]></style>
   
   <script></script>
