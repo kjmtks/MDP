@@ -145,6 +145,9 @@ export default function EditorPage() {
   const [tabToClose, setTabToClose] = useState<number | null>(null);
 
   const isSyncingRef = useRef(false);
+  // Bumped after a catalog sync to force a full module/effect re-registration
+  // (a sync can overwrite existing files in place, leaving their paths unchanged).
+  const [assetsEpoch, setAssetsEpoch] = useState(0);
 
   const handleTabCloseClick = useCallback((e: React.MouseEvent, index: number) => {
     e.stopPropagation();
@@ -192,6 +195,9 @@ export default function EditorPage() {
     };
     const handleSyncEnd = () => {
       isSyncingRef.current = false;
+      // A sync may rewrite existing module/effect files in place (same paths), so
+      // force a full re-registration in addition to refreshing the file tree.
+      setAssetsEpoch((e) => e + 1);
       handleManualRefresh();
     };
 
@@ -377,15 +383,10 @@ export default function EditorPage() {
   // catalog or reload snippets via window events — the editor owns the file tree
   // and snippet state, so it performs the work and refreshes here.
   useEffect(() => {
-    const onSync = () => { void handleManualSync(); };
     const onReload = () => { void reloadSnippets(); };
-    window.addEventListener('mdp-sync-catalog', onSync);
     window.addEventListener('mdp-reload-snippets', onReload);
-    return () => {
-      window.removeEventListener('mdp-sync-catalog', onSync);
-      window.removeEventListener('mdp-reload-snippets', onReload);
-    };
-  }, [handleManualSync, reloadSnippets]);
+    return () => window.removeEventListener('mdp-reload-snippets', onReload);
+  }, [reloadSnippets]);
 
   useEffect(() => {
     let isCancelled = false;
@@ -470,7 +471,7 @@ export default function EditorPage() {
       isCancelled = true;
       clearTimeout(timerId);
     };
-  }, [modulePathsString, effectPathsString, hasSelectedFolder, refreshModuleSnippets]);
+  }, [modulePathsString, effectPathsString, hasSelectedFolder, refreshModuleSnippets, assetsEpoch]);
 
   const handleOpenFolderWithFlag = useCallback(async () => {
     await handleOpenFolder();

@@ -18,19 +18,19 @@ import { AppearanceSection } from './sections/AppearanceSection';
 import { GeneralSection } from './sections/GeneralSection';
 import { ProfileSection } from './sections/ProfileSection';
 import { ShortcutsSection } from './sections/ShortcutsSection';
-import { ModulesSection } from './sections/ModulesSection';
+import { AssetsSection } from './sections/AssetsSection';
 import { AiSpecSection } from './sections/AiSpecSection';
 import { AboutSection } from './sections/AboutSection';
 import './SettingsPage.css';
 
-type SectionId = 'appearance' | 'general' | 'profile' | 'shortcuts' | 'modules' | 'ai' | 'about';
+type SectionId = 'appearance' | 'general' | 'profile' | 'shortcuts' | 'assets' | 'ai' | 'about';
 
 const NAV: { id: SectionId; label: string; Icon: typeof PaletteIcon }[] = [
   { id: 'appearance', label: 'Appearance', Icon: PaletteIcon },
   { id: 'general', label: 'General', Icon: TuneIcon },
   { id: 'profile', label: 'Author profile', Icon: PersonOutlineIcon },
   { id: 'shortcuts', label: 'Shortcuts', Icon: KeyboardIcon },
-  { id: 'modules', label: 'Modules', Icon: ExtensionIcon },
+  { id: 'assets', label: 'Assets', Icon: ExtensionIcon },
   { id: 'ai', label: 'AI prompt', Icon: AutoAwesomeIcon },
   { id: 'about', label: 'About', Icon: InfoOutlinedIcon },
 ];
@@ -84,7 +84,7 @@ export const SettingsPage: React.FC = () => {
           {section === 'general' && <GeneralSection />}
           {section === 'profile' && <ProfileSection />}
           {section === 'shortcuts' && <ShortcutsSection />}
-          {section === 'modules' && <ModulesSection />}
+          {section === 'assets' && <AssetsSection />}
           {section === 'ai' && <AiSpecSection />}
           {section === 'about' && <AboutSection />}
         </div>
