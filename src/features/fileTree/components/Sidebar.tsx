@@ -15,7 +15,8 @@ import { type FileNode, type FileType } from '../../../types';
 import type { Stroke } from '../../drawing/components/DrawingOverlay';
 import type { Bookmark } from '../../../pages/EditorPage/hooks/useBookmarks';
 import { BookmarkList } from './BookmarkList';
-import { apiClient } from '../../../api/apiClient';
+import { apiClient, isElectron } from '../../../api/apiClient';
+import LaunchIcon from '@mui/icons-material/Launch';
 import { reportError } from '../../../components/error/errorReporter';
 import defaultThemeContent from '../../../../public/themes/default.css?raw';
 import defaultTemplateContent from '../../../../public/templates/default.slide.md?raw';
@@ -142,11 +143,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
       a.type === b.type ? a.name.localeCompare(b.name) : (a.type === 'directory' ? -1 : 1);
 
     // Keep `.mdp` (the app-managed container) and all non-dot entries; hide every
-    // other dotfile, plus the managed `.mdp/images` store.
+    // other dotfile, plus the managed `.mdp/images` store. `.mdpignore` (the
+    // search-exclusion marker) is kept visible so users can see / manage it.
     const filterNodes = (nodes: FileNode[], parentPath: string): FileNode[] => {
       return nodes
         .filter(n => {
           if (parentPath === MDP_DIR && n.name === 'images') return false;
+          if (n.name === '.mdpignore') return true;
           if (parentPath === '') return n.name === MDP_DIR || !n.name.startsWith('.');
           return !n.name.startsWith('.');
         })
@@ -725,6 +728,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {contextMenu?.node && !contextMenu.node.isSpecial && (
           <MenuItem onClick={() => { setDeleteDialogOpen(true); setContextMenu(null); }} sx={{ color: 'error.main' }}>
             <ListItemIcon><DeleteIcon fontSize="small" color="error" /></ListItemIcon> Delete
+          </MenuItem>
+        )}
+        {/* Electron only: open this folder (or the workspace root) in the OS file manager. */}
+        {isElectron() && contextMenu?.isFolder && !contextMenu?.node?.isVirtual && (
+          <MenuItem onClick={() => { apiClient.openInFileManager(contextMenu.path); setContextMenu(null); }}>
+            <ListItemIcon><LaunchIcon fontSize="small" /></ListItemIcon>
+            Reveal in {/Mac/i.test(navigator.userAgent) ? 'Finder' : /Win/i.test(navigator.userAgent) ? 'Explorer' : 'File Manager'}
           </MenuItem>
         )}
         <Divider />

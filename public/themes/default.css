@@ -209,7 +209,7 @@
 }
 .slide-content-wrapper table caption {
   font-size: 0.9em;
-  color: var(--muted-color);
+  color: var(--text-color);
   font-weight: 500;
   letter-spacing: 0.02em;
   padding: 0.5rem;
@@ -236,7 +236,7 @@
 /* Image Captions */
 .slide-content-wrapper figcaption {
   font-size: 0.9em;
-  color: var(--muted-color);
+  color: var(--text-color);
   letter-spacing: 0.02em;
   text-align: center;
   line-height: 1.4;

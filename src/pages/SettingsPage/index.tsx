@@ -2,8 +2,10 @@ import React, { useState } from 'react';
 import { IconButton, Tooltip } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import PaletteIcon from '@mui/icons-material/Palette';
+import TuneIcon from '@mui/icons-material/Tune';
 import PersonOutlineIcon from '@mui/icons-material/PersonOutline';
 import KeyboardIcon from '@mui/icons-material/Keyboard';
+import ExtensionIcon from '@mui/icons-material/Extension';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import MinimizeIcon from '@mui/icons-material/Remove';
@@ -13,18 +15,22 @@ import { isElectron } from '../../api/apiClient';
 import { isMac } from '../../utils/osUtils';
 import { closeSettings } from '../../features/settings/nav';
 import { AppearanceSection } from './sections/AppearanceSection';
+import { GeneralSection } from './sections/GeneralSection';
 import { ProfileSection } from './sections/ProfileSection';
 import { ShortcutsSection } from './sections/ShortcutsSection';
+import { ModulesSection } from './sections/ModulesSection';
 import { AiSpecSection } from './sections/AiSpecSection';
 import { AboutSection } from './sections/AboutSection';
 import './SettingsPage.css';
 
-type SectionId = 'appearance' | 'profile' | 'shortcuts' | 'ai' | 'about';
+type SectionId = 'appearance' | 'general' | 'profile' | 'shortcuts' | 'modules' | 'ai' | 'about';
 
 const NAV: { id: SectionId; label: string; Icon: typeof PaletteIcon }[] = [
   { id: 'appearance', label: 'Appearance', Icon: PaletteIcon },
+  { id: 'general', label: 'General', Icon: TuneIcon },
   { id: 'profile', label: 'Author profile', Icon: PersonOutlineIcon },
   { id: 'shortcuts', label: 'Shortcuts', Icon: KeyboardIcon },
+  { id: 'modules', label: 'Modules', Icon: ExtensionIcon },
   { id: 'ai', label: 'AI prompt', Icon: AutoAwesomeIcon },
   { id: 'about', label: 'About', Icon: InfoOutlinedIcon },
 ];
@@ -75,8 +81,10 @@ export const SettingsPage: React.FC = () => {
         </nav>
         <div className="settings-content">
           {section === 'appearance' && <AppearanceSection />}
+          {section === 'general' && <GeneralSection />}
           {section === 'profile' && <ProfileSection />}
           {section === 'shortcuts' && <ShortcutsSection />}
+          {section === 'modules' && <ModulesSection />}
           {section === 'ai' && <AiSpecSection />}
           {section === 'about' && <AboutSection />}
         </div>

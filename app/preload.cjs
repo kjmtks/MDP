@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getFileTree: () => ipcRenderer.invoke('getFileTree'),
   getFileAsDataUrl: (filePath) => ipcRenderer.invoke('getFileAsDataUrl', filePath),
   openFolder: () => ipcRenderer.invoke('openFolder'),
+  openInFileManager: (relPath) => ipcRenderer.invoke('openInFileManager', relPath),
   setBaseDir: (dirPath) => ipcRenderer.invoke('setBaseDir', dirPath),
   minimize: () => ipcRenderer.send('window-minimize'),
   maximize: () => ipcRenderer.send('window-maximize'),

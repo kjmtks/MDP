@@ -31,7 +31,7 @@ import { useDrawio } from '../../features/drawio/hooks/useDrawio';
 import { useAppActions } from './hooks/useAppActions';
 import { useEditorIntegration } from '../../features/editor/hooks/useEditorIntegration';
 import { apiClient, isElectron } from '../../api/apiClient';
-import { clearAllModules, registerModule, getAllModuleSnippets, loadedModules } from '../../features/modules/moduleManager';
+import { clearAllModules, registerModule, getAllModuleSnippets, loadedModules, setDisabledModules } from '../../features/modules/moduleManager';
 import { refreshModuleRegions } from '../../features/editor/extensions/ModuleRegionPlugin';
 import { ModuleSettingsDialog } from '../../features/modules/components/ModuleSettingsDialog';
 import { loadedEffects } from '../../features/effects/effectManager';
@@ -116,7 +116,7 @@ export default function EditorPage() {
 
   const {
     markdown, setMarkdown, debouncedMarkdown,
-    fileTree, fetchFileTree, handleManualRefresh,
+    fileTree, fetchFileTree, handleManualRefresh, reloadSlides,
     lastUpdated, currentFileName, currentFileType,
     setTemplateContent, markdownRef, isLoadingFile,
     loadFile, handleSave, handleOpenFolder, isModified,
@@ -328,6 +328,65 @@ export default function EditorPage() {
   // clicks "Back to slides").
   useEffect(() => { setPreviewImage(null); }, [currentFileName]);
 
+  // Re-merge module/effect snippets into the snippet list (excluding disabled
+  // modules). Shared by initial load, catalog sync, file-save and the
+  // enabled-modules toggle so the snippet list always matches the active modules.
+  const refreshModuleSnippets = useCallback(() => {
+    const allModSnips = [...getAllModuleSnippets(), ...getAllEffectSnippets()];
+    setSnipets(prev => {
+      const cleanPrev = prev.map(c => ({
+        ...c,
+        items: c.items.filter(item => !item.isModule)
+      })).filter(c => c.items.length > 0);
+      allModSnips.forEach(snip => {
+        const catName = snip.category || 'Custom Modules';
+        const cat = cleanPrev.find(c => c.category === catName);
+        if (cat) cat.items.push(snip);
+        else cleanPrev.push({ category: catName, items: [snip] });
+      });
+      return cleanPrev;
+    });
+  }, []);
+
+  // Re-fetch workspace/file snippets, then re-append the active module snippets.
+  // Triggered from Settings → Modules → "Reload snippets" via a window event.
+  const reloadSnippets = useCallback(async () => {
+    try {
+      const data = await apiClient.getSnipets();
+      setSnipets(data);
+    } catch (err) {
+      console.error('Failed to reload snippets', err);
+    }
+    refreshModuleSnippets();
+  }, [refreshModuleSnippets]);
+
+  // Apply the user's enabled/disabled module choices (from app settings): update
+  // the active set, re-merge snippets, and force a slide re-parse so the preview
+  // reflects the change live (this page stays mounted under the Settings overlay).
+  useEffect(() => {
+    setDisabledModules(appSettings.disabledModules || []);
+    // Intentional state sync: a module enable/disable change must re-merge snippets
+    // and re-parse the slides so the preview reflects it live.
+    /* eslint-disable react-hooks/set-state-in-effect */
+    refreshModuleSnippets();
+    setModuleEpoch((e) => e + 1);
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, [appSettings.disabledModules, refreshModuleSnippets]);
+
+  // Settings overlay (a separate component) asks the editor to sync the official
+  // catalog or reload snippets via window events — the editor owns the file tree
+  // and snippet state, so it performs the work and refreshes here.
+  useEffect(() => {
+    const onSync = () => { void handleManualSync(); };
+    const onReload = () => { void reloadSnippets(); };
+    window.addEventListener('mdp-sync-catalog', onSync);
+    window.addEventListener('mdp-reload-snippets', onReload);
+    return () => {
+      window.removeEventListener('mdp-sync-catalog', onSync);
+      window.removeEventListener('mdp-reload-snippets', onReload);
+    };
+  }, [handleManualSync, reloadSnippets]);
+
   useEffect(() => {
     let isCancelled = false;
 
@@ -394,22 +453,7 @@ export default function EditorPage() {
       }
 
       if (!isCancelled) {
-        const allModSnips = [...getAllModuleSnippets(), ...getAllEffectSnippets()];
-        setSnipets(prev => {
-          const cleanPrev = prev.map(c => ({
-            ...c,
-            items: c.items.filter(item => !item.isModule)
-          })).filter(c => c.items.length > 0);
-
-          allModSnips.forEach(snip => {
-            const catName = snip.category || 'Custom Modules';
-            const cat = cleanPrev.find(c => c.category === catName);
-            if (cat) cat.items.push(snip);
-            else cleanPrev.push({ category: catName, items: [snip] });
-          });
-
-          return cleanPrev;
-        });
+        refreshModuleSnippets();
         // Modules + effects are now registered (markdown transforms + CSS ready):
         // force a slide re-parse so anything rendered raw beforehand is fixed.
         setModuleEpoch((e) => e + 1);
@@ -426,7 +470,7 @@ export default function EditorPage() {
       isCancelled = true;
       clearTimeout(timerId);
     };
-  }, [modulePathsString, effectPathsString, hasSelectedFolder]);
+  }, [modulePathsString, effectPathsString, hasSelectedFolder, refreshModuleSnippets]);
 
   const handleOpenFolderWithFlag = useCallback(async () => {
     await handleOpenFolder();
@@ -951,7 +995,11 @@ export default function EditorPage() {
   const handlePrint = useCallback(async () => {
     const originalTitle = document.title;
     let baseName = 'MDP_Presentation';
-    if (currentFileName) {
+    const deckTitle = (globalContext.meta?.title || '').trim();
+    if (appSettings.pdfNameSource === 'title' && deckTitle) {
+      // Use the deck's @title as the default PDF name (per the General setting).
+      baseName = deckTitle;
+    } else if (currentFileName) {
       baseName = currentFileName.split('/').pop() || 'MDP_Presentation';
       baseName = baseName.replace(/\.slide\.md$/i, '').replace(/\.md$/i, '');
     }
@@ -1055,7 +1103,7 @@ export default function EditorPage() {
       // Hard safety net in case the timer is ever lost.
       setTimeout(cleanup, 8000);
     }
-  }, [currentFileName, markdown]);
+  }, [currentFileName, markdown, appSettings.pdfNameSource, globalContext]);
 
   const handleFileSelect = useCallback((path: string, isBinary?: boolean) => {
     const url = new URL(window.location.href);
@@ -1366,12 +1414,13 @@ export default function EditorPage() {
     onToggleLivePreview: () => setLivePreview((v) => !v),
     // Render the current editor content once, even while live preview is off.
     onApplyPreview: () => setPreviewSource({ fileName: currentFileName, fileType: effectiveFileType, md: markdownRef.current }),
+    onReloadSlides: reloadSlides,
   }), [previewFileType, slides, currentSlideIndex, slideSize, basePath, drawings, mode, setMode,
     showControls, moveSlide, handleAddBlankSlide, clear, send, channelId, toolType, setToolType,
     penColor, setPenColor, penWidth, setPenWidth, canUndo, canRedo, undo, redo, stylusOnly,
     setStylusOnly, addStroke, handleUpdateStrokes, isSlideshow, onEditDrawio, previewImage,
     manipulate, editLayout, canEditLayout, snapOn, livePreview, previewStale,
-    currentFileName, effectiveFileType, markdownRef,
+    currentFileName, effectiveFileType, markdownRef, reloadSlides,
     navLink, navBack, navForward, navCanBack, navCanForward]);
 
   const snippetsSlice = useMemo<SnippetsShared>(() => ({

@@ -146,6 +146,13 @@ export const useFileManager = ({ setCurrentSlideIndex, syncDrawings, onFileLoade
     setLastUpdated(Date.now());
   }, [fetchFileTree]);
 
+  // Force a slide re-render with fresh asset URLs (images get a new `?_t=` cache
+  // buster), WITHOUT re-reading the file tree — for reflecting a file (e.g. an
+  // image) that was replaced on disk at the same path.
+  const reloadSlides = useCallback(() => {
+    setLastUpdated(Date.now());
+  }, []);
+
   const switchTab = useCallback((index: number) => {
     setTabState(prev => {
       if (index < 0 || index >= prev.tabs.length || index === prev.activeIndex) return prev;
@@ -565,7 +572,7 @@ const updateTabContent = useCallback((path: string, newContent: string) => {
 
   return {
     markdown, setMarkdown, editorInitialValue, debouncedMarkdown,
-    fileTree, fetchFileTree, handleManualRefresh,
+    fileTree, fetchFileTree, handleManualRefresh, reloadSlides,
     lastUpdated, currentFileName, currentFileType,
     templateContent, setTemplateContent,
     markdownRef, isLoadingFile,

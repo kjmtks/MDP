@@ -130,6 +130,14 @@ export const apiClient = {
     return null;
   },
 
+  // Electron only — reveal a workspace folder in the OS file manager
+  // (Explorer / Finder / …). `folderPath` is relative to the workspace root.
+  openInFileManager: async (folderPath: string) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (isElectron()) return await (window as any).electronAPI.openInFileManager(folderPath);
+    return { success: false };
+  },
+
   setBaseDir: async (dirPath: string) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     if (isElectron()) return await (window as any).electronAPI.setBaseDir(dirPath);

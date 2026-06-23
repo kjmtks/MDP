@@ -1,4 +1,4 @@
-import { loadedModules } from './moduleManager';
+import { loadedModules, isModuleDisabled } from './moduleManager';
 import type { ModuleData } from '../../utils/moduleParser';
 
 export function parseArguments(argString: string): Record<string, string> {
@@ -296,7 +296,9 @@ export const applyModulesToMarkdown = (markdown: string): string => {
       else rootStr += token.text;
     }
     else if (token.type === 'start') {
-      const mod = loadedModules[token.name];
+      // A disabled module is treated as unknown → its directive passes through
+      // (renders as nothing) and its body, if any, stays as plain markdown.
+      const mod = isModuleDisabled(token.name) ? undefined : loadedModules[token.name];
       if (mod && mod.config.type === 'block') {
         stack.push({
           name: token.name,

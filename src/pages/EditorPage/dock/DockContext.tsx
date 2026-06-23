@@ -105,6 +105,8 @@ export interface PreviewSharedProps {
   previewStale: boolean;
   onToggleLivePreview: () => void;
   onApplyPreview: () => void;
+  // Force a slide re-render with fresh asset URLs (cache-bust replaced images).
+  onReloadSlides: () => void;
 }
 
 export interface EditorSharedProps {

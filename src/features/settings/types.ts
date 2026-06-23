@@ -18,6 +18,12 @@ export interface AppSettings {
   authorName: string;
   authorAffiliation: string;
   authorEmail: string;
+  // Default filename suggested when exporting a PDF: the deck's file name, or its
+  // `@title` (falls back to the file name when the deck has no title).
+  pdfNameSource: 'filename' | 'title';
+  // Names of modules the user has DISABLED. A disabled module's directives render
+  // as nothing and it offers no snippets; everything else stays available.
+  disabledModules: string[];
 }
 
 export const SETTINGS_PATH = '.mdp/settings.json';
@@ -33,6 +39,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   authorName: '',
   authorAffiliation: '',
   authorEmail: '',
+  pdfNameSource: 'filename',
+  disabledModules: [],
 };
 
 // Merge a parsed (possibly partial / older) settings object over the defaults.
@@ -49,6 +57,8 @@ export function normalizeSettings(raw: unknown): AppSettings {
     authorName: typeof r.authorName === 'string' ? r.authorName : '',
     authorAffiliation: typeof r.authorAffiliation === 'string' ? r.authorAffiliation : '',
     authorEmail: typeof r.authorEmail === 'string' ? r.authorEmail : '',
+    pdfNameSource: r.pdfNameSource === 'title' ? 'title' : 'filename',
+    disabledModules: Array.isArray(r.disabledModules) ? r.disabledModules.filter((x): x is string => typeof x === 'string') : [],
   };
 }
 

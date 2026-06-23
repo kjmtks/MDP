@@ -1,4 +1,4 @@
-﻿const { app, BrowserWindow, ipcMain, Menu, dialog, protocol, net } = require('electron');
+﻿const { app, BrowserWindow, ipcMain, Menu, dialog, protocol, net, shell } = require('electron');
 const path = require('path');
 const fs = require('fs/promises');
 const fsSync = require('fs');
@@ -241,6 +241,15 @@ ipcMain.handle('openFolder', async () => {
     return { path: currentBaseDir, tree: await buildFileTree(currentBaseDir) };
   }
   return null;
+});
+
+// Reveal a workspace folder in the OS file manager (Explorer / Finder / …).
+// `relPath` is relative to the workspace root (empty string = the root itself).
+ipcMain.handle('openInFileManager', async (event, relPath) => {
+  if (!currentBaseDir) return { success: false };
+  const full = path.join(currentBaseDir, relPath || '');
+  const err = await shell.openPath(full); // '' on success, else an error message
+  return { success: !err, error: err || undefined };
 });
 
 ipcMain.handle('saveFile', async (event, { filename, content, isBase64 }) => {

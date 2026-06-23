@@ -1,0 +1,128 @@
+<module>
+  <name>line</name>
+  <type>inline</type>
+  <description>Draws a straight line across a rectangular box. Pick where the line starts and ends (any corner or edge-midpoint of the box), the end-cap shapes (arrow, triangle, dot, circle, diamond, square, bar, …), the line style (solid / dashed / dotted), colour, thickness and box size.</description>
+  <aiSpec><![CDATA[
+Draw a straight LINE across a rectangular box (e.g. a divider, connector or
+annotation). Inline module — no body. The line runs between a START and an END
+anchor, each chosen from the box's 8 edge points: corners `tl tr bl br` and
+edge-midpoints `tc`(top) `bc`(bottom) `lc`(left) `rc`(right). Defaults `lc`→`rc`
+(a horizontal line through the centre); `tc`→`bc` is vertical; corner→corner is
+diagonal.
+Params: `start`/`end` (anchors above); `startshape`/`endshape` (end-cap:
+none, arrow, arrow-open, triangle, dot, circle, round, square, diamond, bar);
+`linestyle` (solid | dashed | dotted | dashdot); `color` (blank = theme text
+colour); `thickness` (px); `width`/`height` (CSS lengths sizing the box).
+Example: `<!-- @line start: lc, end: rc, endshape: arrow, color: #ef4444 -->`.
+]]></aiSpec>
+
+  <parameters>
+    <param name="start" type="select" default="lc" label="Start point"
+      options="tl:Top-left,tc:Top-center,tr:Top-right,lc:Left-center,rc:Right-center,bl:Bottom-left,bc:Bottom-center,br:Bottom-right" />
+    <param name="end" type="select" default="rc" label="End point"
+      options="tl:Top-left,tc:Top-center,tr:Top-right,lc:Left-center,rc:Right-center,bl:Bottom-left,bc:Bottom-center,br:Bottom-right" />
+    <param name="startshape" type="select" default="none" label="Start cap"
+      options="none,arrow,arrow-open,triangle,dot,circle,round,square,diamond,bar" />
+    <param name="endshape" type="select" default="arrow" label="End cap"
+      options="none,arrow,arrow-open,triangle,dot,circle,round,square,diamond,bar" />
+    <param name="linestyle" type="select" default="solid" label="Line style"
+      options="solid,dashed,dotted,dashdot" />
+    <param name="color" type="color" default="" label="Colour"
+      options="#ef4444:Red,#3b82f6:Blue,#10b981:Green,#f59e0b:Amber,#8b5cf6:Purple,#0ea5e9:Sky,#111827:Black,#64748b:Slate"
+      desc="Blank uses the theme text colour." />
+    <param name="thickness" type="number" default="2" label="Thickness (px)" min="0.5" max="20" step="0.5" />
+    <param name="width" type="text" default="100%" label="Box width" desc="CSS length (e.g. 100%, 400px, 30em)." />
+    <param name="height" type="text" default="60px" label="Box height" desc="CSS length (e.g. 60px, 6em). Gives diagonal/vertical lines room." />
+  </parameters>
+
+  <snippets>
+    <snippet>
+      <category>Shapes</category>
+      <label>Line — arrow</label>
+      <text><![CDATA[<!-- @line start: lc, end: rc, endshape: arrow -->]]></text>
+      <description>A horizontal arrow across the box (left to right).</description>
+    </snippet>
+    <snippet>
+      <category>Shapes</category>
+      <label>Line — double-headed diagonal</label>
+      <text><![CDATA[<!-- @line start: bl, end: tr, startshape: dot, endshape: arrow, linestyle: dashed, color: #3b82f6 -->]]></text>
+      <description>A dashed diagonal line with a dot start and arrow end.</description>
+    </snippet>
+  </snippets>
+
+  <render><![CDATA[
+    const def = (v, d) => (v === undefined || v === '') ? d : v;
+    const clean = (v) => String(v || '').replace(/[<>"']/g, '').trim();
+
+    // 8 anchor points on the box edges, as [x%, y%].
+    const ANCH = { tl:[0,0], tc:[50,0], tr:[100,0], lc:[0,50], rc:[100,50], bl:[0,100], bc:[50,100], br:[100,100] };
+    const sA = ANCH[clean(args.start)] || ANCH.lc;
+    const eA = ANCH[clean(args.end)] || ANCH.rc;
+
+    const color = clean(args.color) || 'currentColor';
+    const sw = Math.max(0.1, parseFloat(def(args.thickness, '2')) || 2);
+    const width = clean(def(args.width, '100%')) || '100%';
+    const height = clean(def(args.height, '60px')) || '60px';
+
+    const dashMap = {
+      solid: '',
+      dashed: (sw * 3) + ',' + (sw * 2),
+      dotted: '0.01,' + (sw * 2),
+      dashdot: (sw * 3) + ',' + (sw * 1.6) + ',0.01,' + (sw * 1.6)
+    };
+    const dash = dashMap[clean(args.linestyle)] || '';
+
+    const startShape = clean(args.startshape) || 'none';
+    const endShape = clean(args.endshape) || 'none';
+
+    // Unique marker ids per instance (avoid <defs> id collisions across lines).
+    const seq = (typeof window !== 'undefined') ? (window.__mdpLineSeq = (window.__mdpLineSeq || 0) + 1) : 1;
+    const uid = 'mdpln' + seq;
+
+    // A marker pointing forward (right); orient="auto-start-reverse" makes the
+    // start marker flip outward. markerUnits="strokeWidth" → scales with thickness.
+    const marker = (id, shape) => {
+      if (shape === 'none') return '';
+      const head = '<marker id="' + id + '" markerUnits="strokeWidth" orient="auto-start-reverse" ';
+      if (shape === 'arrow')      return head + 'viewBox="0 0 12 12" refX="10" refY="6" markerWidth="8" markerHeight="8"><path d="M1,1 L11,6 L1,11 z" fill="' + color + '"/></marker>';
+      if (shape === 'triangle')   return head + 'viewBox="0 0 12 12" refX="10" refY="6" markerWidth="7" markerHeight="9"><path d="M2,1 L11,6 L2,11 z" fill="' + color + '"/></marker>';
+      if (shape === 'arrow-open') return head + 'viewBox="0 0 12 12" refX="9" refY="6" markerWidth="9" markerHeight="9"><path d="M2,2 L10,6 L2,10" fill="none" stroke="' + color + '" stroke-width="1.6"/></marker>';
+      if (shape === 'bar')        return head + 'viewBox="0 0 12 12" refX="6" refY="6" markerWidth="5" markerHeight="9"><path d="M6,1 L6,11" stroke="' + color + '" stroke-width="2"/></marker>';
+      if (shape === 'dot')        return head + 'viewBox="0 0 12 12" refX="6" refY="6" markerWidth="6" markerHeight="6"><circle cx="6" cy="6" r="4" fill="' + color + '"/></marker>';
+      if (shape === 'round')      return head + 'viewBox="0 0 12 12" refX="6" refY="6" markerWidth="5" markerHeight="5"><circle cx="6" cy="6" r="2.6" fill="' + color + '"/></marker>';
+      if (shape === 'circle')     return head + 'viewBox="0 0 12 12" refX="6" refY="6" markerWidth="6" markerHeight="6"><circle cx="6" cy="6" r="3.6" fill="none" stroke="' + color + '" stroke-width="1.4"/></marker>';
+      if (shape === 'square')     return head + 'viewBox="0 0 12 12" refX="6" refY="6" markerWidth="6" markerHeight="6"><rect x="2.5" y="2.5" width="7" height="7" fill="' + color + '"/></marker>';
+      if (shape === 'diamond')    return head + 'viewBox="0 0 12 12" refX="6" refY="6" markerWidth="7" markerHeight="7"><path d="M6,1 L11,6 L6,11 L1,6 z" fill="' + color + '"/></marker>';
+      return '';
+    };
+
+    const sId = uid + '-s', eId = uid + '-e';
+    const defs = '<defs>' + marker(sId, startShape) + marker(eId, endShape) + '</defs>';
+    const mStart = startShape !== 'none' ? ' marker-start="url(#' + sId + ')"' : '';
+    const mEnd = endShape !== 'none' ? ' marker-end="url(#' + eId + ')"' : '';
+    const dashAttr = dash ? ' stroke-dasharray="' + dash + '"' : '';
+
+    const svg = '<svg class="mdp-mod-line-svg" width="100%" height="100%" style="overflow:visible; display:block;">'
+      + defs
+      + '<line x1="' + sA[0] + '%" y1="' + sA[1] + '%" x2="' + eA[0] + '%" y2="' + eA[1] + '%" '
+      + 'stroke="' + color + '" stroke-width="' + sw + '" fill="none" stroke-linecap="round"'
+      + dashAttr + mStart + mEnd + '/>'
+      + '</svg>';
+
+    return '\n\n<div class="mdp-mod-line" style="width:' + width + '; height:' + height + ';">' + svg + '</div>\n\n';
+  ]]></render>
+
+  <style><![CDATA[
+    .mdp-mod-line {
+      display: block;
+      box-sizing: border-box;
+      margin: 0.5rem 0;
+      /* `currentColor` (the default line/marker colour) resolves to the theme text. */
+      color: var(--text-color);
+      line-height: 0;
+    }
+    .mdp-mod-line-svg { display: block; width: 100%; height: 100%; overflow: visible; }
+  ]]></style>
+
+  <script></script>
+</module>

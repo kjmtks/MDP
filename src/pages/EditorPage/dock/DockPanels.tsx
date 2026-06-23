@@ -7,7 +7,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import CloseFullscreenIcon from '@mui/icons-material/CloseFullscreen';
 import ClearAllIcon from '@mui/icons-material/ClearAll';
 import FolderOpenIcon from '@mui/icons-material/FolderOpen';
-import CloudDownloadIcon from '@mui/icons-material/CloudDownload';
+import CachedIcon from '@mui/icons-material/Cached';
 import SmartphoneIcon from '@mui/icons-material/Smartphone';
 import DevicesIcon from '@mui/icons-material/Devices';
 import PresentToAllIcon from '@mui/icons-material/PresentToAll';
@@ -62,14 +62,9 @@ export const ExplorerPanel: React.FC = () => {
   const h = useHeaderActions();
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: 'var(--app-bg-panel)' }}>
-      {(h.onOpenFolder || h.onSyncCatalog) && (
+      {h.onOpenFolder && (
         <Box sx={toolbarSx}>
-          {h.onOpenFolder && (
-            <Tooltip title="Open Folder"><IconButton size="small" sx={toolBtnSx} onClick={h.onOpenFolder}><FolderOpenIcon fontSize="small" /></IconButton></Tooltip>
-          )}
-          {h.onSyncCatalog && (
-            <Tooltip title="Sync Official Assets"><IconButton size="small" sx={toolBtnSx} onClick={h.onSyncCatalog}><CloudDownloadIcon fontSize="small" /></IconButton></Tooltip>
-          )}
+          <Tooltip title="Open Folder"><IconButton size="small" sx={toolBtnSx} onClick={h.onOpenFolder}><FolderOpenIcon fontSize="small" /></IconButton></Tooltip>
         </Box>
       )}
       <Box sx={{ flex: 1, minHeight: 0 }}>
@@ -524,6 +519,9 @@ export const PreviewPanel: React.FC = () => {
             <span><IconButton size="small" sx={{ ...toolBtnSx, color: p.previewStale ? 'var(--app-warning)' : 'var(--app-text-muted)' }} onClick={p.onApplyPreview}><RefreshIcon fontSize="small" /></IconButton></span>
           </Tooltip>
         )}
+        <Tooltip title="Reload slides — re-fetch replaced images / referenced files (bypass cache)">
+          <IconButton size="small" sx={toolBtnSx} onClick={p.onReloadSlides}><CachedIcon fontSize="small" /></IconButton>
+        </Tooltip>
         <Tooltip title={p.canEditLayout ? 'Edit layout (move/resize/rotate modules)' : 'Edit layout — open the slide being previewed to enable'}>
           <span><IconButton size="small" sx={{ ...toolBtnSx, color: p.editLayout ? 'var(--app-accent)' : 'var(--app-text-muted)' }} disabled={!p.canEditLayout} onClick={p.onToggleEditLayout}><ControlCameraIcon fontSize="small" /></IconButton></span>
         </Tooltip>

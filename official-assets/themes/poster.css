@@ -243,7 +243,7 @@
 .slide-content-wrapper figcaption {
   margin-top: 4px;
   font-size: 10px;
-  color: var(--poster-muted);
+  color: var(--text-color);
   text-align: center;
   line-height: 1.3;
 }
@@ -271,7 +271,7 @@
 }
 .slide-content-wrapper table caption {
   font-size: 10px;
-  color: var(--poster-muted);
+  color: var(--text-color);
 }
 
 /* =========================================

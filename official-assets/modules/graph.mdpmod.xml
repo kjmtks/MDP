@@ -1,65 +1,72 @@
 <module>
   <name>graph</name>
   <type>block</type>
-  <description>A graph / plot image with optional x-axis and y-axis labels (params) and an optional caption (a second body section) — each independent and optional, rendered with Markdown + KaTeX. Image, label and caption sizes are configurable.</description>
+  <description>A graph / plot image with optional labels on any side (top / bottom / left / right) and an optional caption (a second body section) — each independent and optional, rendered with Markdown + KaTeX. Image, label and caption sizes are configurable.</description>
   <aiSpec><![CDATA[
-Wrap a graph / plot / figure IMAGE with optional axis labels and a caption. Block
-module. The FIRST body section is the image (ordinary markdown, e.g. `![](plot.png)`
-or an `![](@alias)` library reference). An OPTIONAL caption is a SECOND body section
-after a `<!-- @ -->` separator (so it can be long and contain commas — Markdown +
-$KaTeX$). The axis labels are params (also Markdown + $KaTeX$, each optional):
-- `xlabel` — centred UNDER the image (the horizontal axis).
-- `ylabel` — to the LEFT of the image, rotated 90° (the vertical axis).
+Wrap a graph / plot / figure IMAGE with optional labels around it and a caption.
+Block module. The FIRST body section is the image (ordinary markdown, e.g.
+`![](plot.png)` or an `![](@alias)` library reference). An OPTIONAL caption is a
+SECOND body section after a `<!-- @ -->` separator (so it can be long and contain
+commas — Markdown + $KaTeX$). Labels are params placed on any side of the image
+(each optional, Markdown + $KaTeX$); left/right are rotated automatically:
+- `top` — above the image (horizontal).
+- `bottom` — below the image (horizontal).
+- `left` — left of the image, rotated.
+- `right` — right of the image, rotated.
 Sizes (all optional CSS lengths): `imagesize` (image width — e.g. `400px`, `30em`,
-or a `%` of the slide like `70%`; blank = natural size), `labelsize` (axis-label
-font size), `captionsize` (caption font size).
+or a `%` of the slide like `70%`; blank = natural size), `labelsize` (label font
+size), `captionsize` (caption font size).
 Quote any LABEL value that contains a comma. Example:
-`<!-- @graph ylabel: "$y$ [m]", xlabel: "$t$ [s]" -->`
+`<!-- @graph left: "$y$ [m]", bottom: "$t$ [s]" -->`
 then `![](traj.png)` then `<!-- @ -->` then `Fig. 1: trajectory, with $g = 9.8$.`
 then `<!-- @end -->`.
 ]]></aiSpec>
 
   <parameters>
-    <param name="xlabel" type="text" default="" label="X-axis label" desc="Centred under the image (horizontal axis). Markdown + $KaTeX$. Blank = none. Quote it if it contains a comma." />
-    <param name="ylabel" type="text" default="" label="Y-axis label" desc="Left of the image, rotated (vertical axis). Markdown + $KaTeX$. Blank = none. Quote it if it contains a comma." />
+    <param name="top" type="text" default="" label="Top label" desc="Above the image (horizontal). Markdown + $KaTeX$. Blank = none. Quote it if it contains a comma." />
+    <param name="bottom" type="text" default="" label="Bottom label" desc="Below the image (horizontal). Markdown + $KaTeX$. Blank = none. Quote it if it contains a comma." />
+    <param name="left" type="text" default="" label="Left label" desc="Left of the image, rotated. Markdown + $KaTeX$. Blank = none. Quote it if it contains a comma." />
+    <param name="right" type="text" default="" label="Right label" desc="Right of the image, rotated. Markdown + $KaTeX$. Blank = none. Quote it if it contains a comma." />
     <param name="imagesize" type="text" default="" label="Image size" desc="Image width: a CSS length (e.g. 400px, 30em) or a % of the slide (e.g. 70%). Blank = natural size." />
-    <param name="labelsize" type="text" default="1em" label="Label size" desc="Font size of the axis labels (CSS length, e.g. 1.1em, 18px)." />
-    <param name="captionsize" type="text" default="0.9em" label="Caption size" desc="Font size of the caption (CSS length, e.g. 0.85em, 14px)." />
+    <param name="labelsize" type="text" default="0.75em" label="Label size" desc="Font size of the labels (CSS length, e.g. 1.1em, 18px)." />
+    <param name="captionsize" type="text" default="0.75em" label="Caption size" desc="Font size of the caption (CSS length, e.g. 0.85em, 14px)." />
   </parameters>
 
   <snippets>
     <snippet>
       <category>Media</category>
-      <label>Graph — axis labels + caption</label>
-      <text><![CDATA[<!-- @graph ylabel: "$y$", xlabel: "$x$" -->
+      <label>Graph — labels + caption</label>
+      <text><![CDATA[<!-- @graph left: "$y$", bottom: "$x$" -->
 ![](image.png)
 <!-- @ -->
 Figure 1: result
 <!-- @end -->]]></text>
-      <description>A graph image with x/y axis labels and a caption (second section; Markdown + KaTeX).</description>
+      <description>A graph image with left/bottom labels and a caption (second section; Markdown + KaTeX).</description>
     </snippet>
     <snippet>
       <category>Media</category>
-      <label>Graph — sized, x-axis only</label>
-      <text><![CDATA[<!-- @graph xlabel: "Time [s]", imagesize: 70% -->
+      <label>Graph — all four sides</label>
+      <text><![CDATA[<!-- @graph top: "Top", bottom: "Bottom", left: "Left", right: "Right", imagesize: 60% -->
 ![](image.png)
 <!-- @end -->]]></text>
-      <description>A graph at 70% of the slide width with only an x-axis label.</description>
+      <description>A graph at 60% slide width with labels on every side.</description>
     </snippet>
   </snippets>
 
   <render><![CDATA[
     const def = (v, d) => (v === undefined || v === '') ? d : v;
     // Size values land in a style attribute, so strip characters that could break
-    // out of it (author content, but keep it tidy). Labels/caption go through
-    // markdown instead, so they are not touched here.
+    // out of it. Labels/caption go through markdown instead, so they are untouched.
     const cssLen = (v) => String(v || '').replace(/[<>"';]/g, '').trim();
 
-    const xlabel = (args.xlabel || '').trim();
-    const ylabel = (args.ylabel || '').trim();
+    const top = (args.top || '').trim();
+    // Back-compat: the old x/y label params map to bottom/left.
+    const bottom = (args.bottom || args.xlabel || '').trim();
+    const left = (args.left || args.ylabel || '').trim();
+    const right = (args.right || '').trim();
     const imagesize = cssLen(args.imagesize);
-    const labelsize = cssLen(def(args.labelsize, '1em')) || '1em';
-    const captionsize = cssLen(def(args.captionsize, '0.9em')) || '0.9em';
+    const labelsize = cssLen(def(args.labelsize, '0.75em')) || '0.75em';
+    const captionsize = cssLen(def(args.captionsize, '0.75em')) || '0.75em';
     // First body section = the image; OPTIONAL second section (after `<!-- @ -->`)
     // = the caption (kept as a section so it can be long / contain commas).
     const image = (sections[0] || '').trim();
@@ -80,15 +87,20 @@ Figure 1: result
     ].join('; ');
 
     // Each label/caption is wrapped in a block padded with blank lines so the
-    // Markdown (and KaTeX) inside it is rendered — `<div>` content without blank
-    // lines would stay literal. Empty fields are omitted entirely.
-    const yl = ylabel ? '<div class="mdp-mod-graph-ylabel"><div class="mdp-mod-graph-ylabel-rot">\n\n' + ylabel + '\n\n</div></div>' : '';
+    // Markdown (and KaTeX) inside it is rendered. Empty fields are omitted, and
+    // each side's grid cell collapses to zero when its label is absent.
+    const hlabel = (cls, v) => v ? '<div class="mdp-mod-graph-' + cls + ' mdp-mod-graph-hlabel">\n\n' + v + '\n\n</div>' : '';
+    const vlabel = (cls, v) => v ? '<div class="mdp-mod-graph-' + cls + ' mdp-mod-graph-vlabel"><div class="mdp-mod-graph-vlabel-rot mdp-mod-graph-' + cls + '-rot">\n\n' + v + '\n\n</div></div>' : '';
+
+    const topEl = hlabel('top', top);
+    const bottomEl = hlabel('bottom', bottom);
+    const leftEl = vlabel('left', left);
+    const rightEl = vlabel('right', right);
     const img = '<div class="mdp-mod-graph-image">\n\n' + image + '\n\n</div>';
-    const xl = xlabel ? '<div class="mdp-mod-graph-xlabel">\n\n' + xlabel + '\n\n</div>' : '';
     const cap = caption ? '<figcaption class="mdp-mod-graph-caption">\n\n' + caption + '\n\n</figcaption>' : '';
 
     return '\n\n<figure class="mdp-mod-graph" style="' + vars + ';">'
-      + '<div class="mdp-mod-graph-area">' + yl + img + xl + '</div>'
+      + '<div class="mdp-mod-graph-area">' + topEl + leftEl + img + rightEl + bottomEl + '</div>'
       + cap
       + '</figure>\n\n';
   ]]></render>
@@ -104,43 +116,52 @@ Figure 1: result
       color: var(--text-color);
       box-sizing: border-box;
     }
-    /* y-label | image  (row 1)
-              | x-label (row 2) */
+    /*        top  (r1c2)
+       left  IMAGE  right   (r2 c1/c2/c3)
+             bottom (r3c2)  */
     .mdp-mod-graph-area {
       display: grid;
-      grid-template-columns: auto auto;
-      grid-template-rows: auto auto;
+      grid-template-columns: auto auto auto;
+      grid-template-rows: auto auto auto;
       align-items: center;
       justify-items: center;
       width: var(--graph-area-width, fit-content);
       max-width: 100%;
     }
-    .mdp-mod-graph-ylabel {
-      grid-column: 1;
-      grid-row: 1;
-      align-self: stretch;            /* fill the image row so the label centres on it */
+    .mdp-mod-graph-top    { grid-column: 2; grid-row: 1; margin-bottom: 0.35em; }
+    .mdp-mod-graph-bottom { grid-column: 2; grid-row: 3; margin-top: 0.35em; }
+    .mdp-mod-graph-image  { grid-column: 2; grid-row: 2; min-width: 0; max-width: 100%; }
+    .mdp-mod-graph-left   { grid-column: 1; grid-row: 2; margin-right: 0.2em; }
+    .mdp-mod-graph-right  { grid-column: 3; grid-row: 2; margin-left: 0.2em; }
+
+    /* Horizontal labels (top / bottom). */
+    .mdp-mod-graph-hlabel {
+      text-align: center;
+      font-size: var(--graph-label-size, 0.75em);
+      line-height: 1.2;
+      max-width: 100%;
+    }
+
+    /* Vertical labels (left / right): a slim cell ≈ the rotated label's height,
+       filled to the image row height so the label centres against the image. */
+    .mdp-mod-graph-vlabel {
+      align-self: stretch;
       display: flex;
       align-items: center;
       justify-content: center;
-      /* slim column ≈ the rotated label's height; scales with the label size */
-      width: calc(var(--graph-label-size, 1em) * 1.9);
+      width: calc(var(--graph-label-size, 0.75em) * 1.9);
     }
-    .mdp-mod-graph-ylabel-rot {
+    .mdp-mod-graph-vlabel-rot {
       /* Rotate the whole (markdown + KaTeX) label so math stays correctly typeset —
          writing-mode would set each glyph vertical and break the math. */
-      transform: rotate(-90deg);
-      transform-origin: center;
       white-space: nowrap;
-      font-size: var(--graph-label-size, 1em);
+      font-size: var(--graph-label-size, 0.75em);
       line-height: 1.2;
       text-align: center;
     }
-    .mdp-mod-graph-image {
-      grid-column: 2;
-      grid-row: 1;
-      min-width: 0;
-      max-width: 100%;
-    }
+    .mdp-mod-graph-left-rot  { transform: rotate(-90deg); transform-origin: center; }
+    .mdp-mod-graph-right-rot { transform: rotate(90deg);  transform-origin: center; }
+
     .mdp-mod-graph-image img {
       display: block;
       width: var(--graph-img-width, auto);
@@ -148,38 +169,29 @@ Figure 1: result
       height: auto;
       margin: 0 auto;
     }
-    .mdp-mod-graph-xlabel {
-      grid-column: 2;
-      grid-row: 2;
-      text-align: center;
-      font-size: var(--graph-label-size, 1em);
-      line-height: 1.2;
-      margin-top: 0.35em;
-      max-width: 100%;
-    }
     .mdp-mod-graph-caption {
       text-align: center;
-      font-size: var(--graph-caption-size, 0.9em);
+      font-size: var(--graph-caption-size, 0.75em);
       line-height: 1.35;
-      opacity: 0.85;
+      color: var(--text-color);
       max-width: 100%;
     }
     /* The fields are markdown-rendered (wrapped in <p>); drop block margins so they
        sit cleanly, and tame display-math spacing. */
-    .mdp-mod-graph-ylabel-rot > :first-child,
+    .mdp-mod-graph-hlabel > :first-child,
+    .mdp-mod-graph-vlabel-rot > :first-child,
     .mdp-mod-graph-image > :first-child,
-    .mdp-mod-graph-xlabel > :first-child,
     .mdp-mod-graph-caption > :first-child { margin-top: 0; }
-    .mdp-mod-graph-ylabel-rot > :last-child,
+    .mdp-mod-graph-hlabel > :last-child,
+    .mdp-mod-graph-vlabel-rot > :last-child,
     .mdp-mod-graph-image > :last-child,
-    .mdp-mod-graph-xlabel > :last-child,
     .mdp-mod-graph-caption > :last-child { margin-bottom: 0; }
-    .mdp-mod-graph-ylabel-rot p,
+    .mdp-mod-graph-hlabel p,
+    .mdp-mod-graph-vlabel-rot p,
     .mdp-mod-graph-image p,
-    .mdp-mod-graph-xlabel p,
     .mdp-mod-graph-caption p { margin: 0; }
-    .mdp-mod-graph-ylabel-rot .katex-display,
-    .mdp-mod-graph-xlabel .katex-display,
+    .mdp-mod-graph-hlabel .katex-display,
+    .mdp-mod-graph-vlabel-rot .katex-display,
     .mdp-mod-graph-caption .katex-display { margin: 0; }
   ]]></style>
 

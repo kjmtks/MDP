@@ -3,6 +3,16 @@ import { moduleSyncBus } from './moduleSyncBus';
 
 export const loadedModules: Record<string, ModuleData> = {};
 
+// Names the user has disabled (from app settings). Disabled modules stay
+// REGISTERED (so the settings list can show them) but are treated as inert: their
+// directives pass through unrendered and they contribute no snippets.
+export const disabledModules = new Set<string>();
+export const setDisabledModules = (names: string[]) => {
+  disabledModules.clear();
+  for (const n of names || []) disabledModules.add(n);
+};
+export const isModuleDisabled = (name: string): boolean => disabledModules.has(name);
+
 export const clearAllModules = () => {
   Object.keys(loadedModules).forEach(name => {
     const styleId = `mdp-module-style-${name}`;
@@ -57,7 +67,9 @@ export const registerParsedModule = (moduleData: ModuleData) => {
 };
 
 export const getAllModuleSnippets = () => {
-  return Object.values(loadedModules).flatMap(mod => mod.config.snippets || []);
+  return Object.values(loadedModules)
+    .filter(mod => !disabledModules.has(mod.config.name))
+    .flatMap(mod => mod.config.snippets || []);
 };
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
