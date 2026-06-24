@@ -2,6 +2,7 @@ import { useCallback, useRef, useEffect } from 'react';
 import { splitMarkdownToBlocks } from '../../../features/slide/parser/slideParser';
 import type { Stroke } from '../../../features/drawing/components/DrawingOverlay';
 import { apiClient } from '../../../api/apiClient';
+import { stripDrawingData } from '../../../utils/drawingBaseline';
 
 interface UseAppActionsProps {
   currentFileName: string | null;
@@ -101,6 +102,22 @@ export const useAppActions = ({
 
   const handleSaveDrawingsToMarkdown = useCallback(async () => {
     if (!currentFileName || !markdown) return;
+
+    // Guard against clobbering external edits. This is an AUTOMATIC write-back of
+    // the in-memory markdown, so only proceed when the on-disk TEXT (ignoring
+    // drawing data) still equals the editor's text. If they differ — the file was
+    // changed externally, or the editor has unsaved text edits — skip, so we never
+    // overwrite an external change with stale in-memory data.
+    try {
+      const diskNow = await apiClient.readFileText(currentFileName);
+      if (stripDrawingData(diskNow) !== stripDrawingData(markdown)) {
+        console.warn('[MDP] Drawing auto-save skipped: file changed on disk (external edit or unsaved text) — not overwriting.');
+        return;
+      }
+    } catch {
+      return; // can't read disk → don't risk an overwrite
+    }
+
     let isTextModified = false;
     const map = getDrawingMap();
     const seenIds = new Set<string>();

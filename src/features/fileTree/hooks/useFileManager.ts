@@ -6,7 +6,8 @@ import { splitMarkdownToBlocks } from '../../../features/slide/parser/slideParse
 import type { Stroke } from '../../drawing/components/DrawingOverlay';
 import { apiClient } from '../../../api/apiClient';
 import { registerModule } from '../../modules/moduleManager';
-import { reportError, confirmDialog } from '../../../components/error/errorReporter';
+import { reportError, confirmDialog, choiceDialog } from '../../../components/error/errorReporter';
+import { stripDrawingData } from '../../../utils/drawingBaseline';
 
 interface UseFileManagerProps {
   setCurrentSlideIndex: (idx: number) => void;
@@ -343,6 +344,44 @@ export const useFileManager = ({ setCurrentSlideIndex, syncDrawings, onFileLoade
     }
   }, [switchTab, setCurrentSlideIndex, syncDrawings, onFileLoaded]);
 
+  // Reload a tab's content from raw disk text, discarding in-editor edits. Mirrors
+  // loadFile's @draw → @drawing transform + drawing extraction, then updates the
+  // tab, the editor view and the live drawings.
+  const reloadTabFromDisk = useCallback((rawText: string, tabId: string) => {
+    const map = getDrawingMap();
+    const drawTagRegex = new RegExp('<' + '!--\\s*@draw:\\s*([\\s\\S]*?)\\s*--' + '>', 'g');
+    const editorText = rawText.replace(drawTagRegex, (_m, base64) => {
+      const id = Math.random().toString(36).substring(2, 10);
+      map.set(id, String(base64).trim());
+      return '<' + '!-- @drawing: ' + id + ' --' + '>';
+    });
+    const blocks = splitMarkdownToBlocks(editorText);
+    const newDrawings: Record<number, Stroke[]> = {};
+    blocks.slice(1).forEach((block, idx) => {
+      const m = block.rawContent.match(new RegExp('<' + '!--\\s*@drawing:\\s*([a-zA-Z0-9]+)\\s*--' + '>'));
+      if (!m) return;
+      const b64 = map.get(m[1]);
+      if (!b64) return;
+      try {
+        const bin = atob(b64);
+        const by = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) by[i] = bin.charCodeAt(i);
+        newDrawings[idx] = JSON.parse(new TextDecoder().decode(by));
+      } catch { /* ignore */ }
+    });
+    const view = stateRef.current.tabs.find(t => t.id === tabId)?.editorRef.current?.view;
+    setTabState(prev => {
+      const tabs = [...prev.tabs];
+      const i = tabs.findIndex(t => t.id === tabId);
+      if (i !== -1) tabs[i] = { ...tabs[i], content: editorText, initialContent: editorText.replace(/\r/g, ''), isModified: false, drawings: newDrawings };
+      return { tabs, activeIndex: prev.activeIndex };
+    });
+    markdownRef.current = editorText;
+    if (view) view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: editorText }, selection: { anchor: 0 } });
+    syncDrawings(newDrawings);
+    setLastUpdated(Date.now());
+  }, [syncDrawings]);
+
   const handleSave = useCallback(async () => {
     const activeIdx = stateRef.current.activeIndex;
     if (activeIdx === -1) return;
@@ -351,6 +390,29 @@ export const useFileManager = ({ setCurrentSlideIndex, syncDrawings, onFileLoade
 
     const { path: saveFileName, type: saveFileType, content: saveMarkdown } = currentTab;
     if (saveFileType === 'image' || saveFileType === 'binary' || saveFileType === 'limit-exceeded') return;
+
+    // External-change guard: the file may have been edited/replaced on disk by
+    // another program since we loaded or last saved it. Compare disk text (ignoring
+    // drawing data) to our baseline; if it changed, ask before overwriting.
+    let diskNow: string | null = null;
+    try { diskNow = await apiClient.readFileText(saveFileName); } catch { /* new/unreadable → just save */ }
+    if (diskNow != null && stripDrawingData(diskNow) !== stripDrawingData(currentTab.initialContent)) {
+      const choice = await choiceDialog(
+        'This file was changed on disk outside the editor since you opened it. Saving now would overwrite those external changes.',
+        {
+          title: 'File changed on disk',
+          severity: 'warning',
+          options: [
+            { value: 'overwrite', label: 'Overwrite', variant: 'contained', color: 'warning' },
+            { value: 'reload', label: 'Reload from disk', variant: 'outlined' },
+            { value: 'cancel', label: 'Cancel', variant: 'text' },
+          ],
+        },
+      );
+      if (choice === 'reload') { reloadTabFromDisk(diskNow, currentTab.id); return; }
+      if (choice !== 'overwrite') return; // cancel / dismissed → don't save
+      // overwrite → fall through
+    }
 
     try {
       const map = getDrawingMap();
@@ -390,7 +452,7 @@ export const useFileManager = ({ setCurrentSlideIndex, syncDrawings, onFileLoade
       setTimeout(() => document.title = originalTitle, 2000);
       if (saveFileName.endsWith('.css')) setLastUpdated(Date.now());
     } catch (err) { reportError('Failed to save the file.', { detail: err }); }
-  }, []);
+  }, [reloadTabFromDisk]);
 
   const handleOpenFolder = useCallback(async () => {
     try {
