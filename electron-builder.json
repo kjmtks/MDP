@@ -12,7 +12,13 @@
     "app/preload.cjs",
     "app/remoteRelay.cjs",
     "app/remoteServer.cjs",
+    "app/mdplink.cjs",
     "node_modules/ws/**/*",
+    "node_modules/ssh2/**/*",
+    "node_modules/asn1/**/*",
+    "node_modules/safer-buffer/**/*",
+    "node_modules/bcrypt-pbkdf/**/*",
+    "node_modules/tweetnacl/**/*",
     "../server.cjs",
     "build/icon.*"
   ],

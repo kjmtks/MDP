@@ -110,6 +110,17 @@ export const apiClient = {
     return res.json();
   },
 
+  // Lazily fetch the children of a deferred tree node (an SSH `.mdplink` or a
+  // remote subdirectory). Returns the subtree's nodes (and an optional error).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  getSubTree: async (relPath: string): Promise<{ nodes: any[]; error?: string }> => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (isElectron()) return await (window as any).electronAPI.getSubTree(relPath);
+    const res = await fetch(`/api/subtree?path=${encodeURIComponent(relPath)}`);
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+
   getFileAsDataUrl: async (filePath: string): Promise<string> => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     if (isElectron()) return await (window as any).electronAPI.getFileAsDataUrl(filePath);
@@ -142,6 +153,25 @@ export const apiClient = {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     if (isElectron()) return await (window as any).electronAPI.setBaseDir(dirPath);
     return { success: false };
+  },
+
+  // Read a `.mdplink` file's raw JSON config (for the link-settings dialog).
+  getLinkConfig: async (relPath: string): Promise<string> => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (isElectron()) return await (window as any).electronAPI.getLinkConfig(relPath);
+    const res = await fetch(`/api/linkConfig?path=${encodeURIComponent(relPath)}`);
+    return res.ok ? await res.text() : '';
+  },
+  setLinkConfig: async (relPath: string, content: string): Promise<void> => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (isElectron()) { await (window as any).electronAPI.setLinkConfig({ path: relPath, content }); return; }
+    await fetch('/api/linkConfig', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: relPath, content }) });
+  },
+  // Native file picker (Electron only); returns the chosen absolute path or null.
+  pickFile: async (options?: { title?: string; filters?: { name: string; extensions: string[] }[] }): Promise<string | null> => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (isElectron()) return await (window as any).electronAPI.pickFile(options || {});
+    return null;
   },
 
   exportPdf: (filename?: string) => {

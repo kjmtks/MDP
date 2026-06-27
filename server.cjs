@@ -6,6 +6,7 @@ const http = require('http');
 const WebSocket = require('ws');
 const { WebSocketServer } = require('ws');
 const chokidar = require('chokidar');
+const mdplink = require('./app/mdplink.cjs');
 const plantumlEncoder = require('plantuml-encoder');
 const { spawn } = require('child_process');
 const os = require('os');
@@ -123,129 +124,121 @@ app.get('/plantuml/svg/:encoded', (req, res) => {
   child.stdin.end();
 });
 
-app.get('/api/files', (req, res) => {
-  res.json(getFileTree(rootDir));
+// Resolve a workspace-relative path through any `.mdplink` (local or SSH) it crosses.
+const vres = (rel) => mdplink.resolve(rootDir, rel || '');
+// Resolve to the `.mdplink` FILE itself (not its target) so delete acts on the link.
+const vresSelf = (rel) =>
+  /\.mdplink$/i.test(rel || '') ? mdplink.resolveLinkFile(rootDir, rel) : vres(rel);
+
+app.get('/api/files', async (req, res) => {
+  try { res.json((await mdplink.buildTree(rootDir)).nodes); }
+  catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/save', (req, res) => {
-  const p = path.join(rootDir, req.body.filename);
-  fs.mkdirSync(path.dirname(p), { recursive: true });
-  let content = req.body.content;  
+// Lazily load a deferred subtree (an SSH link or a remote subdir) on expand.
+app.get('/api/subtree', async (req, res) => {
+  try { res.json(await mdplink.buildSubTree(rootDir, req.query.path || '')); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/save', async (req, res) => {
+  let content = req.body.content;
   if (typeof content === 'string' && content.startsWith('data:image/')) {
     const base64Data = content.split(',')[1];
-    if (base64Data) {
-      content = Buffer.from(base64Data, 'base64');
-    }
-  } 
-  else if (req.body.isBase64) {
+    content = base64Data ? Buffer.from(base64Data, 'base64') : Buffer.from('');
+  } else if (req.body.isBase64) {
     content = Buffer.from(content, 'base64');
+  } else {
+    content = Buffer.from(String(content ?? ''), 'utf-8');
   }
-  fs.writeFile(p, content, (err) => res.json({ success: !err }));
+  try { await mdplink.vfsWrite(vres(req.body.filename), content); res.json({ success: true }); }
+  catch (e) { res.status(500).json({ success: false, error: e.message }); }
 });
 
-app.post('/api/rename', (req, res) => {
+app.post('/api/rename', async (req, res) => {
   const { oldPath, newPath } = req.body;
-  try {
-    fs.renameSync(path.join(rootDir, oldPath), path.join(rootDir, newPath));
-    res.json({ success: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  try { await mdplink.vfsRename(vres(oldPath), vres(newPath)); res.json({ success: true }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/delete', (req, res) => {
-  const { paths } = req.body;
-  try {
-    paths.forEach(p => {
-      const fullP = path.join(rootDir, p);
-      if (fs.existsSync(fullP)) fs.rmSync(fullP, { recursive: true, force: true });
-    });
-    res.json({ success: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+app.post('/api/delete', async (req, res) => {
+  try { for (const p of req.body.paths) await mdplink.vfsRemove(vresSelf(p)); res.json({ success: true }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/move', (req, res) => {
+app.post('/api/move', async (req, res) => {
   const { sourcePaths, targetPath } = req.body;
-  const targetDir = path.join(rootDir, targetPath);
   try {
-    if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
-    sourcePaths.forEach(p => {
-      const fullP = path.join(rootDir, p);
-      const fileName = path.basename(fullP);
-      fs.renameSync(fullP, path.join(targetDir, fileName));
-    });
+    await mdplink.vfsMkdirp(vres(targetPath));
+    for (const p of sourcePaths) await mdplink.vfsRename(vres(p), vres(`${targetPath}/${path.basename(p)}`));
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Insert " copy" (then " copy 2", …) before the extension to avoid collisions;
-// the extension is taken from the FIRST dot so `.slide.md` / `.mdpmod.xml` stay intact.
-const uniqueCopyName = (targetDir, baseName) => {
+// VFS-aware unique copy name (works inside a local/remote `.mdplink` target).
+const uniqueCopyNameVfs = async (targetDir, baseName) => {
   const dot = baseName.indexOf('.');
   const stem = dot > 0 ? baseName.slice(0, dot) : baseName;
   const ext = dot > 0 ? baseName.slice(dot) : '';
   let candidate = baseName;
   let i = 0;
-  while (fs.existsSync(path.join(targetDir, candidate))) {
+  while (await mdplink.vfsExists(mdplink.childOf(targetDir, candidate))) {
     i += 1;
     candidate = i === 1 ? `${stem} copy${ext}` : `${stem} copy ${i}${ext}`;
   }
   return candidate;
 };
 
-app.post('/api/copy', (req, res) => {
+app.post('/api/copy', async (req, res) => {
   const { sourcePaths, targetPath } = req.body;
-  const targetDir = path.join(rootDir, targetPath || '');
   try {
-    if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
+    const targetDir = vres(targetPath || '');
+    await mdplink.vfsMkdirp(targetDir);
     const created = [];
-    sourcePaths.forEach(p => {
-      const src = path.join(rootDir, p);
-      const destName = uniqueCopyName(targetDir, path.basename(src));
-      fs.cpSync(src, path.join(targetDir, destName), { recursive: true });
+    for (const p of sourcePaths) {
+      const destName = await uniqueCopyNameVfs(targetDir, path.basename(p));
+      await mdplink.vfsCopy(vres(p), mdplink.childOf(targetDir, destName));
       created.push((targetPath ? `${targetPath}/${destName}` : destName).replace(/^\//, ''));
-    });
+    }
     res.json({ success: true, paths: created });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/create', (req, res) => {
-  const { path: createPath, type } = req.body;
-  const physicalPath = getSafePath(createPath);
-
-  try {
-      if (type === 'directory') {
-          if (!fs.existsSync(physicalPath)) fs.mkdirSync(physicalPath, { recursive: true });
-      } else {
-          const dir = path.dirname(physicalPath);
-          if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-          fs.writeFileSync(physicalPath, '');
-      }
-      res.json({ success: true });
-  } catch (e) {
-      res.status(500).json({ error: e.message });
-  }
+// Read/write a `.mdplink` file's RAW JSON config (bypasses link traversal).
+app.get('/api/linkConfig', async (req, res) => {
+  try { res.type('text/plain').send(await mdplink.vfsReadText(mdplink.resolveLinkFile(rootDir, req.query.path || ''))); }
+  catch (e) { res.status(500).send(e.message); }
+});
+app.post('/api/linkConfig', async (req, res) => {
+  try { await mdplink.vfsWrite(mdplink.resolveLinkFile(rootDir, req.body.path || ''), Buffer.from(String(req.body.content ?? ''), 'utf-8')); res.json({ success: true }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.get('/files/*path', (req, res) => {
+app.post('/api/create', async (req, res) => {
+  const { path: createPath, type } = req.body;
+  try {
+    if (type === 'directory') await mdplink.vfsMkdirp(vres(createPath));
+    else await mdplink.vfsWrite(vres(createPath), Buffer.from('', 'utf-8'));
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+const MIME_BY_EXT = { svg: 'image/svg+xml', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', bmp: 'image/bmp', ico: 'image/x-icon', css: 'text/css', js: 'text/javascript', json: 'application/json', md: 'text/plain', txt: 'text/plain' };
+
+app.get('/files/*path', async (req, res) => {
   let virtualPath = req.params.path || req.params[0];
   if (Array.isArray(virtualPath)) virtualPath = virtualPath.join('/');
   if (!virtualPath) return res.status(400).send('Path required');
+  try { virtualPath = decodeURIComponent(virtualPath); } catch (e) { /* keep raw */ }
+  virtualPath = virtualPath.replace(/\.\./g, '');
   try {
-    virtualPath = decodeURIComponent(virtualPath);
+    // VFS-aware: serves files behind a `.mdplink` (local or remote SFTP) too.
+    const buf = await mdplink.vfsReadBuffer(vres(virtualPath));
+    const ext = path.extname(virtualPath).toLowerCase().replace('.', '');
+    res.set('Content-Type', MIME_BY_EXT[ext] || 'application/octet-stream');
+    res.set('Cache-Control', 'no-store');
+    res.send(buf);
   } catch (e) {
-  }
-  const p = path.join(rootDir, virtualPath.replace(/\.\./g, ''));
-
-  if (fs.existsSync(p)) {
-    if (fs.statSync(p).isDirectory()) {
-      return res.status(403).send('Is a directory');
-    }
-    res.sendFile(path.resolve(p), { dotfiles: 'allow' }, (err) => {
-      if (err) {
-        console.error(`sendFile error (${p}):`, err.message);
-        if (!res.headersSent) res.status(404).end();
-      }
-    });
-  } else {
     res.status(404).send('Not found');
   }
 });

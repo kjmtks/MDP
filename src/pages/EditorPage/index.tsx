@@ -116,7 +116,7 @@ export default function EditorPage() {
 
   const {
     markdown, setMarkdown, debouncedMarkdown,
-    fileTree, fetchFileTree, handleManualRefresh, reloadSlides,
+    fileTree, fetchFileTree, handleManualRefresh, loadLinkChildren, reloadSlides,
     lastUpdated, currentFileName, currentFileType,
     setTemplateContent, markdownRef, isLoadingFile,
     loadFile, handleSave, handleOpenFolder, isModified,
@@ -1383,13 +1383,13 @@ export default function EditorPage() {
   const sidebarSlice = useMemo<SidebarSharedProps>(() => ({
     currentFileName, currentFileType: previewFileType, slides, currentSlideIndex, slideSize,
     drawings, fileTree, onSlideSelect: setCurrentSlideIndex, onFileSelect: handleFileSelect,
-    onManualRefresh: handleManualRefresh, onNav: moveSlide, handleOpenFolder,
+    onManualRefresh: handleManualRefresh, onLoadLinkChildren: loadLinkChildren, onNav: moveSlide, handleOpenFolder,
     bookmarks, isBookmarked, onToggleBookmark: toggleBookmark,
     onReorderBookmark: reorderBookmarks, onUpdateBookmark: updateBookmark,
     onRenameFile: renameTab, onDeleteFiles: closeTabsByPaths,
     onOpenDeck: handleOpenDeck, canEditTags, currentDeckTags, onSetDeckTags: handleSetDeckTags,
   }), [currentFileName, previewFileType, slides, currentSlideIndex, slideSize, drawings, fileTree,
-    setCurrentSlideIndex, handleFileSelect, handleManualRefresh, moveSlide, handleOpenFolder,
+    setCurrentSlideIndex, handleFileSelect, handleManualRefresh, loadLinkChildren, moveSlide, handleOpenFolder,
     bookmarks, isBookmarked, toggleBookmark, reorderBookmarks, updateBookmark, renameTab, closeTabsByPaths,
     handleOpenDeck, canEditTags, currentDeckTags, handleSetDeckTags]);
 

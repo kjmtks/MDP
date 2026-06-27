@@ -24,6 +24,15 @@ export interface FileNode {
   // directory and everything beneath it is excluded from the workspace slide
   // search, while staying browsable in the tree and usable as image/link targets.
   slideIgnored?: boolean;
+  // A `.mdplink` file presented as a directory: its children are the linked
+  // target's contents (a local path or an SSH remote dir). `linkType` is
+  // 'local' | 'ssh'; `linkError` is set when the target could not be read.
+  isLink?: boolean;
+  linkType?: 'local' | 'ssh';
+  linkError?: string;
+  // A deferred node (an SSH link or a remote subdirectory) whose children are not
+  // loaded yet — they're fetched on demand when the node is first expanded.
+  lazy?: boolean;
 }
 
 export interface TabPanelProps {

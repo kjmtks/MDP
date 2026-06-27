@@ -147,6 +147,28 @@ export const useFileManager = ({ setCurrentSlideIndex, syncDrawings, onFileLoade
     setLastUpdated(Date.now());
   }, [fetchFileTree]);
 
+  // Lazily load the children of a deferred node (an SSH `.mdplink` or a remote
+  // subdirectory) when it is first expanded, and splice them into the tree. The
+  // node's `lazy` flag is always cleared afterwards (success or failure) so it is
+  // not auto-retried; a manual Refresh re-defers it for another attempt.
+  const loadLinkChildren = useCallback(async (targetPath: string) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const apply = (patch: (n: FileNode) => FileNode) => setFileTree(prev => {
+      const walk = (nodes: FileNode[]): FileNode[] => nodes.map(n => {
+        if (n.path === targetPath) return patch(n);
+        if (n.children && (targetPath === n.path || targetPath.startsWith(n.path + '/'))) return { ...n, children: walk(n.children) };
+        return n;
+      });
+      return walk(prev);
+    });
+    try {
+      const sub = await apiClient.getSubTree(targetPath);
+      apply(n => ({ ...n, children: sub.nodes || [], lazy: false, linkError: sub.error || undefined }));
+    } catch (err) {
+      apply(n => ({ ...n, lazy: false, linkError: (err as Error).message }));
+    }
+  }, []);
+
   // Force a slide re-render with fresh asset URLs (images get a new `?_t=` cache
   // buster), WITHOUT re-reading the file tree — for reflecting a file (e.g. an
   // image) that was replaced on disk at the same path.
@@ -634,7 +656,7 @@ const updateTabContent = useCallback((path: string, newContent: string) => {
 
   return {
     markdown, setMarkdown, editorInitialValue, debouncedMarkdown,
-    fileTree, fetchFileTree, handleManualRefresh, reloadSlides,
+    fileTree, fetchFileTree, handleManualRefresh, loadLinkChildren, reloadSlides,
     lastUpdated, currentFileName, currentFileType,
     templateContent, setTemplateContent,
     markdownRef, isLoadingFile,

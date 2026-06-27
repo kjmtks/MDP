@@ -4,6 +4,13 @@ const fs = require('fs/promises');
 const fsSync = require('fs');
 const isMac = process.platform === 'darwin';
 const { pathToFileURL } = require('url');
+const mdplink = require('./mdplink.cjs');
+// Resolve a workspace-relative path through any `.mdplink` it crosses.
+const vresolve = (rel) => mdplink.resolve(currentBaseDir, rel || '');
+// Resolve to the FILE itself when the path is a `.mdplink` (so delete/rename act on
+// the link file, not its target); otherwise resolve normally through the link.
+const vresolveSelf = (rel) =>
+  /\.mdplink$/i.test(rel || '') ? mdplink.resolveLinkFile(currentBaseDir, rel) : vresolve(rel);
 
 process.env['ELECTRON_DISABLE_SECURITY_WARNINGS'] = 'true';
 
@@ -91,14 +98,14 @@ app.whenReady().then(async () => {
     try {
       const urlStr = request.url.replace(/^mdp-file:\/\//, '');
       const cleanPath = decodeURIComponent(urlStr.split('?')[0]);
-      const absolutePath = path.join(currentBaseDir, cleanPath);
 
-      const data = await fs.readFile(absolutePath);
+      // Route through the VFS so files behind a `.mdplink` (local or remote) serve too.
+      const data = await mdplink.vfsReadBuffer(vresolve(cleanPath));
 
       let mimeType = 'application/octet-stream';
-      const ext = path.extname(absolutePath).toLowerCase();
+      const ext = path.extname(cleanPath).toLowerCase();
 
-      if (ext === '.svg' || absolutePath.endsWith('.drawio.svg')) mimeType = 'image/svg+xml';
+      if (ext === '.svg' || cleanPath.endsWith('.drawio.svg')) mimeType = 'image/svg+xml';
       else if (ext === '.png') mimeType = 'image/png';
       else if (ext === '.jpg' || ext === '.jpeg') mimeType = 'image/jpeg';
       else if (ext === '.gif') mimeType = 'image/gif';
@@ -221,6 +228,7 @@ ipcMain.handle('captureSlide', async (event, data) => {
 
 app.on('before-quit', () => {
   remoteServer.stopRemoteServer();
+  mdplink.closeAll();
   if (captureWin && !captureWin.isDestroyed()) captureWin.destroy();
 });
 
@@ -254,43 +262,62 @@ ipcMain.handle('openInFileManager', async (event, relPath) => {
 
 ipcMain.handle('saveFile', async (event, { filename, content, isBase64 }) => {
   if (!currentBaseDir) return { success: false };
-  const filePath = path.join(currentBaseDir, filename);
-  await fs.mkdir(path.dirname(filePath), { recursive: true });
-  if (isBase64) await fs.writeFile(filePath, content, 'base64');
-  else await fs.writeFile(filePath, content, 'utf-8');
+  await mdplink.vfsWrite(vresolve(filename), Buffer.from(content, isBase64 ? 'base64' : 'utf-8'));
   return { success: true };
 });
 
 ipcMain.handle('createFile', async (event, { path: itemPath, type }) => {
   if (!currentBaseDir) return { success: false };
-  const fullPath = path.join(currentBaseDir, itemPath);
-  if (type === 'directory') await fs.mkdir(fullPath, { recursive: true });
-  else await fs.writeFile(fullPath, '', 'utf-8');
+  if (type === 'directory') await mdplink.vfsMkdirp(vresolve(itemPath));
+  else await mdplink.vfsWrite(vresolve(itemPath), Buffer.from('', 'utf-8'));
   return { success: true };
 });
 
 ipcMain.handle('readFileText', async (event, filePath) => {
   if (!currentBaseDir) return "";
-  return await fs.readFile(path.join(currentBaseDir, filePath), 'utf-8');
+  return await mdplink.vfsReadText(vresolve(filePath));
+});
+
+// Read/write a `.mdplink` file's RAW JSON (bypasses link traversal so the config
+// itself is read, not the directory it points to).
+ipcMain.handle('getLinkConfig', async (event, relPath) => {
+  if (!currentBaseDir) return "";
+  return await mdplink.vfsReadText(mdplink.resolveLinkFile(currentBaseDir, relPath));
+});
+ipcMain.handle('setLinkConfig', async (event, { path: relPath, content }) => {
+  if (!currentBaseDir) return { success: false };
+  await mdplink.vfsWrite(mdplink.resolveLinkFile(currentBaseDir, relPath), Buffer.from(content, 'utf-8'));
+  return { success: true };
+});
+
+// Native file picker (e.g. choosing an SSH key file). Returns the chosen path or null.
+ipcMain.handle('pickFile', async (event, options) => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openFile', 'showHiddenFiles'],
+    title: (options && options.title) || 'Select a file',
+    filters: (options && options.filters) || [],
+  });
+  if (result.canceled || !result.filePaths.length) return null;
+  return result.filePaths[0];
 });
 
 ipcMain.handle('getFileAsDataUrl', async (event, filePath) => {
   if (!currentBaseDir) return "";
   const ext = path.extname(filePath).toLowerCase().replace('.', '');
   const mimeType = ext === 'svg' ? 'image/svg+xml' : `image/${ext}`;
-  const base64 = await fs.readFile(path.join(currentBaseDir, filePath), 'base64');
+  const base64 = (await mdplink.vfsReadBuffer(vresolve(filePath))).toString('base64');
   return `data:${mimeType};base64,${base64}`;
 });
 
 ipcMain.handle('deleteFiles', async (event, { paths }) => {
   if (!currentBaseDir) return { success: false };
-  for (const p of paths) await fs.rm(path.join(currentBaseDir, p), { recursive: true, force: true });
+  for (const p of paths) await mdplink.vfsRemove(vresolveSelf(p));
   return { success: true };
 });
 
 ipcMain.handle('renameFile', async (event, { oldPath, newPath }) => {
   if (!currentBaseDir) return { success: false };
-  await fs.rename(path.join(currentBaseDir, oldPath), path.join(currentBaseDir, newPath));
+  await mdplink.vfsRename(vresolve(oldPath), vresolve(newPath));
   return { success: true };
 });
 
@@ -298,7 +325,7 @@ ipcMain.handle('moveFile', async (event, { sourcePaths, targetPath }) => {
   if (!currentBaseDir) return { success: false };
   for (const p of sourcePaths) {
     const fileName = path.basename(p);
-    await fs.rename(path.join(currentBaseDir, p), path.join(currentBaseDir, targetPath, fileName));
+    await mdplink.vfsRename(vresolve(p), vresolve(`${targetPath}/${fileName}`));
   }
   return { success: true };
 });
@@ -319,15 +346,28 @@ const uniqueCopyName = (targetDir, baseName) => {
   return candidate;
 };
 
+// Like uniqueCopyName but VFS-aware (works inside a local/remote `.mdplink` target).
+const uniqueCopyNameVfs = async (targetDir, baseName) => {
+  const dot = baseName.indexOf('.');
+  const stem = dot > 0 ? baseName.slice(0, dot) : baseName;
+  const ext = dot > 0 ? baseName.slice(dot) : '';
+  let candidate = baseName;
+  let i = 0;
+  while (await mdplink.vfsExists(mdplink.childOf(targetDir, candidate))) {
+    i += 1;
+    candidate = i === 1 ? `${stem} copy${ext}` : `${stem} copy ${i}${ext}`;
+  }
+  return candidate;
+};
+
 ipcMain.handle('copyFiles', async (event, { sourcePaths, targetPath }) => {
   if (!currentBaseDir) return { success: false };
-  const targetDir = path.join(currentBaseDir, targetPath || '');
-  await fs.mkdir(targetDir, { recursive: true });
+  const targetDir = vresolve(targetPath || '');
+  await mdplink.vfsMkdirp(targetDir);
   const created = [];
   for (const p of sourcePaths) {
-    const src = path.join(currentBaseDir, p);
-    const destName = uniqueCopyName(targetDir, path.basename(p));
-    await fs.cp(src, path.join(targetDir, destName), { recursive: true });
+    const destName = await uniqueCopyNameVfs(targetDir, path.basename(p));
+    await mdplink.vfsCopy(vresolve(p), mdplink.childOf(targetDir, destName));
     created.push((targetPath ? `${targetPath}/${destName}` : destName).replace(/^\//, ''));
   }
   return { success: true, paths: created };
@@ -489,7 +529,14 @@ async function buildFileTree(dir, basePath = '') {
 
 ipcMain.handle('getFileTree', async () => {
   if (!currentBaseDir) return [];
-  return await buildFileTree(currentBaseDir);
+  // Link-aware tree (resolves `.mdplink` to local/remote contents).
+  return (await mdplink.buildTree(currentBaseDir)).nodes;
+});
+
+// Lazily load the children of a deferred node (an SSH link or a remote subdir).
+ipcMain.handle('getSubTree', async (event, relPath) => {
+  if (!currentBaseDir) return { nodes: [] };
+  return await mdplink.buildSubTree(currentBaseDir, relPath || '');
 });
 
 ipcMain.on('export-pdf', async (event, filename) => {

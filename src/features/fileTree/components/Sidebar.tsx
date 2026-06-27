@@ -8,6 +8,9 @@ import DriveFileRenameOutlineIcon from '@mui/icons-material/DriveFileRenameOutli
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import ContentPasteIcon from '@mui/icons-material/ContentPaste';
 import SlideshowIcon from '@mui/icons-material/Slideshow';
+import LinkIcon from '@mui/icons-material/Link';
+import SettingsIcon from '@mui/icons-material/Settings';
+import { MdpLinkDialog } from './MdpLinkDialog';
 import { CustomTabPanel } from '../../../components/common/CustomTabPanel';
 import { FileTreeItem } from './FileTreeItem';
 import { SlideThumbnail } from '../../slide/components/SlideThumbnail';
@@ -46,6 +49,7 @@ interface SidebarProps {
   onSlideSelect: (index: number) => void;
   onFileSelect: (path: string, isBinary?: boolean) => void;
   onManualRefresh: () => void;
+  onLoadLinkChildren?: (path: string) => Promise<void>;
   onNav?: (dir: number) => void;
   handleOpenFolder?: () => void;
   bookmarks: Bookmark[];
@@ -80,7 +84,7 @@ const SECTION_INDEX: Record<'thumbnail' | 'files' | 'bookmarks', number> = {
 export const Sidebar: React.FC<SidebarProps> = ({
   currentFileName, currentFileType, slides, currentSlideIndex, slideSize,
   drawings, fileTree, onSlideSelect, onFileSelect,
-  onManualRefresh, onNav,
+  onManualRefresh, onLoadLinkChildren, onNav,
   bookmarks, isBookmarked, onToggleBookmark, onReorderBookmark, onUpdateBookmark,
   onRenameFile, onDeleteFiles,
   onOpenDeck, canEditTags, currentDeckTags, onSetDeckTags,
@@ -121,6 +125,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const [contextMenu, setContextMenu] = useState<{ mouseX: number; mouseY: number; node?: FileNode; path: string; isFolder: boolean } | null>(null);
   const [nodeToRename, setNodeToRename] = useState<FileNode | null>(null);
+  const [linkDialog, setLinkDialog] = useState<{ open: boolean; parentPath: string; editPath?: string }>({ open: false, parentPath: '' });
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [newName, setNewName] = useState('');
@@ -208,6 +213,27 @@ export const Sidebar: React.FC<SidebarProps> = ({
     walk(fileTree);
     return map;
   }, [fileTree]);
+
+  // Deferred (SSH / remote) nodes load their children only once expanded, so the
+  // tree renders without blocking on the SSH connection. This watches expanded
+  // nodes and fetches any that are still `lazy`. The ref de-dups in-flight loads;
+  // `loadingLinks` drives a spinner. After a Refresh re-defers a node, re-expanding
+  // (or it staying expanded) triggers a fresh load here.
+  const loadingRef = useRef<Set<string>>(new Set());
+  const [loadingLinks, setLoadingLinks] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    if (!onLoadLinkChildren) return;
+    for (const path of expandedDirs) {
+      const node = nodeByPath.get(path);
+      if (!node?.lazy || loadingRef.current.has(path)) continue;
+      loadingRef.current.add(path);
+      setLoadingLinks(prev => new Set(prev).add(path));
+      onLoadLinkChildren(path).finally(() => {
+        loadingRef.current.delete(path);
+        setLoadingLinks(prev => { const next = new Set(prev); next.delete(path); return next; });
+      });
+    }
+  }, [expandedDirs, nodeByPath, onLoadLinkChildren]);
 
   const handleSelect = (e: React.MouseEvent, node: FileNode) => {
     e.stopPropagation();
@@ -643,7 +669,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 visibleFileTree.map(node => (
                   <FileTreeItem
                     key={node.path} node={node} level={0}
-                    selectedPaths={selectedPaths} expandedDirs={expandedDirs} dragOverPath={dragOverPath}
+                    selectedPaths={selectedPaths} expandedDirs={expandedDirs} dragOverPath={dragOverPath} loadingLinks={loadingLinks}
                     onSelect={handleSelect} onDoubleClick={handleDoubleClick} onToggleExpand={handleToggleExpand} onContextMenu={handleContextMenu}
                     onDragStart={handleDragStart} onDragOver={handleDragOver} onDrop={handleDrop}
                   />
@@ -695,6 +721,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </MenuItem>,
             <MenuItem key="new-folder" onClick={() => handleOpenDialog('directory')}>
               <ListItemIcon><CreateNewFolderIcon fontSize="small" /></ListItemIcon> New Folder
+            </MenuItem>,
+            <MenuItem key="new-link" onClick={() => {
+              const parentPath = contextMenu?.node?.type === 'file'
+                ? contextMenu.path.substring(0, contextMenu.path.lastIndexOf('/'))
+                : (contextMenu?.path ?? '');
+              setLinkDialog({ open: true, parentPath });
+              setContextMenu(null);
+            }}>
+              <ListItemIcon><LinkIcon fontSize="small" /></ListItemIcon> Add Link (.mdplink)…
             </MenuItem>
           ]
         )}
@@ -712,7 +747,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
             Paste{clipboard.length > 1 ? ` (${clipboard.length})` : ''}
           </MenuItem>
         )}
-        {contextMenu?.node && !contextMenu.node.isSpecial && (
+        {contextMenu?.node?.isLink && (
+          <MenuItem onClick={() => { setLinkDialog({ open: true, parentPath: '', editPath: contextMenu.path }); setContextMenu(null); }}>
+            <ListItemIcon><SettingsIcon fontSize="small" /></ListItemIcon> Link settings…
+          </MenuItem>
+        )}
+        {contextMenu?.node && !contextMenu.node.isSpecial && !contextMenu.node.isLink && (
           <MenuItem onClick={handleRenameClick} disabled={selectedPaths.size > 1}>
             <ListItemIcon><DriveFileRenameOutlineIcon fontSize="small" /></ListItemIcon> Rename
           </MenuItem>
@@ -827,6 +867,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </Button>
         </DialogActions>
       </Dialog>
+
+      <MdpLinkDialog
+        open={linkDialog.open}
+        parentPath={linkDialog.parentPath}
+        editPath={linkDialog.editPath}
+        onClose={() => setLinkDialog({ open: false, parentPath: '' })}
+        onCreated={onManualRefresh}
+      />
     </Box>
   );
 };

@@ -1,11 +1,15 @@
 import React from 'react';
-import { Box, Typography } from '@mui/material';
+import { Box, Typography, CircularProgress } from '@mui/material';
 import FolderIcon from '@mui/icons-material/Folder';
 import FolderOpenIcon from '@mui/icons-material/FolderOpen';
 import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile';
 import ImageIcon from '@mui/icons-material/Image';
 import SlideshowIcon from '@mui/icons-material/Slideshow';
 import ArticleIcon from '@mui/icons-material/Article';
+import CloudIcon from '@mui/icons-material/Cloud';
+import CloudOffIcon from '@mui/icons-material/CloudOff';
+import LinkOffIcon from '@mui/icons-material/LinkOff';
+import FolderSpecialIcon from '@mui/icons-material/FolderSpecial';
 import type { FileNode } from '../../../types';
 import { isFileTreeDrag } from '../dragUtils';
 
@@ -15,6 +19,7 @@ interface FileTreeItemProps {
   selectedPaths: Set<string>;
   expandedDirs: Set<string>;
   dragOverPath: string | null;
+  loadingLinks?: Set<string>;
   onSelect: (e: React.MouseEvent, node: FileNode) => void;
   onDoubleClick: (node: FileNode) => void;
   onToggleExpand: (e: React.MouseEvent, path: string) => void;
@@ -25,12 +30,13 @@ interface FileTreeItemProps {
 }
 
 export const FileTreeItem: React.FC<FileTreeItemProps> = ({
-  node, level, selectedPaths, expandedDirs, dragOverPath,
+  node, level, selectedPaths, expandedDirs, dragOverPath, loadingLinks,
   onSelect, onDoubleClick, onToggleExpand, onContextMenu,
   onDragStart, onDragOver, onDrop
 }) => {
   const isDir = node.type === 'directory';
   const isOpen = expandedDirs.has(node.path);
+  const isLoading = !!loadingLinks?.has(node.path);
   const isSelected = selectedPaths.has(node.path);
   const isDragOver = dragOverPath === node.path;
 
@@ -41,6 +47,12 @@ export const FileTreeItem: React.FC<FileTreeItemProps> = ({
   if (isSlide) Icon = SlideshowIcon;
   else if (isMarkdown) Icon = ArticleIcon;
   else if (!isDir && node.isBinary) Icon = ImageIcon;
+  // A `.mdplink` is shown as a directory: SSH links get a cloud, local links a
+  // special-folder badge. An unreachable target gets a "broken" variant.
+  if (node.isLink) {
+    if (node.linkError) Icon = node.linkType === 'ssh' ? CloudOffIcon : LinkOffIcon;
+    else Icon = node.linkType === 'ssh' ? CloudIcon : FolderSpecialIcon;
+  }
 
   let iconColor = 'var(--app-text-secondary)';
   if (node.isSpecial) iconColor = '#a855f7';
@@ -48,6 +60,7 @@ export const FileTreeItem: React.FC<FileTreeItemProps> = ({
   else if (isSlide) iconColor = '#fb923c';
   else if (isMarkdown) iconColor = 'var(--app-text-muted)';
   else if (!isDir && node.isBinary) iconColor = 'var(--app-text-disabled)';
+  if (node.isLink) iconColor = node.linkError ? 'var(--app-danger, #f04747)' : '#34d399';
 
   return (
     <div style={{ opacity: node.isVirtual ? 0.6 : 1 }}>
@@ -55,6 +68,7 @@ export const FileTreeItem: React.FC<FileTreeItemProps> = ({
         onClick={(e) => onSelect(e, node)}
         onDoubleClick={() => onDoubleClick(node)}
         onContextMenu={(e) => onContextMenu(e, node)}
+        title={node.isLink ? (node.linkError ? `Link error: ${node.linkError}` : `${node.linkType === 'ssh' ? 'SSH' : 'Local'} link`) : undefined}
         draggable
         onDragStart={(e) => onDragStart(e, node)}
         onDragOver={(e) => { if (!isFileTreeDrag(e)) return; e.preventDefault(); e.stopPropagation(); onDragOver(e, node); }}
@@ -81,7 +95,7 @@ export const FileTreeItem: React.FC<FileTreeItemProps> = ({
             display: 'flex', alignItems: 'center', justifyContent: 'center', mr: 0.5, opacity: 0.7, '&:hover': { opacity: 1 }
           }}
         >
-          {isDir ? (isOpen ? '▼' : '▶') : ''}
+          {isLoading ? <CircularProgress size={10} sx={{ color: 'var(--app-text-muted)' }} /> : (isDir ? (isOpen ? '▼' : '▶') : '')}
         </Box>
 
         <Icon sx={{ fontSize: 18, mr: 1, flexShrink: 0, color: iconColor }} />
@@ -103,11 +117,16 @@ export const FileTreeItem: React.FC<FileTreeItemProps> = ({
           {node.children.map((child) => (
             <FileTreeItem
               key={child.path} node={child} level={level + 1}
-              selectedPaths={selectedPaths} expandedDirs={expandedDirs} dragOverPath={dragOverPath}
+              selectedPaths={selectedPaths} expandedDirs={expandedDirs} dragOverPath={dragOverPath} loadingLinks={loadingLinks}
               onSelect={onSelect} onDoubleClick={onDoubleClick} onToggleExpand={onToggleExpand} onContextMenu={onContextMenu}
               onDragStart={onDragStart} onDragOver={onDragOver} onDrop={onDrop}
             />
           ))}
+          {isLoading && node.children.length === 0 && (
+            <Typography variant="body2" sx={{ pl: `${(level + 1) * 16 + 28}px`, py: 0.5, fontSize: '0.8rem', color: 'var(--app-text-disabled)', fontStyle: 'italic' }}>
+              Loading…
+            </Typography>
+          )}
         </Box>
       )}
     </div>

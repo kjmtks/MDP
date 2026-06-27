@@ -20,6 +20,8 @@ export interface SidebarSharedProps {
   onSlideSelect: (index: number) => void;
   onFileSelect: (path: string, isBinary?: boolean) => void;
   onManualRefresh: () => void;
+  // Lazily load a deferred node's children (an SSH link or remote subdir) on expand.
+  onLoadLinkChildren?: (path: string) => Promise<void>;
   onNav?: (dir: number) => void;
   handleOpenFolder?: () => void;
   bookmarks: Bookmark[];
