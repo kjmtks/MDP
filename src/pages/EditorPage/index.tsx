@@ -479,6 +479,7 @@ export default function EditorPage() {
   }, [handleOpenFolder]);
 
   const isImageFile = currentFileName?.match(/\.(png|jpe?g|gif|svg|webp)$/i);
+  const isPdfFile = currentFileName?.toLowerCase().endsWith('.pdf');
   const isSlideFile = currentFileName?.endsWith('.slide.md');
 
   let effectiveFileType = currentFileType;
@@ -486,10 +487,13 @@ export default function EditorPage() {
     effectiveFileType = 'markdown';
   } else if (isImageFile) {
     effectiveFileType = 'image';
+  } else if (isPdfFile) {
+    effectiveFileType = 'pdf';
   } else if (isSlideFile) {
     effectiveFileType = 'markdown';
-  } else if (currentFileName?.endsWith('.md') || currentFileType === 'markdown') {
-    effectiveFileType = 'text';
+  } else if (currentFileName?.match(/\.(md|markdown)$/i) || currentFileType === 'markdown') {
+    // A plain markdown file (not a `.slide.md` deck) → rendered as a scrollable document.
+    effectiveFileType = 'doc';
   }
 
   // --- Pinned preview source -------------------------------------------------
@@ -501,9 +505,9 @@ export default function EditorPage() {
   // real deck. The editor pane still follows the active tab; saving the
   // edited asset bumps `lastUpdated` / reloads modules (`moduleEpoch`), which
   // re-runs the live pipeline below against the pinned source.
-  const isPreviewableActive = effectiveFileType === 'image' || effectiveFileType === 'markdown';
+  const isPreviewableActive = effectiveFileType === 'image' || effectiveFileType === 'markdown' || effectiveFileType === 'doc' || effectiveFileType === 'pdf';
   const [previewSource, setPreviewSource] = useState<{ fileName: string | null; fileType: FileType; md: string }>(
-    () => (effectiveFileType === 'image' || effectiveFileType === 'markdown')
+    () => isPreviewableActive
       ? { fileName: currentFileName, fileType: effectiveFileType, md: debouncedMarkdown }
       : { fileName: null, fileType: 'markdown', md: '' }
   );
@@ -542,14 +546,14 @@ export default function EditorPage() {
   const liveSuppress = !livePreview && mdChanged && !fileChanged;
   if (isPreviewableActive && (fileChanged || (mdChanged && !manipSuppress && !liveSuppress))) {
     setPreviewSource({ fileName: currentFileName, fileType: effectiveFileType, md: debouncedMarkdown });
-  } else if (!isPreviewableActive && previewSource.fileType === 'image') {
-    // Never KEEP a pinned image while a non-previewable file (css / module /
-    // effect / other text) is active. Pinning exists so theme/module/effect
-    // edits preview against the last real slide DECK — an image is not a deck,
-    // and retaining it leaves a stale, unrelated image in the preview after
-    // switching to (or closing a tab onto) a text file. Drop it so the preview
-    // falls back to the empty state instead. Converges: once the type is
-    // 'markdown' this branch no longer fires.
+  } else if (!isPreviewableActive && previewSource.fileType !== 'markdown') {
+    // Never KEEP a pinned image / document / pdf while a non-previewable file
+    // (css / module / effect / other text) is active. Pinning exists so
+    // theme/module/effect edits preview against the last real slide DECK — an
+    // image/doc/pdf is not a deck, and retaining it leaves a stale, unrelated
+    // preview after switching to (or closing a tab onto) a text file. Drop it so
+    // the preview falls back to the empty state instead. Converges: once the type
+    // is 'markdown' (a deck) this branch no longer fires.
     setPreviewSource({ fileName: null, fileType: 'markdown', md: '' });
   }
   // The frozen preview is "stale" when the editor content differs from what's
@@ -597,7 +601,7 @@ export default function EditorPage() {
     // the new module <render>/<script> output live, not just its <style>.
   }, [previewMarkdown, imageLibrary, moduleEpoch]);
 
-  const { baseUrl, globalContext, slides: mdSlides, slideSize: mdSlideSize, slideStyleVariables, themeCssUrl } = useSlideProcessor(
+  const { baseUrl, globalContext, slides: mdSlides, docHtml, slideSize: mdSlideSize, slideStyleVariables, themeCssUrl } = useSlideProcessor(
     previewFileName, previewFileType, processedMarkdown, lastUpdated, themes, moduleEpoch
   );
 
@@ -1403,6 +1407,9 @@ export default function EditorPage() {
     moduleRole: isSlideshow ? 'mirror' : 'owner',
     previewImage,
     onClosePreviewImage: () => setPreviewImage(null),
+    docHtml,
+    pdfPath: previewFileType === 'pdf' ? previewFileName : null,
+    previewVersion: lastUpdated,
     onEditDrawio,
     // Slide hyperlinks + navigation history (back/forward).
     onSlideLink: navLink,
@@ -1422,6 +1429,7 @@ export default function EditorPage() {
     setStylusOnly, addStroke, handleUpdateStrokes, isSlideshow, onEditDrawio, previewImage,
     manipulate, editLayout, canEditLayout, snapOn, livePreview, previewStale,
     currentFileName, effectiveFileType, markdownRef, reloadSlides,
+    docHtml, previewFileName, lastUpdated,
     navLink, navBack, navForward, navCanBack, navCanForward]);
 
   const snippetsSlice = useMemo<SnippetsShared>(() => ({

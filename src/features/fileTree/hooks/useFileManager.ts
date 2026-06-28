@@ -253,7 +253,7 @@ export const useFileManager = ({ setCurrentSlideIndex, syncDrawings, onFileLoade
     isLoadingFile.current = true;
     const type = determineFileType(fileName, isBinaryFromServer);
 
-    if (type === 'image' || type === 'binary') {
+    if (type === 'image' || type === 'binary' || type === 'pdf') {
       const newTab: OpenTab = { id: createTabId(), path: fileName, type, content: "", initialContent: "", isModified: false, currentSlideIndex: 0, drawings: {}, editorRef: createRef() };
       setTabState(prev => {
         if (prev.tabs.some(t => t.path === fileName)) return prev;

@@ -7,6 +7,7 @@ import { executeModuleScripts } from '../../modules/moduleManager';
 import { applyBuildStep, applyBuildStepInstant } from '../../effects/buildRuntime';
 import './SlideViewer.css';
 import './SlideBaseDesign.css';
+import './MarkdownDoc.css';
 
 interface SlideViewProps {
   html: string;
@@ -42,6 +43,11 @@ interface SlideViewProps {
   // never run module scripts. Otherwise every thumbnail would run the timer/clock
   // — N owners decrementing one shared timer = N× speed, plus wasted intervals.
   runScripts?: boolean;
+  // Document mode: render full-width, natural-height and SCROLLABLE (instead of a
+  // fixed-size white slide), using the APP theme's colours. Used for plain `.md`
+  // files. Reuses the whole slide pipeline (images, KaTeX, mermaid, plantuml,
+  // charts, modules, inline SVG) — only the layout/chrome differs.
+  flow?: boolean;
   // When provided (editor preview only), enables on-preview module manipulation.
   manipulate?: ManipRuntime;
   // Called when an internal slide hyperlink (`a.mdp-slide-link`) is clicked, with
@@ -122,6 +128,7 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
   slideIndex,
   moduleRole,
   runScripts = true,
+  flow = false,
   manipulate,
   onSlideLink
 }) => {
@@ -526,8 +533,13 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
 
   return (
     <div
-      className={`slide-content-wrapper markdown-body ${className} ${manipulate?.enabled ? 'mdp-manip-editing' : ''}`}
-      style={{
+      className={`slide-content-wrapper markdown-body ${flow ? 'mdp-doc' : ''} ${className} ${manipulate?.enabled ? 'mdp-manip-editing' : ''}`}
+      style={flow ? {
+        width: '100%', height: '100%', position: 'relative',
+        overflowY: 'auto', overflowX: 'hidden', boxSizing: 'border-box',
+        backgroundColor: 'var(--app-bg-editor)', color: 'var(--app-text)',
+        ...style,
+      } : {
         width: `${slideSize.width}px`, height: `${slideSize.height}px`,
         display: isActive ? 'block' : 'none', position: 'relative',
         backgroundColor: 'white', boxSizing: 'border-box', overflow: 'hidden',
@@ -540,7 +552,7 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
         } as React.CSSProperties)
       }}
     >
-      {header && <div ref={setHeaderNode} className="slide-header" dangerouslySetInnerHTML={{ __html: header }} />}
+      {!flow && header && <div ref={setHeaderNode} className="slide-header" dangerouslySetInnerHTML={{ __html: header }} />}
 
       <div
         ref={setContent} className={`slide-content ${className} ${buildStep !== undefined ? 'mdp-build-active' : ''}`}
@@ -549,10 +561,10 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
           if (a) { e.preventDefault(); e.stopPropagation(); onSlideLink(a.dataset.mdpTarget || ''); }
         } : undefined}
         dangerouslySetInnerHTML={{ __html: processedHtml }}
-        style={{ width: '100%', height: '100%' }}
+        style={{ width: '100%', height: flow ? 'auto' : '100%' }}
       />
 
-      {((drawings && drawings.length > 0) || isInteracting) && (
+      {!flow && ((drawings && drawings.length > 0) || isInteracting) && (
         <DrawingOverlay
           width={slideSize.width} height={slideSize.height} data={drawings || []}
           isInteracting={isInteracting} onAddStroke={onAddStroke} onUpdateStrokes={onUpdateStrokes}
@@ -560,12 +572,12 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
         />
       )}
 
-      {manipulate && (
+      {!flow && manipulate && (
         <ManipulationLayer container={containerEl} headerContainer={headerEl} footerContainer={footerEl} runtime={manipulate} />
       )}
 
-      {footer && <div ref={setFooterNode} className="slide-footer" dangerouslySetInnerHTML={{ __html: footer }} />}
-      {pageNumber && <div className="slide-page-number">{pageNumber}</div>}
+      {!flow && footer && <div ref={setFooterNode} className="slide-footer" dangerouslySetInnerHTML={{ __html: footer }} />}
+      {!flow && pageNumber && <div className="slide-page-number">{pageNumber}</div>}
     </div>
   );
 });

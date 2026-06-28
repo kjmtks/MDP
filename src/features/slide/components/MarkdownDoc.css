@@ -1,0 +1,61 @@
+/* =========================================
+ * Markdown DOCUMENT view (SlideView `flow` mode)
+ * =========================================
+ * A plain `.md` file rendered as a scrollable document instead of slides. It
+ * reuses the whole slide markdown pipeline (.slide-content rules, code blocks,
+ * tables, KaTeX, mermaid, plantuml, charts, drawio SVG), but:
+ *   - lays out in normal flow (auto height, scroll) instead of a fixed slide, and
+ *   - remaps the slide design tokens to the APP theme so colours follow the app
+ *     theme (dark/light/…) rather than the white slide canvas.
+ * Scoped to `.mdp-doc` so slides are completely unaffected. */
+
+.slide-content-wrapper.mdp-doc {
+  /* Colours follow the app chrome theme. */
+  --bg-color: var(--app-bg-editor);
+  --text-color: var(--app-text);
+  --muted-color: var(--app-text-muted);
+  --border-color: var(--app-border-strong);
+  --accent-color: var(--app-accent, #3b82f6);
+  --table-bg: var(--app-bg-elevated);
+  /* Document-readable typography (slides use much larger, projection-sized text). */
+  --base-font-size: 16px;
+  --h1-size: 1.9rem;
+  --h2-size: 1.5rem;
+  --h3-size: 1.2rem;
+  font-size: var(--base-font-size);
+}
+
+/* Normal document flow: grow with content and scroll the wrapper, centred with a
+ * comfortable reading measure. Overrides the slide's fixed full-height/overflow. */
+.mdp-doc .slide-content {
+  height: auto;
+  overflow: visible;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 28px 36px 96px;
+  background-color: transparent;     /* the wrapper paints the themed background */
+}
+
+/* Tables read better full-measure-left in a document than the slide's centred 90%. */
+.mdp-doc.slide-content-wrapper table {
+  width: 100%;
+  margin: 1em 0;
+  box-shadow: none;
+}
+
+/* Charts have no slide to size against — give the placeholder a sensible height. */
+.mdp-doc .chartjs-render {
+  height: 360px;
+  max-width: 100%;
+}
+
+/* Headings: drop the slide's heavy top margin on the very first element. */
+.mdp-doc .slide-content > :first-child {
+  margin-top: 0;
+}
+
+/* Plain links stay accent-coloured & underlined (slides often restyle these). */
+.mdp-doc .slide-content a {
+  color: var(--accent-color);
+  text-decoration: underline;
+}

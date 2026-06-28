@@ -40,6 +40,7 @@ import AccountTreeIcon from '@mui/icons-material/AccountTree';
 import { Sidebar } from '../../../features/fileTree/components/Sidebar';
 import { EditorPanel } from '../../../features/editor/components/EditorPanel';
 import { SlideView } from '../../../features/slide/components/SlideView';
+import { PdfView } from '../../../features/pdf/PdfView';
 import { SlideScaler } from '../../../features/slide/components/SlideScaler';
 import { SlideControls } from '../../../features/drawing/components/SlideControls';
 import { useSidebar, usePreview, useEditor, useSnippets, useImages, useHeaderActions } from './DockContext';
@@ -571,6 +572,15 @@ export const PreviewPanel: React.FC = () => {
           <Box sx={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', p: 2 }}>
             <img src={p.previewImage} alt="preview" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', background: '#fff', borderRadius: 4 }} />
           </Box>
+        </Box>
+      ) : p.effectiveFileType === 'pdf' && p.pdfPath ? (
+        <PdfView path={p.pdfPath} version={p.previewVersion} />
+      ) : p.effectiveFileType === 'doc' ? (
+        <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+          <SlideView
+            flow html={p.docHtml || ''} basePath={p.basePath} slideSize={p.slideSize}
+            isActive isEnabledPointerEvents runScripts moduleRole={p.moduleRole} onSlideLink={p.onSlideLink}
+          />
         </Box>
       ) : p.slides.length === 0 ? (
         <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'var(--app-bg-editor)' }}>

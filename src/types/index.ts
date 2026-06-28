@@ -42,7 +42,10 @@ export interface TabPanelProps {
   noScroll?: boolean;
 }
 
-export type FileType = 'markdown' | 'image' | 'text' | 'binary' | 'limit-exceeded';
+// 'markdown' = slide deck source (.slide.md) rendered as slides; 'doc' = a plain
+// markdown file (.md/.markdown) rendered as a scrollable document; 'pdf' = a PDF
+// rendered in the preview pane.
+export type FileType = 'markdown' | 'doc' | 'image' | 'pdf' | 'text' | 'binary' | 'limit-exceeded';
 
 export interface SnippetItem {
   label: string;

@@ -25,6 +25,7 @@ export const determineFileType = (filename: string, isBinaryFromServer?: boolean
   const lower = filename.toLowerCase();
   if (/\.(md|markdown)$/.test(lower)) return 'markdown';
   if (/\.(png|jpe?g|gif|svg|webp|bmp|ico)$/.test(lower)) return 'image';
+  if (/\.pdf$/.test(lower)) return 'pdf';
   if (isBinaryFromServer === true) {
     return 'binary';
   }

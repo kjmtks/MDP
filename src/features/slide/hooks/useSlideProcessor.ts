@@ -25,13 +25,32 @@ export const useSlideProcessor = (
 
   const processedMarkdown = useMemo(() => debouncedMarkdown, [debouncedMarkdown]);
 
-  const blocks = useMemo(() => (currentFileType === 'markdown' ? splitMarkdownToBlocks(processedMarkdown) : []), [processedMarkdown, currentFileType]);
+  // 'markdown' = slide deck → split on `---`. 'doc' = a plain markdown file →
+  // ONE block (so `---` stays an <hr>, not a slide break) rendered through the SAME
+  // pipeline (modules, KaTeX, mermaid, plantuml, charts, image refs) as slides.
+  const blocks = useMemo(() => {
+    if (currentFileType === 'markdown') return splitMarkdownToBlocks(processedMarkdown);
+    // The generator treats block[0] as the meta/preamble page and renders content
+    // from block[1] on. A document has no preamble, so prepend an empty one and put
+    // the whole file in block[1] (one HTML output, `---` kept as <hr>).
+    if (currentFileType === 'doc') return [
+      { id: 'doc-pre', rawContent: '', startLine: 1, endLine: 1 },
+      { id: 'doc', rawContent: processedMarkdown, startLine: 1, endLine: processedMarkdown.split('\n').length },
+    ];
+    return [];
+  }, [processedMarkdown, currentFileType]);
 
   const globalContext = useMemo(() => parseGlobalContext(blocks.length > 0 ? blocks[0].rawContent : ""), [blocks]);
 
   const rawSlides = useSlideGenerator(blocks, globalContext, baseUrl, lastUpdated, moduleEpoch);
 
+  // Rendered HTML for a plain markdown document (empty unless type === 'doc').
+  const docHtml = useMemo(() => (currentFileType === 'doc' ? (rawSlides[0]?.html || '') : ''), [currentFileType, rawSlides]);
+
   const slides = useMemo(() => {
+    // A document is not a slide deck — keep `slides` empty so nothing treats it as
+    // presentable (no slideshow / thumbnails / export).
+    if (currentFileType === 'doc') return [];
     const offset = blocks.length - rawSlides.length;
     let logicalPageCount = 0;
     return rawSlides.map((slide, index) => {
@@ -48,7 +67,7 @@ export const useSlideProcessor = (
 
       return { ...slide, html, isHidden, isCover, pageNumber };
     });
-  }, [rawSlides, blocks]);
+  }, [rawSlides, blocks, currentFileType]);
 
   const slideSize = useMemo(() => {
     const [aspectW, aspectH] = globalContext.aspectRatio;
@@ -106,5 +125,5 @@ export const useSlideProcessor = (
     }
   }, [themeCssUrl, lastUpdated]);
 
-  return { baseUrl, globalContext, slides, slideSize, slideStyleVariables, themeCssUrl };
+  return { baseUrl, globalContext, slides, docHtml, slideSize, slideStyleVariables, themeCssUrl };
 };

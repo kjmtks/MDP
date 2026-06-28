@@ -80,6 +80,14 @@ export interface PreviewSharedProps {
   previewImage?: string | null;
   onClosePreviewImage?: () => void;
 
+  // Rendered HTML for a plain markdown document (effectiveFileType === 'doc') —
+  // shown scrollable & app-themed instead of slides.
+  docHtml?: string;
+  // Workspace-relative path of the PDF to preview (effectiveFileType === 'pdf').
+  pdfPath?: string | null;
+  // Cache-buster bumped on reload so an externally-replaced doc/pdf re-renders.
+  previewVersion?: number;
+
   onEditDrawio?: () => void;
 
   // Slide hyperlinks + back/forward navigation history.

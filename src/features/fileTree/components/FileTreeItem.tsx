@@ -6,6 +6,7 @@ import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile';
 import ImageIcon from '@mui/icons-material/Image';
 import SlideshowIcon from '@mui/icons-material/Slideshow';
 import ArticleIcon from '@mui/icons-material/Article';
+import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import CloudIcon from '@mui/icons-material/Cloud';
 import CloudOffIcon from '@mui/icons-material/CloudOff';
 import LinkOffIcon from '@mui/icons-material/LinkOff';
@@ -42,10 +43,12 @@ export const FileTreeItem: React.FC<FileTreeItemProps> = ({
 
   const isSlide = !isDir && node.name.endsWith('.slide.md');
   const isMarkdown = !isDir && !isSlide && node.name.endsWith('.md');
+  const isPdf = !isDir && /\.pdf$/i.test(node.name);
 
   let Icon = isDir ? (isOpen ? FolderOpenIcon : FolderIcon) : InsertDriveFileIcon;
   if (isSlide) Icon = SlideshowIcon;
   else if (isMarkdown) Icon = ArticleIcon;
+  else if (isPdf) Icon = PictureAsPdfIcon;
   else if (!isDir && node.isBinary) Icon = ImageIcon;
   // A `.mdplink` is shown as a directory: SSH links get a cloud, local links a
   // special-folder badge. An unreachable target gets a "broken" variant.
@@ -59,6 +62,7 @@ export const FileTreeItem: React.FC<FileTreeItemProps> = ({
   else if (isDir) iconColor = '#60a5fa';
   else if (isSlide) iconColor = '#fb923c';
   else if (isMarkdown) iconColor = 'var(--app-text-muted)';
+  else if (isPdf) iconColor = '#ef4444';
   else if (!isDir && node.isBinary) iconColor = 'var(--app-text-disabled)';
   if (node.isLink) iconColor = node.linkError ? 'var(--app-danger, #f04747)' : '#34d399';
 
