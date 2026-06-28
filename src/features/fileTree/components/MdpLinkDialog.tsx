@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Dialog, DialogTitle, DialogContent, DialogActions, TextField, Button, ToggleButtonGroup, ToggleButton, Stack, Typography, InputAdornment, IconButton } from '@mui/material';
+import { Dialog, DialogTitle, DialogContent, DialogActions, TextField, Button, ToggleButtonGroup, ToggleButton, Stack, Typography, InputAdornment, IconButton, Checkbox, FormControlLabel, Divider } from '@mui/material';
 import FolderOpenIcon from '@mui/icons-material/FolderOpen';
 import { apiClient, isElectron } from '../../../api/apiClient';
 import { reportError } from '../../../components/error/errorReporter';
@@ -50,6 +50,13 @@ export const MdpLinkDialog: React.FC<Props> = ({ open, parentPath = '', editPath
   const [remotePath, setRemotePath] = useState('');
   const [identityFile, setIdentityFile] = useState('');
   const [passphrase, setPassphrase] = useState('');
+  // Optional jump/bastion host (OpenSSH ProxyJump / `ProxyCommand ssh -W %h:%p`).
+  const [useJump, setUseJump] = useState(false);
+  const [jumpHost, setJumpHost] = useState('');
+  const [jumpPort, setJumpPort] = useState('22');
+  const [jumpUser, setJumpUser] = useState('');
+  const [jumpKey, setJumpKey] = useState('');
+  const [jumpPass, setJumpPass] = useState('');
   const [busy, setBusy] = useState(false);
 
   // Load the existing config when opened in edit mode.
@@ -57,6 +64,7 @@ export const MdpLinkDialog: React.FC<Props> = ({ open, parentPath = '', editPath
     if (!open) return;
     if (!editPath) {
       setName('link'); setKind('local'); setLocalPath(''); setHost(''); setPort('22'); setUser(''); setRemotePath(''); setIdentityFile(''); setPassphrase('');
+      setUseJump(false); setJumpHost(''); setJumpPort('22'); setJumpUser(''); setJumpKey(''); setJumpPass('');
       return;
     }
     let cancelled = false;
@@ -71,6 +79,18 @@ export const MdpLinkDialog: React.FC<Props> = ({ open, parentPath = '', editPath
         if (t === 'ssh') {
           setHost(cfg.host || ''); setPort(String(cfg.port || 22)); setUser(cfg.user || cfg.username || '');
           setRemotePath(cfg.path || ''); setIdentityFile(cfg.identityFile || cfg.privateKey || ''); setPassphrase(cfg.passphrase || '');
+          // proxyJump may be an object or a "user@host:port" shorthand.
+          let j = cfg.proxyJump || cfg.jump;
+          if (typeof j === 'string') {
+            const mm = j.trim().match(/^(?:([^@]+)@)?([^@:]+)(?::(\d+))?$/);
+            j = mm ? { user: mm[1], host: mm[2], port: mm[3] } : null;
+          }
+          if (j && j.host) {
+            setUseJump(true); setJumpHost(j.host); setJumpPort(String(j.port || 22));
+            setJumpUser(j.user || j.username || ''); setJumpKey(j.identityFile || j.privateKey || ''); setJumpPass(j.passphrase || '');
+          } else {
+            setUseJump(false); setJumpHost(''); setJumpPort('22'); setJumpUser(''); setJumpKey(''); setJumpPass('');
+          }
         } else {
           setLocalPath(cfg.path || '');
         }
@@ -81,19 +101,27 @@ export const MdpLinkDialog: React.FC<Props> = ({ open, parentPath = '', editPath
 
   const canSubmit = name.trim() && (kind === 'local' ? localPath.trim() : (host.trim() && remotePath.trim()));
 
-  const browseKey = async () => {
+  // Pick a private-key file and store it with forward slashes so the saved
+  // `.mdplink` is valid JSON without backslash-escaping (Windows accepts them).
+  const browseKeyInto = async (set: (v: string) => void) => {
     const p = await apiClient.pickFile({ title: 'Select SSH private key', filters: [{ name: 'All files', extensions: ['*'] }] });
-    // Store with forward slashes so the saved `.mdplink` is valid JSON without any
-    // backslash-escaping (Windows accepts forward slashes in paths just fine).
-    if (p) setIdentityFile(p.replace(/\\/g, '/'));
+    if (p) set(p.replace(/\\/g, '/'));
   };
 
   const submit = async () => {
     if (!canSubmit || busy) return;
-    const cfg = kind === 'local'
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const cfg: any = kind === 'local'
       ? { type: 'local', path: localPath.trim() }
       : { type: 'ssh', host: host.trim(), port: Number(port) || 22, user: user.trim() || undefined,
           path: remotePath.trim(), identityFile: identityFile.trim() || undefined, passphrase: passphrase || undefined };
+    if (kind === 'ssh' && useJump && jumpHost.trim()) {
+      cfg.proxyJump = {
+        host: jumpHost.trim(), port: Number(jumpPort) || 22,
+        user: jumpUser.trim() || undefined, identityFile: jumpKey.trim() || undefined,
+        passphrase: jumpPass || undefined,
+      };
+    }
     const base = name.trim().replace(/\.mdplink$/i, '').replace(/[\\/:*?"<>|]/g, '_');
     const parent = isEdit ? dirOf(editPath!) : parentPath;
     const newPath = `${parent ? parent + '/' : ''}${base}.mdplink`;
@@ -144,10 +172,36 @@ export const MdpLinkDialog: React.FC<Props> = ({ open, parentPath = '', editPath
                 placeholder="C:/Users/tatke/.ssh/id_ed25519  (~ allowed)" sx={fieldSx}
                 slotProps={isElectron() ? { input: { endAdornment: (
                   <InputAdornment position="end">
-                    <IconButton size="small" title="Browse…" onClick={browseKey} sx={{ color: 'var(--app-text-muted)' }}><FolderOpenIcon fontSize="small" /></IconButton>
+                    <IconButton size="small" title="Browse…" onClick={() => browseKeyInto(setIdentityFile)} sx={{ color: 'var(--app-text-muted)' }}><FolderOpenIcon fontSize="small" /></IconButton>
                   </InputAdornment>
                 ) } } : undefined} />
               <TextField label="Key passphrase (optional)" size="small" type="password" value={passphrase} onChange={(e) => setPassphrase(e.target.value)} sx={fieldSx} />
+
+              <Divider sx={{ borderColor: 'var(--app-border-subtle)' }} />
+              <FormControlLabel
+                control={<Checkbox size="small" checked={useJump} onChange={(e) => setUseJump(e.target.checked)} sx={{ color: 'var(--app-text-muted)' }} />}
+                label={<Typography sx={{ fontSize: '0.85rem', color: 'var(--app-text-secondary)' }}>Connect through a jump host (ProxyJump)</Typography>}
+              />
+              {useJump && (
+                <>
+                  <Typography sx={{ fontSize: '0.75rem', color: 'var(--app-text-disabled)', mt: -1 }}>
+                    Equivalent to <code>ProxyJump</code> / <code>ProxyCommand ssh -W %h:%p jump</code>. The session tunnels through this host to reach the target. User &amp; key default to the target's when left blank.
+                  </Typography>
+                  <Stack direction="row" spacing={1}>
+                    <TextField label="Jump host" size="small" value={jumpHost} onChange={(e) => setJumpHost(e.target.value)} placeholder="sss.eng.kagawa-u.ac.jp" sx={{ ...fieldSx, flex: 2 }} />
+                    <TextField label="Port" size="small" value={jumpPort} onChange={(e) => setJumpPort(e.target.value)} sx={{ ...fieldSx, flex: 1 }} />
+                    <TextField label="Jump user" size="small" value={jumpUser} onChange={(e) => setJumpUser(e.target.value)} placeholder="(defaults to target)" sx={{ ...fieldSx, flex: 2 }} />
+                  </Stack>
+                  <TextField label="Jump SSH key file (optional)" size="small" value={jumpKey} onChange={(e) => setJumpKey(e.target.value)}
+                    placeholder="(defaults to the target's key)" sx={fieldSx}
+                    slotProps={isElectron() ? { input: { endAdornment: (
+                      <InputAdornment position="end">
+                        <IconButton size="small" title="Browse…" onClick={() => browseKeyInto(setJumpKey)} sx={{ color: 'var(--app-text-muted)' }}><FolderOpenIcon fontSize="small" /></IconButton>
+                      </InputAdornment>
+                    ) } } : undefined} />
+                  <TextField label="Jump key passphrase (optional)" size="small" type="password" value={jumpPass} onChange={(e) => setJumpPass(e.target.value)} sx={fieldSx} />
+                </>
+              )}
             </>
           )}
         </Stack>

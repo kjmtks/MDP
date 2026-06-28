@@ -8,6 +8,13 @@
 //   { "type": "ssh", "host": "h", "port": 22, "user": "u", "path": "/remote/dir",
 //     "identityFile": "C:/Users/me/.ssh/id_ed25519", "passphrase": "..." }
 //
+// An SSH link may reach its host through a jump/bastion host (equivalent to the
+// OpenSSH `ProxyJump`, or a `ProxyCommand ssh -W %h:%p jump`):
+//   { "type": "ssh", "host": "target", "path": "/dir", "identityFile": "...",
+//     "proxyJump": { "host": "bastion", "port": 22, "user": "u2",
+//                    "identityFile": "..." } }   // or "proxyJump": "u2@bastion:22"
+// Jump `user`/`identityFile`/`passphrase` default to the target's when omitted.
+//
 // In the file tree a `.mdplink` is shown as a DIRECTORY whose children are the
 // target's contents. Any workspace path that crosses a `.mdplink` segment (e.g.
 // `a/b/server1.mdplink/sub/deck.slide.md`) is routed to the link target.
@@ -28,6 +35,26 @@ const posixJoin = (base, segs) => {
   return p || '/';
 };
 
+// Normalize a `proxyJump` value (an object, or a "user@host:port" shorthand) into a
+// connection config. Missing user/key/passphrase fall back to the target host's.
+function normalizeJump(j, main) {
+  if (!j) return undefined;
+  if (typeof j === 'string') {
+    const m = j.trim().match(/^(?:([^@]+)@)?([^@:]+)(?::(\d+))?$/);
+    if (!m) throw new Error(`Invalid proxyJump "${j}"`);
+    j = { user: m[1], host: m[2], port: m[3] };
+  }
+  if (!j.host) throw new Error('proxyJump needs a "host"');
+  return {
+    host: j.host,
+    port: Number(j.port) || 22,
+    user: j.user || j.username || main.user,
+    identityFile: j.identityFile || j.privateKey || main.identityFile,
+    passphrase: j.passphrase != null ? j.passphrase : main.passphrase,
+    password: j.password,
+  };
+}
+
 function parseLink(content, sourcePath) {
   let cfg;
   try {
@@ -47,9 +74,11 @@ function parseLink(content, sourcePath) {
   const type = (cfg.type || (cfg.host ? 'ssh' : 'local')).toLowerCase();
   if (type === 'ssh') {
     if (!cfg.host || !cfg.path) throw new Error(`.mdplink (ssh) needs "host" and "path" (${sourcePath})`);
-    return { type: 'ssh', host: cfg.host, port: Number(cfg.port) || 22, user: cfg.user || cfg.username,
-             path: cfg.path, identityFile: cfg.identityFile || cfg.privateKey, passphrase: cfg.passphrase,
-             password: cfg.password };
+    const base = { type: 'ssh', host: cfg.host, port: Number(cfg.port) || 22, user: cfg.user || cfg.username,
+                   path: cfg.path, identityFile: cfg.identityFile || cfg.privateKey, passphrase: cfg.passphrase,
+                   password: cfg.password };
+    base.proxyJump = normalizeJump(cfg.proxyJump || cfg.jump, base);
+    return base;
   }
   if (!cfg.path) throw new Error(`.mdplink (local) needs "path" (${sourcePath})`);
   return { type: 'local', path: cfg.path };
@@ -90,29 +119,51 @@ function resolveLinkFile(baseDir, relPath) {
 }
 
 // ---- SSH/SFTP connection pool ----------------------------------------------
-const pool = new Map(); // key -> { sftpPromise, conn, alive }
-const poolKey = (c) => JSON.stringify([c.host, c.port, c.user, c.identityFile || '', c.password ? 1 : 0]);
+const pool = new Map(); // key -> { sftpPromise, conns: Client[], alive }
+const jumpKey = (j) => j ? [j.host, j.port, j.user, j.identityFile || ''] : 0;
+const poolKey = (c) => JSON.stringify([c.host, c.port, c.user, c.identityFile || '', c.password ? 1 : 0, jumpKey(c.proxyJump)]);
 
-function getSftp(cfg) {
-  const key = poolKey(cfg);
-  const existing = pool.get(key);
-  if (existing && existing.alive) return existing.sftpPromise;
-  const entry = { alive: true };
-  entry.sftpPromise = new Promise((resolveP, rejectP) => {
+// Open one SSH connection. `sock` (a stream from a jump host's forwarded channel)
+// makes this connection tunnel through that host. Resolves with the ready Client;
+// every Client is tracked on `entry.conns` for cleanup.
+function connectClient(cfg, sock, entry, onDead) {
+  return new Promise((resolveP, rejectP) => {
     const conn = new Client();
-    entry.conn = conn;
-    const fail = (e) => { entry.alive = false; pool.delete(key); rejectP(e); };
-    conn.on('ready', () => {
-      conn.sftp((err, sftp) => err ? fail(err) : resolveP(sftp));
-    }).on('error', fail).on('close', () => { entry.alive = false; pool.delete(key); });
+    entry.conns.push(conn);
+    const fail = (e) => { onDead(); rejectP(e); };
+    conn.on('ready', () => resolveP(conn)).on('error', fail).on('close', onDead);
     const opts = { host: cfg.host, port: cfg.port || 22, username: cfg.user, readyTimeout: 20000, keepaliveInterval: 15000 };
     try {
       if (cfg.identityFile) opts.privateKey = fs.readFileSync(expandHome(cfg.identityFile));
       if (cfg.passphrase) opts.passphrase = cfg.passphrase;
       if (cfg.password) opts.password = cfg.password;
+      if (sock) opts.sock = sock;
       conn.connect(opts);
     } catch (e) { fail(e); }
   });
+}
+
+// Establish the SFTP session for `cfg`, tunnelling through `cfg.proxyJump` first if
+// one is configured (connect the jump host, forward a channel to the target, then
+// SSH the target over that channel).
+async function openSftp(cfg, entry, onDead) {
+  let sock;
+  if (cfg.proxyJump) {
+    const jump = await connectClient(cfg.proxyJump, undefined, entry, onDead);
+    sock = await new Promise((res, rej) =>
+      jump.forwardOut('127.0.0.1', 0, cfg.host, cfg.port || 22, (err, stream) => err ? rej(err) : res(stream)));
+  }
+  const conn = await connectClient(cfg, sock, entry, onDead);
+  return await new Promise((res, rej) => conn.sftp((err, sftp) => err ? rej(err) : res(sftp)));
+}
+
+function getSftp(cfg) {
+  const key = poolKey(cfg);
+  const existing = pool.get(key);
+  if (existing && existing.alive) return existing.sftpPromise;
+  const entry = { alive: true, conns: [] };
+  const onDead = () => { entry.alive = false; if (pool.get(key) === entry) pool.delete(key); };
+  entry.sftpPromise = openSftp(cfg, entry, onDead).catch((e) => { onDead(); throw e; });
   pool.set(key, entry);
   return entry.sftpPromise;
 }
@@ -121,7 +172,9 @@ const sftpCall = (sftp, method, ...args) => new Promise((res, rej) =>
   sftp[method](...args, (err, data) => err ? rej(err) : res(data)));
 
 function closeAll() {
-  for (const { conn } of pool.values()) { try { conn && conn.end(); } catch { /* ignore */ } }
+  for (const { conns } of pool.values()) {
+    for (const conn of conns || []) { try { conn && conn.end(); } catch { /* ignore */ } }
+  }
   pool.clear();
 }
 
