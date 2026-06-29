@@ -15,10 +15,22 @@ interface Props {
 }
 
 const fieldSx = {
-  '& .MuiInputBase-input': { color: 'var(--app-text-secondary)', fontSize: '0.85rem' },
+  '& .MuiInputBase-input': { color: 'var(--app-text)', fontSize: '0.85rem' },
+  '& .MuiInputBase-input::placeholder': { color: 'var(--app-text-disabled)', opacity: 1 },
   '& .MuiInputLabel-root': { color: 'var(--app-text-disabled)' },
+  '& .MuiInputLabel-root.Mui-focused': { color: 'var(--app-accent)' },
+  // MUI's default helper text is near-black — unreadable on a dark dialog.
+  '& .MuiFormHelperText-root': { color: 'var(--app-text-disabled)' },
   '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--app-border-subtle)' },
   '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--app-border-strong)' },
+};
+
+// ToggleButton text defaults to MUI's dark palette colour (black on a dark dialog);
+// theme both the idle and selected states explicitly.
+const toggleSx = {
+  textTransform: 'none', color: 'var(--app-text-secondary)', borderColor: 'var(--app-border-subtle)',
+  '&.Mui-selected': { color: 'var(--app-accent-contrast, #fff)', bgcolor: 'var(--app-accent)' },
+  '&.Mui-selected:hover': { bgcolor: 'color-mix(in srgb, var(--app-accent) 85%, black)' },
 };
 
 const dirOf = (p: string) => (p.includes('/') ? p.slice(0, p.lastIndexOf('/')) : '');
@@ -107,6 +119,11 @@ export const MdpLinkDialog: React.FC<Props> = ({ open, parentPath = '', editPath
     const p = await apiClient.pickFile({ title: 'Select SSH private key', filters: [{ name: 'All files', extensions: ['*'] }] });
     if (p) set(p.replace(/\\/g, '/'));
   };
+  // Pick a LOCAL target folder (forward slashes → valid JSON, Windows accepts them).
+  const browseFolder = async () => {
+    const p = await apiClient.pickFile({ title: 'Select target folder', directory: true });
+    if (p) setLocalPath(p.replace(/\\/g, '/'));
+  };
 
   const submit = async () => {
     if (!canSubmit || busy) return;
@@ -153,13 +170,18 @@ export const MdpLinkDialog: React.FC<Props> = ({ open, parentPath = '', editPath
             helperText={`File: ${(name.trim() || 'link').replace(/\.mdplink$/i, '')}.mdplink`} sx={fieldSx} />
 
           <ToggleButtonGroup exclusive size="small" value={kind} onChange={(_, v) => v && setKind(v)}>
-            <ToggleButton value="local" sx={{ textTransform: 'none', color: 'var(--app-text-secondary)' }}>Local folder</ToggleButton>
-            <ToggleButton value="ssh" sx={{ textTransform: 'none', color: 'var(--app-text-secondary)' }}>SSH remote</ToggleButton>
+            <ToggleButton value="local" sx={toggleSx}>Local folder</ToggleButton>
+            <ToggleButton value="ssh" sx={toggleSx}>SSH remote</ToggleButton>
           </ToggleButtonGroup>
 
           {kind === 'local' ? (
             <TextField label="Target folder path" size="small" value={localPath} onChange={(e) => setLocalPath(e.target.value)}
-              placeholder="D:/shared/decks  or  ../sibling-folder" sx={fieldSx} />
+              placeholder="D:/shared/decks  or  ../sibling-folder" sx={fieldSx}
+              slotProps={isElectron() ? { input: { endAdornment: (
+                <InputAdornment position="end">
+                  <IconButton size="small" title="Browse for folder…" onClick={browseFolder} sx={{ color: 'var(--app-text-muted)' }}><FolderOpenIcon fontSize="small" /></IconButton>
+                </InputAdornment>
+              ) } } : undefined} />
           ) : (
             <>
               <Stack direction="row" spacing={1}>

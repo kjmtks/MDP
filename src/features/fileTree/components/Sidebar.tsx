@@ -10,7 +10,12 @@ import ContentPasteIcon from '@mui/icons-material/ContentPaste';
 import SlideshowIcon from '@mui/icons-material/Slideshow';
 import LinkIcon from '@mui/icons-material/Link';
 import SettingsIcon from '@mui/icons-material/Settings';
+import HubIcon from '@mui/icons-material/Hub';
+import CheckIcon from '@mui/icons-material/Check';
+import CloudDownloadIcon from '@mui/icons-material/CloudDownload';
+import StorageIcon from '@mui/icons-material/Storage';
 import { MdpLinkDialog } from './MdpLinkDialog';
+import { OfflineCacheDialog } from './OfflineCacheDialog';
 import { CustomTabPanel } from '../../../components/common/CustomTabPanel';
 import { FileTreeItem } from './FileTreeItem';
 import { SlideThumbnail } from '../../slide/components/SlideThumbnail';
@@ -20,7 +25,7 @@ import type { Bookmark } from '../../../pages/EditorPage/hooks/useBookmarks';
 import { BookmarkList } from './BookmarkList';
 import { apiClient, isElectron } from '../../../api/apiClient';
 import LaunchIcon from '@mui/icons-material/Launch';
-import { reportError } from '../../../components/error/errorReporter';
+import { reportError, notify } from '../../../components/error/errorReporter';
 import defaultThemeContent from '../../../../public/themes/default.css?raw';
 import defaultTemplateContent from '../../../../public/templates/default.slide.md?raw';
 import defaultModuleContent from '../../../../public/default-module.mdpmod.xml?raw';
@@ -126,6 +131,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [contextMenu, setContextMenu] = useState<{ mouseX: number; mouseY: number; node?: FileNode; path: string; isFolder: boolean } | null>(null);
   const [nodeToRename, setNodeToRename] = useState<FileNode | null>(null);
   const [linkDialog, setLinkDialog] = useState<{ open: boolean; parentPath: string; editPath?: string }>({ open: false, parentPath: '' });
+  // Machine-local "use jump host" toggle for SSH links (false = use bastion, the
+  // default; true = connect directly). Loaded once; toggled from the link menu.
+  const [sshBypassJump, setSshBypassJump] = useState(false);
+  useEffect(() => { apiClient.getSshBypassJump().then(setSshBypassJump).catch(() => {}); }, []);
+  const [cacheDialogOpen, setCacheDialogOpen] = useState(false);
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [newName, setNewName] = useState('');
@@ -752,6 +762,34 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <ListItemIcon><SettingsIcon fontSize="small" /></ListItemIcon> Link settings…
           </MenuItem>
         )}
+        {contextMenu?.node?.isLink && contextMenu.node.linkType === 'ssh' && (
+          <MenuItem onClick={async () => {
+            const next = !sshBypassJump; setSshBypassJump(next);
+            await apiClient.setSshBypassJump(next).catch(() => {});
+            setContextMenu(null); onManualRefresh();
+          }}>
+            <ListItemIcon>{sshBypassJump ? <HubIcon fontSize="small" /> : <CheckIcon fontSize="small" />}</ListItemIcon>
+            {sshBypassJump ? 'Use jump host (this machine)' : 'Using jump host — click to connect directly'}
+          </MenuItem>
+        )}
+        {contextMenu?.node?.isLink && contextMenu.node.linkType === 'ssh' && (
+          <MenuItem onClick={() => { setCacheDialogOpen(true); setContextMenu(null); }}>
+            <ListItemIcon><StorageIcon fontSize="small" /></ListItemIcon> Offline cache…
+          </MenuItem>
+        )}
+        {contextMenu?.node && contextMenu.node.type === 'file' && contextMenu.node.name.endsWith('.slide.md') && (
+          <MenuItem onClick={async () => {
+            const p = contextMenu.path; setContextMenu(null);
+            notify('Caching deck for offline…', { severity: 'info' });
+            try {
+              const r = await apiClient.prefetchDeck(p);
+              if (r.error) reportError('Could not cache the deck for offline.', { detail: r.error });
+              else notify(`Cached for offline: deck + ${r.ok}/${r.total} referenced files${r.fail ? ` (${r.fail} failed)` : ''}.`);
+            } catch (e) { reportError('Could not cache the deck for offline.', { detail: e }); }
+          }}>
+            <ListItemIcon><CloudDownloadIcon fontSize="small" /></ListItemIcon> Pin deck for offline
+          </MenuItem>
+        )}
         {contextMenu?.node && !contextMenu.node.isSpecial && !contextMenu.node.isLink && (
           <MenuItem onClick={handleRenameClick} disabled={selectedPaths.size > 1}>
             <ListItemIcon><DriveFileRenameOutlineIcon fontSize="small" /></ListItemIcon> Rename
@@ -875,6 +913,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         onClose={() => setLinkDialog({ open: false, parentPath: '' })}
         onCreated={onManualRefresh}
       />
+      <OfflineCacheDialog open={cacheDialogOpen} onClose={() => setCacheDialogOpen(false)} />
     </Box>
   );
 };

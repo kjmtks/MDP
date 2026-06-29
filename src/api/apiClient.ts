@@ -167,8 +167,46 @@ export const apiClient = {
     if (isElectron()) { await (window as any).electronAPI.setLinkConfig({ path: relPath, content }); return; }
     await fetch('/api/linkConfig', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: relPath, content }) });
   },
-  // Native file picker (Electron only); returns the chosen absolute path or null.
-  pickFile: async (options?: { title?: string; filters?: { name: string; extensions: string[] }[] }): Promise<string | null> => {
+  // Machine-local toggle: connect SSH links through their `proxyJump` bastion, or
+  // directly. Environment-specific, so it's NOT stored in the .mdplink file.
+  getSshBypassJump: async (): Promise<boolean> => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (isElectron()) return await (window as any).electronAPI.getSshBypassJump();
+    try { const res = await fetch('/api/sshBypassJump'); if (res.ok) return !!(await res.json()).bypassJump; } catch { /* ignore */ }
+    return false;
+  },
+  setSshBypassJump: async (value: boolean): Promise<void> => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (isElectron()) { await (window as any).electronAPI.setSshBypassJump(value); return; }
+    await fetch('/api/sshBypassJump', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bypassJump: value }) });
+  },
+
+  // Offline cache for remote (`.mdplink` SSH) files.
+  getCacheInfo: async (): Promise<{ enabled: boolean; maxBytes: number; usedBytes: number; count: number }> => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (isElectron()) return await (window as any).electronAPI.getCacheInfo();
+    const res = await fetch('/api/cacheInfo'); return res.json();
+  },
+  setCacheConfig: async (cfg: { enabled?: boolean; maxBytes?: number }): Promise<{ enabled: boolean; maxBytes: number; usedBytes: number; count: number }> => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (isElectron()) return await (window as any).electronAPI.setCacheConfig(cfg);
+    const res = await fetch('/api/cacheConfig', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cfg) }); return res.json();
+  },
+  clearCache: async (): Promise<{ enabled: boolean; maxBytes: number; usedBytes: number; count: number }> => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (isElectron()) return await (window as any).electronAPI.clearCache();
+    const res = await fetch('/api/clearCache', { method: 'POST' }); return res.json();
+  },
+  // Cache a deck + the remote assets it references for offline use.
+  prefetchDeck: async (relPath: string): Promise<{ ok: number; fail: number; total: number; error?: string }> => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (isElectron()) return await (window as any).electronAPI.prefetchDeck(relPath);
+    const res = await fetch('/api/prefetchDeck', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: relPath }) }); return res.json();
+  },
+
+  // Native file/folder picker (Electron only); returns the chosen absolute path or
+  // null. Set `directory: true` to pick a folder.
+  pickFile: async (options?: { title?: string; directory?: boolean; filters?: { name: string; extensions: string[] }[] }): Promise<string | null> => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     if (isElectron()) return await (window as any).electronAPI.pickFile(options || {});
     return null;

@@ -7,6 +7,9 @@ const WebSocket = require('ws');
 const { WebSocketServer } = require('ws');
 const chokidar = require('chokidar');
 const mdplink = require('./app/mdplink.cjs');
+// Machine-local SSH state (jump-host bypass toggle, cache config) + offline cache
+// dir, kept next to the server.
+mdplink.initLocalState(path.join(__dirname, '.mdp-local.json'), path.join(__dirname, '.mdp-cache'));
 const plantumlEncoder = require('plantuml-encoder');
 const { spawn } = require('child_process');
 const os = require('os');
@@ -211,6 +214,19 @@ app.get('/api/linkConfig', async (req, res) => {
 });
 app.post('/api/linkConfig', async (req, res) => {
   try { await mdplink.vfsWrite(mdplink.resolveLinkFile(rootDir, req.body.path || ''), Buffer.from(String(req.body.content ?? ''), 'utf-8')); res.json({ success: true }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Machine-local "bypass jump host" toggle for SSH links.
+app.get('/api/sshBypassJump', (req, res) => res.json({ bypassJump: mdplink.getBypassJump() }));
+app.post('/api/sshBypassJump', (req, res) => { mdplink.setBypassJump(!!req.body.bypassJump); res.json({ success: true }); });
+
+// Offline cache for remote (`.mdplink` SSH) files.
+app.get('/api/cacheInfo', (req, res) => res.json(mdplink.getCacheInfo()));
+app.post('/api/cacheConfig', (req, res) => { mdplink.setCacheConfig(req.body || {}); res.json(mdplink.getCacheInfo()); });
+app.post('/api/clearCache', (req, res) => { mdplink.clearCache(); res.json(mdplink.getCacheInfo()); });
+app.post('/api/prefetchDeck', async (req, res) => {
+  try { res.json(await mdplink.prefetchDeck(rootDir, req.body.path || '')); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 

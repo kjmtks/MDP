@@ -94,6 +94,10 @@ app.whenReady().then(async () => {
   const { session } = require('electron');
   await session.defaultSession.clearCache();
 
+  // Machine-local SSH state (jump-host bypass toggle, cache config) + offline cache
+  // dir — kept out of the workspace.
+  mdplink.initLocalState(path.join(app.getPath('userData'), 'mdp-local.json'), path.join(app.getPath('userData'), 'mdp-cache'));
+
   protocol.handle('mdp-file', async (request) => {
     try {
       const urlStr = request.url.replace(/^mdp-file:\/\//, '');
@@ -290,11 +294,26 @@ ipcMain.handle('setLinkConfig', async (event, { path: relPath, content }) => {
   return { success: true };
 });
 
-// Native file picker (e.g. choosing an SSH key file). Returns the chosen path or null.
+// Machine-local "bypass jump host" toggle for SSH links.
+ipcMain.handle('getSshBypassJump', async () => mdplink.getBypassJump());
+ipcMain.handle('setSshBypassJump', async (event, value) => { mdplink.setBypassJump(value); return { success: true }; });
+
+// Offline cache for remote (`.mdplink` SSH) files.
+ipcMain.handle('getCacheInfo', async () => mdplink.getCacheInfo());
+ipcMain.handle('setCacheConfig', async (event, cfg) => { mdplink.setCacheConfig(cfg || {}); return mdplink.getCacheInfo(); });
+ipcMain.handle('clearCache', async () => { mdplink.clearCache(); return mdplink.getCacheInfo(); });
+ipcMain.handle('prefetchDeck', async (event, relPath) => {
+  if (!currentBaseDir) return { ok: 0, fail: 0, total: 0 };
+  return await mdplink.prefetchDeck(currentBaseDir, relPath);
+});
+
+// Native picker. `options.directory` selects a FOLDER (e.g. a local link target);
+// otherwise a FILE (e.g. an SSH key). Returns the chosen path or null.
 ipcMain.handle('pickFile', async (event, options) => {
+  const directory = !!(options && options.directory);
   const result = await dialog.showOpenDialog(mainWindow, {
-    properties: ['openFile', 'showHiddenFiles'],
-    title: (options && options.title) || 'Select a file',
+    properties: [directory ? 'openDirectory' : 'openFile', 'showHiddenFiles'],
+    title: (options && options.title) || (directory ? 'Select a folder' : 'Select a file'),
     filters: (options && options.filters) || [],
   });
   if (result.canceled || !result.filePaths.length) return null;

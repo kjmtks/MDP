@@ -23,6 +23,7 @@ const fs = require('fs');
 const fsp = fs.promises;
 const path = require('path');
 const os = require('os');
+const crypto = require('crypto');
 const { Client } = require('ssh2');
 
 const expandHome = (p) => (p && p.startsWith('~')) ? path.join(os.homedir(), p.slice(1)) : p;
@@ -118,10 +119,119 @@ function resolveLinkFile(baseDir, relPath) {
   return childOf(parent, segs[segs.length - 1]);
 }
 
+// ---- Machine-local state ---------------------------------------------------
+// `bypassJump` toggles whether SSH links connect THROUGH their `proxyJump` bastion
+// or DIRECTLY. It's environment-specific (the same .mdplink config is used where the
+// bastion is needed AND where the target is directly reachable), so it lives in a
+// machine-local file (NOT the workspace), set from the UI. Cache config lives here too.
+let bypassJump = false;
+let cacheEnabled = true;
+let cacheMaxBytes = 300 * 1024 * 1024; // 300 MB default
+let localStatePath = null;
+
+function persistLocalState() {
+  if (!localStatePath) return;
+  try { fs.writeFileSync(localStatePath, JSON.stringify({ bypassJump, cacheEnabled, cacheMaxBytes })); } catch { /* ignore */ }
+}
+function initLocalState(filePath, cDir) {
+  localStatePath = filePath;
+  try {
+    const s = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    bypassJump = !!s.bypassJump;
+    if (typeof s.cacheEnabled === 'boolean') cacheEnabled = s.cacheEnabled;
+    if (typeof s.cacheMaxBytes === 'number' && s.cacheMaxBytes > 0) cacheMaxBytes = s.cacheMaxBytes;
+  } catch { /* no file yet → defaults */ }
+  if (cDir) { cacheDir = cDir; loadCacheIndex(); }
+}
+function getBypassJump() { return bypassJump; }
+function setBypassJump(v) {
+  bypassJump = !!v;
+  closeAll(); // drop pooled connections so they rebuild with/without the jump hop
+  persistLocalState();
+}
+
+// ---- Offline cache ---------------------------------------------------------
+// Demand-driven: a remote file/listing is cached only when actually READ (i.e. a
+// file a slide references, or a directory that was browsed) — never the whole tree.
+// Online → revalidate via stat (serve cache if size+mtime match, else refetch);
+// offline / connection failure → serve the cached copy. Bounded by an LRU size cap.
+// Every cache step is defensively guarded so a cache fault never breaks a real read.
+let cacheDir = null;
+let cacheIndex = {};            // key -> { rpath, host, size, mtime, atime, dir?, listing? }
+let cacheSaveTimer = null;
+
+const cacheKey = (cfg, rpath) =>
+  crypto.createHash('sha1').update(JSON.stringify([cfg.host, cfg.port, cfg.user, rpath])).digest('hex');
+const blobPath = (key) => path.join(cacheDir, 'blobs', key);
+
+function loadCacheIndex() {
+  try { cacheIndex = JSON.parse(fs.readFileSync(path.join(cacheDir, 'index.json'), 'utf8')) || {}; }
+  catch { cacheIndex = {}; }
+}
+function saveCacheIndexSoon() {
+  if (!cacheDir || cacheSaveTimer) return;
+  cacheSaveTimer = setTimeout(() => {
+    cacheSaveTimer = null;
+    try { fs.mkdirSync(cacheDir, { recursive: true }); fs.writeFileSync(path.join(cacheDir, 'index.json'), JSON.stringify(cacheIndex)); } catch { /* ignore */ }
+  }, 800);
+}
+function cacheUsedBytes() { return Object.values(cacheIndex).reduce((a, m) => a + (m.size || 0), 0); }
+function enforceCacheCap() {
+  let used = cacheUsedBytes();
+  if (used <= cacheMaxBytes) return;
+  const files = Object.entries(cacheIndex).filter(([, m]) => !m.dir).sort((a, b) => (a[1].atime || 0) - (b[1].atime || 0));
+  for (const [k, m] of files) {
+    if (used <= cacheMaxBytes) break;
+    try { fs.unlinkSync(blobPath(k)); } catch { /* ignore */ }
+    used -= (m.size || 0);
+    delete cacheIndex[k];
+  }
+}
+function cacheGetFile(key) {
+  const m = cacheIndex[key];
+  if (!m || m.dir) return null;
+  try { const buf = fs.readFileSync(blobPath(key)); m.atime = Date.now(); saveCacheIndexSoon(); return { buf, meta: m }; }
+  catch { delete cacheIndex[key]; return null; }
+}
+function cachePutFile(key, buf, meta) {
+  if (!cacheDir) return;
+  try {
+    fs.mkdirSync(path.join(cacheDir, 'blobs'), { recursive: true });
+    fs.writeFileSync(blobPath(key), buf);
+    cacheIndex[key] = { ...meta, dir: false, size: buf.length, atime: Date.now() };
+    enforceCacheCap();
+    saveCacheIndexSoon();
+  } catch { /* ignore — caching is best-effort */ }
+}
+function cacheGetListing(key) { const m = cacheIndex[key]; if (m && m.dir) { m.atime = Date.now(); return m.listing; } return null; }
+function cachePutListing(key, listing, meta) {
+  if (!cacheDir) return;
+  cacheIndex[key] = { ...meta, dir: true, listing, size: 0, atime: Date.now() };
+  saveCacheIndexSoon();
+}
+function clearCache() {
+  for (const k of Object.keys(cacheIndex)) { if (!cacheIndex[k].dir) { try { fs.unlinkSync(blobPath(k)); } catch { /* ignore */ } } }
+  cacheIndex = {};
+  saveCacheIndexSoon();
+}
+function getCacheInfo() {
+  return { enabled: cacheEnabled, maxBytes: cacheMaxBytes, usedBytes: cacheUsedBytes(),
+           count: Object.values(cacheIndex).filter((m) => !m.dir).length };
+}
+function setCacheConfig({ enabled, maxBytes } = {}) {
+  if (typeof enabled === 'boolean') cacheEnabled = enabled;
+  if (typeof maxBytes === 'number' && maxBytes > 0) cacheMaxBytes = maxBytes;
+  enforceCacheCap();
+  persistLocalState();
+  saveCacheIndexSoon();
+}
+
 // ---- SSH/SFTP connection pool ----------------------------------------------
 const pool = new Map(); // key -> { sftpPromise, conns: Client[], alive }
 const jumpKey = (j) => j ? [j.host, j.port, j.user, j.identityFile || ''] : 0;
-const poolKey = (c) => JSON.stringify([c.host, c.port, c.user, c.identityFile || '', c.password ? 1 : 0, jumpKey(c.proxyJump)]);
+// `bypassJump` is part of the key so a direct vs through-bastion session never share
+// a pooled connection (also defensively re-keyed; closeAll already clears on toggle).
+const poolKey = (c) => JSON.stringify([c.host, c.port, c.user, c.identityFile || '', c.password ? 1 : 0, bypassJump ? 0 : jumpKey(c.proxyJump)]);
 
 // Open one SSH connection. `sock` (a stream from a jump host's forwarded channel)
 // makes this connection tunnel through that host. Resolves with the ready Client;
@@ -148,7 +258,7 @@ function connectClient(cfg, sock, entry, onDead) {
 // SSH the target over that channel).
 async function openSftp(cfg, entry, onDead) {
   let sock;
-  if (cfg.proxyJump) {
+  if (cfg.proxyJump && !bypassJump) {
     const jump = await connectClient(cfg.proxyJump, undefined, entry, onDead);
     sock = await new Promise((res, rej) =>
       jump.forwardOut('127.0.0.1', 0, cfg.host, cfg.port || 22, (err, stream) => err ? rej(err) : res(stream)));
@@ -181,17 +291,45 @@ function closeAll() {
 // ---- VFS ops (target-aware: local fs or remote sftp) -----------------------
 async function vfsList(target) {
   if (target.kind === 'ssh') {
-    const sftp = await getSftp(target.cfg);
-    const list = await sftpCall(sftp, 'readdir', target.rpath);
-    // longname[0] === 'd' marks a directory; fall back to attrs.mode.
-    return list.map((e) => ({ name: e.filename, isDir: (e.longname || '')[0] === 'd' || ((e.attrs.mode & 0o170000) === 0o040000) }));
+    const key = (cacheEnabled && cacheDir) ? cacheKey(target.cfg, 'DIR:' + target.rpath) : null;
+    try {
+      const sftp = await getSftp(target.cfg);
+      const list = await sftpCall(sftp, 'readdir', target.rpath);
+      // longname[0] === 'd' marks a directory; fall back to attrs.mode.
+      const mapped = list.map((e) => ({ name: e.filename, isDir: (e.longname || '')[0] === 'd' || ((e.attrs.mode & 0o170000) === 0o040000) }));
+      if (key) cachePutListing(key, mapped, { rpath: target.rpath, host: target.cfg.host });
+      return mapped;
+    } catch (e) {
+      // Offline / connection failure → serve the last cached listing if we have it.
+      if (key) { const cached = cacheGetListing(key); if (cached) return cached; }
+      throw e;
+    }
   }
   const entries = await fsp.readdir(target.abs, { withFileTypes: true });
   return entries.map((e) => ({ name: e.name, isDir: e.isDirectory() }));
 }
 
 async function vfsReadBuffer(target) {
-  if (target.kind === 'ssh') { const sftp = await getSftp(target.cfg); return await sftpCall(sftp, 'readFile', target.rpath); }
+  if (target.kind === 'ssh') {
+    if (!cacheEnabled || !cacheDir) { const sftp = await getSftp(target.cfg); return await sftpCall(sftp, 'readFile', target.rpath); }
+    const key = cacheKey(target.cfg, target.rpath);
+    try {
+      const sftp = await getSftp(target.cfg);
+      let st = null;
+      try { st = await sftpCall(sftp, 'stat', target.rpath); } catch { /* serve fresh if stat unsupported */ }
+      const cached = cacheGetFile(key);
+      // Revalidate: an unchanged file (same size+mtime) is served from cache — fast,
+      // and avoids re-downloading large images over a slow link.
+      if (cached && st && cached.meta.size === st.size && cached.meta.mtime === st.mtime) return cached.buf;
+      const buf = await sftpCall(sftp, 'readFile', target.rpath);
+      cachePutFile(key, buf, { rpath: target.rpath, host: target.cfg.host, mtime: st ? st.mtime : 0 });
+      return buf;
+    } catch (e) {
+      const cached = cacheGetFile(key);
+      if (cached) return cached.buf; // offline fallback
+      throw e;
+    }
+  }
   return await fsp.readFile(target.abs);
 }
 async function vfsReadText(target) { return (await vfsReadBuffer(target)).toString('utf-8'); }
@@ -318,8 +456,55 @@ async function buildSubTree(baseDir, relPath) {
   return await buildTree(baseDir, relPath, 0);
 }
 
+// Asset references a deck points at (relative/absolute workspace paths). Skips
+// http/data/aliases (those are embedded or local, not remote files to cache).
+function extractDeckRefs(text) {
+  const refs = new Set();
+  const add = (r) => {
+    if (!r) return;
+    r = r.trim().split('?')[0].split('#')[0];
+    if (!r || /^(https?:|data:|mdp-file:|app-asset:|@)/i.test(r) || r.startsWith('/files/')) return;
+    refs.add(r);
+  };
+  let m;
+  const mdImg = /!\[[^\]]*\]\(\s*([^)\s]+)/g; while ((m = mdImg.exec(text))) add(m[1]);
+  const htmlImg = /<img[^>]+src\s*=\s*["']([^"']+)["']/gi; while ((m = htmlImg.exec(text))) add(m[1]);
+  return [...refs];
+}
+// Resolve a workspace-relative ref against the deck's directory (handles ./ and ../).
+function joinWorkspace(dir, rel) {
+  if (rel.startsWith('/')) return rel.slice(1);
+  const out = [];
+  for (const p of (dir + rel).split('/')) {
+    if (p === '' || p === '.') continue;
+    if (p === '..') out.pop(); else out.push(p);
+  }
+  return out.join('/');
+}
+// Prefetch a deck + the remote assets it references into the offline cache, so the
+// deck renders offline. Reading through the VFS populates the cache as a side effect.
+async function prefetchDeck(baseDir, relPath) {
+  const t = resolve(baseDir, relPath);
+  let text;
+  try { text = (await vfsReadBuffer(t)).toString('utf-8'); }
+  catch (e) { return { ok: 0, fail: 0, total: 0, error: e.message }; }
+  const deckDir = relPath.includes('/') ? relPath.slice(0, relPath.lastIndexOf('/') + 1) : '';
+  const refs = extractDeckRefs(text);
+  let ok = 0, fail = 0;
+  for (const ref of refs) {
+    try {
+      const rt = resolve(baseDir, joinWorkspace(deckDir, ref));
+      if (rt.kind === 'ssh') await vfsReadBuffer(rt); // downloads + caches
+      ok++;
+    } catch { fail++; }
+  }
+  return { ok, fail, total: refs.length };
+}
+
 module.exports = {
   resolve, resolveLinkFile, parseLink, buildTree, buildSubTree, closeAll,
   vfsList, vfsReadText, vfsReadBuffer, vfsWrite, vfsRemove, vfsRename, vfsMkdirp,
   vfsStat, vfsExists, vfsCopy, childOf, posixJoin,
+  initLocalState, getBypassJump, setBypassJump,
+  getCacheInfo, setCacheConfig, clearCache, prefetchDeck,
 };
