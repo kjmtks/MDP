@@ -426,7 +426,9 @@ async function buildTree(baseDir, relPath = '', depth = 0) {
       // Display the virtual directory name (without `.mdplink`); the PATH keeps the
       // extension so it still resolves through the link.
       const displayName = e.name.replace(/\.mdplink$/i, '');
-      nodes.push({ name: displayName, path: nodePath, type: 'directory', isLink: true, linkType, ...(linkError ? { linkError } : {}), ...(lazy ? { lazy: true } : {}), children });
+      // `remote: true` marks nodes with NO local filesystem path (an SSH link, or
+      // anything under one) so the UI can hide "Reveal in Explorer" for them.
+      nodes.push({ name: displayName, path: nodePath, type: 'directory', isLink: true, linkType, ...(linkType === 'ssh' ? { remote: true } : {}), ...(linkError ? { linkError } : {}), ...(lazy ? { lazy: true } : {}), children });
       continue;
     }
     // Hide dotfiles (matches the local tree) except the app folders.
@@ -434,7 +436,7 @@ async function buildTree(baseDir, relPath = '', depth = 0) {
     if (e.isDir) {
       if (remote) {
         // Defer listing remote subdirectories until they're expanded.
-        nodes.push({ name: e.name, path: nodePath, type: 'directory', lazy: true, children: [] });
+        nodes.push({ name: e.name, path: nodePath, type: 'directory', lazy: true, remote: true, children: [] });
       } else {
         const sub = depth < 12 ? await buildTree(baseDir, nodePath, depth + 1) : { nodes: [] };
         const node = { name: e.name, path: nodePath, type: 'directory', children: sub.nodes };
@@ -443,7 +445,7 @@ async function buildTree(baseDir, relPath = '', depth = 0) {
         nodes.push(node);
       }
     } else {
-      nodes.push({ name: e.name, path: nodePath, type: 'file', isBinary: /\.(png|jpe?g|gif|svg|webp|bmp|ico)$/i.test(e.name) });
+      nodes.push({ name: e.name, path: nodePath, type: 'file', isBinary: /\.(png|jpe?g|gif|svg|webp|bmp|ico)$/i.test(e.name), ...(remote ? { remote: true } : {}) });
     }
   }
   nodes.sort((a, b) => (a.type === b.type ? a.name.localeCompare(b.name) : (a.type === 'directory' ? -1 : 1)));

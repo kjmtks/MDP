@@ -809,7 +809,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </MenuItem>
         )}
         {/* Electron only: open this folder (or the workspace root) in the OS file manager. */}
-        {isElectron() && contextMenu?.isFolder && !contextMenu?.node?.isVirtual && (
+        {/* Hidden for remote (SSH) links and anything beneath them — they have no
+            local path to reveal. A LOCAL link reveals its target folder. */}
+        {isElectron() && contextMenu?.isFolder && !contextMenu?.node?.isVirtual && !contextMenu?.node?.remote && (
           <MenuItem onClick={() => { apiClient.openInFileManager(contextMenu.path); setContextMenu(null); }}>
             <ListItemIcon><LaunchIcon fontSize="small" /></ListItemIcon>
             Reveal in {/Mac/i.test(navigator.userAgent) ? 'Finder' : /Win/i.test(navigator.userAgent) ? 'Explorer' : 'File Manager'}

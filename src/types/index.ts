@@ -33,6 +33,9 @@ export interface FileNode {
   // A deferred node (an SSH link or a remote subdirectory) whose children are not
   // loaded yet — they're fetched on demand when the node is first expanded.
   lazy?: boolean;
+  // No local filesystem path (an SSH link, or anything beneath one) — used to hide
+  // "Reveal in Explorer", which can only reveal local paths.
+  remote?: boolean;
 }
 
 export interface TabPanelProps {

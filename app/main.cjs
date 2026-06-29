@@ -259,8 +259,11 @@ ipcMain.handle('openFolder', async () => {
 // `relPath` is relative to the workspace root (empty string = the root itself).
 ipcMain.handle('openInFileManager', async (event, relPath) => {
   if (!currentBaseDir) return { success: false };
-  const full = path.join(currentBaseDir, relPath || '');
-  const err = await shell.openPath(full); // '' on success, else an error message
+  // Resolve through the VFS so a `.mdplink` local link (or a folder inside one)
+  // reveals its real local target. A remote (SSH) target has no local path → refuse.
+  const target = vresolve(relPath || '');
+  if (target.kind !== 'local') return { success: false, remote: true };
+  const err = await shell.openPath(target.abs); // '' on success, else an error message
   return { success: !err, error: err || undefined };
 });
 
