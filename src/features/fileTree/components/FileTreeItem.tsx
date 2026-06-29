@@ -57,14 +57,20 @@ export const FileTreeItem: React.FC<FileTreeItemProps> = ({
     else Icon = node.linkType === 'ssh' ? CloudIcon : FolderSpecialIcon;
   }
 
+  // A `.mdp` content-profile folder at ANY level gets the same purple as the root
+  // one (root is also `isSpecial`); per-folder `.mdp`s should look identical.
+  const isMdp = isDir && node.name === '.mdp';
+
   let iconColor = 'var(--app-text-secondary)';
-  if (node.isSpecial) iconColor = '#a855f7';
+  if (node.isSpecial || isMdp) iconColor = '#a855f7';
   else if (isDir) iconColor = '#60a5fa';
   else if (isSlide) iconColor = '#fb923c';
   else if (isMarkdown) iconColor = 'var(--app-text-muted)';
   else if (isPdf) iconColor = '#ef4444';
   else if (!isDir && node.isBinary) iconColor = 'var(--app-text-disabled)';
   if (node.isLink) iconColor = node.linkError ? 'var(--app-danger, #f04747)' : '#34d399';
+  // Sealed (`.git` / `.mdpignore`) folders are inert — show them greyed out.
+  if (node.sealed) iconColor = 'var(--app-text-disabled)';
 
   return (
     <div style={{ opacity: node.isVirtual ? 0.6 : 1 }}>
@@ -86,12 +92,12 @@ export const FileTreeItem: React.FC<FileTreeItemProps> = ({
           backgroundColor: isSelected ? 'var(--app-bg-hover)' : 'transparent',
           outline: isDragOver ? '1px dashed var(--app-accent)' : 'none',
           outlineOffset: '-1px',
-          color: isDir ? 'var(--app-text-secondary)' : 'var(--app-text-muted)',
+          color: node.sealed ? 'var(--app-text-disabled)' : (isDir ? 'var(--app-text-secondary)' : 'var(--app-text-muted)'),
           '&:hover': { backgroundColor: 'var(--app-bg-hover)' }
         }}
       >
         <Box
-          onClick={(e) => isDir && onToggleExpand(e, node.path)}
+          onClick={(e) => isDir && !node.sealed && onToggleExpand(e, node.path)}
           sx={{
             width: 16,
             minWidth: 16,
@@ -99,7 +105,8 @@ export const FileTreeItem: React.FC<FileTreeItemProps> = ({
             display: 'flex', alignItems: 'center', justifyContent: 'center', mr: 0.5, opacity: 0.7, '&:hover': { opacity: 1 }
           }}
         >
-          {isLoading ? <CircularProgress size={10} sx={{ color: 'var(--app-text-muted)' }} /> : (isDir ? (isOpen ? '▼' : '▶') : '')}
+          {/* Sealed (`.mdpignore`) dirs show no caret — they are not expandable. */}
+          {isLoading ? <CircularProgress size={10} sx={{ color: 'var(--app-text-muted)' }} /> : (isDir && !node.sealed ? (isOpen ? '▼' : '▶') : '')}
         </Box>
 
         <Icon sx={{ fontSize: 18, mr: 1, flexShrink: 0, color: iconColor }} />

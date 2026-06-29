@@ -21,9 +21,10 @@ export interface AppSettings {
   // Default filename suggested when exporting a PDF: the deck's file name, or its
   // `@title` (falls back to the file name when the deck has no title).
   pdfNameSource: 'filename' | 'title';
-  // Names of modules the user has DISABLED. A disabled module's directives render
-  // as nothing and it offers no snippets; everything else stays available.
-  disabledModules: string[];
+  // NOTE: module enable/disable is NO LONGER an app setting — it is per-folder,
+  // stored in each `.mdp/content.json` and cascaded (see mdpContent / Configure
+  // (.mdp) dialog), so it can differ per deck and live on a read-only NAS owner's
+  // `.mdp`.
 }
 
 export const SETTINGS_PATH = '.mdp/settings.json';
@@ -40,7 +41,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   authorAffiliation: '',
   authorEmail: '',
   pdfNameSource: 'filename',
-  disabledModules: [],
 };
 
 // Merge a parsed (possibly partial / older) settings object over the defaults.
@@ -58,7 +58,6 @@ export function normalizeSettings(raw: unknown): AppSettings {
     authorAffiliation: typeof r.authorAffiliation === 'string' ? r.authorAffiliation : '',
     authorEmail: typeof r.authorEmail === 'string' ? r.authorEmail : '',
     pdfNameSource: r.pdfNameSource === 'title' ? 'title' : 'filename',
-    disabledModules: Array.isArray(r.disabledModules) ? r.disabledModules.filter((x): x is string => typeof x === 'string') : [],
   };
 }
 

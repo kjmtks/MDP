@@ -348,29 +348,25 @@ app.get('/api/templateContent', async (req, res) => {
   res.send("# New Slide\n\nContent...");
 });
 
+// `dirs` (CSV) = the active deck's `.mdp` config-dir chain (root→nearest); custom
+// themes merge across it, NEAREST wins by name. Omitted → `.mdp` (root, legacy).
 app.get('/api/themes', async (req, res) => {
-  let themes = [];
-  const customDir = path.join(targetDir, '.mdp', 'themes');
-  if (fs.existsSync(customDir)) {
-    try {
-      const files = await fs.promises.readdir(customDir);
-      themes = files.filter(f => f.endsWith('.css')).map(f => ({
-        name: f.replace('.css', ''), fileName: f, path: `.mdp/themes/${f}`, isCustom: true
-      }));
-    } catch (e) {}
-  }
-
+  const byName = new Map();
   const defaultDir = path.join(publicDir, 'themes');
   if (fs.existsSync(defaultDir)) {
     try {
-      const files = await fs.promises.readdir(defaultDir);
-      const defaultThemes = files.filter(f => f.endsWith('.css')).map(f => ({
-        name: f.replace('.css', ''), fileName: f, path: `themes/${f}`, isCustom: false
-      }));
-      themes = [...themes, ...defaultThemes];
+      for (const f of await fs.promises.readdir(defaultDir)) if (f.endsWith('.css'))
+        byName.set(f.replace('.css', ''), { name: f.replace('.css', ''), fileName: f, path: `themes/${f}`, isCustom: false });
     } catch (e) {}
   }
-  res.json(themes);
+  const chain = String(req.query.dirs || '.mdp').split(',').map(s => s.trim()).filter(Boolean);
+  for (const cdir of chain) {
+    try {
+      for (const e of await mdplink.vfsList(vres(`${cdir}/themes`))) if (!e.isDir && e.name.endsWith('.css'))
+        byName.set(e.name.replace('.css', ''), { name: e.name.replace('.css', ''), fileName: e.name, path: `${cdir}/themes/${e.name}`, isCustom: true });
+    } catch (e) { /* themes dir absent */ }
+  }
+  res.json([...byName.values()]);
 });
 
 app.get('/api/modules', async (req, res) => {

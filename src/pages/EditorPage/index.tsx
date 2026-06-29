@@ -5,7 +5,9 @@ import FolderOpenIcon from '@mui/icons-material/FolderOpen';
 import { type SnippetsCategory, type ThemeOption, type FileType, getCustomItemStyle } from '../../types';
 
 import { MainHeader } from '../../components/layout/MainHeader';
-import { MDP_DIR, MODULES_DIR, EFFECTS_DIR, IMAGES_DIR, SNIPPETS_DIR, TEMPLATES_DIR, THEMES_DIR } from '../../features/workspace/specialFolders';
+import { MODULES_DIR, EFFECTS_DIR, IMAGES_DIR, SNIPPETS_DIR, TEMPLATES_DIR, THEMES_DIR } from '../../features/workspace/specialFolders';
+import { scopeConfigDirs, collectScopedAssetPaths } from '../../features/workspace/mdpScope';
+import { type MdpContent, parseContent, effectiveDisabledModules, contentPath } from '../../features/workspace/mdpContent';
 import { useAppSettings } from '../../features/settings/AppSettingsContext';
 import { matchAction } from '../../features/settings/shortcuts/matcher';
 import { ACTIONS_BY_SCOPE } from '../../features/settings/shortcuts/registry';
@@ -274,23 +276,27 @@ export default function EditorPage() {
   }, [persistDrafts, clearDrafts]);
 
   // App-managed folders now live under `.mdp/` (`.mdp/modules`, `.mdp/effects`, …).
-  const mdpDir = useMemo(() => fileTree.find(node => node.name === MDP_DIR), [fileTree]);
+  // `.mdp` cascade: modules/effects come from the active file's `.mdp` CHAIN
+  // (root→nearest, nearest wins by basename), not just the workspace-root `.mdp`,
+  // so a `.mdp` placed in a subfolder governs the decks beneath it. Driven by
+  // `currentFileName`; because assets (themes etc.) live UNDER their `.mdp`, editing
+  // one still resolves to that deck's scope. Falls back to the root `.mdp` when
+  // nothing is open (preserves pre-deck loading).
+  const scopeDirs = useMemo(() => scopeConfigDirs(fileTree, currentFileName), [fileTree, currentFileName]);
+  // Publish the active deck's `.mdp` scope so the Settings overlay's AI-prompt
+  // section (a sibling surface) can build a scope-correct themes list.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  useEffect(() => { (window as any).__mdpScopeDirs = scopeDirs; }, [scopeDirs]);
 
-  const modulePathsString = useMemo(() => {
-    const modulesDir = mdpDir?.children?.find(node => node.name === 'modules');
-    const paths = modulesDir?.children
-      ?.filter(file => file.name.endsWith('.mdpmod.xml'))
-      ?.map(file => file.path) || [];
-    return paths.sort().join(',');
-  }, [mdpDir]);
+  const modulePathsString = useMemo(
+    () => collectScopedAssetPaths(fileTree, scopeDirs, 'modules', '.mdpmod.xml').sort().join(','),
+    [fileTree, scopeDirs],
+  );
 
-  const effectPathsString = useMemo(() => {
-    const effectsDir = mdpDir?.children?.find(node => node.name === 'effects');
-    const paths = effectsDir?.children
-      ?.filter(file => file.name.endsWith('.mdpfx.xml'))
-      ?.map(file => file.path) || [];
-    return paths.sort().join(',');
-  }, [mdpDir]);
+  const effectPathsString = useMemo(
+    () => collectScopedAssetPaths(fileTree, scopeDirs, 'effects', '.mdpfx.xml').sort().join(','),
+    [fileTree, scopeDirs],
+  );
 
   // Incremented whenever modules/effects finish (re)loading. Threaded into slide
   // generation so slides parsed before registration are re-parsed once their
@@ -366,18 +372,31 @@ export default function EditorPage() {
     refreshModuleSnippets();
   }, [refreshModuleSnippets]);
 
-  // Apply the user's enabled/disabled module choices (from app settings): update
-  // the active set, re-merge snippets, and force a slide re-parse so the preview
-  // reflects the change live (this page stays mounted under the Settings overlay).
+  // Module enable/disable is per-folder: resolve the DISABLED set from the active
+  // deck's `.mdp` chain (`<dir>/content.json`, nearest explicit wins), apply it,
+  // re-merge snippets and re-parse so the preview reflects it live. Re-runs on scope
+  // change and when the Configure (.mdp) dialog edits a content.json.
+  const [contentEpoch, setContentEpoch] = useState(0);
   useEffect(() => {
-    setDisabledModules(appSettings.disabledModules || []);
-    // Intentional state sync: a module enable/disable change must re-merge snippets
-    // and re-parse the slides so the preview reflects it live.
-    /* eslint-disable react-hooks/set-state-in-effect */
-    refreshModuleSnippets();
-    setModuleEpoch((e) => e + 1);
-    /* eslint-enable react-hooks/set-state-in-effect */
-  }, [appSettings.disabledModules, refreshModuleSnippets]);
+    const onChanged = () => setContentEpoch((e) => e + 1);
+    window.addEventListener('mdp-content-changed', onChanged);
+    return () => window.removeEventListener('mdp-content-changed', onChanged);
+  }, []);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const chain: MdpContent[] = [];
+      for (const cdir of scopeDirs) {
+        try { chain.push(parseContent(await apiClient.readFileText(contentPath(cdir)))); }
+        catch { chain.push({}); }
+      }
+      if (cancelled) return;
+      setDisabledModules(effectiveDisabledModules(chain));
+      refreshModuleSnippets();
+      setModuleEpoch((e) => e + 1);
+    })();
+    return () => { cancelled = true; };
+  }, [scopeDirs, contentEpoch, refreshModuleSnippets]);
 
   // Settings overlay (a separate component) asks the editor to sync the official
   // catalog or reload snippets via window events — the editor owns the file tree
@@ -629,41 +648,42 @@ export default function EditorPage() {
 
   useAppInit(fetchFileTree, loadFile, setTemplateContent, setSnipets, setThemes);
 
-  // Re-fetch the theme list whenever the file tree changes (after sync, create,
-  // rename, delete, or manual refresh) so newly added themes show up in the
-  // @theme selector and their CSS resolves and applies.
+  // Re-fetch the theme list whenever the file tree changes OR the active deck's
+  // `.mdp` scope changes — themes cascade like modules (root→nearest, nearest wins),
+  // so newly added/scoped themes show up in the @theme selector and resolve.
   useEffect(() => {
-    apiClient.getThemes().then(setThemes).catch(err => console.error('Failed to load themes', err));
-  }, [fileTree]);
+    apiClient.getThemes(scopeDirs).then(setThemes).catch(err => console.error('Failed to load themes', err));
+  }, [fileTree, scopeDirs]);
 
-  // Load the workspace-shared image-alias library (.mdp/images/registry.json). It is
-  // async like modules, so bump moduleEpoch to force a slide re-parse once ready.
+  // Load the image-alias library — now CASCADING across the active deck's `.mdp`
+  // chain (root→nearest): each `<dir>/.mdp/images/registry.json` is merged, NEAREST
+  // alias winning. A registry's managed paths (`.mdp/images/<file>`) are rebased to
+  // ITS own `.mdp/images/` location so a deeper library's files resolve correctly.
+  // Async like modules → bump moduleEpoch to force a re-parse once ready.
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      try {
-        const text = await apiClient.readFileText(`${IMAGES_DIR}/registry.json`);
-        const parsed = JSON.parse(text);
-        const map: Record<string, string> = (parsed && parsed.images) || {};
-        const desc: Record<string, string> = (parsed && parsed.descriptions) || {};
-        const tags: Record<string, string[]> = (parsed && parsed.tags) || {};
-        if (cancelled) return;
-        setImageLibrary(map);
-        setImageLibraryDesc(desc);
-        setImageLibraryTags(tags);
-        setLibraryImages(map);
-        setModuleEpoch((e) => e + 1);
-      } catch {
-        // No library file yet (or unreadable) — leave the library empty.
-        if (cancelled) return;
-        setImageLibrary({});
-        setImageLibraryDesc({});
-        setImageLibraryTags({});
-        clearLibraryImages();
+      const map: Record<string, string> = {};
+      const desc: Record<string, string> = {};
+      const tags: Record<string, string[]> = {};
+      for (const cdir of scopeDirs) { // root→nearest; later overrides (scopeDirs falls back to root `.mdp`)
+        try {
+          const parsed = JSON.parse(await apiClient.readFileText(`${cdir}/images/registry.json`));
+          const rebase = (v: string) => typeof v === 'string' ? v.replace(/^\/?\.mdp\/images\//, `${cdir}/images/`) : v;
+          for (const [a, v] of Object.entries((parsed && parsed.images) || {})) map[a] = rebase(v as string);
+          Object.assign(desc, (parsed && parsed.descriptions) || {});
+          Object.assign(tags, (parsed && parsed.tags) || {});
+        } catch { /* this `.mdp` has no library */ }
       }
+      if (cancelled) return;
+      setImageLibrary(map);
+      setImageLibraryDesc(desc);
+      setImageLibraryTags(tags);
+      setLibraryImages(map);
+      setModuleEpoch((e) => e + 1);
     })();
     return () => { cancelled = true; };
-  }, [fileTree]);
+  }, [fileTree, scopeDirs]);
 
   const {
     isSlideshow, setIsSlideshow, slideshowRef, isSlideOverview, setIsSlideOverview,

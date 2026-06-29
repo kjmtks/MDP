@@ -21,6 +21,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveBinaryDialog: (args) => ipcRenderer.invoke('saveBinaryDialog', args),
   getLinkConfig: (relPath) => ipcRenderer.invoke('getLinkConfig', relPath),
   setLinkConfig: (args) => ipcRenderer.invoke('setLinkConfig', args),
+  getAppSettings: () => ipcRenderer.invoke('getAppSettings'),
+  setAppSettings: (obj) => ipcRenderer.invoke('setAppSettings', obj),
   getSshBypassJump: () => ipcRenderer.invoke('getSshBypassJump'),
   setSshBypassJump: (value) => ipcRenderer.invoke('setSshBypassJump', value),
   getCacheInfo: () => ipcRenderer.invoke('getCacheInfo'),
@@ -31,7 +33,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getSnipets: () => ipcRenderer.invoke('getSnipets'),
   getTemplates: () => ipcRenderer.invoke('getTemplates'),
   getTemplateContent: (path) => ipcRenderer.invoke('getTemplateContent', path),
-  getThemes: () => ipcRenderer.invoke('getThemes'),
+  getThemes: (dirs) => ipcRenderer.invoke('getThemes', dirs),
   getAppVersion: () => ipcRenderer.invoke('getAppVersion'),
   setModified: (modified) => ipcRenderer.send('set-modified', modified),
   onAppCloseRequest: (cb) => {

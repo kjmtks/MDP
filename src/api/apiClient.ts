@@ -204,6 +204,20 @@ export const apiClient = {
     const res = await fetch('/api/prefetchDeck', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: relPath }) }); return res.json();
   },
 
+  // Machine-local app settings (theme / font / shortcuts / author profile) — kept
+  // PER INSTALL, not in the workspace, so they work even when the workspace root is
+  // read-only (e.g. a NAS homes share). Electron → userData file; web → localStorage.
+  getAppSettings: async (): Promise<unknown | null> => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (isElectron()) return await (window as any).electronAPI.getAppSettings();
+    try { const s = localStorage.getItem('mdp_app_settings'); return s ? JSON.parse(s) : null; } catch { return null; }
+  },
+  setAppSettings: async (obj: unknown): Promise<void> => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (isElectron()) { await (window as any).electronAPI.setAppSettings(obj); return; }
+    try { localStorage.setItem('mdp_app_settings', JSON.stringify(obj)); } catch { /* ignore */ }
+  },
+
   // Native file/folder picker (Electron only); returns the chosen absolute path or
   // null. Set `directory: true` to pick a folder.
   pickFile: async (options?: { title?: string; directory?: boolean; filters?: { name: string; extensions: string[] }[] }): Promise<string | null> => {
@@ -274,11 +288,14 @@ export const apiClient = {
     return "# New Slide\n\nContent...";
   },
 
-  getThemes: async () => {
+  // `dirs` = the active deck's `.mdp` config-dir chain (root→nearest). Themes from
+  // each are merged (nearest wins by name). Omitted → workspace root `.mdp` only.
+  getThemes: async (dirs?: string[]) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    if (isElectron()) return await (window as any).electronAPI.getThemes();
+    if (isElectron()) return await (window as any).electronAPI.getThemes(dirs);
     try {
-      const res = await fetch('/api/themes');
+      const qs = dirs && dirs.length ? `?dirs=${encodeURIComponent(dirs.join(','))}` : '';
+      const res = await fetch(`/api/themes${qs}`);
       if (res.ok) return await res.json();
     } catch (e) { console.error(e); }
     return [];

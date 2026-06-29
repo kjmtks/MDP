@@ -16,6 +16,9 @@ import CloudDownloadIcon from '@mui/icons-material/CloudDownload';
 import StorageIcon from '@mui/icons-material/Storage';
 import { MdpLinkDialog } from './MdpLinkDialog';
 import { OfflineCacheDialog } from './OfflineCacheDialog';
+import { ConfigureMdpDialog } from './ConfigureMdpDialog';
+import { isMdpFolder } from '../../workspace/mdpScope';
+import TuneIcon from '@mui/icons-material/Tune';
 import { CustomTabPanel } from '../../../components/common/CustomTabPanel';
 import { FileTreeItem } from './FileTreeItem';
 import { SlideThumbnail } from '../../slide/components/SlideThumbnail';
@@ -136,6 +139,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [sshBypassJump, setSshBypassJump] = useState(false);
   useEffect(() => { apiClient.getSshBypassJump().then(setSshBypassJump).catch(() => {}); }, []);
   const [cacheDialogOpen, setCacheDialogOpen] = useState(false);
+  const [configureMdp, setConfigureMdp] = useState<{ open: boolean; configDir: string | null }>({ open: false, configDir: null });
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [newName, setNewName] = useState('');
@@ -157,16 +161,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
     const sortNodes = (a: FileNode, b: FileNode) =>
       a.type === b.type ? a.name.localeCompare(b.name) : (a.type === 'directory' ? -1 : 1);
 
-    // Keep `.mdp` (the app-managed container) and all non-dot entries; hide every
-    // other dotfile, plus the managed `.mdp/images` store. `.mdpignore` (the
-    // search-exclusion marker) is kept visible so users can see / manage it.
+    // Keep `.mdp` (the app-managed container) AT ANY LEVEL — a per-folder `.mdp`
+    // (including inside a `.mdplink` target) must be visible so it can be browsed
+    // and right-clicked → "Configure (.mdp)…". Keep all non-dot entries; hide every
+    // other dotfile, plus the managed `images` store inside any `.mdp`. `.mdpignore`
+    // (the search-exclusion marker) is kept visible so users can see / manage it.
     const filterNodes = (nodes: FileNode[], parentPath: string): FileNode[] => {
+      const inMdp = parentPath === MDP_DIR || parentPath.endsWith(`/${MDP_DIR}`);
       return nodes
         .filter(n => {
-          if (parentPath === MDP_DIR && n.name === 'images') return false;
+          if (inMdp && n.name === 'images') return false;
           if (n.name === '.mdpignore') return true;
-          if (parentPath === '') return n.name === MDP_DIR || !n.name.startsWith('.');
-          return !n.name.startsWith('.');
+          // Show `.mdp`, `.git`, and any sealed dotfolder; hide other dotfiles.
+          return n.name === MDP_DIR || n.name === '.git' || n.sealed || !n.name.startsWith('.');
         })
         .map(n => {
           const fullPath = parentPath ? `${parentPath}/${n.name}` : n.name;
@@ -809,6 +816,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </MenuItem>
         )}
         {/* Electron only: open this folder (or the workspace root) in the OS file manager. */}
+        {contextMenu?.node && isMdpFolder(contextMenu.node) && (
+          <MenuItem onClick={() => { setConfigureMdp({ open: true, configDir: contextMenu.path }); setContextMenu(null); }}>
+            <ListItemIcon><TuneIcon fontSize="small" /></ListItemIcon> Configure (.mdp)…
+          </MenuItem>
+        )}
         {/* Hidden for remote (SSH) links and anything beneath them — they have no
             local path to reveal. A LOCAL link reveals its target folder. */}
         {isElectron() && contextMenu?.isFolder && !contextMenu?.node?.isVirtual && !contextMenu?.node?.remote && (
@@ -916,6 +928,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         onCreated={onManualRefresh}
       />
       <OfflineCacheDialog open={cacheDialogOpen} onClose={() => setCacheDialogOpen(false)} />
+      <ConfigureMdpDialog open={configureMdp.open} configDir={configureMdp.configDir} onClose={() => setConfigureMdp({ open: false, configDir: null })} />
     </Box>
   );
 };

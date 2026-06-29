@@ -4,9 +4,9 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import DownloadIcon from '@mui/icons-material/Download';
 import { apiClient } from '../../../api/apiClient';
-import { loadedModules } from '../../../features/modules/moduleManager';
+import { loadedModules, isModuleDisabled } from '../../../features/modules/moduleManager';
 import { loadedEffects } from '../../../features/effects/effectManager';
-import { buildSlideSpecPromptFromLoaded } from '../../../features/ai/slideSpecPrompt';
+import { buildSlideSpecPrompt } from '../../../features/ai/slideSpecPrompt';
 import type { ThemeOption } from '../../../types';
 
 // Settings → "AI prompt": assemble ONE English prompt (built-in slide format spec
@@ -18,9 +18,16 @@ export const AiSpecSection: React.FC = () => {
   const [copied, setCopied] = useState(false);
 
   const generate = useCallback(async () => {
+    // The prompt reflects the ACTIVE deck's `.mdp` scope: modules/effects are the
+    // scope-loaded live registries (minus disabled ones), and themes are fetched for
+    // the same scope (published by the editor).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const scopeDirs = (window as any).__mdpScopeDirs as string[] | undefined;
     let themes: ThemeOption[] = [];
-    try { themes = await apiClient.getThemes(); } catch { /* themes optional */ }
-    setPrompt(buildSlideSpecPromptFromLoaded(loadedModules, loadedEffects, themes));
+    try { themes = await apiClient.getThemes(scopeDirs); } catch { /* themes optional */ }
+    const modules = Object.values(loadedModules).map((m) => m.config).filter((c) => !isModuleDisabled(c.name));
+    const effects = Object.values(loadedEffects).map((e) => e.config);
+    setPrompt(buildSlideSpecPrompt(modules, { effects, themes }));
     setCopied(false);
   }, []);
 
@@ -45,7 +52,7 @@ export const AiSpecSection: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
-  const moduleCount = Object.keys(loadedModules).length;
+  const moduleCount = Object.keys(loadedModules).filter((n) => !isModuleDisabled(n)).length;
   const effectCount = Object.keys(loadedEffects).length;
 
   return (

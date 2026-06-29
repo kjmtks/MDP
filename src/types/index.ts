@@ -24,6 +24,9 @@ export interface FileNode {
   // directory and everything beneath it is excluded from the workspace slide
   // search, while staying browsable in the tree and usable as image/link targets.
   slideIgnored?: boolean;
+  // A `.mdpignore` directory the backend did NOT walk: shown but not expandable,
+  // and its subtree is absent from the tree (excluded from search / `.mdp` scope).
+  sealed?: boolean;
   // A `.mdplink` file presented as a directory: its children are the linked
   // target's contents (a local path or an SSH remote dir). `linkType` is
   // 'local' | 'ssh'; `linkError` is set when the target could not be read.

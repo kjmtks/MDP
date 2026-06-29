@@ -401,8 +401,8 @@ export function buildSlideSpecPrompt(modules: ModuleConfig[], extras: SlideSpecE
   }
 
   const sorted = [...modules].sort((a, b) => a.name.localeCompare(b.name));
-  parts.push(`## Installed modules\n\nThese modules are available in this workspace — invoke each with its \`<!-- @name … -->\` directive.`);
-  parts.push(sorted.length ? sorted.map(describeModuleForAI).join('\n\n') : '_(No modules are installed in this workspace.)_');
+  parts.push(`## Installed modules\n\nThese modules are available for the current deck's folder — invoke each with its \`<!-- @name … -->\` directive.`);
+  parts.push(sorted.length ? sorted.map(describeModuleForAI).join('\n\n') : '_(No modules are available for this folder.)_');
   return parts.join('\n\n');
 }
 

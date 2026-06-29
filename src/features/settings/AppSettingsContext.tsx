@@ -14,57 +14,42 @@ interface AppSettingsContextValue {
 
 const Ctx = createContext<AppSettingsContextValue | null>(null);
 
-const hasWorkspace = () => {
-  try { return !!localStorage.getItem('mdp_root_path'); } catch { return false; }
-};
-
 export const AppSettingsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [ready, setReady] = useState(false);
-  // Guards the write→`mdp-file-saved`→reload feedback loop on our own file.
-  const isSavingRef = useRef(false);
   const saveTimer = useRef<number | null>(null);
-  // Whether the current settings came from disk (vs in-memory defaults). When
-  // false we still let the UI mutate settings; the first real edit persists.
+  // Whether the current settings came from a real store (vs in-memory defaults).
   const loadedRef = useRef(false);
 
+  // App settings are MACHINE-LOCAL (per install), not in the workspace — so they
+  // work even when the workspace root is read-only (e.g. a NAS homes share). On
+  // first run we seed from the legacy per-workspace `.mdp/settings.json` once.
   const load = useCallback(async () => {
-    if (!hasWorkspace()) {
-      setSettings(DEFAULT_SETTINGS);
-      loadedRef.current = false;
-      setReady(true);
-      return;
-    }
+    try {
+      const stored = await apiClient.getAppSettings();
+      if (stored) { setSettings(normalizeSettings(stored)); loadedRef.current = true; setReady(true); return; }
+    } catch { /* fall through to migration */ }
     try {
       const text = await apiClient.readFileText(SETTINGS_PATH);
-      setSettings(normalizeSettings(JSON.parse(text)));
+      const migrated = normalizeSettings(JSON.parse(text));
+      setSettings(migrated);
       loadedRef.current = true;
+      apiClient.setAppSettings(migrated).catch(() => {});
     } catch {
-      // Missing/malformed → defaults (a fresh workspace simply has no file yet).
       setSettings(DEFAULT_SETTINGS);
       loadedRef.current = false;
     }
     setReady(true);
   }, []);
 
-  // Initial load + reload on workspace change.
+  // Initial load; also re-attempt the one-time migration when a workspace first
+  // opens (load() returns early once a machine-local store exists, so this never
+  // overwrites the global settings on later workspace switches).
   useEffect(() => {
     load();
-    const onWorkspace = () => load();
+    const onWorkspace = () => { if (!loadedRef.current) load(); };
     window.addEventListener('mdp-workspace-changed', onWorkspace);
     return () => window.removeEventListener('mdp-workspace-changed', onWorkspace);
-  }, [load]);
-
-  // Reload when the settings file is edited externally (hand-edit / other window).
-  useEffect(() => {
-    const onSaved = (e: Event) => {
-      const path = (e as CustomEvent).detail?.path;
-      if (path !== SETTINGS_PATH) return;
-      if (isSavingRef.current) return; // our own write
-      load();
-    };
-    window.addEventListener('mdp-file-saved', onSaved);
-    return () => window.removeEventListener('mdp-file-saved', onSaved);
   }, [load]);
 
   // Apply: theme attribute + font-size custom props on <html>.
@@ -78,16 +63,10 @@ export const AppSettingsProvider: React.FC<{ children: React.ReactNode }> = ({ c
   }, [settings.appTheme, settings.appFontSize, settings.editorFontSize, settings.editorCaretWidth, settings.editorLineHeight]);
 
   const persist = useCallback((next: AppSettings) => {
-    if (!hasWorkspace()) return; // in-memory only until a workspace exists
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
-    saveTimer.current = window.setTimeout(async () => {
-      isSavingRef.current = true;
-      try {
-        await apiClient.saveFile(SETTINGS_PATH, JSON.stringify(next, null, 2));
-        loadedRef.current = true;
-      } catch { /* ignore write errors */ }
-      // Release the guard after the save-event has had a chance to fire.
-      window.setTimeout(() => { isSavingRef.current = false; }, 0);
+    saveTimer.current = window.setTimeout(() => {
+      apiClient.setAppSettings(next).catch(() => { /* ignore write errors */ });
+      loadedRef.current = true;
     }, 300);
   }, []);
 

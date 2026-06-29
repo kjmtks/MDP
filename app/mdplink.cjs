@@ -431,18 +431,21 @@ async function buildTree(baseDir, relPath = '', depth = 0) {
       nodes.push({ name: displayName, path: nodePath, type: 'directory', isLink: true, linkType, ...(linkType === 'ssh' ? { remote: true } : {}), ...(linkError ? { linkError } : {}), ...(lazy ? { lazy: true } : {}), children });
       continue;
     }
-    // Hide dotfiles (matches the local tree) except the app folders.
-    if (e.name.startsWith('.') && e.name !== '.mdp' && e.name !== '.mdpignore') continue;
+    // Hide dotfiles (matches the local tree) except the app folders and `.git`
+    // (shown as a sealed, non-expandable folder below).
+    if (e.name.startsWith('.') && e.name !== '.mdp' && e.name !== '.mdpignore' && e.name !== '.git') continue;
     if (e.isDir) {
       if (remote) {
         // Defer listing remote subdirectories until they're expanded.
         nodes.push({ name: e.name, path: nodePath, type: 'directory', lazy: true, remote: true, children: [] });
+      } else if (e.name === '.git' || isFileSync(path.join(target.abs, e.name, '.mdpignore'))) {
+        // SEALED: a `.git` or `.mdpignore` directory is shown but NEVER walked — its
+        // subtree is kept out of the tree entirely, so it is excluded from browsing,
+        // search and `.mdp` resolution.
+        nodes.push({ name: e.name, path: nodePath, type: 'directory', children: [], slideIgnored: true, sealed: true });
       } else {
         const sub = depth < 12 ? await buildTree(baseDir, nodePath, depth + 1) : { nodes: [] };
-        const node = { name: e.name, path: nodePath, type: 'directory', children: sub.nodes };
-        // `.mdpignore` marker only meaningful on local dirs.
-        if (isFileSync(path.join(target.abs, e.name, '.mdpignore'))) node.slideIgnored = true;
-        nodes.push(node);
+        nodes.push({ name: e.name, path: nodePath, type: 'directory', children: sub.nodes });
       }
     } else {
       nodes.push({ name: e.name, path: nodePath, type: 'file', isBinary: /\.(png|jpe?g|gif|svg|webp|bmp|ico)$/i.test(e.name), ...(remote ? { remote: true } : {}) });

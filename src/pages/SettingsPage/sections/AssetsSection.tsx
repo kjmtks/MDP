@@ -4,8 +4,6 @@ import CloudDownloadIcon from '@mui/icons-material/CloudDownload';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
-import { useAppSettings } from '../../../features/settings/AppSettingsContext';
-import { loadedModules } from '../../../features/modules/moduleManager';
 import { syncOfficialCatalog } from '../../../features/catalog/syncService';
 
 const btnSx = {
@@ -16,33 +14,10 @@ const btnSx = {
   '&.Mui-disabled': { color: 'var(--app-text-disabled)', borderColor: 'var(--app-border)' },
 };
 
-const listStyle: React.CSSProperties = {
-  marginTop: 8, border: '1px solid var(--app-border)', borderRadius: 6,
-  maxHeight: 360, overflowY: 'auto', background: 'var(--app-bg-elevated)',
-};
-const rowStyle: React.CSSProperties = {
-  display: 'flex', alignItems: 'center', gap: 10, padding: '6px 12px',
-  borderBottom: '1px solid var(--app-border-subtle)', cursor: 'pointer',
-};
-
 export const AssetsSection: React.FC = () => {
-  const { settings, update } = useAppSettings();
-  const disabled = new Set(settings.disabledModules || []);
-
   const [syncing, setSyncing] = useState(false);
   const [snipReloading, setSnipReloading] = useState(false);
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
-
-  // The live registry (populated by the editor underneath this overlay).
-  const modules = Object.values(loadedModules)
-    .map((m) => m.config)
-    .sort((a, b) => a.name.localeCompare(b.name));
-
-  const toggle = (name: string, enabled: boolean) => {
-    const next = new Set(settings.disabledModules || []);
-    if (enabled) next.delete(name); else next.add(name);
-    update({ disabledModules: Array.from(next).sort() });
-  };
 
   // Run the catalog sync HERE (not via the editor) so the spinner reflects real
   // progress and no confirmation dialog hides behind this settings overlay. The
@@ -76,7 +51,7 @@ export const AssetsSection: React.FC = () => {
   return (
     <div>
       <h2 className="settings-section-title">Assets</h2>
-      <p className="settings-section-desc">Get the latest official assets (modules, themes, templates, snippets), reload snippets, and enable or disable individual modules.</p>
+      <p className="settings-section-desc">Get the latest official assets (modules, themes, templates, snippets) and reload snippets.</p>
 
       <div className="settings-field">
         <div className="settings-field-label">Official assets</div>
@@ -113,24 +88,7 @@ export const AssetsSection: React.FC = () => {
 
       <div className="settings-field">
         <div className="settings-field-label">Modules</div>
-        <div className="settings-field-hint">Unchecked modules are ignored — their <code>{'<!-- @name -->'}</code> directives render as nothing and they offer no snippets. Default: all enabled.</div>
-        <div style={listStyle}>
-          {modules.length === 0 && (
-            <div style={{ padding: '10px 12px', color: 'var(--app-text-disabled)' }}>No modules loaded.</div>
-          )}
-          {modules.map((m) => (
-            <label key={m.name} style={rowStyle}>
-              <input
-                type="checkbox"
-                checked={!disabled.has(m.name)}
-                onChange={(e) => toggle(m.name, e.target.checked)}
-              />
-              <span style={{ fontWeight: 600, color: 'var(--app-text-strong)', minWidth: 110 }}>{m.name}</span>
-              <span style={{ fontSize: '0.72rem', color: 'var(--app-text-disabled)', textTransform: 'uppercase', minWidth: 44 }}>{m.type}</span>
-              <span style={{ fontSize: '0.8rem', color: 'var(--app-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.description}</span>
-            </label>
-          ))}
-        </div>
+        <div className="settings-field-hint">Module enable/disable is now <b>per folder</b>: right-click a <code>.mdp</code> folder in the file tree → <b>Configure (.mdp)…</b>. Choices live in that folder's <code>content.json</code> and cascade to the decks beneath it.</div>
       </div>
     </div>
   );

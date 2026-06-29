@@ -301,6 +301,17 @@ ipcMain.handle('setLinkConfig', async (event, { path: relPath, content }) => {
 ipcMain.handle('getSshBypassJump', async () => mdplink.getBypassJump());
 ipcMain.handle('setSshBypassJump', async (event, value) => { mdplink.setBypassJump(value); return { success: true }; });
 
+// Machine-local app settings (theme / font / shortcuts / author) — userData file,
+// so they persist per install independent of the (possibly read-only) workspace.
+const appSettingsFile = () => path.join(app.getPath('userData'), 'mdp-app-settings.json');
+ipcMain.handle('getAppSettings', async () => {
+  try { return JSON.parse(fsSync.readFileSync(appSettingsFile(), 'utf-8')); } catch { return null; }
+});
+ipcMain.handle('setAppSettings', async (event, obj) => {
+  try { fsSync.writeFileSync(appSettingsFile(), JSON.stringify(obj, null, 2)); } catch { /* ignore */ }
+  return { success: true };
+});
+
 // Offline cache for remote (`.mdplink` SSH) files.
 ipcMain.handle('getCacheInfo', async () => mdplink.getCacheInfo());
 ipcMain.handle('setCacheConfig', async (event, cfg) => { mdplink.setCacheConfig(cfg || {}); return mdplink.getCacheInfo(); });
@@ -518,7 +529,7 @@ async function buildFileTree(dir, basePath = '') {
       // non-dot subfolders pass naturally). Also keep `.mdpignore` so the
       // search-exclusion marker is visible/manageable in the tree (matches the web
       // backend, which does not filter dotfiles). Skip all other dotfiles.
-      if (entry.name.startsWith('.') && entry.name !== '.mdp' && entry.name !== '.mdpignore') {
+      if (entry.name.startsWith('.') && entry.name !== '.mdp' && entry.name !== '.mdpignore' && entry.name !== '.git') {
         continue;
       }
       const nodePath = basePath ? `${basePath}/${entry.name}` : entry.name;
@@ -530,11 +541,16 @@ async function buildFileTree(dir, basePath = '') {
         isBinary: !isDir && /\.(png|jpe?g|gif|svg|webp|bmp|ico)$/i.test(entry.name)
       };
       if (isDir) {
-        node.children = await buildFileTree(path.join(dir, entry.name), nodePath);
-        // A `.mdpignore` file excludes this directory (and its subtree) from the
-        // workspace slide search; it stays browsable / referenceable. (`.mdpignore`
-        // is a dotfile, skipped above, so check the filesystem directly.)
-        if (fsSync.existsSync(path.join(dir, entry.name, '.mdpignore'))) node.slideIgnored = true;
+        // SEALED: a `.git` or `.mdpignore` directory is shown but NEVER walked — its
+        // subtree is kept out of the tree entirely (excluded from browsing, search
+        // and `.mdp` resolution).
+        if (entry.name === '.git' || fsSync.existsSync(path.join(dir, entry.name, '.mdpignore'))) {
+          node.children = [];
+          node.slideIgnored = true;
+          node.sealed = true;
+        } else {
+          node.children = await buildFileTree(path.join(dir, entry.name), nodePath);
+        }
       }
       nodes.push(node);
     }
@@ -606,38 +622,28 @@ ipcMain.handle('saveBinaryDialog', async (event, { suggestedName, content, filte
   }
 });
 
-ipcMain.handle('getThemes', async () => {
-  let themes = [];
-
-  if (currentBaseDir) {
-    const customDir = path.join(currentBaseDir, '.mdp', 'themes');
-    if (fsSync.existsSync(customDir)) {
-      try {
-        const files = await fs.readdir(customDir);
-        themes = files.filter(f => f.endsWith('.css')).map(f => ({
-          name: f.replace('.css', ''),
-          fileName: f,
-          path: `.mdp/themes/${f}`,
-          isCustom: true
-        }));
-      } catch (e) { console.error('Error reading custom themes:', e); }
-    }
-  }
-
+// `dirs` = the active deck's `.mdp` config-dir chain (root→nearest); custom themes
+// are merged across it with the NEAREST `.mdp` winning by name. Omitted/empty →
+// `['.mdp']` (workspace root only = legacy behavior). Bundled defaults are lowest.
+ipcMain.handle('getThemes', async (event, dirs) => {
+  const byName = new Map();
   const defaultDir = getAssetPath('themes');
   if (fsSync.existsSync(defaultDir)) {
     try {
-      const files = await fs.readdir(defaultDir);
-      const defaultThemes = files.filter(f => f.endsWith('.css')).map(f => ({
-        name: f.replace('.css', ''),
-        fileName: f,
-        path: `themes/${f}`,
-        isCustom: false
-      }));
-      themes = [...themes, ...defaultThemes];
+      for (const f of await fs.readdir(defaultDir)) if (f.endsWith('.css'))
+        byName.set(f.replace('.css', ''), { name: f.replace('.css', ''), fileName: f, path: `themes/${f}`, isCustom: false });
     } catch (e) { console.error('Error reading default themes:', e); }
   }
-  return themes;
+  if (currentBaseDir) {
+    const chain = Array.isArray(dirs) && dirs.length ? dirs : ['.mdp'];
+    for (const cdir of chain) {
+      try {
+        for (const e of await mdplink.vfsList(vresolve(`${cdir}/themes`))) if (!e.isDir && e.name.endsWith('.css'))
+          byName.set(e.name.replace('.css', ''), { name: e.name.replace('.css', ''), fileName: e.name, path: `${cdir}/themes/${e.name}`, isCustom: true });
+      } catch (e) { /* themes dir absent in this `.mdp` */ }
+    }
+  }
+  return [...byName.values()];
 });
 
 ipcMain.handle('getModules', async () => {
