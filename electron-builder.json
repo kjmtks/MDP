@@ -13,6 +13,8 @@
     "app/remoteRelay.cjs",
     "app/remoteServer.cjs",
     "app/mdplink.cjs",
+    "app/mcp-bridge.cjs",
+    "app/mcp-server.cjs",
     "node_modules/ws/**/*",
     "node_modules/ssh2/**/*",
     "node_modules/asn1/**/*",
@@ -23,14 +25,20 @@
     "build/icon.*"
   ],
   "win": {
-    "target": ["nsis", "portable"],
+    "target": [
+      "nsis",
+      "portable"
+    ],
     "icon": "build/icon.png"
   },
   "nsis": {
     "uninstallDisplayName": "MDP"
   },
   "mac": {
-    "target": ["dmg", "zip"],
+    "target": [
+      "dmg",
+      "zip"
+    ],
     "icon": "build/icon.png",
     "category": "public.app-category.productivity"
   },
@@ -38,8 +46,19 @@
     "title": "MDP Install",
     "iconSize": 128,
     "contents": [
-      { "x": 130, "y": 220 },
-      { "x": 410, "y": 220, "type": "link", "path": "/Applications" }
+      {
+        "x": 130,
+        "y": 220
+      },
+      {
+        "x": 410,
+        "y": 220,
+        "type": "link",
+        "path": "/Applications"
+      }
     ]
-  }
+  },
+  "asarUnpack": [
+    "app/mcp-server.cjs"
+  ]
 }

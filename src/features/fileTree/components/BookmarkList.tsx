@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Box, Typography, List, ListItem, ListItemButton, ListItemText, ListItemIcon, IconButton, Popover } from '@mui/material';
+import { Box, Typography, List, ListItem, ListItemButton, ListItemText, ListItemIcon, IconButton, Popover, Menu, MenuItem } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
+import AccountTreeIcon from '@mui/icons-material/AccountTree';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import { SHOW_PANEL_EVENT } from '../../../pages/EditorPage/dock/dockShared';
 import type { Bookmark } from '../../../pages/EditorPage/hooks/useBookmarks';
 import { BOOKMARK_ICON_KEYS, BOOKMARK_COLORS, bookmarkIconFor } from '../bookmarkConfig';
 import { extractBookmarkTitle, extractBookmarkSubtitle, type BookmarkTitle } from '../bookmarkTitle';
@@ -29,6 +32,19 @@ export const BookmarkList: React.FC<BookmarkListProps> = ({ bookmarks, onFileSel
   const [overIndex, setOverIndex] = useState<number | null>(null);
   const [picker, setPicker] = useState<{ anchor: HTMLElement; path: string } | null>(null);
   const [titles, setTitles] = useState<TitleState>({});
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; path: string } | null>(null);
+
+  // Show the file in the Explorer: open/focus the panel, then ask the file tree to
+  // expand the ancestors, select the file and scroll it into view. When the
+  // Explorer panel was CLOSED, its Sidebar mounts on a later commit — after this
+  // synchronous dispatch — so the request is also parked on a global the Explorer
+  // instance consumes on mount.
+  const revealInTree = (path: string) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).__mdpPendingReveal = { path, ts: Date.now() };
+    window.dispatchEvent(new CustomEvent(SHOW_PANEL_EVENT, { detail: { id: 'explorer' } }));
+    window.dispatchEvent(new CustomEvent('mdp-reveal-in-tree', { detail: { path } }));
+  };
 
   const bookmarksRef = useRef(bookmarks);
   useEffect(() => { bookmarksRef.current = bookmarks; }, [bookmarks]);
@@ -125,7 +141,10 @@ export const BookmarkList: React.FC<BookmarkListProps> = ({ bookmarks, onFileSel
               '.MuiListItemSecondaryAction-root': { opacity: 0.3 },
             }}
           >
-            <ListItemButton onClick={() => onFileSelect(bm.path)} sx={{ py: 0.5, borderRadius: 1, '&:hover': { bgcolor: 'var(--app-bg-hover)' } }}>
+            <ListItemButton
+              onClick={() => onFileSelect(bm.path)}
+              onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, path: bm.path }); }}
+              sx={{ py: 0.5, borderRadius: 1, '&:hover': { bgcolor: 'var(--app-bg-hover)' } }}>
               <ListItemIcon
                 sx={{ minWidth: 32 }}
                 onClick={(e) => { e.stopPropagation(); setPicker({ anchor: e.currentTarget, path: bm.path }); }}
@@ -142,6 +161,23 @@ export const BookmarkList: React.FC<BookmarkListProps> = ({ bookmarks, onFileSel
           </ListItem>
         );
       })}
+
+      <Menu
+        open={ctxMenu !== null}
+        onClose={() => setCtxMenu(null)}
+        anchorReference="anchorPosition"
+        anchorPosition={ctxMenu ? { top: ctxMenu.y, left: ctxMenu.x } : undefined}
+        slotProps={{ paper: { sx: { bgcolor: 'var(--app-bg-panel)', color: 'var(--app-text-secondary)', border: '1px solid var(--app-border-subtle)' } } }}
+      >
+        <MenuItem onClick={() => { if (ctxMenu) revealInTree(ctxMenu.path); setCtxMenu(null); }}>
+          <ListItemIcon><AccountTreeIcon fontSize="small" sx={{ color: 'var(--app-text-muted)' }} /></ListItemIcon>
+          Reveal in file tree
+        </MenuItem>
+        <MenuItem onClick={() => { if (ctxMenu) onRemove(ctxMenu.path); setCtxMenu(null); }} sx={{ color: 'var(--app-danger)' }}>
+          <ListItemIcon><DeleteOutlineIcon fontSize="small" sx={{ color: 'var(--app-danger)' }} /></ListItemIcon>
+          Remove bookmark
+        </MenuItem>
+      </Menu>
 
       <Popover
         open={!!picker}

@@ -23,6 +23,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setLinkConfig: (args) => ipcRenderer.invoke('setLinkConfig', args),
   getAppSettings: () => ipcRenderer.invoke('getAppSettings'),
   setAppSettings: (obj) => ipcRenderer.invoke('setAppSettings', obj),
+  setMcpEnabled: (enabled) => ipcRenderer.invoke('setMcpEnabled', enabled),
+  getMcpInfo: () => ipcRenderer.invoke('getMcpInfo'),
+  mcpGetHostConfig: (host) => ipcRenderer.invoke('mcpGetHostConfig', host),
+  mcpRegisterHost: (host) => ipcRenderer.invoke('mcpRegisterHost', host),
+  onMcpRequest: (cb) => {
+    const handler = (e, d) => cb(d);
+    ipcRenderer.on('mcp-request', handler);
+    return () => ipcRenderer.removeListener('mcp-request', handler);
+  },
+  mcpRespond: (payload) => ipcRenderer.send('mcp-response', payload),
   getSshBypassJump: () => ipcRenderer.invoke('getSshBypassJump'),
   setSshBypassJump: (value) => ipcRenderer.invoke('setSshBypassJump', value),
   getCacheInfo: () => ipcRenderer.invoke('getCacheInfo'),
@@ -30,8 +40,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   clearCache: () => ipcRenderer.invoke('clearCache'),
   prefetchDeck: (relPath) => ipcRenderer.invoke('prefetchDeck', relPath),
   pickFile: (options) => ipcRenderer.invoke('pickFile', options),
-  getSnipets: () => ipcRenderer.invoke('getSnipets'),
-  getTemplates: () => ipcRenderer.invoke('getTemplates'),
+  getSnipets: (dirs) => ipcRenderer.invoke('getSnipets', dirs),
+  getTemplates: (dirs) => ipcRenderer.invoke('getTemplates', dirs),
   getTemplateContent: (path) => ipcRenderer.invoke('getTemplateContent', path),
   getThemes: (dirs) => ipcRenderer.invoke('getThemes', dirs),
   getAppVersion: () => ipcRenderer.invoke('getAppVersion'),

@@ -38,16 +38,40 @@ export interface SlideData {
   stepCount: number;
 }
 
+// Track whether we're inside an unterminated HTML comment after `line`, given the
+// state before it. A multi-line `<!-- @note: … -->` (a speaker script) can contain
+// a bare `---` line; without this a `---` inside the comment would be mistaken for a
+// slide separator, splitting the comment and swallowing the rest of the deck into an
+// unclosed `<!--` (slides render blank). Mirrors the code-fence guard.
+const advanceCommentState = (line: string, inComment: boolean): boolean => {
+  let i = 0;
+  while (i < line.length) {
+    if (!inComment) {
+      const open = line.indexOf('<!--', i);
+      if (open === -1) break;
+      inComment = true; i = open + 4;
+    } else {
+      const close = line.indexOf('-->', i);
+      if (close === -1) return true; // comment continues onto the next line
+      inComment = false; i = close + 3;
+    }
+  }
+  return inComment;
+};
+
 export const splitMarkdownToBlocks = (markdown: string): RawBlock[] => {
   const lines = markdown.split(/\r?\n/);
   const blocks: RawBlock[] = [];
   let currentLines: string[] = [];
   let blockStartLine = 1;
   let inCodeBlock = false;
+  let inComment = false;
   lines.forEach((line, index) => {
     const currentLineNumber = index + 1;
     if (line.trim().startsWith('```')) inCodeBlock = !inCodeBlock;
-    const isSeparator = /^---$/.test(line.trim()) && !inCodeBlock;
+    // `---` only separates when NOT inside a code fence NOR an HTML comment.
+    const isSeparator = /^---$/.test(line.trim()) && !inCodeBlock && !inComment;
+    if (!inCodeBlock) inComment = advanceCommentState(line, inComment);
     if (isSeparator) {
       blocks.push({
         id: `block-${blocks.length}`,

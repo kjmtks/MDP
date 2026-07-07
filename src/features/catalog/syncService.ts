@@ -19,20 +19,24 @@ export async function fetchCatalog(): Promise<CatalogData> {
 
 /** Local destination DIRECTORY for a catalog category. The remote catalog uses
  *  root-relative categories (`.modules`, `.themes`, …); locally they live under
- *  `.mdp/` (`.mdp/modules`, …) — strip the leading dot and re-home under `.mdp`.
+ *  a `.mdp/` directory (`.mdp/modules`, …) — strip the leading dot and re-home.
+ *  `prefix` re-homes into a NESTED `.mdp` (e.g. 'alice/' → 'alice/.mdp/modules'),
+ *  so per-folder content profiles can hold their own copy of the official assets.
  *  Tolerates categories already in `.mdp/...` form. */
-export function catalogLocalDir(category: string): string {
-  if (category.startsWith('.mdp/')) return category;
-  return `.mdp/${category.replace(/^\./, '')}`;
+export function catalogLocalDir(category: string, prefix = ''): string {
+  if (category.startsWith('.mdp/')) return `${prefix}${category}`;
+  return `${prefix}.mdp/${category.replace(/^\./, '')}`;
 }
 
 /** Local destination path for a catalog item: `${localDir}/${fileName}`. */
-export function catalogLocalPath(category: string, item: CatalogItem): string {
+export function catalogLocalPath(category: string, item: CatalogItem, prefix = ''): string {
   const fileName = item.path.split('/').pop() || '';
-  return `${catalogLocalDir(category)}/${fileName}`;
+  return `${catalogLocalDir(category, prefix)}/${fileName}`;
 }
 
-export async function syncOfficialCatalog(): Promise<void> {
+/** `prefix` = folder whose `.mdp` receives the assets ('' = workspace root;
+ *  'alice/' = alice's `.mdp`). */
+export async function syncOfficialCatalog(prefix = ''): Promise<void> {
   console.log('[MDP Sync] Starting official catalog sync...');
 
   window.dispatchEvent(new CustomEvent('mdp-sync-start'));
@@ -43,7 +47,7 @@ export async function syncOfficialCatalog(): Promise<void> {
     for (const [category, items] of Object.entries(catalog)) {
       if (!items || items.length === 0) continue;
 
-      try { await apiClient.createFile(catalogLocalDir(category), 'directory'); } catch {
+      try { await apiClient.createFile(catalogLocalDir(category, prefix), 'directory'); } catch {
         // directory already exists
       }
 
@@ -60,7 +64,7 @@ export async function syncOfficialCatalog(): Promise<void> {
 
         const content = await fileRes.text();
         // saveFile overwrites unconditionally, so syncing always refreshes.
-        await apiClient.saveFile(catalogLocalPath(category, item), content);
+        await apiClient.saveFile(catalogLocalPath(category, item, prefix), content);
       }
     }
     console.log('[MDP Sync] All official assets synced successfully.');

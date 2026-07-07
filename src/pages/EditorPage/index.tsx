@@ -7,7 +7,8 @@ import { type SnippetsCategory, type ThemeOption, type FileType, getCustomItemSt
 import { MainHeader } from '../../components/layout/MainHeader';
 import { MODULES_DIR, EFFECTS_DIR, IMAGES_DIR, SNIPPETS_DIR, TEMPLATES_DIR, THEMES_DIR } from '../../features/workspace/specialFolders';
 import { scopeConfigDirs, collectScopedAssetPaths } from '../../features/workspace/mdpScope';
-import { type MdpContent, parseContent, effectiveDisabledModules, contentPath } from '../../features/workspace/mdpContent';
+import { type MdpContent, parseContent, effectiveDisabledModules, effectiveAiNotes, contentPath } from '../../features/workspace/mdpContent';
+import { McpBridge } from '../../features/mcp/McpBridge';
 import { useAppSettings } from '../../features/settings/AppSettingsContext';
 import { matchAction } from '../../features/settings/shortcuts/matcher';
 import { ACTIONS_BY_SCOPE } from '../../features/settings/shortcuts/registry';
@@ -55,7 +56,7 @@ import { allTagsOf } from '../../features/search/searchEngine';
 import { TagSettingsDialog } from '../../features/search/components/TagSettingsDialog';
 import { prewarmSvgs } from '../../features/slide/inlineSvg';
 import type { ManipRuntime } from '../../features/slide/components/ManipulationLayer';
-import { storeLibraryImage, inlineLibraryImage, saveRegistry, deleteLibraryFile } from '../../features/images/imageLibraryStore';
+import { storeLibraryImage, inlineLibraryImage, updateRegistry, deleteLibraryFile, rebaseLibraryValue } from '../../features/images/imageLibraryStore';
 import { useBookmarks } from './hooks/useBookmarks';
 import { useCatalogSync } from '../../features/catalog/hooks/useCatalogSync';
 import { syncOfficialCatalog } from '../../features/catalog/syncService';
@@ -282,7 +283,17 @@ export default function EditorPage() {
   // `currentFileName`; because assets (themes etc.) live UNDER their `.mdp`, editing
   // one still resolves to that deck's scope. Falls back to the root `.mdp` when
   // nothing is open (preserves pre-deck loading).
-  const scopeDirs = useMemo(() => scopeConfigDirs(fileTree, currentFileName), [fileTree, currentFileName]);
+  // IDENTITY-STABILIZED: tab switches and tree refreshes usually yield the SAME
+  // chain; keeping the previous array reference then prevents every scope-keyed
+  // effect (snippets, content.json, image registries, themes) from re-fetching and
+  // — worse — bumping moduleEpoch, which re-parses the whole deck for nothing.
+  const scopeDirsPrevRef = useRef<string[]>([]);
+  const scopeDirs = useMemo(() => {
+    const next = scopeConfigDirs(fileTree, currentFileName);
+    if (next.join('\n') === scopeDirsPrevRef.current.join('\n')) return scopeDirsPrevRef.current;
+    scopeDirsPrevRef.current = next;
+    return next;
+  }, [fileTree, currentFileName]);
   // Publish the active deck's `.mdp` scope so the Settings overlay's AI-prompt
   // section (a sibling surface) can build a scope-correct themes list.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -360,17 +371,21 @@ export default function EditorPage() {
     });
   }, []);
 
-  // Re-fetch workspace/file snippets, then re-append the active module snippets.
-  // Triggered from Settings → Modules → "Reload snippets" via a window event.
+  // Re-fetch workspace/file snippets (scoped to the active deck's `.mdp` chain),
+  // then re-append the active module snippets. Triggered from Settings → Modules →
+  // "Reload snippets" via a window event, and whenever the scope changes below.
   const reloadSnippets = useCallback(async () => {
     try {
-      const data = await apiClient.getSnipets();
+      const data = await apiClient.getSnipets(scopeDirs);
       setSnipets(data);
     } catch (err) {
       console.error('Failed to reload snippets', err);
     }
     refreshModuleSnippets();
-  }, [refreshModuleSnippets]);
+  }, [refreshModuleSnippets, scopeDirs]);
+
+  // Custom snippets follow the active deck's `.mdp` scope (like modules/themes).
+  useEffect(() => { void reloadSnippets(); }, [reloadSnippets]);
 
   // Module enable/disable is per-folder: resolve the DISABLED set from the active
   // deck's `.mdp` chain (`<dir>/content.json`, nearest explicit wins), apply it,
@@ -382,6 +397,8 @@ export default function EditorPage() {
     window.addEventListener('mdp-content-changed', onChanged);
     return () => window.removeEventListener('mdp-content-changed', onChanged);
   }, []);
+  const [scopeAiNotes, setScopeAiNotes] = useState('');
+  const disabledPrevRef = useRef<string>('');
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -391,7 +408,18 @@ export default function EditorPage() {
         catch { chain.push({}); }
       }
       if (cancelled) return;
-      setDisabledModules(effectiveDisabledModules(chain));
+      const disabled = effectiveDisabledModules(chain).sort();
+      const aiNotes = effectiveAiNotes(chain);
+      // Unchanged content → skip the moduleEpoch bump (it would re-parse the whole
+      // deck) — this effect re-runs on every scope/tree change.
+      const key = `${disabled.join('\n')} | ${aiNotes}`;
+      if (key === disabledPrevRef.current) return;
+      disabledPrevRef.current = key;
+      setDisabledModules(disabled);
+      setScopeAiNotes(aiNotes);
+      // Published for the Settings → AI prompt overlay (a separate component) to read.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (window as any).__mdpScopeAiNotes = aiNotes;
       refreshModuleSnippets();
       setModuleEpoch((e) => e + 1);
     })();
@@ -655,27 +683,47 @@ export default function EditorPage() {
     apiClient.getThemes(scopeDirs).then(setThemes).catch(err => console.error('Failed to load themes', err));
   }, [fileTree, scopeDirs]);
 
-  // Load the image-alias library — now CASCADING across the active deck's `.mdp`
-  // chain (root→nearest): each `<dir>/.mdp/images/registry.json` is merged, NEAREST
-  // alias winning. A registry's managed paths (`.mdp/images/<file>`) are rebased to
-  // ITS own `.mdp/images/` location so a deeper library's files resolve correctly.
+  // Load the image-alias library — CASCADING across the active deck's `.mdp` chain
+  // (root→nearest): each `<dir>/.mdp/images/registry.json` is merged, NEAREST alias
+  // winning. A registry's managed paths (`.mdp/images/<file>`) are rebased to ITS
+  // own `.mdp/images/` location so a deeper library's files resolve correctly. The
+  // ORIGIN (owning config dir) of each alias is recorded so edits/deletes go back to
+  // the registry that defines it (never a merged write — that would cross-pollute).
   // Async like modules → bump moduleEpoch to force a re-parse once ready.
+  const imageOriginRef = useRef<Record<string, string>>({});
+  const imageMergePrevRef = useRef<string>('');
+  const [imagesEpoch, setImagesEpoch] = useState(0);
   useEffect(() => {
     let cancelled = false;
     (async () => {
       const map: Record<string, string> = {};
       const desc: Record<string, string> = {};
       const tags: Record<string, string[]> = {};
+      const origins: Record<string, string> = {};
       for (const cdir of scopeDirs) { // root→nearest; later overrides (scopeDirs falls back to root `.mdp`)
         try {
           const parsed = JSON.parse(await apiClient.readFileText(`${cdir}/images/registry.json`));
-          const rebase = (v: string) => typeof v === 'string' ? v.replace(/^\/?\.mdp\/images\//, `${cdir}/images/`) : v;
-          for (const [a, v] of Object.entries((parsed && parsed.images) || {})) map[a] = rebase(v as string);
-          Object.assign(desc, (parsed && parsed.descriptions) || {});
-          Object.assign(tags, (parsed && parsed.tags) || {});
+          // Descriptions/tags travel WITH their alias's defining registry — an
+          // unpaired Object.assign would let a registry that only carries a stray
+          // `descriptions[x]` override an alias it doesn't define.
+          for (const [a, v] of Object.entries((parsed && parsed.images) || {})) {
+            map[a] = typeof v === 'string' ? rebaseLibraryValue(v, cdir) : (v as string);
+            origins[a] = cdir;
+            const d = parsed.descriptions && parsed.descriptions[a];
+            if (d) desc[a] = d; else delete desc[a];
+            const t = parsed.tags && parsed.tags[a];
+            if (t && t.length) tags[a] = t; else delete tags[a];
+          }
         } catch { /* this `.mdp` has no library */ }
       }
       if (cancelled) return;
+      imageOriginRef.current = origins;
+      // Unchanged merge result → skip the state updates AND the moduleEpoch bump
+      // (which would re-parse every slide). This effect re-runs on every tree
+      // refresh / tab switch, almost always with identical registries.
+      const key = JSON.stringify([map, desc, tags]);
+      if (key === imageMergePrevRef.current) return;
+      imageMergePrevRef.current = key;
       setImageLibrary(map);
       setImageLibraryDesc(desc);
       setImageLibraryTags(tags);
@@ -683,7 +731,43 @@ export default function EditorPage() {
       setModuleEpoch((e) => e + 1);
     })();
     return () => { cancelled = true; };
-  }, [fileTree, scopeDirs]);
+  }, [fileTree, scopeDirs, imagesEpoch]);
+
+  // Where library WRITES for `alias` go: the `.mdp` that already defines it, else
+  // the active deck's NEAREST `.mdp`. Returns the merged-view value for a set.
+  const scopeDirsRef = useRef(scopeDirs);
+  useEffect(() => { scopeDirsRef.current = scopeDirs; }, [scopeDirs]);
+  const libraryTargetDir = useCallback((alias: string) => {
+    const dirs = scopeDirsRef.current;
+    return imageOriginRef.current[alias] || dirs[dirs.length - 1] || '.mdp';
+  }, []);
+  const upsertLibraryImage = useCallback(async (alias: string, rawValue: string, description?: string, tags?: string[]) => {
+    const cdir = libraryTargetDir(alias);
+    // The edit dialog hands back the MERGED-VIEW value (e.g. `alice/.mdp/images/f`)
+    // on metadata-only edits — LOCALIZE managed values back to the registry form
+    // (`/.mdp/images/<f>`) so each registry stays portable with its folder.
+    const localized = /(^|\/)\.mdp\/images\//.test(rawValue)
+      ? rawValue.replace(/^.*\.mdp\/images\//, '/.mdp/images/')
+      : rawValue;
+    const stored = await storeLibraryImage(alias, localized, cdir); // '/.mdp/images/<f>' | url | path
+    await updateRegistry(cdir, (reg) => {
+      reg.images[alias] = stored;
+      if (description) reg.descriptions[alias] = description; else delete reg.descriptions[alias];
+      if (tags && tags.length) reg.tags[alias] = tags; else delete reg.tags[alias];
+    });
+    imageOriginRef.current[alias] = cdir;
+    setImagesEpoch((e) => e + 1);
+    return rebaseLibraryValue(stored, cdir);
+  }, [libraryTargetDir]);
+  const removeLibraryImage = useCallback(async (alias: string) => {
+    const cdir = libraryTargetDir(alias);
+    await updateRegistry(cdir, (reg) => {
+      delete reg.images[alias];
+      delete reg.descriptions[alias];
+      delete reg.tags[alias];
+    });
+    setImagesEpoch((e) => e + 1);
+  }, [libraryTargetDir]);
 
   const {
     isSlideshow, setIsSlideshow, slideshowRef, isSlideOverview, setIsSlideOverview,
@@ -1406,13 +1490,13 @@ export default function EditorPage() {
 
   const sidebarSlice = useMemo<SidebarSharedProps>(() => ({
     currentFileName, currentFileType: previewFileType, slides, currentSlideIndex, slideSize,
-    drawings, fileTree, onSlideSelect: setCurrentSlideIndex, onFileSelect: handleFileSelect,
+    drawings, fileTree, lastUpdated, onSlideSelect: setCurrentSlideIndex, onFileSelect: handleFileSelect,
     onManualRefresh: handleManualRefresh, onLoadLinkChildren: loadLinkChildren, onNav: moveSlide, handleOpenFolder,
     bookmarks, isBookmarked, onToggleBookmark: toggleBookmark,
     onReorderBookmark: reorderBookmarks, onUpdateBookmark: updateBookmark,
     onRenameFile: renameTab, onDeleteFiles: closeTabsByPaths,
     onOpenDeck: handleOpenDeck, canEditTags, currentDeckTags, onSetDeckTags: handleSetDeckTags,
-  }), [currentFileName, previewFileType, slides, currentSlideIndex, slideSize, drawings, fileTree,
+  }), [currentFileName, previewFileType, slides, currentSlideIndex, slideSize, drawings, fileTree, lastUpdated,
     setCurrentSlideIndex, handleFileSelect, handleManualRefresh, loadLinkChildren, moveSlide, handleOpenFolder,
     bookmarks, isBookmarked, toggleBookmark, reorderBookmarks, updateBookmark, renameTab, closeTabsByPaths,
     handleOpenDeck, canEditTags, currentDeckTags, handleSetDeckTags]);
@@ -1503,15 +1587,13 @@ export default function EditorPage() {
       if (cur.scope === 'file') {
         const v = editorRef.current?.view; if (v) editFileImageDef(v, cur.alias, dataUri);
       } else {
-        const stored = await storeLibraryImage(cur.alias, dataUri);
-        const next = { ...imageLibraryRef.current, [cur.alias]: stored };
-        commitLibrary(next, imageLibraryDescRef.current, imageLibraryTagsRef.current);
-        await saveRegistry(next, imageLibraryDescRef.current, imageLibraryTagsRef.current);
+        const rebased = await upsertLibraryImage(cur.alias, dataUri, imageLibraryDescRef.current[cur.alias], imageLibraryTagsRef.current[cur.alias]);
+        commitLibrary({ ...imageLibraryRef.current, [cur.alias]: rebased }, imageLibraryDescRef.current, imageLibraryTagsRef.current);
       }
     } catch (e) {
       reportError('Failed to save the diagram.', { detail: e });
     }
-  }, [drawioImageEdit, commitLibrary, editorRef]);
+  }, [drawioImageEdit, commitLibrary, editorRef, upsertLibraryImage]);
 
   // The Add dialog asked to create/edit a diagram; hand the saved SVG back to it.
   const handleDrawioForAddSave = useCallback((dataUri: string) => {
@@ -1582,14 +1664,13 @@ export default function EditorPage() {
         if (scope === 'file') { const v = view(); if (v) addFileImageDef(v, alias, value, description, tags); return; }
         (async () => {
           try {
-            const stored = await storeLibraryImage(alias, value);
-            const next = { ...imageLibraryRef.current, [alias]: stored };
+            const rebased = await upsertLibraryImage(alias, value, description, tags);
+            const next = { ...imageLibraryRef.current, [alias]: rebased };
             const nextDesc = { ...imageLibraryDescRef.current };
             if (description) nextDesc[alias] = description; else delete nextDesc[alias];
             const nextTags = { ...imageLibraryTagsRef.current };
             if (tags && tags.length) nextTags[alias] = tags; else delete nextTags[alias];
             commitLibrary(next, nextDesc, nextTags);
-            await saveRegistry(next, nextDesc, nextTags);
           } catch (e) { reportError('Failed to add the image to the library.', { detail: e }); }
         })();
       },
@@ -1597,14 +1678,13 @@ export default function EditorPage() {
         if (scope === 'file') { const v = view(); if (v) editFileImageDef(v, alias, value, description, tags); return; }
         (async () => {
           try {
-            const stored = await storeLibraryImage(alias, value);
-            const next = { ...imageLibraryRef.current, [alias]: stored };
+            const rebased = await upsertLibraryImage(alias, value, description, tags);
+            const next = { ...imageLibraryRef.current, [alias]: rebased };
             const nextDesc = { ...imageLibraryDescRef.current };
             if (description) nextDesc[alias] = description; else delete nextDesc[alias];
             const nextTags = { ...imageLibraryTagsRef.current };
             if (tags && tags.length) nextTags[alias] = tags; else delete nextTags[alias];
             commitLibrary(next, nextDesc, nextTags);
-            await saveRegistry(next, nextDesc, nextTags);
           } catch (e) { reportError('Failed to update the library image.', { detail: e }); }
         })();
       },
@@ -1614,11 +1694,11 @@ export default function EditorPage() {
         if (scope === 'file') { const v = view(); if (v) deleteFileImageDef(v, alias); return; }
         try {
           const old = imageLibraryRef.current[alias];
+          await removeLibraryImage(alias);
           const next = { ...imageLibraryRef.current }; delete next[alias];
           const nextDesc = { ...imageLibraryDescRef.current }; delete nextDesc[alias];
           const nextTags = { ...imageLibraryTagsRef.current }; delete nextTags[alias];
           commitLibrary(next, nextDesc, nextTags);
-          await saveRegistry(next, nextDesc, nextTags);
           if (old) await deleteLibraryFile(old);
         } catch (e) { reportError('Failed to delete the library image.', { detail: e }); }
       },
@@ -1629,14 +1709,13 @@ export default function EditorPage() {
           if (!entry) return;
           (async () => {
             try {
-              const stored = await storeLibraryImage(alias, entry.value); // write dest first
-              const next = { ...imageLibraryRef.current, [alias]: stored };
+              const rebased = await upsertLibraryImage(alias, entry.value, entry.description, entry.tags); // write dest first
+              const next = { ...imageLibraryRef.current, [alias]: rebased };
               const nextDesc = { ...imageLibraryDescRef.current };
               if (entry.description) nextDesc[alias] = entry.description; else delete nextDesc[alias];
               const nextTags = { ...imageLibraryTagsRef.current };
               if (entry.tags && entry.tags.length) nextTags[alias] = entry.tags; else delete nextTags[alias];
               commitLibrary(next, nextDesc, nextTags);
-              await saveRegistry(next, nextDesc, nextTags);
               if (v) deleteFileImageDef(v, alias); // then remove source
             } catch (e) { reportError('Failed to move the image to the library.', { detail: e }); }
           })();
@@ -1647,17 +1726,17 @@ export default function EditorPage() {
             try {
               const inlined = await inlineLibraryImage(value); // self-contained data/URL
               if (v) addFileImageDef(v, alias, inlined, imageLibraryDescRef.current[alias], imageLibraryTagsRef.current[alias]); // write dest first
+              await removeLibraryImage(alias);
               const next = { ...imageLibraryRef.current }; delete next[alias];
               const nextDesc = { ...imageLibraryDescRef.current }; delete nextDesc[alias];
               const nextTags = { ...imageLibraryTagsRef.current }; delete nextTags[alias];
               commitLibrary(next, nextDesc, nextTags);
-              await saveRegistry(next, nextDesc, nextTags);
             } catch (e) { reportError('Failed to move the image to the file.', { detail: e }); }
           })();
         }
       },
     };
-  }, [debouncedMarkdown, imageLibrary, imageLibraryDesc, imageLibraryTags, imageFocusAlias, imageEditRequest, handleInsertText, baseUrl, commitLibrary, handleEditImageDrawio, editorRef]);
+  }, [debouncedMarkdown, imageLibrary, imageLibraryDesc, imageLibraryTags, imageFocusAlias, imageEditRequest, handleInsertText, baseUrl, commitLibrary, handleEditImageDrawio, editorRef, upsertLibraryImage, removeLibraryImage]);
 
   const headerSlice = useMemo<HeaderActions>(() => ({
     onOpenFolder: isElectron() ? handleOpenFolderWithFlag : undefined,
@@ -1800,6 +1879,18 @@ export default function EditorPage() {
       )}
 
       <MainHeader onResetLayout={() => window.dispatchEvent(new Event(RESET_LAYOUT_EVENT))} isSlideOverview={isSlideOverview} onCloseOverview={() => setIsSlideOverview(false)} />
+
+      {/* MCP live-tools handler (Electron; inert on web). Renders only hidden work
+          surfaces (rasterizer + measurement mounts). */}
+      {isElectron() && (
+        <McpBridge ctx={{
+          currentFileName, markdownRef, currentSlideIndex, setCurrentSlideIndex,
+          slides, slideSize, basePath, themeCssUrl, scopeDirs, aiNotes: scopeAiNotes,
+          assetWritePolicy: appSettings.mcpAssetWrite,
+          loadFile, handleInsertText, tabs, updateTabContent,
+          onRefreshTree: handleManualRefresh,
+        }} />
+      )}
 
       {isElectron() && !hasSelectedFolder ? (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: '#222', color: 'white' }}>

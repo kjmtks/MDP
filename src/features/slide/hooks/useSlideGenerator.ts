@@ -24,7 +24,11 @@ class SlideCacheManager {
     const isBaseUrlChanged = this.prevBaseUrl !== baseUrl;
     const isLastUpdatedChanged = this.prevLastUpdated !== lastUpdated;
     // When modules/effects (re)load, their markdown transforms change, so any
-    // slide parsed before they were registered must be re-rendered.
+    // slide parsed before they were registered must be re-rendered. (This blanket
+    // invalidation is intentionally kept: slide chrome — @header/@footer — is
+    // module-expanded AFTER the split, so a per-slide raw comparison would miss a
+    // late module registration there. The cost is acceptable now that EditorPage
+    // no longer bumps the epoch when registries/content are unchanged.)
     const isModuleEpochChanged = this.prevModuleEpoch !== moduleEpoch;
 
     this.prevContextStr = currentContextStr;

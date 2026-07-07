@@ -7,6 +7,7 @@ import PersonOutlineIcon from '@mui/icons-material/PersonOutline';
 import KeyboardIcon from '@mui/icons-material/Keyboard';
 import ExtensionIcon from '@mui/icons-material/Extension';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
+import HubIcon from '@mui/icons-material/Hub';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import MinimizeIcon from '@mui/icons-material/Remove';
 import MaximizeIcon from '@mui/icons-material/CropSquare';
@@ -20,10 +21,11 @@ import { ProfileSection } from './sections/ProfileSection';
 import { ShortcutsSection } from './sections/ShortcutsSection';
 import { AssetsSection } from './sections/AssetsSection';
 import { AiSpecSection } from './sections/AiSpecSection';
+import { McpSection } from './sections/McpSection';
 import { AboutSection } from './sections/AboutSection';
 import './SettingsPage.css';
 
-type SectionId = 'appearance' | 'general' | 'profile' | 'shortcuts' | 'assets' | 'ai' | 'about';
+type SectionId = 'appearance' | 'general' | 'profile' | 'shortcuts' | 'assets' | 'ai' | 'mcp' | 'about';
 
 const NAV: { id: SectionId; label: string; Icon: typeof PaletteIcon }[] = [
   { id: 'appearance', label: 'Appearance', Icon: PaletteIcon },
@@ -32,6 +34,7 @@ const NAV: { id: SectionId; label: string; Icon: typeof PaletteIcon }[] = [
   { id: 'shortcuts', label: 'Shortcuts', Icon: KeyboardIcon },
   { id: 'assets', label: 'Assets', Icon: ExtensionIcon },
   { id: 'ai', label: 'AI prompt', Icon: AutoAwesomeIcon },
+  { id: 'mcp', label: 'MCP', Icon: HubIcon },
   { id: 'about', label: 'About', Icon: InfoOutlinedIcon },
 ];
 
@@ -86,6 +89,7 @@ export const SettingsPage: React.FC = () => {
           {section === 'shortcuts' && <ShortcutsSection />}
           {section === 'assets' && <AssetsSection />}
           {section === 'ai' && <AiSpecSection />}
+          {section === 'mcp' && <McpSection />}
           {section === 'about' && <AboutSection />}
         </div>
       </div>

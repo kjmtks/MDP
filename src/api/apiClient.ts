@@ -167,6 +167,31 @@ export const apiClient = {
     if (isElectron()) { await (window as any).electronAPI.setLinkConfig({ path: relPath, content }); return; }
     await fetch('/api/linkConfig', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: relPath, content }) });
   },
+  // MCP integration (Electron only): start/stop the local control bridge that the
+  // stdio MCP proxy (Claude Desktop) forwards tool calls to, and read its status
+  // for the Settings page's config snippet.
+  setMcpEnabled: async (enabled: boolean): Promise<void> => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (isElectron()) await (window as any).electronAPI.setMcpEnabled(enabled);
+  },
+  getMcpInfo: async (): Promise<{ running: boolean; port: number; serverPath: string; exePath: string; isPackaged: boolean } | null> => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (isElectron()) return await (window as any).electronAPI.getMcpInfo();
+    return null;
+  },
+  // Read a host's MCP config file (Claude Desktop / Cursor) for display + register.
+  mcpGetHostConfig: async (host: string): Promise<{ supported: boolean; path?: string; exists?: boolean; text?: string; hasEntry?: boolean; invalid?: boolean; subset?: boolean }> => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (isElectron()) return await (window as any).electronAPI.mcpGetHostConfig(host);
+    return { supported: false };
+  },
+  // Register (overwrite) the `mdp` entry in that host's config, preserving others.
+  mcpRegisterHost: async (host: string): Promise<{ success: boolean; path?: string; error?: string; backup?: string }> => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (isElectron()) return await (window as any).electronAPI.mcpRegisterHost(host);
+    return { success: false, error: 'Not available on the web build.' };
+  },
+
   // Machine-local toggle: connect SSH links through their `proxyJump` bastion, or
   // directly. Environment-specific, so it's NOT stored in the .mdplink file.
   getSshBypassJump: async (): Promise<boolean> => {
@@ -258,21 +283,26 @@ export const apiClient = {
     return true;
   },
 
-  getSnipets: async () => {
+  // `dirs` = a `.mdp` config-dir chain (root→nearest); snippet files merge across
+  // it, nearest winning by file name. Omitted → workspace root `.mdp` only.
+  getSnipets: async (dirs?: string[]) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    if (isElectron()) return await (window as any).electronAPI.getSnipets();
+    if (isElectron()) return await (window as any).electronAPI.getSnipets(dirs);
     try {
-      const res = await fetch('/api/snippets');
+      const qs = dirs && dirs.length ? `?dirs=${encodeURIComponent(dirs.join(','))}` : '';
+      const res = await fetch(`/api/snippets${qs}`);
       if (res.ok) return await res.json();
     } catch (e) { console.error(e); }
     return [];
   },
 
-  getTemplates: async () => {
+  // `dirs` = the TARGET FOLDER's `.mdp` chain (where the new file will live).
+  getTemplates: async (dirs?: string[]) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    if (isElectron()) return await (window as any).electronAPI.getTemplates();
+    if (isElectron()) return await (window as any).electronAPI.getTemplates(dirs);
     try {
-      const res = await fetch('/api/templates');
+      const qs = dirs && dirs.length ? `?dirs=${encodeURIComponent(dirs.join(','))}` : '';
+      const res = await fetch(`/api/templates${qs}`);
       if (res.ok) return await res.json();
     } catch (e) { console.error(e); }
     return [];

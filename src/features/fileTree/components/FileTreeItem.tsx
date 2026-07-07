@@ -75,6 +75,7 @@ export const FileTreeItem: React.FC<FileTreeItemProps> = ({
   return (
     <div style={{ opacity: node.isVirtual ? 0.6 : 1 }}>
       <Box
+        data-tree-path={node.path}
         onClick={(e) => onSelect(e, node)}
         onDoubleClick={() => onDoubleClick(node)}
         onContextMenu={(e) => onContextMenu(e, node)}

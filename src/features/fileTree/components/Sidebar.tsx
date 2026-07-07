@@ -17,11 +17,13 @@ import StorageIcon from '@mui/icons-material/Storage';
 import { MdpLinkDialog } from './MdpLinkDialog';
 import { OfflineCacheDialog } from './OfflineCacheDialog';
 import { ConfigureMdpDialog } from './ConfigureMdpDialog';
-import { isMdpFolder } from '../../workspace/mdpScope';
+import { isMdpFolder, scopeConfigDirs } from '../../workspace/mdpScope';
+import { type MdpContent, parseContent, contentPath, effectiveAuthor } from '../../workspace/mdpContent';
 import TuneIcon from '@mui/icons-material/Tune';
 import { CustomTabPanel } from '../../../components/common/CustomTabPanel';
 import { FileTreeItem } from './FileTreeItem';
 import { SlideThumbnail } from '../../slide/components/SlideThumbnail';
+import { PdfThumbnails } from '../../pdf/PdfThumbnails';
 import { type FileNode, type FileType } from '../../../types';
 import type { Stroke } from '../../drawing/components/DrawingOverlay';
 import type { Bookmark } from '../../../pages/EditorPage/hooks/useBookmarks';
@@ -54,6 +56,7 @@ interface SidebarProps {
   slideSize: { width: number; height: number };
   drawings: Record<number, Stroke[]>;
   fileTree: FileNode[];
+  lastUpdated?: number;
   onSlideSelect: (index: number) => void;
   onFileSelect: (path: string, isBinary?: boolean) => void;
   onManualRefresh: () => void;
@@ -91,7 +94,7 @@ const SECTION_INDEX: Record<'thumbnail' | 'files' | 'bookmarks', number> = {
 
 export const Sidebar: React.FC<SidebarProps> = ({
   currentFileName, currentFileType, slides, currentSlideIndex, slideSize,
-  drawings, fileTree, onSlideSelect, onFileSelect,
+  drawings, fileTree, lastUpdated, onSlideSelect, onFileSelect,
   onManualRefresh, onLoadLinkChildren, onNav,
   bookmarks, isBookmarked, onToggleBookmark, onReorderBookmark, onUpdateBookmark,
   onRenameFile, onDeleteFiles,
@@ -277,6 +280,42 @@ export const Sidebar: React.FC<SidebarProps> = ({
     setExpandedDirs(newExpanded);
   };
 
+  // "Reveal in file tree" (from the Bookmarks panel etc.): expand the ancestors of
+  // the path, select it, and scroll it into view in the Explorer instance.
+  useEffect(() => {
+    const reveal = (path: string) => {
+      expandParentDir(path);
+      setSelectedPaths(new Set([path]));
+      if (section === 'files') {
+        window.setTimeout(() => {
+          document.querySelector(`[data-tree-path="${CSS.escape(path)}"]`)
+            ?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        }, 150);
+      }
+    };
+    const onReveal = (e: Event) => {
+      const path = (e as CustomEvent).detail?.path as string | undefined;
+      if (!path) return;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (window as any).__mdpPendingReveal = null;
+      reveal(path);
+    };
+    window.addEventListener('mdp-reveal-in-tree', onReveal);
+    // A reveal fired while the Explorer panel was CLOSED arrives before this
+    // instance mounted — consume the parked request now.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const pending = (window as any).__mdpPendingReveal;
+    if (section === 'files' && pending && Date.now() - pending.ts < 5000) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (window as any).__mdpPendingReveal = null;
+      reveal(pending.path);
+    }
+    return () => window.removeEventListener('mdp-reveal-in-tree', onReveal);
+    // expandParentDir/setSelectedPaths only call stable state setters (functional
+    // updates), so a stale identity is harmless.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [section]);
+
   const expandParentDir = (path: string) => {
     setExpandedDirs(prev => {
       const next = new Set(prev);
@@ -323,7 +362,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       if (type === 'slide') {
         try {
-          const tmpls = await apiClient.getTemplates();
+          // Templates cascade: offer the ones that apply WHERE THE FILE WILL LIVE
+          // (the target folder's `.mdp` chain), not just the workspace root's.
+          const dirs = scopeConfigDirs(fileTree, `${parentPath ? parentPath + '/' : ''}_new`);
+          const tmpls = await apiClient.getTemplates(dirs);
           if (tmpls.length > 0) setSelectedTemplatePath(tmpls[0].path);
           setTemplates(tmpls);
           // Parse an optional <!-- @description ... --> meta from each template.
@@ -400,8 +442,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
       if (type === 'slide') {
         const templateContent = await apiClient.getTemplateContent(selectedTemplatePath).catch(() => '');
         // Pre-fill the cover meta (@presenter / @affiliation / @contact) from the
-        // configured author profile, leaving placeholders for any unset fields.
-        const filled = applyAuthorProfile(templateContent, settings);
+        // author profile that CASCADES from the target folder's `.mdp` chain
+        // (nearest field wins), falling back to the machine-local app profile.
+        const dirs = scopeConfigDirs(fileTree, `${parentPath ? parentPath + '/' : ''}_new`);
+        const chainContents: MdpContent[] = [];
+        for (const cdir of dirs) {
+          try { chainContents.push(parseContent(await apiClient.readFileText(contentPath(cdir)))); } catch { chainContents.push({}); }
+        }
+        const author = effectiveAuthor(chainContents, {
+          name: settings.authorName, affiliation: settings.authorAffiliation, email: settings.authorEmail,
+        });
+        const filled = applyAuthorProfile(templateContent, {
+          authorName: author.name, authorAffiliation: author.affiliation, authorEmail: author.email,
+        });
         await apiClient.saveFile(newPath, filled);
         if (parentPath) expandParentDir(parentPath);
         onFileSelect(newPath);
@@ -652,9 +705,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 </div>
               ))}
             </div>
+          ) : currentFileName && currentFileType === 'pdf' ? (
+            <PdfThumbnails path={currentFileName} version={lastUpdated} />
           ) : (
             <Typography variant="body1" sx={{ color: 'var(--app-text-disabled)', textAlign: 'center', p: 2 }}>
-              {currentFileName ? "Thumbnails available for Markdown only." : "No file selected."}
+              {currentFileName ? "Thumbnails available for slides and PDFs." : "No file selected."}
             </Typography>
           )}
         </CustomTabPanel>
@@ -928,7 +983,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         onCreated={onManualRefresh}
       />
       <OfflineCacheDialog open={cacheDialogOpen} onClose={() => setCacheDialogOpen(false)} />
-      <ConfigureMdpDialog open={configureMdp.open} configDir={configureMdp.configDir} onClose={() => setConfigureMdp({ open: false, configDir: null })} />
+      <ConfigureMdpDialog open={configureMdp.open} configDir={configureMdp.configDir} fileTree={fileTree} onClose={() => setConfigureMdp({ open: false, configDir: null })} />
     </Box>
   );
 };

@@ -85,12 +85,26 @@ function parseLink(content, sourcePath) {
   return { type: 'local', path: cfg.path };
 }
 
+// Split a workspace-relative path into segments and NORMALIZE `..` logically,
+// CLAMPED at the workspace root — `a/b/../img.png` → `a/img.png` (legit relative
+// references keep working) while `../../etc/passwd` collapses to `etc/passwd`
+// inside the root. This is the traversal barrier for every VFS entry point
+// (web /api routes, mdp-file://, MCP tools), so it must stay in this one place.
+function normalizeSegs(relPath) {
+  const out = [];
+  for (const s of String(relPath || '').split(/[\\/]+/)) {
+    if (!s || s === '.') continue;
+    if (s === '..') { out.pop(); continue; }
+    out.push(s);
+  }
+  return out;
+}
+
 // Resolve a workspace-relative path (under baseDir) to a concrete target, following
 // any `.mdplink` it crosses. Local links nest; once a path enters an SSH link, the
 // remainder is joined onto the remote path (no further link detection remotely).
 function resolve(baseDir, relPath) {
-  const segs = String(relPath || '').split(/[\\/]+/).filter((s) => s && s !== '.');
-  return resolveSegs(baseDir, segs, 0);
+  return resolveSegs(baseDir, normalizeSegs(relPath), 0);
 }
 function resolveSegs(localBase, segs, depth) {
   if (depth > 20) return { kind: 'local', abs: localBase };
@@ -113,7 +127,7 @@ function resolveSegs(localBase, segs, depth) {
 // raw JSON config can be read/written. The PARENT is resolved (so a link nested
 // inside another local/remote link still works), then the file name is appended.
 function resolveLinkFile(baseDir, relPath) {
-  const segs = String(relPath || '').split(/[\\/]+/).filter((s) => s && s !== '.');
+  const segs = normalizeSegs(relPath);
   if (!segs.length) return { kind: 'local', abs: baseDir };
   const parent = resolveSegs(baseDir, segs.slice(0, -1), 0);
   return childOf(parent, segs[segs.length - 1]);
@@ -272,7 +286,14 @@ function getSftp(cfg) {
   const existing = pool.get(key);
   if (existing && existing.alive) return existing.sftpPromise;
   const entry = { alive: true, conns: [] };
-  const onDead = () => { entry.alive = false; if (pool.get(key) === entry) pool.delete(key); };
+  // When ANY hop dies/fails, close EVERY connection of the entry — otherwise a
+  // failed target connection leaves its proxyJump bastion client connected (and
+  // kept alive by keepalive) with no reference able to reach it any more.
+  const onDead = () => {
+    entry.alive = false;
+    if (pool.get(key) === entry) pool.delete(key);
+    for (const conn of entry.conns) { try { conn.end(); } catch { /* ignore */ } }
+  };
   entry.sftpPromise = openSftp(cfg, entry, onDead).catch((e) => { onDead(); throw e; });
   pool.set(key, entry);
   return entry.sftpPromise;
@@ -286,6 +307,12 @@ function closeAll() {
     for (const conn of conns || []) { try { conn && conn.end(); } catch { /* ignore */ } }
   }
   pool.clear();
+  // Flush a pending (debounced) cache-index write so atime/entries survive quit.
+  if (cacheSaveTimer) {
+    clearTimeout(cacheSaveTimer);
+    cacheSaveTimer = null;
+    try { fs.mkdirSync(cacheDir, { recursive: true }); fs.writeFileSync(path.join(cacheDir, 'index.json'), JSON.stringify(cacheIndex)); } catch { /* ignore */ }
+  }
 }
 
 // ---- VFS ops (target-aware: local fs or remote sftp) -----------------------
@@ -409,14 +436,17 @@ async function buildTree(baseDir, relPath = '', depth = 0) {
   let entries;
   try { entries = await vfsList(target); } catch (e) { return { error: e.message, nodes: [] }; }
   const remote = target.kind === 'ssh';
-  const nodes = [];
-  for (const e of entries) {
+
+  // One task per entry, run CONCURRENTLY (subdirectory recursion in parallel and
+  // the `.mdpignore` probe async) — a serial walk with sync stats blocked the main
+  // process for seconds on large NAS-mounted workspaces.
+  const tasks = entries.map(async (e) => {
     const nodePath = relPath ? `${relPath}/${e.name}` : e.name;
     const isLink = target.kind === 'local' && !e.isDir && e.name.toLowerCase().endsWith('.mdplink');
     if (isLink) {
       let linkType = 'local', children = [], linkError, lazy = false;
       try {
-        const link = parseLink(fs.readFileSync(path.join(target.abs, e.name), 'utf8'), e.name);
+        const link = parseLink(await fsp.readFile(path.join(target.abs, e.name), 'utf8'), e.name);
         linkType = link.type;
         // A remote (SSH) target is loaded lazily — never connect during the tree
         // build. A local target is cheap, so keep walking it inline.
@@ -428,29 +458,31 @@ async function buildTree(baseDir, relPath = '', depth = 0) {
       const displayName = e.name.replace(/\.mdplink$/i, '');
       // `remote: true` marks nodes with NO local filesystem path (an SSH link, or
       // anything under one) so the UI can hide "Reveal in Explorer" for them.
-      nodes.push({ name: displayName, path: nodePath, type: 'directory', isLink: true, linkType, ...(linkType === 'ssh' ? { remote: true } : {}), ...(linkError ? { linkError } : {}), ...(lazy ? { lazy: true } : {}), children });
-      continue;
+      return { name: displayName, path: nodePath, type: 'directory', isLink: true, linkType, ...(linkType === 'ssh' ? { remote: true } : {}), ...(linkError ? { linkError } : {}), ...(lazy ? { lazy: true } : {}), children };
     }
     // Hide dotfiles (matches the local tree) except the app folders and `.git`
     // (shown as a sealed, non-expandable folder below).
-    if (e.name.startsWith('.') && e.name !== '.mdp' && e.name !== '.mdpignore' && e.name !== '.git') continue;
+    if (e.name.startsWith('.') && e.name !== '.mdp' && e.name !== '.mdpignore' && e.name !== '.git') return null;
     if (e.isDir) {
       if (remote) {
         // Defer listing remote subdirectories until they're expanded.
-        nodes.push({ name: e.name, path: nodePath, type: 'directory', lazy: true, remote: true, children: [] });
-      } else if (e.name === '.git' || isFileSync(path.join(target.abs, e.name, '.mdpignore'))) {
+        return { name: e.name, path: nodePath, type: 'directory', lazy: true, remote: true, children: [] };
+      }
+      const sealed = e.name === '.git'
+        || await fsp.stat(path.join(target.abs, e.name, '.mdpignore')).then((s) => s.isFile()).catch(() => false);
+      if (sealed) {
         // SEALED: a `.git` or `.mdpignore` directory is shown but NEVER walked — its
         // subtree is kept out of the tree entirely, so it is excluded from browsing,
         // search and `.mdp` resolution.
-        nodes.push({ name: e.name, path: nodePath, type: 'directory', children: [], slideIgnored: true, sealed: true });
-      } else {
-        const sub = depth < 12 ? await buildTree(baseDir, nodePath, depth + 1) : { nodes: [] };
-        nodes.push({ name: e.name, path: nodePath, type: 'directory', children: sub.nodes });
+        return { name: e.name, path: nodePath, type: 'directory', children: [], slideIgnored: true, sealed: true };
       }
-    } else {
-      nodes.push({ name: e.name, path: nodePath, type: 'file', isBinary: /\.(png|jpe?g|gif|svg|webp|bmp|ico)$/i.test(e.name), ...(remote ? { remote: true } : {}) });
+      const sub = depth < 12 ? await buildTree(baseDir, nodePath, depth + 1) : { nodes: [] };
+      return { name: e.name, path: nodePath, type: 'directory', children: sub.nodes };
     }
-  }
+    return { name: e.name, path: nodePath, type: 'file', isBinary: /\.(png|jpe?g|gif|svg|webp|bmp|ico)$/i.test(e.name), ...(remote ? { remote: true } : {}) };
+  });
+
+  const nodes = (await Promise.all(tasks)).filter(Boolean);
   nodes.sort((a, b) => (a.type === b.type ? a.name.localeCompare(b.name) : (a.type === 'directory' ? -1 : 1)));
   return { nodes };
 }

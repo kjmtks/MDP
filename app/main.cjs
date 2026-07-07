@@ -220,9 +220,13 @@ ipcMain.handle('captureSlide', async (event, data) => {
   const win = await ensureCaptureWin();
   win.setContentSize(Math.round(data.width), Math.round(data.height));
   win.webContents.send('capture-render', data);
+  // Bounded wait: if the offscreen renderer errors/reloads and never reports
+  // ready, resolve anyway — an un-timed listener would leak (one per capture)
+  // and hang the invoking IPC forever.
   await new Promise((resolve) => {
+    const timer = setTimeout(() => { ipcMain.removeListener('capture-ready', handler); resolve(); }, 20000);
     const handler = (e, id) => {
-      if (id === data.id) { ipcMain.removeListener('capture-ready', handler); resolve(); }
+      if (id === data.id) { clearTimeout(timer); ipcMain.removeListener('capture-ready', handler); resolve(); }
     };
     ipcMain.on('capture-ready', handler);
   });
@@ -233,6 +237,7 @@ ipcMain.handle('captureSlide', async (event, data) => {
 app.on('before-quit', () => {
   remoteServer.stopRemoteServer();
   mdplink.closeAll();
+  try { require('./mcp-bridge.cjs').stop(); } catch { /* ignore */ }
   if (captureWin && !captureWin.isDestroyed()) captureWin.destroy();
 });
 
@@ -300,6 +305,103 @@ ipcMain.handle('setLinkConfig', async (event, { path: relPath, content }) => {
 // Machine-local "bypass jump host" toggle for SSH links.
 ipcMain.handle('getSshBypassJump', async () => mdplink.getBypassJump());
 ipcMain.handle('setSshBypassJump', async (event, value) => { mdplink.setBypassJump(value); return { success: true }; });
+
+// ---- MCP integration (Claude Desktop etc.) ----------------------------------
+// A local control bridge the stdio MCP proxy (app/mcp-server.cjs) forwards tool
+// calls to. Opt-in via Settings → MCP (the renderer mirrors the setting here).
+const mcpBridge = require('./mcp-bridge.cjs');
+mcpBridge.init({
+  getBaseDir: () => currentBaseDir,
+  getWindow: () => mainWindow,
+  getAssetPath: (sub) => getAssetPath(sub),
+});
+ipcMain.handle('setMcpEnabled', async (event, enabled) => (enabled ? await mcpBridge.start() : mcpBridge.stop()));
+ipcMain.handle('getMcpInfo', async () => {
+  // Path of the stdio server for the Claude Desktop config snippet. In a packaged
+  // app the file is shipped asar-UNPACKED so plain Node can execute it.
+  const serverPath = app.isPackaged
+    ? path.join(__dirname, 'mcp-server.cjs').replace('app.asar', 'app.asar.unpacked')
+    : path.join(__dirname, 'mcp-server.cjs');
+  return { running: mcpBridge.isRunning(), port: mcpBridge.getPort(), serverPath, exePath: process.execPath, isPackaged: app.isPackaged };
+});
+ipcMain.on('mcp-response', (event, payload) => mcpBridge.handleRendererResponse(payload));
+
+// The stdio-server launch spec written into a host's config (dev: plain node;
+// packaged: MDP.exe run as node against the asar-unpacked file). `withType` adds
+// the explicit `"type": "stdio"` that Claude Code's `~/.claude.json` expects.
+function mdpServerSpec(withType) {
+  const serverPath = app.isPackaged
+    ? path.join(__dirname, 'mcp-server.cjs').replace('app.asar', 'app.asar.unpacked')
+    : path.join(__dirname, 'mcp-server.cjs');
+  const base = app.isPackaged
+    ? { command: process.execPath, args: [serverPath], env: { ELECTRON_RUN_AS_NODE: '1' } }
+    : { command: 'node', args: [serverPath] };
+  return withType ? { type: 'stdio', ...base } : base;
+}
+
+// Well-known GLOBAL JSON config files we can read + register into. `appData` is
+// Roaming (win) / Application Support (mac) / ~/.config (linux) — the Claude
+// Desktop parent on every platform. Claude Code's USER scope lives at top-level
+// `mcpServers` in ~/.claude.json (which also holds history/auth — handled with
+// care below). VS Code stays copy-only (config is per-project).
+function hostConfigPath(host) {
+  if (host === 'claude-desktop') return path.join(app.getPath('appData'), 'Claude', 'claude_desktop_config.json');
+  if (host === 'cursor') return path.join(app.getPath('home'), '.cursor', 'mcp.json');
+  if (host === 'claude-code') return path.join(app.getPath('home'), '.claude.json');
+  return null;
+}
+// Claude Code's file is huge and sensitive → show ONLY its mcpServers section, and
+// register with the explicit stdio `type`.
+const isBigHostFile = (host) => host === 'claude-code';
+
+// Read a host config for display: path, existence, the shown text (the whole small
+// file, or just mcpServers for the big Claude Code file), whether `mdp` is already
+// registered, and whether the file is unparseable.
+ipcMain.handle('mcpGetHostConfig', async (event, host) => {
+  const p = hostConfigPath(host);
+  if (!p) return { supported: false };
+  try {
+    const raw = fsSync.readFileSync(p, 'utf8');
+    let parsed = null, invalid = false, hasEntry = false;
+    try { parsed = JSON.parse(raw); hasEntry = !!(parsed && parsed.mcpServers && parsed.mcpServers.mdp); }
+    catch { invalid = true; }
+    const text = invalid
+      ? (isBigHostFile(host) ? '(the file is not valid JSON)' : raw)
+      : isBigHostFile(host)
+        ? JSON.stringify({ mcpServers: (parsed && parsed.mcpServers) || {} }, null, 2)
+        : raw;
+    return { supported: true, path: p, exists: true, text, hasEntry, invalid, subset: isBigHostFile(host) };
+  } catch {
+    return { supported: true, path: p, exists: false, text: '', hasEntry: false, invalid: false, subset: isBigHostFile(host) };
+  }
+});
+
+// Register (overwrite) the `mdp` entry in a host config, PRESERVING every other key
+// and server. Refuses to touch a file that exists but isn't valid JSON. Stashes a
+// one-file backup first (important for the big Claude Code config).
+ipcMain.handle('mcpRegisterHost', async (event, host) => {
+  const p = hostConfigPath(host);
+  if (!p) return { success: false, error: 'This host is set up by copying the snippet.' };
+  let config = {};
+  let existed = false;
+  try {
+    const text = fsSync.readFileSync(p, 'utf8');
+    existed = true;
+    try { config = JSON.parse(text); }
+    catch { return { success: false, error: 'The existing config file is not valid JSON — fix it manually first (its contents are shown above).' }; }
+    if (!config || typeof config !== 'object' || Array.isArray(config)) return { success: false, error: 'The existing config is not a JSON object.' };
+  } catch { config = {}; /* file absent → create it */ }
+  config.mcpServers = (config.mcpServers && typeof config.mcpServers === 'object') ? config.mcpServers : {};
+  config.mcpServers.mdp = mdpServerSpec(isBigHostFile(host));
+  try {
+    fsSync.mkdirSync(path.dirname(p), { recursive: true });
+    if (existed) { try { fsSync.copyFileSync(p, `${p}.mdp-backup`); } catch { /* best-effort backup */ } }
+    fsSync.writeFileSync(p, JSON.stringify(config, null, 2));
+    return { success: true, path: p, backup: existed ? `${p}.mdp-backup` : undefined };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
 
 // Machine-local app settings (theme / font / shortcuts / author) — userData file,
 // so they persist per install independent of the (possibly read-only) workspace.
@@ -412,23 +514,21 @@ const getAssetPath = (filename) => {
     : path.join(app.getAppPath(), 'dist', filename);
 };
 
-ipcMain.handle('getTemplates', async () => {
+// `dirs` = the target folder's `.mdp` chain (root→nearest); custom templates merge
+// across it with the NEAREST winning by file name. Omitted → root `.mdp` (legacy).
+ipcMain.handle('getTemplates', async (event, dirs) => {
   let templates = [];
   if (currentBaseDir) {
-    const customDir = path.join(currentBaseDir, '.mdp', 'templates');
-    if (fsSync.existsSync(customDir)) {
+    const chain = Array.isArray(dirs) && dirs.length ? dirs : ['.mdp'];
+    const byName = new Map();
+    for (const cdir of chain) {
       try {
-        const files = await fs.readdir(customDir);
-        const customTemplates = files.filter(f => f.endsWith('.md')).map(f => ({
-          name: f,
-          path: path.join(customDir, f),
-          isCustom: true
-        }));
-        templates.push(...customTemplates);
-      } catch (e) {
-        console.error('Error reading custom templates:', e);
-      }
+        for (const e of await mdplink.vfsList(vresolve(`${cdir}/templates`))) {
+          if (!e.isDir && e.name.endsWith('.md')) byName.set(e.name, { name: e.name, path: `${cdir}/templates/${e.name}`, isCustom: true });
+        }
+      } catch (e) { /* templates dir absent in this `.mdp` */ }
     }
+    templates.push(...byName.values());
   }
   const defaultDir = getAssetPath('templates');
   if (fsSync.existsSync(defaultDir)) {
@@ -457,8 +557,15 @@ ipcMain.handle('getTemplates', async () => {
 
 ipcMain.handle('getTemplateContent', async (event, templatePath) => {
   try {
-    if (templatePath && fsSync.existsSync(templatePath)) {
+    // Built-in templates carry an ABSOLUTE asset path; workspace templates are
+    // workspace-relative (may live in a nested `.mdp`, incl. behind a `.mdplink`).
+    // The absolute check must be explicit — existsSync on a relative path would
+    // resolve against the process CWD and could hit an unrelated file.
+    if (templatePath && path.isAbsolute(templatePath) && fsSync.existsSync(templatePath)) {
       return await fs.readFile(templatePath, 'utf-8');
+    }
+    if (templatePath && currentBaseDir) {
+      return await mdplink.vfsReadText(vresolve(templatePath));
     }
   } catch (e) {
     console.error('Error reading template content:', e);
@@ -466,7 +573,8 @@ ipcMain.handle('getTemplateContent', async (event, templatePath) => {
   return "# New Slide\n\n---\n\nContent...";
 });
 
-ipcMain.handle('getSnipets', async () => {
+// `dirs` = the active deck's `.mdp` chain (root→nearest). Omitted → root `.mdp`.
+ipcMain.handle('getSnipets', async (event, dirs) => {
   let snippets = [];
   const safeParseJSON = (str) => {
     return JSON.parse(str.replace(/^\uFEFF/, ''));
@@ -483,37 +591,38 @@ ipcMain.handle('getSnipets', async () => {
     ];
   }
   if (currentBaseDir) {
-    const customDir = path.join(currentBaseDir, '.mdp', 'snippets');
-    if (fsSync.existsSync(customDir)) {
+    // Custom snippet FILES cascade like other `.mdp` assets: merged across the
+    // active deck's chain (root→nearest), the nearest `.mdp` winning by file name.
+    const chain = Array.isArray(dirs) && dirs.length ? dirs : ['.mdp'];
+    const byName = new Map();
+    for (const cdir of chain) {
       try {
-        const files = await fs.readdir(customDir);
-        const jsonFiles = files.filter(f => f.toLowerCase().endsWith('.json'));
-        for (const file of jsonFiles) {
-          try {
-            const filePath = path.join(customDir, file);
-            const data = await fs.readFile(filePath, 'utf-8');
-            const customSnippets = safeParseJSON(data);
-            if (!Array.isArray(customSnippets)) {
-              console.error(`Skipped ${file}: the entire JSON must be wrapped in [ ].`);
-              continue;
-            }
-            customSnippets.forEach(category => {
-              if (category.items && Array.isArray(category.items)) {
-                category.items.forEach(item => item.isCustom = true);
-                const existingCat = snippets.find(c => c.category === category.category);
-                if (existingCat) {
-                  existingCat.items.push(...category.items);
-                } else {
-                  snippets.push(category);
-                }
-              }
-            });
-          } catch (fileErr) {
-            console.error(`Error parsing custom snippet (${file}):`, fileErr.message);
-          }
+        for (const e of await mdplink.vfsList(vresolve(`${cdir}/snippets`))) {
+          if (!e.isDir && e.name.toLowerCase().endsWith('.json')) byName.set(e.name, `${cdir}/snippets/${e.name}`);
         }
-      } catch (dirErr) {
-        console.error('Error reading .snippets directory:', dirErr.message);
+      } catch (dirErr) { /* snippets dir absent in this `.mdp` */ }
+    }
+    for (const [file, rel] of byName) {
+      try {
+        const data = await mdplink.vfsReadText(vresolve(rel));
+        const customSnippets = safeParseJSON(data);
+        if (!Array.isArray(customSnippets)) {
+          console.error(`Skipped ${file}: the entire JSON must be wrapped in [ ].`);
+          continue;
+        }
+        customSnippets.forEach(category => {
+          if (category.items && Array.isArray(category.items)) {
+            category.items.forEach(item => item.isCustom = true);
+            const existingCat = snippets.find(c => c.category === category.category);
+            if (existingCat) {
+              existingCat.items.push(...category.items);
+            } else {
+              snippets.push(category);
+            }
+          }
+        });
+      } catch (fileErr) {
+        console.error(`Error parsing custom snippet (${file}):`, fileErr.message);
       }
     }
   }

@@ -81,11 +81,14 @@ const refRegex = () => /!\[([^\]]*)\]\(@([\w-]+)\)/g;
  * masked so literal examples are left untouched. An unknown alias is left in
  * place as an inline English warning (and a console.warn).
  */
-// Library data images are stored as `/.mdp/images/<alias>.<ext>` files. They
-// resolve relative to the WORKSPACE ROOT (not the slide's folder), so the caller
-// passes a resolver that prefixes them with the platform base (`/files/` or
-// `mdp-file://`).
-const MANAGED_PATH = /^\/?\.mdp\/images\//;
+// Library data images are stored under SOME `.mdp/images/` — the workspace root's
+// (`/.mdp/images/<f>`) or a nested per-folder `.mdp`'s (merged view rebases to
+// e.g. `alice/.mdp/images/<f>`). Either form resolves relative to the WORKSPACE
+// ROOT (not the slide's folder), so the caller passes a resolver that prefixes
+// them with the platform base (`/files/` or `mdp-file://`). Match the `.mdp/images/`
+// segment ANYWHERE, or nested-registry aliases fall through to deck-relative
+// resolution and break.
+const MANAGED_PATH = /(^|\/)\.mdp\/images\//;
 
 export const resolveImages = (
   markdown: string,

@@ -17,6 +17,9 @@ export interface SidebarSharedProps {
   slideSize: { width: number; height: number };
   drawings: Record<number, Stroke[]>;
   fileTree: FileNode[];
+  // Cache-buster bumped on reload — so a PDF's thumbnails re-render when the file
+  // is replaced on disk (mirrors the main preview's `previewVersion`).
+  lastUpdated?: number;
   onSlideSelect: (index: number) => void;
   onFileSelect: (path: string, isBinary?: boolean) => void;
   onManualRefresh: () => void;

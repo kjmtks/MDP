@@ -23,11 +23,13 @@ export const AiSpecSection: React.FC = () => {
     // the same scope (published by the editor).
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const scopeDirs = (window as any).__mdpScopeDirs as string[] | undefined;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const aiNotes = (window as any).__mdpScopeAiNotes as string | undefined;
     let themes: ThemeOption[] = [];
     try { themes = await apiClient.getThemes(scopeDirs); } catch { /* themes optional */ }
     const modules = Object.values(loadedModules).map((m) => m.config).filter((c) => !isModuleDisabled(c.name));
     const effects = Object.values(loadedEffects).map((e) => e.config);
-    setPrompt(buildSlideSpecPrompt(modules, { effects, themes }));
+    setPrompt(buildSlideSpecPrompt(modules, { effects, themes, aiNotes }));
     setCopied(false);
   }, []);
 

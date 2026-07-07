@@ -277,11 +277,28 @@ Diagrams & images
 - Build diagrams as TEXT: \`@mermaid\` (flow/sequence/…), \`@chartjs\` (charts),
   \`@plantuml\` (UML). Avoid hand-authored base64 SVG — it is error-prone. For a
   chart, use the EXACT series/labels/values given; never invent numbers.
+- Mind Mermaid SIZE: diagrams render at their natural size and easily overflow the
+  slide (or shrink to unreadable). Keep each diagram modest (roughly ≤ 8–12 nodes),
+  keep node labels short, prefer \`flowchart LR\` on a wide slide (TD grows tall
+  fast), and SPLIT a large diagram across slides instead of cramming it. Give a
+  diagram its own slide (title + diagram) rather than squeezing it under long text.
 - You cannot fetch external images. Use a workspace image path the user provides;
   otherwise leave a clear placeholder. For SVG, include a \`viewBox\` and don't
   hard-code text \`fill\` (let the theme colour it). For non-Latin (e.g. Japanese)
   labels in a drawio/SVG, set the font with \`@addstyle\`, e.g. a CSS section of
   \`.mdp-drawio-svg { --mdp-drawio-font: "Noto Sans JP"; }\`.
+
+Style & density (defaults — always apply)
+- IMITATE the author's existing style: when existing decks or sample slides are
+  available (or provided), study one or two FIRST and mirror their tone, wording,
+  heading style, slide density and module choices — the new deck should read as if
+  the same author wrote it. Only deviate when explicitly asked.
+- NO sparse slides: every slide should use most of the canvas. A slide with just a
+  heading and a line or two looks unfinished — merge it into a neighbour, or enrich
+  it (a diagram, an example, a module like \`@callout\`/\`@metrics\`). The inverse also
+  holds: don't overflow — split a slide that exceeds the canvas.
+- Keep each slide light in TEXT (aim for ≤ ~5 bullets) — fullness should come from
+  structure and visuals, not walls of text.
 
 Consistency
 - Set the theme and aspect ONCE on the meta page (don't repeat per slide); choose
@@ -290,10 +307,6 @@ Consistency
   \`@callout\` for takeaways, \`@metrics\` for KPIs).
 - Prefer theme colour variables (e.g. \`var(--accent-color)\`) over hard-coded colours
   so the palette stays consistent.
-- Keep each slide light (aim for ≤ ~5 bullets); split dense content across slides
-  only if the plan allows it.
-- If the user provides a sample slide they like, mirror its structure, density,
-  and style across the deck.
 - Header/footer go on the meta page for all slides; repeat on a slide to override,
   or use an empty \`<!-- @header --><!-- @end -->\` to suppress it on that slide.`;
 
@@ -386,6 +399,8 @@ function describeThemesForAI(themes: ThemeOption[]): string {
 export interface SlideSpecExtras {
   effects?: EffectConfig[];
   themes?: ThemeOption[];
+  // Folder-specific house style / instructions (from the `.mdp` chain's aiNotes).
+  aiNotes?: string;
 }
 
 /** Assemble the full slide-authoring prompt: built-in format spec, then the
@@ -403,6 +418,11 @@ export function buildSlideSpecPrompt(modules: ModuleConfig[], extras: SlideSpecE
   const sorted = [...modules].sort((a, b) => a.name.localeCompare(b.name));
   parts.push(`## Installed modules\n\nThese modules are available for the current deck's folder — invoke each with its \`<!-- @name … -->\` directive.`);
   parts.push(sorted.length ? sorted.map(describeModuleForAI).join('\n\n') : '_(No modules are available for this folder.)_');
+
+  // Folder-specific house style comes LAST so it can override anything above.
+  if (extras.aiNotes && extras.aiNotes.trim()) {
+    parts.push(`## House style for this folder\n\nThe author has set these instructions for decks in this folder — follow them:\n\n${extras.aiNotes.trim()}`);
+  }
   return parts.join('\n\n');
 }
 

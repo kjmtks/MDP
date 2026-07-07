@@ -19,7 +19,9 @@ export const ProfileSection: React.FC = () => {
       <p className="settings-section-desc">
         Default author details. When you create a new slide, these values pre-fill the cover
         meta (<code>@presenter</code>, <code>@affiliation</code>, <code>@contact</code>). Leave a
-        field blank to keep the template's own placeholder.
+        field blank to keep the template's own placeholder. A folder's <code>.mdp</code> can
+        OVERRIDE these per folder (right-click the <code>.mdp</code> → Configure); these
+        app-wide values are the fallback.
       </p>
 
       <div className="settings-field">

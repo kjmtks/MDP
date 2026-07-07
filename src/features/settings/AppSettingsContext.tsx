@@ -52,6 +52,14 @@ export const AppSettingsProvider: React.FC<{ children: React.ReactNode }> = ({ c
     return () => window.removeEventListener('mdp-workspace-changed', onWorkspace);
   }, [load]);
 
+  // Mirror the MCP toggle to the Electron main process (starts/stops the local
+  // control bridge). No-op on web. Waits for `ready` so the pre-load default
+  // (false) doesn't needlessly stop a bridge before settings arrive.
+  useEffect(() => {
+    if (!ready) return;
+    apiClient.setMcpEnabled(settings.mcpEnabled).catch(() => {});
+  }, [ready, settings.mcpEnabled]);
+
   // Apply: theme attribute + font-size custom props on <html>.
   useEffect(() => {
     const el = document.documentElement;

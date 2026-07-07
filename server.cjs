@@ -10,8 +10,6 @@ const mdplink = require('./app/mdplink.cjs');
 // Machine-local SSH state (jump-host bypass toggle, cache config) + offline cache
 // dir, kept next to the server.
 mdplink.initLocalState(path.join(__dirname, '.mdp-local.json'), path.join(__dirname, '.mdp-cache'));
-const plantumlEncoder = require('plantuml-encoder');
-const { spawn } = require('child_process');
 const os = require('os');
 
 const dotenv = require('dotenv');
@@ -32,8 +30,26 @@ try {
 const app = express();
 const PORT = process.env.PORT || config.port || 3000;
 
-app.use(cors());
+// CORS: the app is served SAME-ORIGIN (LAN clients hit this server directly; the
+// Vite dev server proxies /api and /files), so no cross-origin access is needed.
+// Only loopback origins are acknowledged — any other cross-origin page gets no
+// CORS headers, so its preflighted JSON writes to /api/* are blocked by the
+// browser (drive-by CSRF from visited websites).
+app.use(cors({
+  origin: (origin, cb) => {
+    if (!origin) return cb(null, true); // same-origin / non-browser clients
+    try {
+      const h = new URL(origin).hostname;
+      if (h === 'localhost' || h === '127.0.0.1' || h === '::1') return cb(null, true);
+    } catch { /* fall through */ }
+    cb(null, false);
+  },
+}));
 app.use(express.json({ limit: '50mb' }));
+
+// A malformed request must never take the whole server down (async route handlers
+// have no global Express catcher; Node's default is process exit).
+process.on('unhandledRejection', (err) => console.error('[MDP] Unhandled rejection:', err));
 
 let rootDir = path.resolve('.');
 if (process.argv[2]) {
@@ -109,23 +125,9 @@ app.get('/api/server-info', (req, res) => {
   res.json({ ips: addresses, port: PORT, hostname: os.hostname(), mode: 'local' });
 });
 
-app.get('/plantuml/svg/:encoded', (req, res) => {
-  const encoded = req.params.encoded;
-  let decoded;
-  try { decoded = plantumlEncoder.decode(encoded); } catch (e) { return res.status(400).send('<svg><text>Invalid Code</text></svg>'); }
-  const plantumlJar = path.join(__dirname, 'plantuml', 'plantuml.jar');
-  if (!fs.existsSync(plantumlJar)) return res.status(500).send('<svg><text y="20" fill="red">plantuml.jar not found</text></svg>');
-
-  const child = spawn('java', ['-jar', plantumlJar, '-tsvg', '-pipe']);
-  let stdoutData = '';
-  child.stdout.on('data', d => { stdoutData += d.toString(); });
-  child.on('close', c => {
-    if (c === 0) { res.set('Content-Type', 'image/svg+xml'); res.send(stdoutData); }
-    else { res.status(500).send('<svg><text fill="red">Error</text></svg>'); }
-  });
-  child.stdin.write(decoded);
-  child.stdin.end();
-});
+// NOTE: the old Java-based `/plantuml/svg` route was removed — PlantUML now renders
+// entirely in the browser via `@plantuml/core` (WASM), so no `java`/plantuml.jar and
+// no server round-trip. See src/features/slide/parser/plantumlPlugin.ts.
 
 // Resolve a workspace-relative path through any `.mdplink` (local or SSH) it crosses.
 const vres = (rel) => mdplink.resolve(rootDir, rel || '');
@@ -145,17 +147,21 @@ app.get('/api/subtree', async (req, res) => {
 });
 
 app.post('/api/save', async (req, res) => {
-  let content = req.body.content;
-  if (typeof content === 'string' && content.startsWith('data:image/')) {
-    const base64Data = content.split(',')[1];
-    content = base64Data ? Buffer.from(base64Data, 'base64') : Buffer.from('');
-  } else if (req.body.isBase64) {
-    content = Buffer.from(content, 'base64');
-  } else {
-    content = Buffer.from(String(content ?? ''), 'utf-8');
-  }
-  try { await mdplink.vfsWrite(vres(req.body.filename), content); res.json({ success: true }); }
-  catch (e) { res.status(500).json({ success: false, error: e.message }); }
+  // Body coercion INSIDE the try: a malformed body (e.g. isBase64 with a non-string
+  // content) must return 400, not raise an unhandled rejection.
+  try {
+    let content = req.body.content;
+    if (typeof content === 'string' && content.startsWith('data:image/')) {
+      const base64Data = content.split(',')[1];
+      content = base64Data ? Buffer.from(base64Data, 'base64') : Buffer.from('');
+    } else if (req.body.isBase64) {
+      content = Buffer.from(String(content ?? ''), 'base64');
+    } else {
+      content = Buffer.from(String(content ?? ''), 'utf-8');
+    }
+    await mdplink.vfsWrite(vres(req.body.filename), content);
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ success: false, error: e.message }); }
 });
 
 app.post('/api/rename', async (req, res) => {
@@ -276,42 +282,50 @@ app.get('/api/snippets', async (req, res) => {
     console.error('Default snippets error:', e.message);
   }
 
-  const customDir = path.join(targetDir, '.mdp', 'snippets');
-  if (fs.existsSync(customDir)) {
+  // Custom snippet FILES cascade like other `.mdp` assets (dirs CSV, root→nearest;
+  // nearest wins by file name). Omitted → root `.mdp` only.
+  const chain = String(req.query.dirs || '.mdp').split(',').map(s => s.trim()).filter(Boolean);
+  const byName = new Map();
+  for (const cdir of chain) {
     try {
-      const files = await fs.promises.readdir(customDir);
-      for (const file of files.filter(f => f.toLowerCase().endsWith('.json'))) {
-        try {
-          const data = await fs.promises.readFile(path.join(customDir, file), 'utf-8');
-          const customSnippets = safeParseJSON(data);
-          if (Array.isArray(customSnippets)) {
-            customSnippets.forEach(category => {
-              if (category.items && Array.isArray(category.items)) {
-                category.items.forEach(item => item.isCustom = true);
-                const existingCat = snippets.find(c => c.category === category.category);
-                if (existingCat) existingCat.items.push(...category.items);
-                else snippets.push(category);
-              }
-            });
-          }
-        } catch (fileErr) { console.error(`Error parsing ${file}:`, fileErr.message); }
+      for (const e of await mdplink.vfsList(vres(`${cdir}/snippets`))) {
+        if (!e.isDir && e.name.toLowerCase().endsWith('.json')) byName.set(e.name, `${cdir}/snippets/${e.name}`);
       }
-    } catch (dirErr) { console.error('Error reading .snippets:', dirErr.message); }
+    } catch (dirErr) { /* snippets dir absent in this `.mdp` */ }
+  }
+  for (const [file, rel] of byName) {
+    try {
+      const data = await mdplink.vfsReadText(vres(rel));
+      const customSnippets = safeParseJSON(data);
+      if (Array.isArray(customSnippets)) {
+        customSnippets.forEach(category => {
+          if (category.items && Array.isArray(category.items)) {
+            category.items.forEach(item => item.isCustom = true);
+            const existingCat = snippets.find(c => c.category === category.category);
+            if (existingCat) existingCat.items.push(...category.items);
+            else snippets.push(category);
+          }
+        });
+      }
+    } catch (fileErr) { console.error(`Error parsing ${file}:`, fileErr.message); }
   }
   res.json(snippets);
 });
 
+// `dirs` (CSV) = the target folder's `.mdp` chain (root→nearest); custom templates
+// merge across it, NEAREST wins by file name. Omitted → root `.mdp` (legacy).
 app.get('/api/templates', async (req, res) => {
   let templates = [];
-  const customDir = path.join(targetDir, '.mdp', 'templates');
-  if (fs.existsSync(customDir)) {
+  const chain = String(req.query.dirs || '.mdp').split(',').map(s => s.trim()).filter(Boolean);
+  const byName = new Map();
+  for (const cdir of chain) {
     try {
-      const files = await fs.promises.readdir(customDir);
-      templates.push(...files.filter(f => f.endsWith('.md')).map(f => ({
-        name: f, path: `.mdp/templates/${f}`, isCustom: true
-      })));
-    } catch (e) { console.error(e); }
+      for (const e of await mdplink.vfsList(vres(`${cdir}/templates`))) {
+        if (!e.isDir && e.name.endsWith('.md')) byName.set(e.name, { name: e.name, path: `${cdir}/templates/${e.name}`, isCustom: true });
+      }
+    } catch (e) { /* templates dir absent in this `.mdp` */ }
   }
+  templates.push(...byName.values());
 
   const defaultDir = path.join(publicDir, 'templates');
   if (fs.existsSync(defaultDir)) {
@@ -337,9 +351,12 @@ app.get('/api/templateContent', async (req, res) => {
   try {
     const templatePath = req.query.path;
     if (templatePath && templatePath !== 'default') {
-       const absolutePath = templatePath.startsWith('.mdp/')
-          ? path.join(targetDir, templatePath)
-          : path.join(publicDir, templatePath);
+       // Workspace templates may live in a NESTED `.mdp` (cascade) or behind a
+       // `.mdplink` — resolve through the VFS; built-ins come from publicDir.
+       if (templatePath.includes('.mdp/')) {
+         return res.send(await mdplink.vfsReadText(vres(templatePath)));
+       }
+       const absolutePath = path.join(publicDir, templatePath);
        if (fs.existsSync(absolutePath)) {
          return res.send(await fs.promises.readFile(absolutePath, 'utf-8'));
        }
