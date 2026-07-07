@@ -56,6 +56,13 @@ forest. Keep labels short so the chart fits the slide (check with measure_slides
     const color = args.color || 'var(--accent-color)';
     const fontSize = args.fontSize || '0.9em';
     const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    // Module render runs without the markdown engine, so support the common inline
+    // Markdown in node labels ourselves: `code`, **bold**, *italic*, [text](url).
+    const inline = (s) => esc(s)
+      .replace(/`([^`]+)`/g, '<code>$1</code>')
+      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+      .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<a href="$2">$1</a>');
 
     // Parse the nested bullet list (indentation = depth) into a forest.
     const items = [];
@@ -78,7 +85,7 @@ forest. Keep labels short so the chart fits the slide (check with measure_slides
 
     const renderNode = (node) => {
       const kids = node.children.length ? `<ul>${node.children.map(renderNode).join('')}</ul>` : '';
-      return `<li><span class="mdp-tree-node">${esc(node.label)}</span>${kids}</li>`;
+      return `<li><span class="mdp-tree-node">${inline(node.label)}</span>${kids}</li>`;
     };
     const list = `<ul>${roots.map(renderNode).join('')}</ul>`;
     return `\n\n<div class="mdp-mod-tree mdp-tree-${layout}" style="--tree-color:${color}; --tree-font:${fontSize};">${list}</div>\n\n`;
@@ -115,20 +122,24 @@ forest. Keep labels short so the chart fits the slide (check with measure_slides
       width: 0; height: 20px; border-left: 2px solid var(--tree-color, #3b82f6);
     }
 
-    /* ---- Left-to-right indented tree ---- */
+    /* ---- Left-to-right indented tree (file-explorer style) ---- */
+    /* --tree-mid ≈ vertical centre of a node from its <li> top, for the elbows. */
+    .mdp-tree-right { --tree-mid: 0.85em; }
     .mdp-tree-right > ul { padding-left: 0; }
-    .mdp-tree-right ul ul { padding-left: 1.4em; }
-    .mdp-tree-right li { position: relative; padding: 3px 0 3px 1.2em; }
+    .mdp-tree-right ul ul { padding-left: 1.2em; }
+    .mdp-tree-right li { position: relative; padding: 3px 0; }
+    .mdp-tree-right .mdp-tree-node { padding: 2px 8px; }
+    /* Vertical trunk in the gutter, shared by all siblings so it connects them. */
     .mdp-tree-right ul ul > li::before {
-      content: ''; position: absolute; left: 0; top: -3px; height: calc(50% + 3px);
-      width: 0.9em; border-left: 2px solid var(--tree-color, #3b82f6);
-      border-bottom: 2px solid var(--tree-color, #3b82f6);
-    }
-    .mdp-tree-right ul ul > li::after {
-      content: ''; position: absolute; left: 0; top: -3px; bottom: 0;
+      content: ''; position: absolute; left: -0.6em; top: 0; bottom: 0;
       border-left: 2px solid var(--tree-color, #3b82f6);
     }
-    .mdp-tree-right ul ul > li:last-child::after { display: none; }
-    .mdp-tree-right .mdp-tree-node { padding: 2px 8px; }
+    /* The LAST child's trunk stops at its own elbow (no overhang below). */
+    .mdp-tree-right ul ul > li:last-child::before { bottom: auto; height: var(--tree-mid); }
+    /* Horizontal elbow from the trunk into each node. */
+    .mdp-tree-right ul ul > li::after {
+      content: ''; position: absolute; left: -0.6em; top: var(--tree-mid); width: 0.6em;
+      border-top: 2px solid var(--tree-color, #3b82f6);
+    }
   ]]></style>
 </module>
