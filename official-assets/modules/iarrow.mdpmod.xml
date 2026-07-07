@@ -1,0 +1,63 @@
+<module>
+  <name>iarrow</name>
+  <type>inline</type>
+  <description>Inline arrow that flows WITHIN text (unlike @arrow, which is a centered block). Sized in em to match the surrounding text.</description>
+  <aiSpec><![CDATA[
+An INLINE arrow glyph that sits inside a line of text — use it for "leads to"
+between words, e.g. `入力 <!-- @iarrow --> 出力` or `A <!-- @iarrow shape: line --> B`.
+It inherits the text colour by default and is sized in `em` so it matches the
+font. This is different from `@arrow`, which renders as a large CENTERED block
+between paragraphs. Params: `direction` (8 compass points, default right),
+`shape` (triangle/chevron/line/double), `size` (em, default 1em), `color`
+(default currentColor = the text colour).
+]]></aiSpec>
+  <parameters>
+    <param name="direction" type="select" default="right" label="Direction" options="right:Right,left:Left,up:Up,down:Down,up-right:Up-right,up-left:Up-left,down-right:Down-right,down-left:Down-left" />
+    <param name="shape" type="select" default="line" label="Shape" options="line:Line arrow,triangle:Triangle,chevron:Chevron,double:Double chevron" />
+    <param name="size" type="text" default="1em" label="Size" desc="CSS size relative to text, e.g. 1em, 1.2em" />
+    <param name="color" type="color" default="currentColor" label="Color" desc="Defaults to the surrounding text colour" />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>UI Parts</category>
+      <label>Inline arrow (→)</label>
+      <text><![CDATA[<!-- @iarrow shape: line, direction: right -->]]></text>
+      <description>A right-pointing arrow that flows within a line of text (input → output).</description>
+    </snippet>
+    <snippet>
+      <category>UI Parts</category>
+      <label>Inline chevron</label>
+      <text><![CDATA[<!-- @iarrow shape: chevron, direction: right -->]]></text>
+      <description>A small inline chevron. direction: right|left|up|down|up-right|up-left|down-right|down-left.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const size = args.size || '1em';
+    const color = args.color || 'currentColor';
+    const direction = (args.direction || 'right').toLowerCase();
+    const shape = (args.shape || 'line').toLowerCase();
+    // Shapes are drawn pointing RIGHT (0deg); direction rotates the glyph.
+    const angles = {
+      right: 0, 'down-right': 45, down: 90, 'down-left': 135,
+      left: 180, 'up-left': 225, up: 270, 'up-right': 315
+    };
+    const angle = angles[direction] != null ? angles[direction] : 0;
+    const shapes = {
+      triangle: '<polygon points="26,16 84,50 26,84"/>',
+      chevron: '<polyline points="36,18 70,50 36,82" fill="none" stroke="currentColor" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>',
+      line: '<path d="M8 50 H72" fill="none" stroke="currentColor" stroke-width="10" stroke-linecap="round"/><polyline points="58,28 86,50 58,72" fill="none" stroke="currentColor" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>',
+      double: '<polyline points="22,20 52,50 22,80" fill="none" stroke="currentColor" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/><polyline points="48,20 78,50 48,80" fill="none" stroke="currentColor" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>'
+    };
+    const inner = shapes[shape] || shapes.line;
+    return `<span class="mdp-mod-iarrow" style="color:${color};"><svg viewBox="0 0 100 100" style="width:${size};height:${size};transform:rotate(${angle}deg);" fill="currentColor" aria-hidden="true">${inner}</svg></span>`;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-iarrow {
+      display: inline-block;
+      vertical-align: -0.15em;
+      line-height: 0;
+      margin: 0 0.15em;
+    }
+    .mdp-mod-iarrow > svg { display: inline-block; }
+  ]]></style>
+</module>

@@ -126,6 +126,9 @@
       "path": "modules/grid.mdpmod.xml"
     },
     {
+      "path": "modules/iarrow.mdpmod.xml"
+    },
+    {
       "path": "modules/infobox.mdpmod.xml"
     },
     {
@@ -175,6 +178,9 @@
     },
     {
       "path": "modules/timer.mdpmod.xml"
+    },
+    {
+      "path": "modules/tree.mdpmod.xml"
     }
   ],
   "snippets": [],

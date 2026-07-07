@@ -31,6 +31,9 @@ export interface AppSettings {
   // Reading speed (characters/minute) for the talk-time estimate of read-aloud
   // `@script` slides. Per-person; calibratable in Settings. ~320 for Japanese.
   readingCharsPerMin: number;
+  // The passage read aloud during reading-speed calibration — editable so it can
+  // match the user's language / typical content.
+  readingCalibrationText: string;
   // NOTE: module enable/disable is NO LONGER an app setting — it is per-folder,
   // stored in each `.mdp/content.json` and cascaded (see mdpContent / Configure
   // (.mdp) dialog), so it can differ per deck and live on a read-only NAS owner's
@@ -54,6 +57,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
   mcpEnabled: false,
   mcpAssetWrite: 'confirm',
   readingCharsPerMin: 320,
+  readingCalibrationText:
+    'それでは発表を始めます。本日は、私たちの研究の背景と目的、提案手法、実験結果、そして今後の課題について順にご説明します。' +
+    'まず背景として、従来手法にはいくつかの課題がありました。我々はこれを解決するために新しいアプローチを提案します。' +
+    'Thank you for your attention. Please feel free to ask questions at the end of the talk.',
 };
 
 // Merge a parsed (possibly partial / older) settings object over the defaults.
@@ -74,6 +81,7 @@ export function normalizeSettings(raw: unknown): AppSettings {
     mcpEnabled: r.mcpEnabled === true,
     mcpAssetWrite: r.mcpAssetWrite === 'auto' ? 'auto' : 'confirm',
     readingCharsPerMin: typeof r.readingCharsPerMin === 'number' && r.readingCharsPerMin > 0 ? r.readingCharsPerMin : 320,
+    readingCalibrationText: typeof r.readingCalibrationText === 'string' && r.readingCalibrationText.trim() ? r.readingCalibrationText : DEFAULT_SETTINGS.readingCalibrationText,
   };
 }
 

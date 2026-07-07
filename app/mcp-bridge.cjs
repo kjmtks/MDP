@@ -186,7 +186,7 @@ async function scopeChain(baseDir, deckArg) {
 const BUILTIN_DIRECTIVES = new Set([
   'title', 'subtitle', 'date', 'presenter', 'affiliation', 'contact', 'tags',
   'aspect', 'theme', 'css', 'transition', 'build', 'header', 'footer', 'end',
-  'note', 'pageclass', 'id', 'caption', 'cover', 'hide', 'draw', 'drawing', 'addstyle',
+  'note', 'script', 'time', 'pageclass', 'id', 'caption', 'cover', 'hide', 'draw', 'drawing', 'addstyle',
 ]);
 
 // Lazy up to the closing `-->` (not `[^>]`, which truncates values containing '>').

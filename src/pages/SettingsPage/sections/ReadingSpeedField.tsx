@@ -1,20 +1,17 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Button, TextField } from '@mui/material';
 import { useAppSettings } from '../../../features/settings/AppSettingsContext';
+import { DEFAULT_SETTINGS } from '../../../features/settings/types';
 
-// A neutral calibration passage (mixed Japanese + English). Read it ALOUD at your
-// natural presenting pace; the timer converts its non-whitespace length to
-// characters/minute. Keep this stable so the char count below matches.
-const PASSAGE =
-  'それでは発表を始めます。本日は、私たちの研究の背景と目的、提案手法、実験結果、そして今後の課題について順にご説明します。' +
-  'まず背景として、従来手法にはいくつかの課題がありました。我々はこれを解決するために新しいアプローチを提案します。' +
-  'Thank you for your attention. Please feel free to ask questions at the end of the talk.';
+const countChars = (s: string) => s.replace(/\s+/g, '').length;
 
-const passageChars = PASSAGE.replace(/\s+/g, '').length;
-
-// Field for the talk-time reading speed, with a read-aloud calibration.
+// Field for the talk-time reading speed, with a read-aloud calibration whose
+// passage is EDITABLE (language / content differ per user).
 export const ReadingSpeedField: React.FC = () => {
   const { settings, update } = useAppSettings();
+  const passage = settings.readingCalibrationText;
+  const passageChars = countChars(passage);
+  const [editing, setEditing] = useState(false);
   const [running, setRunning] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [result, setResult] = useState<number | null>(null);
@@ -55,10 +52,32 @@ export const ReadingSpeedField: React.FC = () => {
       </div>
 
       <div style={{ marginTop: 12, padding: 12, border: '1px solid var(--app-border-subtle)', borderRadius: 6, background: 'var(--app-bg-elevated)' }}>
-        <div style={{ fontSize: '0.75rem', color: 'var(--app-text-disabled)', marginBottom: 6 }}>
-          Calibrate — read this aloud at your presenting pace, then Stop ({passageChars} chars):
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
+          <span style={{ fontSize: '0.75rem', color: 'var(--app-text-disabled)' }}>
+            Calibrate — read this aloud at your presenting pace, then Stop ({passageChars} chars):
+          </span>
+          <span style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+            <Button size="small" variant="text" onClick={() => setEditing((v) => !v)} sx={{ textTransform: 'none', minWidth: 0, color: 'var(--app-text-muted)', fontSize: '0.72rem' }}>
+              {editing ? 'Done' : 'Edit text'}
+            </Button>
+            {passage !== DEFAULT_SETTINGS.readingCalibrationText && (
+              <Button size="small" variant="text" onClick={() => update({ readingCalibrationText: DEFAULT_SETTINGS.readingCalibrationText })} sx={{ textTransform: 'none', minWidth: 0, color: 'var(--app-text-muted)', fontSize: '0.72rem' }}>
+                Reset
+              </Button>
+            )}
+          </span>
         </div>
-        <div style={{ fontSize: '0.9rem', color: 'var(--app-text-secondary)', lineHeight: 1.7, marginBottom: 10 }}>{PASSAGE}</div>
+        {editing ? (
+          <TextField
+            multiline minRows={3} maxRows={10} fullWidth size="small" autoFocus
+            value={passage}
+            onChange={(e) => update({ readingCalibrationText: e.target.value })}
+            placeholder="Paste a passage in your language / typical style to read aloud…"
+            sx={{ mb: 1, '& .MuiInputBase-input': { color: 'var(--app-text)', fontSize: '0.9rem', lineHeight: 1.7 }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--app-border-strong)' } }}
+          />
+        ) : (
+          <div style={{ fontSize: '0.9rem', color: 'var(--app-text-secondary)', lineHeight: 1.7, marginBottom: 10, whiteSpace: 'pre-wrap' }}>{passage}</div>
+        )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           {!running ? (
             <Button size="small" variant="outlined" onClick={start} sx={{ textTransform: 'none', color: 'var(--app-text-secondary)', borderColor: 'var(--app-border-strong)' }}>

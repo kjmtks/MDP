@@ -52,8 +52,10 @@ interface MeasureJob {
 const BUILTIN_DIRECTIVES = new Set([
   'title', 'subtitle', 'date', 'presenter', 'affiliation', 'contact', 'tags',
   'aspect', 'theme', 'css', 'transition', 'build', 'header', 'footer', 'end',
-  'note', 'pageclass', 'id', 'caption', 'cover', 'hide', 'draw', 'drawing', 'addstyle',
+  'note', 'script', 'time', 'pageclass', 'id', 'caption', 'cover', 'hide', 'draw', 'drawing', 'addstyle',
 ]);
+// Builtin directives that OPEN a `<!-- @end -->`-closed block (for balance checks).
+const BLOCK_OPENER_BUILTINS = new Set(['header', 'footer', 'addstyle']);
 
 const loadImage = (src: string) => new Promise<HTMLImageElement>((resolve, reject) => {
   const img = new Image();
@@ -84,7 +86,8 @@ function validateDeckText(text: string, themes: ThemeOption[]) {
       const name = m[1];
       const argsStr = m[2] || '';
       if (name === 'end') { ends++; continue; }
-      if (name === 'header' || name === 'footer') { opens++; continue; }
+      // A named end (`<!-- @endfoo -->`) closes a block module `foo`.
+      if (/^end./i.test(name) && loadedModules[name.slice(3)]) { ends++; continue; }
       if (name === 'transition') { checkEffect(where, 'transition', argsStr.trim().split(/\s+/)[0]); continue; }
       if (name === 'build') {
         // On the meta page @build sets deck-wide defaults (no block); on a slide it
@@ -100,9 +103,12 @@ function validateDeckText(text: string, themes: ThemeOption[]) {
         if (t && !themeNames.has(t)) errors.push(`${where}: unknown theme "${t}" (see list_themes)`);
         continue;
       }
+      if (BLOCK_OPENER_BUILTINS.has(name)) { opens++; continue; }
       if (BUILTIN_DIRECTIVES.has(name)) continue;
       const mod = loadedModules[name];
-      if (!mod) { errors.push(`${where}: unknown module/directive "@${name}"`); continue; }
+      // NOT an error: the builtin list may be incomplete, or it may be a module
+      // valid in ANOTHER folder's scope. Advisory only.
+      if (!mod) { warnings.push(`${where}: "@${name}" is not a known directive or a module available in this folder — check the spelling if it's a typo (it may be fine if it's a module from another scope).`); continue; }
       if (isModuleDisabled(name)) warnings.push(`${where}: module "@${name}" is DISABLED for this folder (its output renders as nothing)`);
       if (mod.config.type !== 'inline' && !mod.config.inlineRender) opens++;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -111,7 +117,7 @@ function validateDeckText(text: string, themes: ThemeOption[]) {
       for (const k of Object.keys(args)) if (!known.has(k)) warnings.push(`${where}: "@${name}" has unknown parameter "${k}"`);
       for (const pd of mod.config.parameters) if (pd.required && !(pd.name in args)) errors.push(`${where}: "@${name}" is missing required parameter "${pd.name}"`);
     }
-    if (opens !== ends) warnings.push(`${where}: ${opens} block opener(s) vs ${ends} <!-- @end --> — check block structure`);
+    if (opens !== ends) warnings.push(`${where}: ${opens} block opener(s) but ${ends} <!-- @end --> — a block may be unclosed or have a stray @end (verify; block modules with custom closers can also cause this).`);
   });
 
   return { ok: errors.length === 0, errors, warnings };

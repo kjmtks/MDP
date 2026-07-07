@@ -1,0 +1,134 @@
+<module>
+  <name>tree</name>
+  <type>block</type>
+  <description>Hierarchy / tree diagram from a nested bullet list. Top-down org chart (default) or a left-to-right indented tree.</description>
+  <aiSpec><![CDATA[
+Draw a HIERARCHY / TREE DIAGRAM (org chart, taxonomy, decision tree, file
+hierarchy). Block module whose BODY is a nested Markdown bullet list — indentation
+sets the parent/child levels:
+
+<!-- @tree layout: updown -->
+- Root
+  - Child A
+    - Leaf 1
+    - Leaf 2
+  - Child B
+<!-- @end -->
+
+layout: `updown` (default) = top-down org chart with connector lines; `right` =
+left-to-right indented tree (file-explorer style). `color` sets the connector /
+border colour. Node labels are plain text. Multiple top-level bullets render as a
+forest. Keep labels short so the chart fits the slide (check with measure_slides).
+]]></aiSpec>
+  <parameters>
+    <param name="layout" type="select" default="updown" label="Layout" options="updown:Top-down (org chart),right:Left-to-right (indented)" />
+    <param name="color" type="color" default="var(--accent-color)" label="Line / border color" />
+    <param name="fontSize" type="text" default="0.9em" label="Node font size" desc="CSS size, e.g. 0.9em" />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Diagrams</category>
+      <label>Tree — org chart</label>
+      <text><![CDATA[<!-- @tree layout: updown -->
+- Company
+  - Engineering
+    - Frontend
+    - Backend
+  - Design
+  - Sales
+<!-- @end -->]]></text>
+      <description>Top-down hierarchy diagram from a nested list (indent = level).</description>
+    </snippet>
+    <snippet>
+      <category>Diagrams</category>
+      <label>Tree — indented</label>
+      <text><![CDATA[<!-- @tree layout: right -->
+- Root
+  - Branch A
+    - Leaf
+  - Branch B
+<!-- @end -->]]></text>
+      <description>Left-to-right indented tree (file-explorer style).</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const layout = (args.layout || 'updown').toLowerCase() === 'right' ? 'right' : 'updown';
+    const color = args.color || 'var(--accent-color)';
+    const fontSize = args.fontSize || '0.9em';
+    const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+    // Parse the nested bullet list (indentation = depth) into a forest.
+    const items = [];
+    for (const raw of String(content || '').split('\n')) {
+      const m = raw.match(/^(\s*)(?:[-*+]|\d+\.)\s+(.*\S)\s*$/);
+      if (!m) continue;
+      const indent = m[1].replace(/\t/g, '  ').length;
+      items.push({ indent, label: m[2].trim() });
+    }
+    if (!items.length) return `<div class="mdp-mod-tree-empty">(empty tree — provide a nested bullet list)</div>`;
+
+    const roots = [];
+    const stack = [{ indent: -1, node: { children: roots } }];
+    for (const it of items) {
+      const node = { label: it.label, children: [] };
+      while (stack.length > 1 && it.indent <= stack[stack.length - 1].indent) stack.pop();
+      stack[stack.length - 1].node.children.push(node);
+      stack.push({ indent: it.indent, node });
+    }
+
+    const renderNode = (node) => {
+      const kids = node.children.length ? `<ul>${node.children.map(renderNode).join('')}</ul>` : '';
+      return `<li><span class="mdp-tree-node">${esc(node.label)}</span>${kids}</li>`;
+    };
+    const list = `<ul>${roots.map(renderNode).join('')}</ul>`;
+    return `\n\n<div class="mdp-mod-tree mdp-tree-${layout}" style="--tree-color:${color}; --tree-font:${fontSize};">${list}</div>\n\n`;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-tree { margin: 1rem 0; overflow-x: auto; font-size: var(--tree-font, 0.9em); }
+    .mdp-mod-tree ul { list-style: none; margin: 0; padding: 0; }
+    .mdp-tree-node {
+      display: inline-block;
+      border: 2px solid var(--tree-color, #3b82f6);
+      border-radius: 6px;
+      padding: 4px 10px;
+      background: var(--panel-bg, rgba(255,255,255,0.85));
+      white-space: nowrap;
+    }
+    .mdp-mod-tree-empty { color: #f04747; font-style: italic; }
+
+    /* ---- Top-down org chart (pure-CSS connectors) ---- */
+    .mdp-tree-updown > ul { display: flex; justify-content: center; }
+    .mdp-tree-updown ul { position: relative; padding-top: 20px; display: flex; justify-content: center; }
+    .mdp-tree-updown li { list-style: none; position: relative; padding: 20px 10px 0; text-align: center; }
+    .mdp-tree-updown li::before, .mdp-tree-updown li::after {
+      content: ''; position: absolute; top: 0; right: 50%;
+      width: 50%; height: 20px; border-top: 2px solid var(--tree-color, #3b82f6);
+    }
+    .mdp-tree-updown li::after { right: auto; left: 50%; border-left: 2px solid var(--tree-color, #3b82f6); }
+    .mdp-tree-updown li:only-child::before, .mdp-tree-updown li:only-child::after { display: none; }
+    .mdp-tree-updown li:only-child { padding-top: 0; }
+    .mdp-tree-updown li:first-child::before, .mdp-tree-updown li:last-child::after { border: 0 none; }
+    .mdp-tree-updown li:last-child::before { border-right: 2px solid var(--tree-color, #3b82f6); border-radius: 0 6px 0 0; }
+    .mdp-tree-updown li:first-child::after { border-radius: 6px 0 0 0; }
+    .mdp-tree-updown ul ul::before {
+      content: ''; position: absolute; top: 0; left: 50%;
+      width: 0; height: 20px; border-left: 2px solid var(--tree-color, #3b82f6);
+    }
+
+    /* ---- Left-to-right indented tree ---- */
+    .mdp-tree-right > ul { padding-left: 0; }
+    .mdp-tree-right ul ul { padding-left: 1.4em; }
+    .mdp-tree-right li { position: relative; padding: 3px 0 3px 1.2em; }
+    .mdp-tree-right ul ul > li::before {
+      content: ''; position: absolute; left: 0; top: -3px; height: calc(50% + 3px);
+      width: 0.9em; border-left: 2px solid var(--tree-color, #3b82f6);
+      border-bottom: 2px solid var(--tree-color, #3b82f6);
+    }
+    .mdp-tree-right ul ul > li::after {
+      content: ''; position: absolute; left: 0; top: -3px; bottom: 0;
+      border-left: 2px solid var(--tree-color, #3b82f6);
+    }
+    .mdp-tree-right ul ul > li:last-child::after { display: none; }
+    .mdp-tree-right .mdp-tree-node { padding: 2px 8px; }
+  ]]></style>
+</module>
