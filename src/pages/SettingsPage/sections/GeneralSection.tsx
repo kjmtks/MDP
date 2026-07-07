@@ -1,5 +1,6 @@
 import React from 'react';
 import { useAppSettings } from '../../../features/settings/AppSettingsContext';
+import { ReadingSpeedField } from './ReadingSpeedField';
 
 const radioRow: React.CSSProperties = { display: 'flex', gap: 20, marginTop: 6, flexWrap: 'wrap' };
 const radioLabel: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' };
@@ -36,6 +37,8 @@ export const GeneralSection: React.FC = () => {
         </div>
         <div className="settings-field-hint">Default filename suggested when exporting to PDF. “Deck title” falls back to the file name when the deck has no <code>@title</code>.</div>
       </div>
+
+      <ReadingSpeedField />
     </div>
   );
 };

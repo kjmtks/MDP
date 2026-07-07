@@ -44,7 +44,9 @@
   {
     "category": "Meta",
     "items": [
-      { "label": "Note", "text": "\n<!-- @note:\nnote\n-->\n", "description": "Insert speaker note" },
+      { "label": "Note", "text": "\n<!-- @note:\nnote\n-->\n", "description": "Insert a speaker note — a supplementary reminder (does not affect the talk-time estimate)." },
+      { "label": "Script (read aloud)", "text": "\n<!-- @script:\nWhat you plan to say, word for word.\n-->\n", "description": "Insert a read-aloud manuscript for this slide. Shown prominently in the presenter view; its length drives the talk-time estimate at your reading speed." },
+      { "label": "Time (talk budget)", "text": "\n<!-- @time 90s -->\n", "description": "Set this slide's speaking-time budget (e.g. 90s, 2m, 1m30s, 1:30). Overrides the estimate; shown in the presenter countdown." },
       { "label": "Header", "text": "\n<!-- @header -->\n<!-- @stamp -->\nCONFIDENTIAL\n<!-- @end -->\n<!-- @end -->\n", "description": "Insert header block (with a CONFIDENTIAL stamp). In the meta page = all slides; in a slide = that slide." },
       { "label": "Footer", "text": "\n<!-- @footer -->\nfooter\n<!-- @end -->\n", "description": "Insert footer block. In the meta page = all slides; in a slide = that slide." },
       { "label": "Hidden Slide", "text": "\n<!-- @hide -->\n", "description": "Set the slide to be hidden" }

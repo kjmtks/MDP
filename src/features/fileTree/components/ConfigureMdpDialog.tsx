@@ -5,7 +5,7 @@ import CloudDownloadIcon from '@mui/icons-material/CloudDownload';
 import { apiClient } from '../../../api/apiClient';
 import { reportError, notify } from '../../../components/error/errorReporter';
 import { loadedModules } from '../../modules/moduleManager';
-import { type MdpContent, parseContent, contentPath, effectiveDisabledModules, effectiveAiNotes } from '../../workspace/mdpContent';
+import { type MdpContent, parseContent, contentPath, effectiveDisabledModules, effectiveAiNotes, effectiveStyleProfile } from '../../workspace/mdpContent';
 import { resolveMdpConfigDirs, collectScopedAssetPaths } from '../../workspace/mdpScope';
 import { buildSlideSpecPrompt } from '../../ai/slideSpecPrompt';
 import { parseMdmodXml, type ModuleConfig } from '../../../utils/moduleParser';
@@ -84,8 +84,12 @@ export const ConfigureMdpDialog: React.FC<Props> = ({ open, configDir, fileTree,
       }
       const prompt = buildSlideSpecPrompt(
         [...modByName.values()].filter((c) => !disabled.has(c.name)),
-        // Ancestors' saved notes + THIS dialog's live (possibly unsaved) notes.
-        { effects: [...fxByName.values()], themes, aiNotes: effectiveAiNotes([...contents.slice(0, -1), content]) },
+        // Ancestors' saved notes/style + THIS dialog's live (possibly unsaved) values.
+        {
+          effects: [...fxByName.values()], themes,
+          aiNotes: effectiveAiNotes([...contents.slice(0, -1), content]),
+          styleProfile: effectiveStyleProfile([...contents.slice(0, -1), content]).text,
+        },
       );
       await navigator.clipboard.writeText(prompt);
       notify('Copied the AI prompt for this folder.');
@@ -151,11 +155,14 @@ export const ConfigureMdpDialog: React.FC<Props> = ({ open, configDir, fileTree,
       const mods = content.modules || {};
       const author = Object.fromEntries(Object.entries(content.author || {}).filter(([, v]) => String(v || '').trim()));
       const aiNotes = (content.aiNotes || '').trim();
+      const styleText = (content.styleProfile?.text || '').trim();
       const payload: MdpContent = {
         version: 1,
         modules: Object.fromEntries(Object.entries(mods).filter(([, v]) => v === false)),
         ...(Object.keys(author).length ? { author } : {}),
         ...(aiNotes ? { aiNotes } : {}),
+        // Preserve existing freshness metadata; a hand-edit just updates the text.
+        ...(styleText ? { styleProfile: { ...content.styleProfile, text: styleText } } : {}),
       };
       await apiClient.saveFile(contentPath(configDir), JSON.stringify(payload, null, 2));
       window.dispatchEvent(new CustomEvent('mdp-content-changed'));
@@ -211,6 +218,26 @@ export const ConfigureMdpDialog: React.FC<Props> = ({ open, configDir, fileTree,
           placeholder="e.g. Formal Japanese (です・ます). One idea per slide. Prefer @callout for takeaways."
           value={content.aiNotes || ''}
           onChange={(e) => setContent((prev) => ({ ...prev, aiNotes: e.target.value }))}
+          sx={authorFieldSx}
+        />
+
+        <Typography sx={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--app-text-strong)', mt: 2, mb: 0.5 }}>
+          Writing-style profile (this folder)
+        </Typography>
+        <Typography sx={{ fontSize: '0.72rem', color: 'var(--app-text-disabled)', mb: 1 }}>
+          A cached description of how you write, injected into the AI prompt so authoring matches your voice
+          without re-reading decks. Fill it yourself, or ask an AI (via MCP) to “learn my style” — it distills
+          one from your decks with <code>get_style_samples</code> and saves it here.
+          {content.styleProfile?.analyzedAt && (
+            <span> Last analyzed {content.styleProfile.analyzedAt}
+              {content.styleProfile.basedOn?.length ? ` from ${content.styleProfile.basedOn.length} deck(s)` : ''}.</span>
+          )}
+        </Typography>
+        <TextField
+          multiline minRows={3} maxRows={12} fullWidth size="small"
+          placeholder="e.g. Concise, evidence-first; ≤5 bullets; one takeaway per slide in a @callout; figures over prose; です・ます調."
+          value={content.styleProfile?.text || ''}
+          onChange={(e) => setContent((prev) => ({ ...prev, styleProfile: { ...(prev.styleProfile || {}), text: e.target.value } }))}
           sx={authorFieldSx}
         />
       </DialogContent>

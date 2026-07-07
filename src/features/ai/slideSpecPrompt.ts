@@ -96,7 +96,15 @@ block on a single slide OVERRIDES the global one for that slide; an EMPTY block
   (\`[text](#NAME)\`). NAME is unique within the deck (letters/digits/-/_).
 - \`<!-- @caption TEXT -->\` — placed immediately BEFORE an image or table to caption it.
 - \`<!-- @transition NAME key: value -->\` — override the transition for this slide.
-- \`<!-- @note: TEXT -->\` — speaker note (hidden on the slide; shown in presenter view).
+- \`<!-- @note: TEXT -->\` — speaker note: a SUPPLEMENTARY reminder (hidden on the
+  slide; shown in the presenter view). Does NOT affect the talk-time estimate.
+- \`<!-- @script: TEXT -->\` — a READ-ALOUD manuscript for this slide (what the
+  presenter plans to say, verbatim). Shown prominently in the presenter view; its
+  length drives the talk-time estimate at the user's reading speed. Use this (not
+  @note) when the intent is to read the slide out.
+- \`<!-- @time 90s -->\` — this slide's speaking-time budget (overrides the estimate).
+  Accepts \`90s\`, \`2m\`, \`1m30s\`, \`1:30\` (mm:ss). Shown live in the presenter view
+  (per-slide + whole-deck countdown).
 
 ## In-slide builds (step-by-step reveals)
 
@@ -300,6 +308,15 @@ Style & density (defaults — always apply)
 - Keep each slide light in TEXT (aim for ≤ ~5 bullets) — fullness should come from
   structure and visuals, not walls of text.
 
+Timing
+- If the user gives a target talk length (e.g. "10-minute talk"), set a
+  \`<!-- @time … -->\` budget on each slide so the totals add up to the target — this
+  is far more reliable than leaving it to be estimated, and it drives the presenter
+  view's countdown. Spend more time on complex/important slides, less on covers.
+- If the user wants a spoken SCRIPT, put it in \`<!-- @script: … -->\` (not @note) —
+  that both provides the read-aloud text in the presenter view AND makes the
+  talk-time estimate reflect it. Reserve @note for brief reminders.
+
 Consistency
 - Set the theme and aspect ONCE on the meta page (don't repeat per slide); choose
   the deck transition there too.
@@ -401,6 +418,9 @@ export interface SlideSpecExtras {
   themes?: ThemeOption[];
   // Folder-specific house style / instructions (from the `.mdp` chain's aiNotes).
   aiNotes?: string;
+  // The author's cached WRITING-STYLE profile (from the `.mdp` chain) — distilled
+  // once from their decks, so authoring matches their voice without re-reading.
+  styleProfile?: string;
 }
 
 /** Assemble the full slide-authoring prompt: built-in format spec, then the
@@ -419,7 +439,10 @@ export function buildSlideSpecPrompt(modules: ModuleConfig[], extras: SlideSpecE
   parts.push(`## Installed modules\n\nThese modules are available for the current deck's folder — invoke each with its \`<!-- @name … -->\` directive.`);
   parts.push(sorted.length ? sorted.map(describeModuleForAI).join('\n\n') : '_(No modules are available for this folder.)_');
 
-  // Folder-specific house style comes LAST so it can override anything above.
+  // Folder-specific style + instructions come LAST so they override anything above.
+  if (extras.styleProfile && extras.styleProfile.trim()) {
+    parts.push(`## The author's writing style\n\nA style profile distilled from this author's existing decks — WRITE IN THIS VOICE (wording, density, structure). It is current; you do not need to re-read their decks:\n\n${extras.styleProfile.trim()}`);
+  }
   if (extras.aiNotes && extras.aiNotes.trim()) {
     parts.push(`## House style for this folder\n\nThe author has set these instructions for decks in this folder — follow them:\n\n${extras.aiNotes.trim()}`);
   }

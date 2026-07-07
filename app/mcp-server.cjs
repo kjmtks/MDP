@@ -76,14 +76,24 @@ const TOOLS = [
     inputSchema: S({}),
   },
   {
+    name: 'get_style_samples',
+    description: 'Get sample deck bodies (from the folder\'s .mdp scope) to LEARN THE AUTHOR\'S WRITING STYLE, plus the currently-cached style profile and its freshness. Distill a concise profile from the samples, then save it with save_style_profile so future authoring matches the author\'s voice WITHOUT re-reading decks. If currentProfile already covers these decks (basedOn), re-analysis may be skippable.',
+    inputSchema: S({ deck: str('Deck whose .mdp scope to sample (default: the active deck, else root)'), limit: num('How many decks to sample (default 3, max 8)') }),
+  },
+  {
+    name: 'save_style_profile',
+    description: 'Cache a distilled WRITING-STYLE profile into the folder\'s .mdp (content.json). It is then auto-injected into get_slide_spec for every future session, so you never need to re-read decks to match the author\'s voice. Record analyzedDate + basedOn for freshness. Overwrites the existing profile for that .mdp.',
+    inputSchema: S({ profile: str('The distilled style description (Markdown)'), deck: str('Deck whose .mdp scope to save into (default: active deck\'s nearest .mdp)'), dir: str('Explicit folder whose .mdp to write (overrides deck scope)'), analyzedDate: str('Today\'s date (ISO), for freshness'), basedOn: { type: 'array', items: { type: 'string' }, description: 'Deck paths the profile was distilled from' } }, ['profile']),
+  },
+  {
     name: 'list_decks',
     description: 'List every slide deck (*.slide.md) in the open MDP workspace, as workspace-relative paths. TIP: to imitate the user\'s writing style, read one or two of their existing decks with read_deck and mirror their tone, density, module choices and phrasing.',
     inputSchema: S({}),
   },
   {
     name: 'read_deck',
-    description: 'Read a deck\'s markdown source (the live editor content when it is open, else the file). Use it to edit a deck — and to STUDY THE USER\'S STYLE: before authoring, read an existing deck and imitate its wording, slide density, headings and module usage. Embedded base64 images are SHORTENED to MDP_ELIDED_… placeholders to save tokens (see binaryElided); they are AUTO-RESTORED on write as long as you keep each placeholder verbatim, so images are never lost — but patch_deck / replace_slide / append_slide are still cheaper for edits.',
-    inputSchema: S({ path: str('Workspace-relative deck path, e.g. "talks/intro.slide.md"') }, ['path']),
+    description: 'Read a deck\'s markdown source (the live editor content when it is open, else the file). TOKEN-SAVER: pass `slides:[n,…]` (1-based; 0 = meta page) to read ONLY those slides instead of the whole deck — use get_deck_outline first to pick which. Embedded base64 images are SHORTENED to MDP_ELIDED_… placeholders (binaryElided); AUTO-RESTORED on write if kept verbatim, so images are never lost — patch_deck / replace_slide are still cheaper for edits.',
+    inputSchema: S({ path: str('Workspace-relative deck path, e.g. "talks/intro.slide.md"'), slides: { type: 'array', items: { type: 'number' }, description: 'Read only these 1-based slides (0 = meta). Omit for the whole deck.' } }, ['path']),
   },
   {
     name: 'write_deck',
@@ -102,8 +112,23 @@ const TOOLS = [
   },
   {
     name: 'set_notes',
-    description: 'Write the SPEAKER NOTES (presenter-view script) for one slide, WITHOUT touching its visible content. mode="replace" (default) sets the note, replacing any existing one; mode="append" adds another. Pass notes="" to clear. Ideal for generating a talk script across a deck: read each slide, then set_notes per slide. Notes are Markdown and may span multiple lines (but must not contain "-->").',
-    inputSchema: S({ path: str('Deck path'), slide: num('Slide number (1-based; notes attach to content slides)'), notes: str('Speaker-note Markdown ("" clears)'), mode: { type: 'string', enum: ['replace', 'append'], description: 'replace (default) or append' } }, ['path', 'slide', 'notes']),
+    description: 'Write the SPEAKER NOTE (a supplementary reminder shown in the presenter view) for one slide, WITHOUT touching its visible content. Notes do NOT affect the talk-time estimate — for a read-aloud manuscript use set_script instead. mode="replace" (default) or "append"; notes="" clears. Markdown, multi-line OK (must not contain "-->").',
+    inputSchema: S({ path: str('Deck path'), slide: num('Slide number (1-based)'), notes: str('Speaker-note Markdown ("" clears)'), mode: { type: 'string', enum: ['replace', 'append'], description: 'replace (default) or append' } }, ['path', 'slide', 'notes']),
+  },
+  {
+    name: 'set_script',
+    description: 'Write the READ-ALOUD SCRIPT (the manuscript the presenter will speak, verbatim) for one slide, WITHOUT touching its visible content. Shown prominently in the presenter view; its length drives the slide\'s talk-time estimate at the user\'s reading speed. Ideal for generating a full talk manuscript: set_script per slide (mode="append" to build up). script="" clears. Markdown, multi-line OK (must not contain "-->").',
+    inputSchema: S({ path: str('Deck path'), slide: num('Slide number (1-based)'), script: str('Read-aloud Markdown ("" clears)'), mode: { type: 'string', enum: ['replace', 'append'], description: 'replace (default) or append' } }, ['path', 'slide', 'script']),
+  },
+  {
+    name: 'set_time',
+    description: 'Set one slide\'s explicit speaking-time budget (`<!-- @time … -->`), overriding any estimate — use when distributing a target talk length across slides (e.g. a 10-minute talk). Accepts 90s / 2m / 1m30s / 1:30; time="" clears. Shown in the presenter countdown.',
+    inputSchema: S({ path: str('Deck path'), slide: num('Slide number (1-based)'), time: str('Duration ("" clears), e.g. "90s", "1m30s", "1:30"') }, ['path', 'slide', 'time']),
+  },
+  {
+    name: 'batch_set_slides',
+    description: 'TOKEN-SAVER: set @note / @script / @time on MANY slides in ONE call (one write), instead of calling set_notes/set_script/set_time per slide. Ideal for generating a whole talk manuscript or distributing @time across a deck. `edits` = [{slide, note?, script?, time?, mode?}] (only the fields you pass are changed; "" clears one; mode="append" for note/script). Atomic: any invalid edit aborts the whole batch.',
+    inputSchema: S({ path: str('Deck path'), edits: { type: 'array', description: 'Per-slide edits', items: { type: 'object', properties: { slide: num('1-based'), note: str('@note ("" clears)'), script: str('@script ("" clears)'), time: str('@time ("" clears)'), mode: { type: 'string', enum: ['replace', 'append'] } }, required: ['slide'] } } }, ['path', 'edits']),
   },
   {
     name: 'list_modules',
@@ -142,8 +167,8 @@ const TOOLS = [
   },
   {
     name: 'measure_slides',
-    description: 'LOW-TOKEN layout check of the ACTIVE deck. Per slide: overflowX/overflowY (px of content CLIPPED beyond the slide box — anything > 0 must be fixed by splitting/shortening), fillX/fillY (how far content extends across the width/height, 0..1; fillY < ~0.5 leaves the lower half unused), and coverage (fraction of the slide AREA actually painted — text line boxes, images, framed boxes; a slide with much lower coverage than the deck\'s typical value looks empty). Run after writing slides, fix problems, re-run.',
-    inputSchema: S({}),
+    description: 'LOW-TOKEN layout check of the ACTIVE deck. Per slide: overflowX/overflowY (px of content CLIPPED beyond the slide box — anything > 0 must be fixed by splitting/shortening), fillX/fillY (how far content extends across the width/height, 0..1; fillY < ~0.5 leaves the lower half unused), and coverage (painted-area fraction; much lower than the deck\'s typical = looks empty). TOKEN-SAVER: pass `slides:[n,…]` (1-based) to measure ONLY the slides you just changed. Run after writing, fix, re-run.',
+    inputSchema: S({ slides: { type: 'array', items: { type: 'number' }, description: 'Measure only these 1-based slides. Omit for all.' } }),
   },
   {
     name: 'render_slide_image',
@@ -152,7 +177,7 @@ const TOOLS = [
   },
   {
     name: 'get_deck_outline',
-    description: 'LOW-TOKEN structure map of a deck (default: the active one): per slide its heading, bullet count, modules used, note presence and text volume, plus deck title/tags and an estimated speaking time. Prefer this over read_deck for orientation and style sampling of long decks.',
+    description: 'LOW-TOKEN structure map of a deck (default: the active one): per slide its heading, bullet count, modules used, note volume and estimated `seconds` (from its `<!-- @time … -->` if set, else notes/complexity), plus deck title/tags and total estimatedMinutes. Prefer this over read_deck for orientation and style sampling of long decks. To make talk-time accurate, set `<!-- @time 90s -->` on slides.',
     inputSchema: S({ path: str('Deck path (default: the active deck)') }),
   },
   {

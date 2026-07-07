@@ -11,6 +11,15 @@ export interface MdpAuthor {
   email?: string;
 }
 
+// The author's WRITING STYLE for decks under this folder — a cached profile an AI
+// (or the user) distilled from existing decks, injected into the slide spec so
+// every authoring session matches it without re-reading decks each time.
+export interface MdpStyleProfile {
+  text?: string;        // the style description itself (free-form Markdown)
+  analyzedAt?: string;  // ISO date the profile was (re)generated
+  basedOn?: string[];   // deck paths it was distilled from (freshness reference)
+}
+
 export interface MdpContent {
   version?: number;
   modules?: Record<string, boolean>;
@@ -18,6 +27,7 @@ export interface MdpContent {
   // Free-text house style / instructions for AIs authoring decks under this folder
   // (appended to the slide spec). Accumulates: parent notes then child notes both apply.
   aiNotes?: string;
+  styleProfile?: MdpStyleProfile;
 }
 
 export const CONTENT_FILE = 'content.json';
@@ -39,6 +49,20 @@ export function effectiveDisabledModules(chain: MdpContent[]): string[] {
 // so lab-wide guidance and a folder-specific addendum both reach the AI.
 export function effectiveAiNotes(chain: MdpContent[]): string {
   return chain.map((c) => (c.aiNotes || '').trim()).filter(Boolean).join('\n\n');
+}
+
+// Effective writing-style profile for a chain (root→nearest): texts accumulate
+// (lab-wide style + folder refinements, the nearer read later so it takes
+// precedence in the prompt); `nearest` is the closest defined profile object,
+// for provenance/freshness display.
+export function effectiveStyleProfile(chain: MdpContent[]): { text: string; nearest?: MdpStyleProfile } {
+  let nearest: MdpStyleProfile | undefined;
+  const parts: string[] = [];
+  for (const c of chain) {
+    const t = (c.styleProfile?.text || '').trim();
+    if (t) { parts.push(t); nearest = c.styleProfile; }
+  }
+  return { text: parts.join('\n\n'), nearest };
 }
 
 // Effective enabled state of `name` for a chain ending at a target `.mdp`.

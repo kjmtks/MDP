@@ -27,6 +27,10 @@ export interface RawBlock {
 export interface SlideData {
   html: string;
   noteHtml: string;
+  // `<!-- @script: … -->` — the manuscript the presenter intends to READ ALOUD
+  // (distinct from @note, which is a supplementary reminder). Drives the talk-time
+  // estimate (reading speed) and is shown in the presenter view.
+  scriptHtml: string;
   raw: string;
   className: string;
   id?: string;                 // `<!-- @id name -->` — hyperlink anchor target
@@ -169,6 +173,7 @@ export const renderSlideHTML = (block: RawBlock, globalContext: SlideContext, pa
   const { masked, restore } = protectFences(block.rawContent);
   let slideMarkdown = masked;
   const extractedNotes: string[] = [];
+  const extractedScripts: string[] = [];
   let pageClassName = "normal";
   let slideId: string | undefined = undefined;
   let localHeader: string | undefined = undefined;
@@ -196,6 +201,13 @@ export const renderSlideHTML = (block: RawBlock, globalContext: SlideContext, pa
     return "";
   });
   const noteMarkdown = restore(extractedNotes.join('\n\n'));
+  // `<!-- @script: … -->` — the read-aloud manuscript (separate from @note).
+  const scriptRegex = /<!--\s*@script:\s*([\s\S]*?)\s*-->/g;
+  slideMarkdown = slideMarkdown.replace(scriptRegex, (_, scriptContent) => {
+    extractedScripts.push(scriptContent.trim());
+    return "";
+  });
+  const scriptMarkdown = restore(extractedScripts.join('\n\n'));
   const pageClassRegex = /<!--\s*@pageclass\s*([\s\S]*?)\s*-->/g;
   slideMarkdown = slideMarkdown.replace(pageClassRegex, (_, pageClassContent) => {
     pageClassName = pageClassContent.trim();
@@ -259,6 +271,11 @@ export const renderSlideHTML = (block: RawBlock, globalContext: SlideContext, pa
     gfm: true,
     async: false
   }) as string : "";
+  const scriptHtml = scriptMarkdown ? marked.parse(scriptMarkdown, {
+    breaks: true,
+    gfm: true,
+    async: false
+  }) as string : "";
 
   // Header/footer are now full block regions: run modules then markdown so a
   // module (e.g. @stamp, @qr) placed inside renders. Idempotent if the document
@@ -276,6 +293,7 @@ export const renderSlideHTML = (block: RawBlock, globalContext: SlideContext, pa
   return {
     html: slideHtml,
     noteHtml: noteHtml,
+    scriptHtml: scriptHtml,
     raw: block.rawContent,
     range: { startLine: block.startLine, endLine: block.endLine },
     className: pageClassName,

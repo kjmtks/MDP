@@ -17,6 +17,7 @@ import { registerParsedEffect, clearAllEffects } from '../../features/effects/ef
 import type { ModuleData } from '../../utils/moduleParser';
 import type { EffectData } from '../../utils/effectParser';
 import { useDrawing } from '../../features/drawing/hooks/useDrawing';
+import { estimateDeckSeconds, slideSeconds, explicitSlideSeconds, formatClock } from '../../features/slide/talkTime';
 import { SlideControls, type AppMode } from '../../features/drawing/components/SlideControls';
 import type { Stroke } from '../../features/drawing/components/DrawingOverlay';
 
@@ -115,6 +116,16 @@ export default function PresenterPage() {
   const timerStartRef = useRef<number | null>(null);
   const accumulatedTimeRef = useRef<number>(0);
   const animationFrameRef = useRef<number>(0);
+  // Elapsed-timer value (ms) captured when the CURRENT slide was entered, so the
+  // per-slide countdown measures time spent on THIS slide.
+  const slideBaselineMsRef = useRef<number>(0);
+
+  // Speaking-time budgets (seconds): whole deck + the current slide. From each
+  // slide's `<!-- @time … -->` when set, else `@script` read time, else estimate.
+  const readingCpm = appSettings.readingCharsPerMin;
+  const deckSeconds = useMemo(() => estimateDeckSeconds(slides, readingCpm), [slides, readingCpm]);
+  const currentBudgetSec = useMemo(() => (currentSlide ? slideSeconds(currentSlide, readingCpm) : 0), [currentSlide, readingCpm]);
+  const currentHasExplicit = !!(currentSlide && explicitSlideSeconds(currentSlide.raw || '') != null);
 
   const { send } = useSync(channelId, token, (msg: SyncMessage) => {
     switch (msg.type) {
@@ -177,6 +188,8 @@ export default function PresenterPage() {
     setPrevIndex(currentIndex);
     setIsEditingNote(false);
     setNoteDraft(extractNoteText(currentSlide));
+    // Restart the per-slide countdown from the current elapsed value.
+    slideBaselineMsRef.current = elapsedTime;
   }
 
   const handleToggleEditNote = useCallback(() => {
@@ -467,6 +480,13 @@ export default function PresenterPage() {
 
                 <Panel defaultSize={60} minSize={10}>
                   <div className="presenter-notes" style={{ width: '100%', height: '100%', padding: '15px', boxSizing: 'border-box', overflowY: 'auto', backgroundColor: '#1e1e1e', color: '#ddd', display: 'flex', flexDirection: 'column' }}>
+                    {/* Read-aloud @script manuscript, shown prominently above notes. */}
+                    {currentSlide?.scriptHtml && (
+                      <div style={{ flexShrink: 0, marginBottom: 12 }}>
+                        <span className="presenter-label" style={{ color: '#8ab4f8' }}>SCRIPT — read aloud</span>
+                        <div className="markdown-body" style={{ marginTop: 6, padding: '10px 12px', background: '#232a36', borderLeft: '3px solid #3b82f6', borderRadius: 4, fontSize: '1.05rem', lineHeight: 1.7 }} dangerouslySetInnerHTML={{ __html: currentSlide.scriptHtml }} />
+                      </div>
+                    )}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', borderBottom: '1px solid #444', paddingBottom: '8px', flexShrink: 0 }}>
                       <span className="presenter-label">NOTES</span>
                       <Button
@@ -512,7 +532,7 @@ export default function PresenterPage() {
         )}
       </div>
 
-      <div className="presenter-footer" style={{ flexShrink: 0 }}>
+      <div className="presenter-footer" style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div className="presenter-timer-controls" style={{display:'flex', alignItems:'center'}}>
           <span style={{fontSize:'2rem', fontWeight:'bold', color: isTimerRunning ? '#4caf50' : '#eee', width:'160px', fontFamily:'monospace'}}>
             {formatTime(elapsedTime)}
@@ -524,6 +544,31 @@ export default function PresenterPage() {
             <RefreshIcon />
           </button>
         </div>
+
+        {/* Speaking-time countdowns: this slide's remaining budget + the whole
+            deck's remaining. Green → amber (<20% left) → red (over). */}
+        {(() => {
+          const slideRemain = currentBudgetSec - Math.max(0, (elapsedTime - slideBaselineMsRef.current) / 1000);
+          const totalRemain = deckSeconds - elapsedTime / 1000;
+          const col = (rem: number, budget: number) => rem < 0 ? '#f04747' : (budget > 0 && rem < budget * 0.2) ? '#f0a020' : '#4caf50';
+          const Cell = ({ label, remain, budget, sub }: { label: string; remain: number; budget: number; sub: string }) => (
+            <div style={{ textAlign: 'center', minWidth: 110 }}>
+              <div style={{ fontSize: '0.68rem', color: '#888', letterSpacing: 1 }}>{label}</div>
+              <div style={{ fontSize: '1.7rem', fontFamily: 'monospace', fontWeight: 'bold', color: col(remain, budget), lineHeight: 1.1 }}>
+                {formatClock(remain)}
+              </div>
+              <div style={{ fontSize: '0.62rem', color: '#666' }}>{sub}</div>
+            </div>
+          );
+          return (
+            <div style={{ display: 'flex', gap: 28, alignItems: 'center', paddingRight: 12 }}>
+              <Cell label="THIS SLIDE" remain={slideRemain} budget={currentBudgetSec}
+                sub={`${currentHasExplicit ? '' : '≈ '}budget ${formatClock(currentBudgetSec)}`} />
+              <Cell label="TOTAL LEFT" remain={totalRemain} budget={deckSeconds}
+                sub={`of ${formatClock(deckSeconds)}`} />
+            </div>
+          );
+        })()}
       </div>
     </div>
   );

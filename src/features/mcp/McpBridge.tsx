@@ -28,6 +28,7 @@ export interface McpCtx {
   themeCssUrl: string;
   scopeDirs: string[];
   aiNotes: string;
+  styleProfile: string;
   // 'confirm' → review dialog before an AI-authored asset is saved; 'auto' → silent.
   assetWritePolicy: 'confirm' | 'auto';
   loadFile: (path: string) => Promise<void> | void;
@@ -38,7 +39,9 @@ export interface McpCtx {
 }
 
 interface MeasureJob {
-  slides: Slide[];
+  // Each carries its ORIGINAL 1-based slide number `n` (so a measured SUBSET still
+  // reports correct slide numbers).
+  items: { n: number; slide: Slide }[];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   resolve: (m: any) => void;
   reject: (e: unknown) => void;
@@ -202,11 +205,12 @@ export const McpBridge: React.FC<{ ctx: McpCtx }> = ({ ctx }) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const results: any[] = [];
       host.querySelectorAll<HTMLElement>('[data-mcp-slide]').forEach((box) => {
-        const n = Number(box.dataset.mcpSlide);
+        const n = Number(box.dataset.mcpSlide); // already the 1-based slide number
         const content = box.querySelector<HTMLElement>('.slide-content');
         if (!content) return;
-        results.push({ slide: n + 1, ...measureContent(content, width, height) });
+        results.push({ slide: n, ...measureContent(content, width, height) });
       });
+      results.sort((a, b) => a.slide - b.slide);
       measureJob.resolve({
         slideSize: { width, height },
         slides: results,
@@ -248,27 +252,35 @@ export const McpBridge: React.FC<{ ctx: McpCtx }> = ({ ctx }) => {
           const themes = await apiClient.getThemes(c.scopeDirs).catch(() => []);
           const modules = Object.values(loadedModules).map((m) => m.config).filter((m) => !isModuleDisabled(m.name));
           const effects = Object.values(loadedEffects).map((e) => e.config);
-          return buildSlideSpecPrompt(modules, { effects, themes, aiNotes: c.aiNotes }) + `
+          return buildSlideSpecPrompt(modules, { effects, themes, aiNotes: c.aiNotes, styleProfile: c.styleProfile }) + `
 
 ## MCP workflow tips
 
-- **Match the user's style.** Before authoring, call search_decks / list_decks and
-  get_deck_outline (cheap) or read_deck on one or two existing decks; mirror their
-  tone, wording, slide density, heading style and module choices. Start new decks
-  from the user's template (list_templates / read_template) when one exists.
+- **Match the user's style.** If the spec already contains "The author's writing
+  style" section, it is a CACHED profile — just follow it (no need to re-read decks).
+  If it's absent (or looks stale), call get_style_samples, distill a concise profile,
+  and save_style_profile to cache it for next time. Start new decks from the user's
+  template (list_templates / read_template) when one exists.
 - **Use real assets.** list_images shows the image aliases available to this deck —
   reference them as ![alt](@alias); read_image lets you SEE a figure before writing
   its caption.
-- **Speaker script.** To write presenter notes (a talk manuscript) without altering
-  the slides, use set_notes per slide (mode="append" to build it up). Notes feed the
-  presenter view and the deck's talk-time estimate; get_deck_outline reports each
-  slide's note volume.
+- **Speaker script.** To write a read-aloud talk manuscript without altering the
+  slides, use set_script per slide (mode="append" to build it up) — it shows
+  prominently in the presenter view and drives the talk-time estimate at the user's
+  reading speed. Use set_notes only for brief supplementary reminders (they do NOT
+  affect time). To hit a target talk length, distribute set_time budgets across
+  slides. get_deck_outline reports each slide's scriptChars/noteChars/seconds.
 - **Verify in three passes.** After writing or editing: (1) validate_deck — fixes
   unknown modules/themes/effects and bad parameters deterministically; (2)
   measure_slides — overflowX/overflowY > 0 px means clipped content (split or
   shorten); fillY < ~0.5 leaves the lower half unused; coverage far below the deck's
   typical value looks empty; (3) render_slide_image / render_deck_overview for a
   visual check. Re-run until clean.
+- **Spend few tokens.** Orient with get_deck_outline (cheap), not read_deck. Read
+  only the slides you need (\`read_deck slides:[n]\`) and measure only what you changed
+  (\`measure_slides slides:[n]\`). Set notes/scripts/times across a deck in ONE
+  batch_set_slides call, not one tool call per slide. Edit with patch_deck /
+  replace_slide rather than rewriting the whole deck.
 - **No fitting part? Create it.** You may author new modules, animation effects and
   themes: study get_asset_templates (+ read_module / read_theme for real examples),
   then write_asset. Give a module an <aiSpec> so future AIs know how to use it, and
@@ -333,6 +345,13 @@ export const McpBridge: React.FC<{ ctx: McpCtx }> = ({ ctx }) => {
           return { applied: true };
         }
         case 'refreshTree': {
+          c.onRefreshTree();
+          return { ok: true };
+        }
+        case 'contentChanged': {
+          // A `.mdp/content.json` was written (e.g. save_style_profile) → re-read the
+          // cascade so the new profile/notes inject into the spec immediately.
+          window.dispatchEvent(new CustomEvent('mdp-content-changed'));
           c.onRefreshTree();
           return { ok: true };
         }
@@ -409,13 +428,21 @@ export const McpBridge: React.FC<{ ctx: McpCtx }> = ({ ctx }) => {
         case 'measureSlides': {
           const d = activeDeck();
           if (!d.slideCount) throw new Error('The active deck has no slides yet.');
-          if (d.slideCount > 80) throw new Error('Deck too large to measure at once (max 80 slides).');
+          // Optional 1-based `slides` filter — measure ONLY those (token/DOM saver).
+          const wanted: number[] | undefined = Array.isArray(params.slides) && params.slides.length
+            ? [...new Set(params.slides.map(Number))].filter((n) => Number.isInteger(n) && n >= 1 && n <= d.slideCount)
+            : undefined;
+          const items = c.slides
+            .map((slide: Slide, i: number) => ({ n: i + 1, slide }))
+            .filter((it: { n: number }) => !wanted || wanted.includes(it.n));
+          if (!items.length) throw new Error('No matching slides to measure.');
+          if (items.length > 80) throw new Error('Too many slides to measure at once (max 80) — pass a `slides` subset.');
           // One at a time: a second concurrent job would replace the first, leaving
           // its bridge request to dangle until the relay timeout.
           if (measureBusyRef.current) throw new Error('measure_slides is already running — wait for it to finish.');
           measureBusyRef.current = true;
           try {
-            return await new Promise((resolve, reject) => setMeasureJob({ slides: c.slides, resolve, reject }));
+            return await new Promise((resolve, reject) => setMeasureJob({ items, resolve, reject }));
           } finally {
             measureBusyRef.current = false;
           }
@@ -463,8 +490,8 @@ export const McpBridge: React.FC<{ ctx: McpCtx }> = ({ ctx }) => {
           aria-hidden
           style={{ position: 'fixed', left: -100000, top: 0, opacity: 0, pointerEvents: 'none', zIndex: -1 }}
         >
-          {measureJob.slides.map((s, i) => (
-            <div key={i} data-mcp-slide={i}>
+          {measureJob.items.map(({ n, slide: s }) => (
+            <div key={n} data-mcp-slide={n}>
               <SlideView
                 html={s.html} raw={s.raw} className={s.className} header={s.header} footer={s.footer}
                 basePath={ctx.basePath} slideSize={size}

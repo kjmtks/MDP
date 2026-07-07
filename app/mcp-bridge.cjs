@@ -232,8 +232,39 @@ function expandBinary(content, sourceText) {
   return { text, unresolved };
 }
 
+// Speaking-time model — MUST stay identical to the app's talkTime.ts so the number
+// an AI sees (get_deck_outline) equals the one shown in the slide overview. Explicit
+// `@time` wins; else a read-aloud `@script` ⇒ script length / reading speed; else
+// complexity-driven. `cpm` (reading chars/min) is the user's calibrated setting.
+const TT = { BASE: 20, BULLET: 7, VISUAL: 20, BODY_W: 0.5 };
+function parseTimeToSeconds(str) {
+  const s = String(str || '').trim().toLowerCase();
+  if (!s) return null;
+  let m = s.match(/^(\d+):(\d{1,2})$/);
+  if (m) return Number(m[1]) * 60 + Number(m[2]);
+  let total = 0, matched = false;
+  const re = /(\d+(?:\.\d+)?)\s*(h|hr|hours?|m|min|minutes?|s|sec|seconds?)/g;
+  while ((m = re.exec(s))) { matched = true; const v = parseFloat(m[1]); total += m[2][0] === 'h' ? v * 3600 : m[2][0] === 'm' ? v * 60 : v; }
+  if (matched) return Math.round(total);
+  if (/^\d+$/.test(s)) return parseInt(s, 10);
+  return null;
+}
+function slideSecondsFromRaw(raw, cpm) {
+  const cps = (cpm > 0 ? cpm : 320) / 60;
+  const em = String(raw).match(/<!--\s*@time\s+([\s\S]*?)\s*-->/i);
+  const explicit = em ? parseTimeToSeconds(em[1]) : null;
+  if (explicit != null) return explicit;
+  const scriptChars = [...raw.matchAll(/<!--\s*@script:\s*([\s\S]*?)-->/g)].map((m) => m[1]).join('').replace(/\s+/g, '').length;
+  if (scriptChars > 0) return Math.round(scriptChars / cps);
+  const noC = raw.replace(/<!--[\s\S]*?-->/g, ' ');
+  const bullets = (noC.match(/^[ \t]*(?:[-*+]|\d+\.)\s+\S/gm) || []).length;
+  const visuals = Math.floor((raw.match(/```/g) || []).length / 2) + (noC.match(/!\[[^\]]*\]\(/g) || []).length;
+  const body = noC.replace(/\s+/g, '').length;
+  return Math.round(TT.BASE + bullets * TT.BULLET + visuals * TT.VISUAL + (body / cps) * TT.BODY_W);
+}
+
 // Low-token per-slide structure summary (heading, bullets, modules, notes, volume).
-function outlineDeck(text) {
+function outlineDeck(text, cpm) {
   const blocks = splitBlocks(text);
   const meta = blocks[0] || '';
   const slides = blocks.slice(1).map((raw, i) => {
@@ -244,6 +275,9 @@ function outlineDeck(text) {
     const notes = [...raw.matchAll(/<!--\s*@note:\s*([\s\S]*?)-->/g)].map((m) => m[1]);
     const chars = noComments.replace(/\s+/g, '').length;
     const noteChars = notes.join('').replace(/\s+/g, '').length;
+    const scriptChars = [...raw.matchAll(/<!--\s*@script:\s*([\s\S]*?)-->/g)].map((m) => m[1]).join('').replace(/\s+/g, '').length;
+    const explicitTime = (raw.match(/<!--\s*@time\s+([\s\S]*?)\s*-->/i) || [])[1];
+    const hidden = /<!--\s*@hide\s*-->/i.test(raw);
     return {
       slide: i + 1,
       heading: heading || undefined,
@@ -251,20 +285,22 @@ function outlineDeck(text) {
       modules: modules.length ? modules : undefined,
       chars,
       ...(noteChars ? { noteChars } : {}),
+      ...(scriptChars ? { scriptChars } : {}),
+      // Per-slide speaking-time estimate (seconds); `explicitTime` set = from @time.
+      seconds: hidden ? 0 : slideSecondsFromRaw(raw, cpm),
+      ...(explicitTime ? { explicitTime: explicitTime.trim() } : {}),
       ...(/<!--\s*@cover\s*-->/i.test(raw) ? { cover: true } : {}),
-      ...(/<!--\s*@hide\s*-->/i.test(raw) ? { hidden: true } : {}),
+      ...(hidden ? { hidden: true } : {}),
     };
   });
-  // Rough speaking-time estimate: notes are the script when present, else slide
-  // text; ~320 chars/min (Japanese ≈300–350; adjust mentally for English).
-  const speakChars = slides.reduce((a, s) => a + (s.noteChars || s.chars), 0);
+  const totalSeconds = slides.reduce((a, s) => a + (s.hidden ? 0 : s.seconds), 0);
   return {
     title: metaField(meta, 'title') || undefined,
     subtitle: metaField(meta, 'subtitle') || undefined,
     theme: metaField(meta, 'theme') || undefined,
     tags: metaField(meta, 'tags') ? metaField(meta, 'tags').split(/[,;]/).map((t) => t.trim()).filter(Boolean) : undefined,
     slideCount: slides.length,
-    estimatedMinutes: Math.round((speakChars / 320) * 10) / 10,
+    estimatedMinutes: Math.round((totalSeconds / 60) * 10) / 10,
     slides,
   };
 }
@@ -351,7 +387,7 @@ function withDeckLock(key, fn) {
   deckLocks.set(key, run.then(() => {}, () => {}));
   return run;
 }
-const WRITE_METHODS = new Set(['write_deck', 'append_slide', 'replace_slide', 'patch_deck', 'edit_slides', 'set_notes']);
+const WRITE_METHODS = new Set(['write_deck', 'append_slide', 'replace_slide', 'patch_deck', 'edit_slides', 'set_notes', 'set_script', 'set_time', 'batch_set_slides']);
 
 // ---- tool implementations ------------------------------------------------------
 
@@ -382,16 +418,83 @@ async function callToolInner(method, p, baseDir) {
       return { decks, hint: 'Read one or two existing decks to imitate the user\'s style before authoring.' };
     }
 
+    case 'get_style_samples': {
+      // Sampled deck bodies (binary-elided) for distilling the author's style, plus
+      // the currently-cached profile + its freshness, so the AI can decide whether a
+      // (re)analysis is warranted. Scoped to a deck's `.mdp` chain (default: active).
+      const deckPath = p.deck ? requireDeckPath(p.deck) : await activeDeckPath().catch(() => '');
+      const chain = await mdpChainDirs(baseDir, deckPath);
+      const nearestDir = chain[chain.length - 1];
+      let profile = null;
+      try { profile = JSON.parse(await mdplink.vfsReadText(mdplink.resolve(baseDir, `${nearestDir}/content.json`))).styleProfile || null; } catch { /* none */ }
+      const tree = (await mdplink.buildTree(baseDir)).nodes || [];
+      const decks = [];
+      (function walk(nodes) { for (const n of nodes || []) { if (n.type === 'file' && /\.slide\.md$/i.test(n.name)) decks.push(n.path); if (n.children) walk(n.children); } })(tree);
+      const limit = Math.min(Math.max(Number(p.limit) || 3, 1), 8);
+      // Prefer decks nearest the scope folder (likely the same author/style).
+      const scoreDeck = (dp) => (deckPath && dp.startsWith(deckPath.split('/').slice(0, -1).join('/')) ? 0 : 1);
+      const chosen = decks.sort((a, b) => scoreDeck(a) - scoreDeck(b)).slice(0, limit);
+      const samples = [];
+      for (const dp of chosen) {
+        try {
+          const text = await mdplink.vfsReadText(mdplink.resolve(baseDir, dp));
+          samples.push({ path: dp, content: elideBinary(text).text.slice(0, 8000) });
+        } catch { /* skip unreadable */ }
+      }
+      return {
+        scope: chain, configDir: nearestDir,
+        currentProfile: profile,
+        deckCount: decks.length,
+        samples,
+        note: 'Distill a concise style profile (tone, formality, sentence length, slide density, bullet vs prose, module/diagram habits, JP/EN, signature phrasings) from these samples, then save it with save_style_profile. If currentProfile exists and its basedOn already covers these decks, re-analysis may be unnecessary.',
+      };
+    }
+
+    case 'save_style_profile': {
+      if (typeof p.profile !== 'string' || !p.profile.trim()) throw new Error('"profile" (the distilled style description) is required.');
+      const deckPath = p.deck ? requireDeckPath(p.deck) : await activeDeckPath().catch(() => '');
+      const chain = await mdpChainDirs(baseDir, deckPath);
+      const configDir = p.dir ? `${requireDeckPath(p.dir)}/.mdp` : chain[chain.length - 1];
+      let content = {};
+      try { content = JSON.parse(await mdplink.vfsReadText(mdplink.resolve(baseDir, `${configDir}/content.json`))) || {}; } catch { /* new */ }
+      if (typeof content !== 'object' || Array.isArray(content)) content = {};
+      content.version = content.version || 1;
+      content.styleProfile = {
+        text: p.profile.trim(),
+        ...(p.analyzedDate ? { analyzedAt: String(p.analyzedDate) } : {}),
+        ...(Array.isArray(p.basedOn) && p.basedOn.length ? { basedOn: p.basedOn.map(String) } : {}),
+      };
+      await mdplink.vfsWrite(mdplink.resolve(baseDir, `${configDir}/content.json`), Buffer.from(JSON.stringify(content, null, 2), 'utf-8'));
+      relay('contentChanged', {}, 5000).catch(() => {});
+      return { savedTo: `${configDir}/content.json`, note: 'Cached. It is now injected into get_slide_spec automatically — no need to re-read decks next time.' };
+    }
+
     case 'read_deck': {
       const deckPath = requireDeckPath(p.path);
       const cur = await currentDeckText(baseDir, deckPath);
-      const slideCount = Math.max(0, splitBlocks(cur.text).length - 1);
+      const blocks = splitBlocks(cur.text);
+      const slideCount = Math.max(0, blocks.length - 1);
+      const encWarn = cur.nonUtf8 ? { encodingWarning: 'This file did NOT decode as valid UTF-8 (it shows replacement characters). It is likely Shift_JIS/CP932 or similar. Do NOT rewrite it with write_deck/patch_deck/etc. — that would corrupt the text; ask the user to convert it to UTF-8 first.' } : {};
+
+      // TOKEN-SAVER: `slides` (1-based; 0 = meta page) returns ONLY those blocks,
+      // not the whole deck — for editing one slide of a long deck. Use
+      // get_deck_outline first to pick which.
+      if (Array.isArray(p.slides) && p.slides.length) {
+        const want = [...new Set(p.slides.map(Number))].filter((n) => Number.isInteger(n) && n >= 0 && n < blocks.length).sort((a, b) => a - b);
+        let elided = 0;
+        const out = want.map((n) => { const e = elideBinary(blocks[n]); elided += e.elided; return { slide: n, content: e.text }; });
+        return {
+          path: deckPath, openInEditor: cur.open, slideCount, ...encWarn,
+          ...(elided ? { binaryElided: 'Embedded images shortened to MDP_ELIDED_… placeholders (auto-restored on write; keep verbatim).' } : {}),
+          slides: out,
+        };
+      }
+
       const { text: content, elided } = elideBinary(cur.text);
       return {
-        path: deckPath, openInEditor: cur.open, slideCount,
-        ...(cur.nonUtf8 ? { encodingWarning: 'This file did NOT decode as valid UTF-8 (it shows replacement characters). It is likely Shift_JIS/CP932 or similar. Do NOT rewrite it with write_deck/patch_deck/etc. — that would corrupt the text; ask the user to convert it to UTF-8 first.' } : {}),
+        path: deckPath, openInEditor: cur.open, slideCount, ...encWarn,
         ...(elided ? { binaryElided: `${elided} embedded image(s) were shortened to MDP_ELIDED_… placeholders to save tokens. They are auto-restored on write, so the images are NOT lost even if you write_deck this content back — but keep each placeholder EXACTLY as-is. Prefer patch_deck / replace_slide / append_slide for edits (cheaper and safer).` } : {}),
-        ...(content.length > 40000 ? { sizeHint: 'Large deck — prefer get_deck_outline for orientation and patch_deck for edits.' } : {}),
+        ...(content.length > 40000 ? { sizeHint: 'Large deck — pass `slides:[n]` to read just the slides you need, or use get_deck_outline.' } : {}),
         content,
       };
     }
@@ -432,25 +535,94 @@ async function callToolInner(method, p, baseDir) {
       return { path: deckPath, slide: n, slideCount: blocks.length - 1, ...res };
     }
 
-    case 'set_notes': {
+    // set_notes / set_script share one implementation: attach a `<!-- @KIND: … -->`
+    // block to a slide without touching its visible content. @note = supplementary
+    // reminder; @script = the read-aloud manuscript (drives the talk-time estimate).
+    case 'set_notes':
+    case 'set_script': {
+      const kind = method === 'set_script' ? 'script' : 'note';
+      const field = method === 'set_script' ? 'script' : 'notes';
       const deckPath = requireDeckPath(p.path);
       const n = Number(p.slide);
-      if (typeof p.notes !== 'string') throw new Error('"notes" is required (empty string clears the note).');
-      if (p.notes.includes('-->')) throw new Error('Speaker notes must not contain "-->" (it would close the HTML comment).');
+      const textArg = p[field];
+      if (typeof textArg !== 'string') throw new Error(`"${field}" is required (empty string clears it).`);
+      if (textArg.includes('-->')) throw new Error(`The ${kind} must not contain "-->" (it would close the HTML comment).`);
       const cur = await currentDeckText(baseDir, deckPath);
       assertUtf8Writable(cur, deckPath);
       const blocks = splitBlocks(cur.text);
       if (!Number.isInteger(n) || n < 1 || n >= blocks.length) {
-        throw new Error(`"slide" must be 1 … ${blocks.length - 1} (notes attach to content slides, not the meta page).`);
+        throw new Error(`"slide" must be 1 … ${blocks.length - 1} (attaches to content slides, not the meta page).`);
       }
       let block = blocks[n];
-      // In 'replace' (default) strip existing @note directives; 'append' keeps them.
-      if (p.mode !== 'append') block = block.replace(/[ \t]*<!--\s*@note:[\s\S]*?-->[ \t]*\r?\n?/g, '');
-      const note = p.notes.trim();
-      if (note) block = `${block.replace(/\s*$/, '')}\n<!-- @note: ${note} -->\n`;
+      // In 'replace' (default) strip this kind's existing directives; 'append' keeps them.
+      if (p.mode !== 'append') block = block.replace(new RegExp(`[ \\t]*<!--\\s*@${kind}:[\\s\\S]*?-->[ \\t]*\\r?\\n?`, 'g'), '');
+      const content = textArg.trim();
+      if (content) block = `${block.replace(/\s*$/, '')}\n<!-- @${kind}: ${content} -->\n`;
       blocks[n] = block;
       const res = await writeDeckBack(baseDir, deckPath, joinBlocks(blocks), cur.open, cur);
-      return { path: deckPath, slide: n, mode: p.mode === 'append' ? 'append' : 'replace', cleared: !note, ...res };
+      return { path: deckPath, slide: n, mode: p.mode === 'append' ? 'append' : 'replace', cleared: !content, ...res };
+    }
+
+    // Set (or clear) a slide's explicit `<!-- @time … -->` budget.
+    case 'set_time': {
+      const deckPath = requireDeckPath(p.path);
+      const n = Number(p.slide);
+      const timeStr = String(p.time ?? '').trim();
+      if (timeStr && parseTimeToSeconds(timeStr) == null) {
+        throw new Error(`"time" is not a recognized duration — use forms like 90s, 2m, 1m30s, 1:30 (or "" to clear).`);
+      }
+      const cur = await currentDeckText(baseDir, deckPath);
+      assertUtf8Writable(cur, deckPath);
+      const blocks = splitBlocks(cur.text);
+      if (!Number.isInteger(n) || n < 1 || n >= blocks.length) {
+        throw new Error(`"slide" must be 1 … ${blocks.length - 1}.`);
+      }
+      let block = blocks[n].replace(/[ \t]*<!--\s*@time\s+[\s\S]*?-->[ \t]*\r?\n?/gi, '');
+      if (timeStr) block = `${block.replace(/\s*$/, '')}\n<!-- @time ${timeStr} -->\n`;
+      blocks[n] = block;
+      const res = await writeDeckBack(baseDir, deckPath, joinBlocks(blocks), cur.open, cur);
+      return { path: deckPath, slide: n, seconds: timeStr ? parseTimeToSeconds(timeStr) : null, cleared: !timeStr, ...res };
+    }
+
+    // TOKEN-SAVER: set @note/@script/@time on MANY slides in ONE call+write, instead
+    // of N round-trips. `edits`: [{slide, note?, script?, time?, mode?}]. Atomic —
+    // any invalid edit aborts the whole batch (nothing written).
+    case 'batch_set_slides': {
+      const deckPath = requireDeckPath(p.path);
+      const edits = Array.isArray(p.edits) ? p.edits : null;
+      if (!edits || !edits.length) throw new Error('"edits" (array of {slide, note?, script?, time?}) is required.');
+      const cur = await currentDeckText(baseDir, deckPath);
+      assertUtf8Writable(cur, deckPath);
+      const blocks = splitBlocks(cur.text);
+      const N = blocks.length - 1;
+      const setKind = (block, kind, value, mode) => {
+        const v = String(value);
+        if (v.includes('-->')) throw new Error(`slide edit "${kind}" must not contain "-->".`);
+        let b = block;
+        if (kind === 'time') {
+          b = b.replace(/[ \t]*<!--\s*@time\s+[\s\S]*?-->[ \t]*\r?\n?/gi, '');
+          const tv = v.trim();
+          if (tv) { if (parseTimeToSeconds(tv) == null) throw new Error(`"time" "${tv}" is not a recognized duration.`); b = `${b.replace(/\s*$/, '')}\n<!-- @time ${tv} -->\n`; }
+        } else {
+          if (mode !== 'append') b = b.replace(new RegExp(`[ \\t]*<!--\\s*@${kind}:[\\s\\S]*?-->[ \\t]*\\r?\\n?`, 'g'), '');
+          const tv = v.trim();
+          if (tv) b = `${b.replace(/\s*$/, '')}\n<!-- @${kind}: ${tv} -->\n`;
+        }
+        return b;
+      };
+      const edited = [];
+      for (const ed of edits) {
+        const n = Number(ed.slide);
+        if (!Number.isInteger(n) || n < 1 || n > N) throw new Error(`edit for slide ${ed.slide}: out of range 1…${N}.`);
+        let block = blocks[n];
+        if ('note' in ed) block = setKind(block, 'note', ed.note ?? '', ed.mode);
+        if ('script' in ed) block = setKind(block, 'script', ed.script ?? '', ed.mode);
+        if ('time' in ed) block = setKind(block, 'time', ed.time ?? '');
+        blocks[n] = block;
+        edited.push(n);
+      }
+      const res = await writeDeckBack(baseDir, deckPath, joinBlocks(blocks), cur.open, cur);
+      return { path: deckPath, edited, ...res };
     }
 
     case 'list_modules': {
@@ -481,7 +653,7 @@ async function callToolInner(method, p, baseDir) {
     case 'get_deck_outline': {
       const deckPath = p.path ? requireDeckPath(p.path) : await activeDeckPath();
       const { text } = await currentDeckText(baseDir, deckPath);
-      return { path: deckPath, ...outlineDeck(text), note: 'estimatedMinutes ≈ speaking time from notes (or slide text when a slide has no note) at ~320 chars/min.' };
+      return { path: deckPath, ...outlineDeck(text, ctx.getReadingCpm ? ctx.getReadingCpm() : 320), note: 'Per-slide `seconds` and total `estimatedMinutes` are a rough talk-time estimate: a slide\'s `<!-- @time … -->` if set (explicitTime), else read time of its `<!-- @script: … -->` at the user\'s reading speed, else a complexity estimate (base + bullets + visuals). @note does NOT affect time (it\'s supplementary). Set @time or write an @script for accuracy. Hidden slides excluded.' };
     }
 
     case 'search_decks': {
@@ -661,7 +833,7 @@ async function callToolInner(method, p, baseDir) {
     case 'open_deck': return await relay('openDeck', { path: requireDeckPath(p.path) }, 20000);
     case 'goto_slide': return await relay('gotoSlide', { slide: Number(p.slide) }, 10000);
     case 'insert_at_cursor': return await relay('insertAtCursor', { text: String(p.text ?? '') }, 10000);
-    case 'measure_slides': return await relay('measureSlides', {}, 120000);
+    case 'measure_slides': return await relay('measureSlides', { slides: Array.isArray(p.slides) ? p.slides.map(Number).filter((n) => Number.isInteger(n)) : undefined }, 120000);
     case 'render_slide_image': return await relay('renderSlideImage', { slide: Number(p.slide), width: p.width ? Number(p.width) : undefined }, 120000);
 
     default:

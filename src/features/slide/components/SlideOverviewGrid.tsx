@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { SlideScaler } from './SlideScaler';
 import { SlideView } from './SlideView';
 import { estimateTalkMinutes, formatTalkMinutes } from '../talkTime';
+import { useAppSettings } from '../../settings/AppSettingsContext';
 import type { Stroke } from '../../drawing/components/DrawingOverlay';
 
 interface SlideOverviewGridProps {
@@ -14,16 +15,18 @@ interface SlideOverviewGridProps {
 }
 
 export const SlideOverviewGrid: React.FC<SlideOverviewGridProps> = React.memo(({ slides, currentSlideIndex, slideSize, drawings, onSelectSlide }) => {
+  const { settings } = useAppSettings();
+  const cpm = settings.readingCharsPerMin;
   const visibleCount = slides.filter((s) => !s.isHidden).length;
-  // Estimated talk time — recomputed only when the slide set changes.
-  const minutes = useMemo(() => estimateTalkMinutes(slides), [slides]);
+  // Estimated talk time — recomputed when the slide set or reading speed changes.
+  const minutes = useMemo(() => estimateTalkMinutes(slides, cpm), [slides, cpm]);
   return (
     <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', backgroundColor: '#202020', display: 'flex', flexDirection: 'column' }}>
       <div style={{ position: 'sticky', top: 0, zIndex: 1, backgroundColor: '#202020', padding: '1rem 2rem 0.6rem', display: 'flex', alignItems: 'baseline', gap: '1.25rem', fontSize: '0.85rem', borderBottom: '1px solid var(--app-border)' }}>
         <span style={{ color: 'var(--app-text-secondary)', fontWeight: 600 }}>{visibleCount} slide{visibleCount === 1 ? '' : 's'}</span>
         <span
           style={{ color: 'var(--app-text-muted)' }}
-          title="Estimated speaking time — from speaker notes where present, else slide text (~320 chars/min). A pacing guide, not exact."
+          title="Estimated talk time — each slide's <!-- @time … --> if set, else read time from substantial notes, else a complexity estimate. Set @time per slide for accuracy. A pacing guide, not exact."
         >
           {formatTalkMinutes(minutes)} talk
         </span>

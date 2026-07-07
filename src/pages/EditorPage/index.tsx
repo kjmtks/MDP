@@ -7,7 +7,7 @@ import { type SnippetsCategory, type ThemeOption, type FileType, getCustomItemSt
 import { MainHeader } from '../../components/layout/MainHeader';
 import { MODULES_DIR, EFFECTS_DIR, IMAGES_DIR, SNIPPETS_DIR, TEMPLATES_DIR, THEMES_DIR } from '../../features/workspace/specialFolders';
 import { scopeConfigDirs, collectScopedAssetPaths } from '../../features/workspace/mdpScope';
-import { type MdpContent, parseContent, effectiveDisabledModules, effectiveAiNotes, contentPath } from '../../features/workspace/mdpContent';
+import { type MdpContent, parseContent, effectiveDisabledModules, effectiveAiNotes, effectiveStyleProfile, contentPath } from '../../features/workspace/mdpContent';
 import { McpBridge } from '../../features/mcp/McpBridge';
 import { useAppSettings } from '../../features/settings/AppSettingsContext';
 import { matchAction } from '../../features/settings/shortcuts/matcher';
@@ -398,6 +398,7 @@ export default function EditorPage() {
     return () => window.removeEventListener('mdp-content-changed', onChanged);
   }, []);
   const [scopeAiNotes, setScopeAiNotes] = useState('');
+  const [scopeStyleProfile, setScopeStyleProfile] = useState('');
   const disabledPrevRef = useRef<string>('');
   useEffect(() => {
     let cancelled = false;
@@ -410,16 +411,20 @@ export default function EditorPage() {
       if (cancelled) return;
       const disabled = effectiveDisabledModules(chain).sort();
       const aiNotes = effectiveAiNotes(chain);
+      const style = effectiveStyleProfile(chain).text;
       // Unchanged content → skip the moduleEpoch bump (it would re-parse the whole
       // deck) — this effect re-runs on every scope/tree change.
-      const key = `${disabled.join('\n')} | ${aiNotes}`;
+      const key = `${disabled.join('\n')} | ${aiNotes} | ${style}`;
       if (key === disabledPrevRef.current) return;
       disabledPrevRef.current = key;
       setDisabledModules(disabled);
       setScopeAiNotes(aiNotes);
+      setScopeStyleProfile(style);
       // Published for the Settings → AI prompt overlay (a separate component) to read.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (window as any).__mdpScopeAiNotes = aiNotes;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (window as any).__mdpScopeStyleProfile = style;
       refreshModuleSnippets();
       setModuleEpoch((e) => e + 1);
     })();
@@ -1885,7 +1890,7 @@ export default function EditorPage() {
       {isElectron() && (
         <McpBridge ctx={{
           currentFileName, markdownRef, currentSlideIndex, setCurrentSlideIndex,
-          slides, slideSize, basePath, themeCssUrl, scopeDirs, aiNotes: scopeAiNotes,
+          slides, slideSize, basePath, themeCssUrl, scopeDirs, aiNotes: scopeAiNotes, styleProfile: scopeStyleProfile,
           assetWritePolicy: appSettings.mcpAssetWrite,
           loadFile, handleInsertText, tabs, updateTabContent,
           onRefreshTree: handleManualRefresh,

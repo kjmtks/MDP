@@ -28,6 +28,9 @@ export interface AppSettings {
   // 'confirm' pops a review dialog first (modules can carry a <script> that runs in
   // the app); 'auto' writes it without asking.
   mcpAssetWrite: 'confirm' | 'auto';
+  // Reading speed (characters/minute) for the talk-time estimate of read-aloud
+  // `@script` slides. Per-person; calibratable in Settings. ~320 for Japanese.
+  readingCharsPerMin: number;
   // NOTE: module enable/disable is NO LONGER an app setting — it is per-folder,
   // stored in each `.mdp/content.json` and cascaded (see mdpContent / Configure
   // (.mdp) dialog), so it can differ per deck and live on a read-only NAS owner's
@@ -50,6 +53,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   pdfNameSource: 'filename',
   mcpEnabled: false,
   mcpAssetWrite: 'confirm',
+  readingCharsPerMin: 320,
 };
 
 // Merge a parsed (possibly partial / older) settings object over the defaults.
@@ -69,6 +73,7 @@ export function normalizeSettings(raw: unknown): AppSettings {
     pdfNameSource: r.pdfNameSource === 'title' ? 'title' : 'filename',
     mcpEnabled: r.mcpEnabled === true,
     mcpAssetWrite: r.mcpAssetWrite === 'auto' ? 'auto' : 'confirm',
+    readingCharsPerMin: typeof r.readingCharsPerMin === 'number' && r.readingCharsPerMin > 0 ? r.readingCharsPerMin : 320,
   };
 }
 

@@ -314,6 +314,11 @@ mcpBridge.init({
   getBaseDir: () => currentBaseDir,
   getWindow: () => mainWindow,
   getAssetPath: (sub) => getAssetPath(sub),
+  // Machine-local talk-time reading speed (chars/min) for get_deck_outline.
+  getReadingCpm: () => {
+    try { const s = JSON.parse(fsSync.readFileSync(path.join(app.getPath('userData'), 'mdp-app-settings.json'), 'utf8')); return (s && s.readingCharsPerMin) || 320; }
+    catch { return 320; }
+  },
 });
 ipcMain.handle('setMcpEnabled', async (event, enabled) => (enabled ? await mcpBridge.start() : mcpBridge.stop()));
 ipcMain.handle('getMcpInfo', async () => {
