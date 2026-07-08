@@ -25,6 +25,47 @@ export function stripStepMarkers(s: string): string {
   return String(s || '').replace(STEP_MARKER, '').trim();
 }
 
+// A `[[say: 読み]]` marker gives the SPOKEN reading of a nearby formula, so the
+// on-screen caption can render the math (`\(…\)` / `\[…\]`) while the narrator says
+// the reading instead of the raw LaTeX. Placed next to the math it annotates.
+const SAY_MARKER = /\[\[\s*say\s*:\s*([\s\S]*?)\]\]/gi;
+// KaTeX math spans in a script: inline `\(…\)` and display `\[…\]`.
+const MATH_SPAN = /\\\([\s\S]*?\\\)|\\\[[\s\S]*?\\\]/g;
+
+// True if the segment carries any KaTeX math (so its caption must be RENDERED, not
+// shown as raw LaTeX, and must not be split mid-formula).
+export function hasScriptMath(seg: string): boolean {
+  return /\\\(|\\\[/.test(String(seg || ''));
+}
+
+// The CAPTION form of a script segment: keep the math (`\(…\)` / `\[…\]`) so it can be
+// KaTeX-rendered on screen; drop the `[[say:…]]` readings and `[[step]]` markers.
+export function captionText(seg: string): string {
+  return String(seg || '')
+    .replace(SAY_MARKER, ' ')
+    .replace(STEP_MARKER, ' ')
+    .replace(/[ \t]+/g, ' ')
+    .trim();
+}
+
+// The SPOKEN form of a script segment: replace each `[[say: 読み]]` with its reading,
+// remove the math spans (a formula is SHOWN in the caption, and only SPOKEN when the
+// author gave it a `[[say:…]]` reading), and drop `[[step]]`. Whitespace is collapsed.
+export function speechText(seg: string): string {
+  return String(seg || '')
+    .replace(SAY_MARKER, ' $1 ')
+    .replace(MATH_SPAN, ' ')
+    .replace(STEP_MARKER, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Remove BOTH control marker families (`[[step]]`, `[[say:…]]`) for a plain reading /
+// display surface that renders math itself (presenter & rehearsal scriptHtml).
+export function stripScriptMarkers(s: string): string {
+  return String(s || '').replace(SAY_MARKER, ' ').replace(STEP_MARKER, ' ').replace(/[ \t]+/g, ' ').trim();
+}
+
 // How long the auto-play should DWELL on a slide that has no @script — proportional
 // to the slide's CONTENT, so a sparse slide isn't held as long as a dense one. Based
 // on the visible text length at the reading speed (time to read it once) plus a small

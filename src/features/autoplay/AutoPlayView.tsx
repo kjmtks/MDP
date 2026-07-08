@@ -12,13 +12,21 @@ import FullscreenExitIcon from '@mui/icons-material/FullscreenExit';
 import CloseIcon from '@mui/icons-material/Close';
 import { SlideView } from '../slide/components/SlideView';
 import { useAppSettings } from '../settings/AppSettingsContext';
+import renderMathInElement from 'katex/contrib/auto-render';
 import { synthesize, type Clip, type Utterance } from '../tts/ttsService';
-import { scriptSegments, captionChunks, slideDwellMs } from './autoplay';
+import { scriptSegments, captionChunks, slideDwellMs, captionText, speechText, hasScriptMath } from './autoplay';
 
-// One playable step of the narration: which slide + build step to show, and the
-// text to speak (null = a silent dwell, e.g. a script-less slide or a trailing
-// build reveal).
-interface PlayItem { slideIdx: number; buildStep: number; text: string | null; dwellMs: number }
+// One playable step of the narration: which slide + build step to show, the text to
+// SPEAK (`text`; null = a silent dwell), and the CAPTION to show (`caption`; may carry
+// `\(…\)` KaTeX that is rendered on screen). Caption and speech can differ: a formula
+// is rendered in the caption but spoken only via its `[[say:…]]` reading.
+interface PlayItem { slideIdx: number; buildStep: number; text: string | null; caption: string; dwellMs: number }
+
+// KaTeX delimiters for rendering a caption's inline/display math.
+const KATEX_DELIMS = [
+  { left: '\\(', right: '\\)', display: false },
+  { left: '\\[', right: '\\]', display: true },
+];
 
 export interface AutoPlaySlide {
   html: string; raw: string; className?: string; header?: string; footer?: string; stepCount: number;
@@ -52,20 +60,29 @@ export const AutoPlayView: React.FC<{
       if (segs.length === 0) {
         // No script → dwell proportional to the slide's actual content (not the
         // talk-time estimate, which is longer). Reveal all builds up front.
-        out.push({ slideIdx: si, buildStep: steps, text: null, dwellMs: slideDwellMs(s.html, cpm) });
+        out.push({ slideIdx: si, buildStep: steps, text: null, caption: '', dwellMs: slideDwellMs(s.html, cpm) });
         return;
       }
-      // One narration item PER CAPTION CHUNK — and the SAME chunk is what we
-      // synthesize AND display. So the on-screen caption is exactly the audio being
-      // spoken (zero drift), with no proportional-timing approximation. Long sentences
-      // are split at commas/clauses (captionChunks) into their own synth+caption units.
-      // All chunks of a segment share its build step; builds advance only at the
-      // segment ([[step]]) boundary.
+      // Caption and speech are derived SEPARATELY from each segment: the caption keeps
+      // `\(…\)` KaTeX (rendered on screen), the speech swaps in each `[[say:…]]` reading
+      // and drops the math. For prose (no math) they're identical and we split into
+      // caption chunks (the SAME chunk is synthesized AND shown → zero drift). All
+      // chunks of a segment share its build step; builds advance only at [[step]].
       segs.forEach((seg, k) => {
         const bs = Math.min(k, steps);
-        for (const chunk of captionChunks(seg)) out.push({ slideIdx: si, buildStep: bs, text: chunk, dwellMs: 90 });
+        const cap = captionText(seg);
+        const spk = speechText(seg);
+        if (hasScriptMath(seg)) {
+          // Keep a formula-bearing segment WHOLE (never split mid-`\(…\)`). If no
+          // `[[say:…]]` reading was given, the formula is shown but not spoken — dwell
+          // long enough for the audience to read it.
+          const readMs = Math.round(Math.max(1800, Math.min(7000, (cap.replace(/\\[()[\]]/g, '').length / (cpm / 60)) * 1000)));
+          out.push({ slideIdx: si, buildStep: bs, text: spk || null, caption: cap, dwellMs: spk ? 90 : readMs });
+        } else {
+          for (const chunk of captionChunks(spk)) out.push({ slideIdx: si, buildStep: bs, text: chunk, caption: chunk, dwellMs: 90 });
+        }
       });
-      if (steps > segs.length - 1) out.push({ slideIdx: si, buildStep: steps, text: null, dwellMs: 500 });
+      if (steps > segs.length - 1) out.push({ slideIdx: si, buildStep: steps, text: null, caption: '', dwellMs: 500 });
     });
     return out;
   }, [slides, cpm]);
@@ -81,6 +98,18 @@ export const AutoPlayView: React.FC<{
   const [showCaptions, setShowCaptions] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const captionRef = useRef<HTMLDivElement>(null);
+
+  // Render the caption's `\(…\)` / `\[…\]` math with KaTeX. textContent first (so any
+  // markup is safely escaped), then auto-render math in place; on any KaTeX error the
+  // caption simply stays as plain text — never throws into the render.
+  useEffect(() => {
+    const el = captionRef.current;
+    if (!el) return;
+    el.textContent = caption;
+    try { renderMathInElement(el, { delimiters: KATEX_DELIMS, throwOnError: false }); }
+    catch { /* keep the plain-text caption */ }
+  }, [caption, showCaptions]);
 
   const tokenRef = useRef(0);       // bumped to cancel the running loop
   const itemIdxRef = useRef(0);     // current playlist index (for resume)
@@ -146,7 +175,7 @@ export const AutoPlayView: React.FC<{
       if (tokenRef.current !== my) { await disposeQuietly(curClip); return; }
       itemIdxRef.current = i;
       const item = playlist[i];
-      setSlideIdx(item.slideIdx); setBuildStep(item.buildStep); setCaption('');
+      setSlideIdx(item.slideIdx); setBuildStep(item.buildStep); setCaption(item.caption || '');
       const nextClip = (i + 1 < playlist.length) ? synthClip(playlist[i + 1]) : null;
       if (item.text) {
         let clip: Clip;
@@ -157,7 +186,6 @@ export const AutoPlayView: React.FC<{
           await disposeQuietly(nextClip); return;
         }
         if (tokenRef.current !== my) { clip.dispose(); await disposeQuietly(nextClip); return; }
-        setCaption(item.text);            // caption == the exact text now being spoken
         const u = clip.play(); utterRef.current = u;
         await u.done;
         if (tokenRef.current !== my) { await disposeQuietly(nextClip); return; }
@@ -209,13 +237,13 @@ export const AutoPlayView: React.FC<{
           </div>
         )}
         {showCaptions && caption && (
-          <div style={{
+          <div ref={captionRef} style={{
             position: 'absolute', left: '50%', bottom: 'clamp(16px, 4vh, 48px)', transform: 'translateX(-50%)',
             maxWidth: 'min(90%, 1100px)', padding: '8px 18px', borderRadius: 10,
             background: 'rgba(0,0,0,.72)', color: '#fff', textAlign: 'center',
             fontSize: 'clamp(16px, 2.4vw, 30px)', lineHeight: 1.35, fontWeight: 600,
             textShadow: '0 1px 3px rgba(0,0,0,.6)', pointerEvents: 'none', whiteSpace: 'pre-wrap',
-          }}>{caption}</div>
+          }} />
         )}
       </div>
 

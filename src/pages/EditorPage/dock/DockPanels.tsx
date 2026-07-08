@@ -43,6 +43,7 @@ import AccountTreeIcon from '@mui/icons-material/AccountTree';
 import { Sidebar } from '../../../features/fileTree/components/Sidebar';
 import { EditorPanel } from '../../../features/editor/components/EditorPanel';
 import { SlideView } from '../../../features/slide/components/SlideView';
+import { ErrorBoundary } from '../../../components/ErrorBoundary';
 import { PdfView } from '../../../features/pdf/PdfView';
 import { SlideScaler } from '../../../features/slide/components/SlideScaler';
 import { SlideControls } from '../../../features/drawing/components/SlideControls';
@@ -617,17 +618,22 @@ export const PreviewPanel: React.FC = () => {
             {p.slides.map((slide, index) => (
               index === p.currentSlideIndex && (
                 <div key={index} style={{ position: 'relative', width: '100%', height: '100%' }}>
-                  <SlideView
-                    html={slide.html} raw={slide.raw} basePath={p.basePath} pageNumber={slide.pageNumber} className={slide.className}
-                    isActive={true} slideSize={p.slideSize} isEnabledPointerEvents={p.mode === 'view'} header={slide.header} footer={slide.footer}
-                    drawings={p.drawings[index] || []}
-                    slideIndex={index} moduleRole={p.moduleRole}
-                    manipulate={p.manipulate}
-                    onSlideLink={p.onSlideLink}
-                    onAddStroke={(stroke) => { p.addStroke(index, stroke); p.send({ type: 'DRAW_STROKE', channelId: p.channelId, pageIndex: index, stroke }); }}
-                    isInteracting={p.mode === 'pen'} toolType={p.toolType} color={p.penColor} lineWidth={p.penWidth} penOnly={p.stylusOnly}
-                    onUpdateStrokes={(indices, dx, dy) => p.handleUpdateStrokes(index, indices, dx, dy)}
-                  />
+                  {/* Isolate the live slide render: a bad directive/markup throws here,
+                      not up through the whole editor. Recovers as soon as the slide's
+                      html/raw changes (i.e. the user edits the offending markup). */}
+                  <ErrorBoundary label="Slide preview" resetKeys={[slide.html, slide.raw]}>
+                    <SlideView
+                      html={slide.html} raw={slide.raw} basePath={p.basePath} pageNumber={slide.pageNumber} className={slide.className}
+                      isActive={true} slideSize={p.slideSize} isEnabledPointerEvents={p.mode === 'view'} header={slide.header} footer={slide.footer}
+                      drawings={p.drawings[index] || []}
+                      slideIndex={index} moduleRole={p.moduleRole}
+                      manipulate={p.manipulate}
+                      onSlideLink={p.onSlideLink}
+                      onAddStroke={(stroke) => { p.addStroke(index, stroke); p.send({ type: 'DRAW_STROKE', channelId: p.channelId, pageIndex: index, stroke }); }}
+                      isInteracting={p.mode === 'pen'} toolType={p.toolType} color={p.penColor} lineWidth={p.penWidth} penOnly={p.stylusOnly}
+                      onUpdateStrokes={(indices, dx, dy) => p.handleUpdateStrokes(index, indices, dx, dy)}
+                    />
+                  </ErrorBoundary>
                 </div>
               )
             ))}

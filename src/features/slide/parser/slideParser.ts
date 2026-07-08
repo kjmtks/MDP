@@ -204,9 +204,16 @@ export const renderSlideHTML = (block: RawBlock, globalContext: SlideContext, pa
   // `<!-- @script: … -->` — the read-aloud manuscript (separate from @note).
   const scriptRegex = /<!--\s*@script:\s*([\s\S]*?)\s*-->/g;
   slideMarkdown = slideMarkdown.replace(scriptRegex, (_, scriptContent) => {
-    // `[[step]]` markers drive the auto-narration build stepping; strip them from
-    // the DISPLAYED script (the auto-play reads them from the slide's raw markdown).
-    extractedScripts.push(scriptContent.trim().replace(/\[\[\s*step\s*\]\]/gi, ' ').replace(/\s+/g, ' ').trim());
+    // Strip the auto-narration control markers from the DISPLAYED script (the
+    // auto-play reads them from the slide's raw markdown): `[[step]]` drives build
+    // stepping, and `[[say: 読み]]` is the spoken reading of a formula — the presenter
+    // reads the rendered `\(…\)` math itself, so the phonetic hint is dropped here.
+    extractedScripts.push(
+      scriptContent.trim()
+        .replace(/\[\[\s*say\s*:\s*[\s\S]*?\]\]/gi, ' ')
+        .replace(/\[\[\s*step\s*\]\]/gi, ' ')
+        .replace(/\s+/g, ' ').trim(),
+    );
     return "";
   });
   const scriptMarkdown = restore(extractedScripts.join('\n\n'));

@@ -29,18 +29,31 @@ export const useSlideProcessor = (
   // ONE block (so `---` stays an <hr>, not a slide break) rendered through the SAME
   // pipeline (modules, KaTeX, mermaid, plantuml, charts, image refs) as slides.
   const blocks = useMemo(() => {
-    if (currentFileType === 'markdown') return splitMarkdownToBlocks(processedMarkdown);
-    // The generator treats block[0] as the meta/preamble page and renders content
-    // from block[1] on. A document has no preamble, so prepend an empty one and put
-    // the whole file in block[1] (one HTML output, `---` kept as <hr>).
-    if (currentFileType === 'doc') return [
-      { id: 'doc-pre', rawContent: '', startLine: 1, endLine: 1 },
-      { id: 'doc', rawContent: processedMarkdown, startLine: 1, endLine: processedMarkdown.split('\n').length },
-    ];
-    return [];
+    try {
+      if (currentFileType === 'markdown') return splitMarkdownToBlocks(processedMarkdown);
+      // The generator treats block[0] as the meta/preamble page and renders content
+      // from block[1] on. A document has no preamble, so prepend an empty one and put
+      // the whole file in block[1] (one HTML output, `---` kept as <hr>).
+      if (currentFileType === 'doc') return [
+        { id: 'doc-pre', rawContent: '', startLine: 1, endLine: 1 },
+        { id: 'doc', rawContent: processedMarkdown, startLine: 1, endLine: processedMarkdown.split('\n').length },
+      ];
+      return [];
+    } catch (e) {
+      // A malformed document must never crash the render — fall back to a single
+      // content block so the preview still shows the text (and can be fixed).
+      console.error('[MDP] slide split failed:', e);
+      return [
+        { id: 'err-pre', rawContent: '', startLine: 1, endLine: 1 },
+        { id: 'err', rawContent: processedMarkdown, startLine: 1, endLine: 1 },
+      ];
+    }
   }, [processedMarkdown, currentFileType]);
 
-  const globalContext = useMemo(() => parseGlobalContext(blocks.length > 0 ? blocks[0].rawContent : ""), [blocks]);
+  const globalContext = useMemo(() => {
+    try { return parseGlobalContext(blocks.length > 0 ? blocks[0].rawContent : ""); }
+    catch (e) { console.error('[MDP] meta parse failed:', e); return parseGlobalContext(""); }
+  }, [blocks]);
 
   const rawSlides = useSlideGenerator(blocks, globalContext, baseUrl, lastUpdated, moduleEpoch);
 

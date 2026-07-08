@@ -109,6 +109,14 @@ block on a single slide OVERRIDES the global one for that slide; an EMPTY block
     order. Markers are invisible on the slide and in the presenter view; they only
     pace the auto-play. Example: \`<!-- @script: First the problem. [[step]] Now the
     fix. -->\` on a slide whose second point is a \`@build\`.
+  - **Math in the script:** write formulas in KaTeX — \`\\(…\\)\` inline, \`\\[…\\]\`
+    display — and they are RENDERED in the on-screen subtitle (the caption and the
+    spoken audio are separate, so the caption can show real math). To have a formula
+    SPOKEN, add its reading right after it as \`[[say: よみ]]\`; a formula with no
+    \`[[say:…]]\` is shown but not read aloud. Example:
+    \`基本角周波数を \\(\\omega_0 = 2\\pi/T\\) [[say: オメガゼロ イコール 2パイ割るティー]] とおくと，…\`
+    — the caption shows \\(\\omega_0=2\\pi/T\\); the narrator says "オメガゼロ イコール 2パイ割るティー".
+    Prefer KaTeX + \`[[say:…]]\` over spelling maths out phonetically in plain text.
 - \`<!-- @time 90s -->\` — this slide's speaking-time budget (overrides the estimate).
   Accepts \`90s\`, \`2m\`, \`1m30s\`, \`1:30\` (mm:ss). Shown live in the presenter view
   (per-slide + whole-deck countdown).
@@ -333,7 +341,9 @@ Timing
   view's countdown. Spend more time on complex/important slides, less on covers.
 - If the user wants a spoken SCRIPT, put it in \`<!-- @script: … -->\` (not @note) —
   that both provides the read-aloud text in the presenter view AND makes the
-  talk-time estimate reflect it. Reserve @note for brief reminders.
+  talk-time estimate reflect it. Reserve @note for brief reminders. Write any maths in
+  the script as KaTeX (\`\\(…\\)\`) so the subtitle renders it, and give each formula a
+  spoken reading with \`[[say: よみ]]\` (see @script above).
 
 Consistency
 - Set the theme and aspect ONCE on the meta page (don't repeat per slide); choose

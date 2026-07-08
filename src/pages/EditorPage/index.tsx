@@ -632,25 +632,33 @@ export default function EditorPage() {
 
   const processedMarkdown = useMemo(() => {
     if (!previewMarkdown) return '';
-    // Resolve image aliases FIRST: strip `@image` def blocks and expand
-    // `![alt](@alias)` references to real urls/data. Done before everything else
-    // so modules, builds, marked, print and the remote rasterizer are all
-    // alias-aware, and resolved data URIs get the data:→blob: optimization below.
-    const imgPrefix = isElectron() ? 'mdp-file://' : '/files/';
-    let md = resolveImages(previewMarkdown, imageLibrary, (p) => `${imgPrefix}${p.replace(/^\//, '')}`).markdown;
-    md = applyModulesToMarkdown(md);
-    md = md.replace(/([，．、。])\$/g, '$1 $');
-    md = md.replace(/\$([^\x20-\x7E\s])/g, '$ $1');
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return md.replace(/!\[([^\]]*)\]\((data:image\/[^)]+)\)/g, (m: any, alt: any, dataUrl: any) => {
-      // Keep SVG (drawio) data-URIs as-is so SlideView can INLINE them (theme-
-      // styleable text, no <object> reload flicker). Only raster data-URIs get
-      // the blob-URL optimization. Blobbing SVGs would render them as opaque
-      // <img>, defeating inlining.
-      if (/^data:image\/svg/i.test(dataUrl)) return m;
-      const blobUrl = getBlobUrlFromBase64(dataUrl);
-      return `![${alt}](${blobUrl})`;
-    });
+    // This runs during render, so a throw here would blank the whole editor. Guard
+    // it: on any failure fall back to the raw markdown (unexpanded) so the preview
+    // still shows the text and the user can fix the offending markup.
+    try {
+      // Resolve image aliases FIRST: strip `@image` def blocks and expand
+      // `![alt](@alias)` references to real urls/data. Done before everything else
+      // so modules, builds, marked, print and the remote rasterizer are all
+      // alias-aware, and resolved data URIs get the data:→blob: optimization below.
+      const imgPrefix = isElectron() ? 'mdp-file://' : '/files/';
+      let md = resolveImages(previewMarkdown, imageLibrary, (p) => `${imgPrefix}${p.replace(/^\//, '')}`).markdown;
+      md = applyModulesToMarkdown(md);
+      md = md.replace(/([，．、。])\$/g, '$1 $');
+      md = md.replace(/\$([^\x20-\x7E\s])/g, '$ $1');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return md.replace(/!\[([^\]]*)\]\((data:image\/[^)]+)\)/g, (m: any, alt: any, dataUrl: any) => {
+        // Keep SVG (drawio) data-URIs as-is so SlideView can INLINE them (theme-
+        // styleable text, no <object> reload flicker). Only raster data-URIs get
+        // the blob-URL optimization. Blobbing SVGs would render them as opaque
+        // <img>, defeating inlining.
+        if (/^data:image\/svg/i.test(dataUrl)) return m;
+        const blobUrl = getBlobUrlFromBase64(dataUrl);
+        return `![${alt}](${blobUrl})`;
+      });
+    } catch (e) {
+      console.error('[MDP] markdown pre-processing failed:', e);
+      return previewMarkdown;
+    }
     // moduleEpoch: re-run `applyModulesToMarkdown` when a module/effect is
     // (re)registered — e.g. saving a `*.mdpmod.xml` — so the pinned deck reflects
     // the new module <render>/<script> output live, not just its <style>.
