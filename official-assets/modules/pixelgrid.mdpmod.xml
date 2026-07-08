@@ -1,0 +1,243 @@
+<module>
+  <name>pixelgrid</name>
+  <type>block</type>
+  <description>A grayscale pixel image of any R×C size. Cells hold a formula (KaTeX) or a value (auto-shaded black→white). An optional 2nd body section draws labelled projection-beam arrows (rows / columns / diagonals).</description>
+  <tags>matrices, grid, math</tags>
+  <aiSpec><![CDATA[
+A GRAYSCALE PIXEL IMAGE of ANY size (R rows × C columns) — draw a tomography /
+reconstruction image both symbolically (x_1 …) AND with concrete pixel values, and
+optionally overlay labelled PROJECTION BEAMS (arrows through the pixels).
+
+Block module. The body has ONE or TWO sections split by `<!-- @ -->`:
+
+SECTION 1 = the grid. One ROW per line, cells separated by ` | `. The grid size follows
+the body (3 lines of 3 cells = 3×3). Cell content:
+  • a plain number (e.g. 3, 1.5) → shaded by value AND shows the number
+  • a formula / text (e.g. \(x_1\)) → shown as-is (KaTeX), NOT shaded
+  • `disp::value` (e.g. \(x_1\)::3) → shows the label, shaded as if its value were 3
+Grayscale: value vmin → black, vmax → white (invert: true flips it). vmin default 0;
+vmax default = the largest value in the grid.
+
+SECTION 2 (optional) = projection beams, ONE per line, `spec : label`:
+  • `row N : <label>`  — horizontal beam through row N (1-based), arrow →
+  • `col N : <label>`  — vertical beam through column N, arrow ↓
+  • `diag : <label>`   — main diagonal beam (top-left → bottom-right), arrow ↘
+  • `adiag : <label>`  — anti-diagonal beam (top-right → bottom-left), arrow ↙
+The label is a formula (\(y_1\)) or a number; it is drawn in a chip at the beam's exit.
+Beam params: beamcolor (default #f97316), beammargin (px reserved around the grid for
+beams/labels, default 72).
+
+Other params: size (cell px, default 80), gap (default 4px), vmin, vmax, invert (bool),
+showvalue (bool, default true). For a hue-coloured numeric grid use @heatmap instead.
+
+<!-- @pixelgrid -->
+\(x_1\) | \(x_2\)
+\(x_3\) | \(x_4\)
+<!-- @ -->
+row 1 : \(y_1\)
+row 2 : \(y_2\)
+col 1 : \(y_3\)
+col 2 : \(y_4\)
+diag  : \(y_5\)
+adiag : \(y_6\)
+<!-- @end -->
+]]></aiSpec>
+
+  <parameters>
+    <param name="size" type="number" default="80" label="Cell size (px)" desc="Width/height of each square cell, in pixels." min="16" max="400" step="1" />
+    <param name="gap" type="number" default="4" label="Cell gap (px)" desc="Gap between cells, in pixels." min="0" max="40" step="1" />
+    <param name="vmin" type="number" default="" label="Scale min (→ black)" desc="Value mapped to black. Blank = 0." />
+    <param name="vmax" type="number" default="" label="Scale max (→ white)" desc="Value mapped to white. Blank = the largest value in the grid." />
+    <param name="invert" type="boolean" default="false" label="Invert (high = black)" desc="Flip the scale so a high value is dark instead of light." />
+    <param name="showvalue" type="boolean" default="true" label="Show number" desc="Print the number inside each numeric cell (off = pure shading)." />
+    <param name="beamcolor" type="color" default="#f97316" label="Beam color" desc="Color of the projection-beam arrows and their labels." />
+    <param name="beammargin" type="number" default="72" label="Beam margin (px)" desc="Space reserved around the grid for beams and their labels." min="0" max="200" step="1" />
+  </parameters>
+
+  <snippets>
+    <snippet>
+      <category>Math</category>
+      <label>Pixel grid 2×2 (symbolic)</label>
+      <text><![CDATA[<!-- @pixelgrid -->
+\(x_1\) | \(x_2\)
+\(x_3\) | \(x_4\)
+<!-- @end -->]]></text>
+      <description>2×2 grid of formulas (unshaded).</description>
+    </snippet>
+    <snippet>
+      <category>Math</category>
+      <label>Pixel grid 2×2 with projection beams</label>
+      <text><![CDATA[<!-- @pixelgrid -->
+\(x_1\) | \(x_2\)
+\(x_3\) | \(x_4\)
+<!-- @ -->
+row 1 : \(y_1\)
+row 2 : \(y_2\)
+col 1 : \(y_3\)
+col 2 : \(y_4\)
+diag  : \(y_5\)
+adiag : \(y_6\)
+<!-- @end -->]]></text>
+      <description>2×2 image with 6 labelled projection-beam arrows.</description>
+    </snippet>
+  </snippets>
+
+  <render><![CDATA[
+    const isNum = (v) => /^-?\d+(?:\.\d+)?$/.test(String(v).trim());
+    const md = (t) => (t && String(t).trim() !== '') ? ('\n\n' + t + '\n\n') : '';
+    const gridSrc = String(sections[0] || '');
+    const beamSrc = String(sections[1] || '');
+    const rows = gridSrc.split('\n').map((l) => l.replace(/\s+$/, '')).filter((l) => l.trim() !== '');
+    if (!rows.length) return '\n\n<div>(pixelgrid: 行ごとにセルを | で区切って書く)</div>\n\n';
+    const grid = rows.map((l) => l.split('|').map((c) => c.trim()));
+    const R = grid.length;
+    const C = Math.max.apply(null, grid.map((r) => r.length));
+    const parseCell = (raw) => {
+      const s = String(raw).trim();
+      const k = s.indexOf('::');
+      if (k >= 0) {
+        const disp = s.slice(0, k).trim();
+        const vs = s.slice(k + 2).trim();
+        return { disp: disp, val: isNum(vs) ? parseFloat(vs) : null, num: false };
+      }
+      if (s !== '' && isNum(s)) return { disp: s, val: parseFloat(s), num: true };
+      return { disp: s, val: null, num: false };
+    };
+    const parsed = grid.map((r) => { const a = r.map(parseCell); while (a.length < C) a.push({ disp: '', val: null, num: false }); return a; });
+    const vals = [];
+    parsed.forEach((r) => r.forEach((c) => { if (c.val != null) vals.push(c.val); }));
+    let lo = (args.vmin !== '' && args.vmin != null) ? parseFloat(args.vmin) : 0;
+    let hi = (args.vmax !== '' && args.vmax != null) ? parseFloat(args.vmax) : (vals.length ? Math.max.apply(null, vals) : 1);
+    if (!Number.isFinite(lo)) lo = 0;
+    if (!Number.isFinite(hi)) hi = 1;
+    if (hi === lo) hi = lo + 1;
+    const invert = String(args.invert) === 'true';
+    const showval = String(args.showvalue) !== 'false';
+    let S = parseFloat(args.size); if (!Number.isFinite(S) || S <= 0) S = 80;
+    let G = parseFloat(args.gap); if (!Number.isFinite(G) || G < 0) G = 4;
+
+    const beams = [];
+    beamSrc.split('\n').map((l) => l.trim()).filter(Boolean).forEach((line) => {
+      const ci = line.indexOf(':'); if (ci < 0) return;
+      const spec = line.slice(0, ci).trim().toLowerCase();
+      const label = line.slice(ci + 1).trim();
+      const m = spec.match(/^(row|col|diag|adiag)\s*(\d+)?/);
+      if (!m) return;
+      beams.push({ kind: m[1], idx: m[2] ? parseInt(m[2], 10) : 1, label: label });
+    });
+
+    const gridW = C * S + (C - 1) * G;
+    const gridH = R * S + (R - 1) * G;
+    const beamColor = (args.beamcolor && String(args.beamcolor).trim()) || '#f97316';
+    let M = beams.length ? parseFloat(args.beammargin) : 0;
+    if (!Number.isFinite(M) || M < 0) M = beams.length ? 72 : 0;
+    const totalW = gridW + 2 * M, totalH = gridH + 2 * M;
+    const ox = M, oy = M;
+    const cx = (j) => ox + j * (S + G) + S / 2;
+    const cy = (i) => oy + i * (S + G) + S / 2;
+    const gl = ox, gr = ox + gridW, gt = oy, gb = oy + gridH;
+
+    // Positioning + shading live on the OUTER "slot" div (inline style). The inner
+    // content div carries ONLY a class and `\n\n…\n\n`, exactly like @callout's body,
+    // so marked re-parses it as Markdown + KaTeX on every surface (incl. thumbnails).
+    let cellsHtml = '';
+    parsed.forEach((r, i) => { r.forEach((c, j) => {
+      let slot = 'position:absolute; left:' + (ox + j * (S + G)) + 'px; top:' + (oy + i * (S + G)) + 'px; width:' + S + 'px; height:' + S + 'px;';
+      let cls = 'mdp-pg-cell', text = c.disp;
+      if (c.num && !showval) text = '';
+      if (c.val != null) {
+        let t = (c.val - lo) / (hi - lo); t = Math.max(0, Math.min(1, t));
+        const level = invert ? (1 - t) : t;
+        const g = Math.round(level * 255);
+        slot += ' background:rgb(' + g + ',' + g + ',' + g + '); color:' + (level < 0.5 ? '#ffffff' : '#111111') + ';';
+        cls += ' mdp-pg-shaded';
+      }
+      cellsHtml += '<div class="mdp-pg-slot" style="' + slot + '"><div class="' + cls + '">' + md(text) + '</div></div>';
+    }); });
+
+    let svg = '', labels = '';
+    if (beams.length) {
+      const e = Math.max(14, M * 0.42);
+      const loff = M * 0.72;
+      const ah = 11, aw = 9;
+      const arrow = (x1, y1, x2, y2) => {
+        const dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy) || 1;
+        const ux = dx / len, uy = dy / len, px = -uy, py = ux;
+        const bx = x2 - ux * ah, by = y2 - uy * ah;
+        const p1x = bx + px * aw / 2, p1y = by + py * aw / 2, p2x = bx - px * aw / 2, p2y = by - py * aw / 2;
+        return '<line x1="' + x1.toFixed(1) + '" y1="' + y1.toFixed(1) + '" x2="' + x2.toFixed(1) + '" y2="' + y2.toFixed(1) + '" stroke="' + beamColor + '" stroke-width="3" stroke-linecap="round" opacity="0.9"/>' +
+          '<polygon points="' + x2.toFixed(1) + ',' + y2.toFixed(1) + ' ' + p1x.toFixed(1) + ',' + p1y.toFixed(1) + ' ' + p2x.toFixed(1) + ',' + p2y.toFixed(1) + '" fill="' + beamColor + '"/>';
+      };
+      const addLabel = (x, y, txt) => { labels += '<div class="mdp-pg-labelpos" style="left:' + x.toFixed(1) + 'px; top:' + y.toFixed(1) + 'px; --pg-beam:' + beamColor + ';"><div class="mdp-pg-beamlabel">' + md(txt) + '</div></div>'; };
+      beams.forEach((b) => {
+        if (b.kind === 'row') { const i = Math.min(Math.max((b.idx || 1) - 1, 0), R - 1); const y = cy(i); svg += arrow(gl - e * 0.6, y, gr + e, y); addLabel(gr + loff, y, b.label); }
+        else if (b.kind === 'col') { const j = Math.min(Math.max((b.idx || 1) - 1, 0), C - 1); const x = cx(j); svg += arrow(x, gt - e * 0.6, x, gb + e); addLabel(x, gb + loff, b.label); }
+        else if (b.kind === 'diag') { svg += arrow(gl - e * 0.5, gt - e * 0.5, gr + e * 0.6, gb + e * 0.6); addLabel(gr + loff * 0.7, gb + loff * 0.7, b.label); }
+        else if (b.kind === 'adiag') { svg += arrow(gr + e * 0.5, gt - e * 0.5, gl - e * 0.6, gb + e * 0.6); addLabel(gl - loff * 0.7, gb + loff * 0.7, b.label); }
+      });
+      svg = '<svg class="mdp-pg-beams" width="' + totalW + '" height="' + totalH + '" viewBox="0 0 ' + totalW + ' ' + totalH + '" style="position:absolute; left:0; top:0; overflow:visible; pointer-events:none;">' + svg + '</svg>';
+    }
+
+    // Draw order (back → front): beams (svg) → pixel cells → beam labels.
+    // The pixels sit ON TOP of the beams so the image reads clearly; the beams
+    // are visible entering/leaving the grid, and the labels stay on top of all.
+    return '\n\n<div class="mdp-mod-pixelgrid" style="position:relative; width:' + totalW + 'px; height:' + totalH + 'px; margin:1.2rem auto;">' + svg + cellsHtml + labels + '</div>\n\n';
+  ]]></render>
+
+  <style><![CDATA[
+    .mdp-mod-pixelgrid { font-variant-numeric: tabular-nums; color: var(--text-color, #222222); }
+    .mdp-mod-pixelgrid .mdp-pg-slot { box-sizing: border-box; background: var(--bg-color, #ffffff); border-radius: 4px; }
+    .mdp-mod-pixelgrid .mdp-pg-cell {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      box-sizing: border-box;
+      border: 1px solid var(--border-color, #cbd5e1);
+      border-radius: 4px;
+      background: transparent;
+      color: inherit;
+      font-size: 1.2em;
+      font-weight: 600;
+      line-height: 1;
+      overflow: hidden;
+    }
+    .mdp-mod-pixelgrid .mdp-pg-shaded { border-color: rgba(0, 0, 0, 0.28); font-weight: 700; }
+    .mdp-mod-pixelgrid .mdp-pg-cell > * { margin: 0; }
+    .mdp-mod-pixelgrid .mdp-pg-cell .katex-display { margin: 0; display: inline-block; }
+    .mdp-mod-pixelgrid .mdp-pg-labelpos { position: absolute; transform: translate(-50%, -50%); }
+    .mdp-mod-pixelgrid .mdp-pg-beamlabel {
+      color: var(--pg-beam, #f97316);
+      background: var(--bg-color, #ffffff);
+      border: 1.5px solid var(--pg-beam, #f97316);
+      border-radius: 6px;
+      padding: 1px 7px;
+      font-weight: 700;
+      font-size: 0.9em;
+      white-space: nowrap;
+      line-height: 1.25;
+    }
+    .mdp-mod-pixelgrid .mdp-pg-beamlabel > * { margin: 0; display: inline; }
+    .mdp-mod-pixelgrid .mdp-pg-beamlabel .katex-display { margin: 0; display: inline-block; }
+  ]]></style>
+
+  <script><![CDATA[
+    export default {
+      init(el, ctx) {
+        try {
+          if (window.renderMathInElement) {
+            window.renderMathInElement(el, {
+              delimiters: [
+                { left: '\\(', right: '\\)', display: false },
+                { left: '\\[', right: '\\]', display: true }
+              ],
+              throwOnError: false
+            });
+          }
+        } catch (e) {}
+      }
+    }
+  ]]></script>
+</module>

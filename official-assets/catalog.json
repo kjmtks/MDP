@@ -249,6 +249,9 @@
       "path": "modules/phone.mdpmod.xml"
     },
     {
+      "path": "modules/pixelgrid.mdpmod.xml"
+    },
+    {
       "path": "modules/polarplot.mdpmod.xml"
     },
     {
