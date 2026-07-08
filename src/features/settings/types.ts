@@ -28,6 +28,21 @@ export interface AppSettings {
   // 'confirm' pops a review dialog first (modules can carry a <script> that runs in
   // the app); 'auto' writes it without asking.
   mcpAssetWrite: 'confirm' | 'auto';
+  // Per-host override of the MCP host CONFIG FILE path (keyed by host id, e.g.
+  // 'claude-desktop'). When set, MDP reads/registers into THIS file instead of the
+  // platform-default guess — so a user whose Claude Desktop config lives elsewhere
+  // can just pick it. Absent/empty for a host → use the default guessed path.
+  mcpHostConfigPaths: Record<string, string>;
+  // Rehearsal read-aloud (TTS) preferences — the selected engine and its options.
+  // Persisted so the rehearsal dialog remembers the user's voice/engine choice.
+  tts: {
+    engine: 'webspeech' | 'voicevox';
+    rate: number;
+    pitch: number;
+    webspeechVoiceURI: string;
+    voicevoxUrl: string;
+    voicevoxSpeaker: number;
+  };
   // Reading speed (characters/minute) for the talk-time estimate of read-aloud
   // `@script` slides. Per-person; calibratable in Settings. ~320 for Japanese.
   readingCharsPerMin: number;
@@ -56,6 +71,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   pdfNameSource: 'filename',
   mcpEnabled: false,
   mcpAssetWrite: 'confirm',
+  mcpHostConfigPaths: {},
+  tts: { engine: 'webspeech', rate: 1, pitch: 1, webspeechVoiceURI: '', voicevoxUrl: 'http://127.0.0.1:50021', voicevoxSpeaker: 1 },
   readingCharsPerMin: 320,
   readingCalibrationText:
     'それでは発表を始めます。本日は、私たちの研究の背景と目的、提案手法、実験結果、そして今後の課題について順にご説明します。' +
@@ -80,6 +97,21 @@ export function normalizeSettings(raw: unknown): AppSettings {
     pdfNameSource: r.pdfNameSource === 'title' ? 'title' : 'filename',
     mcpEnabled: r.mcpEnabled === true,
     mcpAssetWrite: r.mcpAssetWrite === 'auto' ? 'auto' : 'confirm',
+    mcpHostConfigPaths: (r.mcpHostConfigPaths && typeof r.mcpHostConfigPaths === 'object' && !Array.isArray(r.mcpHostConfigPaths))
+      ? Object.fromEntries(Object.entries(r.mcpHostConfigPaths as Record<string, unknown>).filter(([, v]) => typeof v === 'string' && v)) as Record<string, string>
+      : {},
+    tts: (() => {
+      const d = DEFAULT_SETTINGS.tts;
+      const t = (r.tts && typeof r.tts === 'object') ? r.tts as Partial<AppSettings['tts']> : {};
+      return {
+        engine: t.engine === 'voicevox' ? 'voicevox' : 'webspeech',
+        rate: typeof t.rate === 'number' && t.rate > 0 ? t.rate : d.rate,
+        pitch: typeof t.pitch === 'number' && t.pitch >= 0 ? t.pitch : d.pitch,
+        webspeechVoiceURI: typeof t.webspeechVoiceURI === 'string' ? t.webspeechVoiceURI : d.webspeechVoiceURI,
+        voicevoxUrl: typeof t.voicevoxUrl === 'string' && t.voicevoxUrl ? t.voicevoxUrl : d.voicevoxUrl,
+        voicevoxSpeaker: typeof t.voicevoxSpeaker === 'number' ? t.voicevoxSpeaker : d.voicevoxSpeaker,
+      };
+    })(),
     readingCharsPerMin: typeof r.readingCharsPerMin === 'number' && r.readingCharsPerMin > 0 ? r.readingCharsPerMin : 320,
     readingCalibrationText: typeof r.readingCalibrationText === 'string' && r.readingCalibrationText.trim() ? r.readingCalibrationText : DEFAULT_SETTINGS.readingCalibrationText,
   };

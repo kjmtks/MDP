@@ -174,6 +174,9 @@ export interface HeaderActions {
   onSwitchToRemote: () => void;
   onOpenConnectDialog: () => void;
   onOpenPresenter: () => void;
+  onRehearse: () => void;
+  onAutoPlay: () => void;
+  onSuggestModule: () => void;
   onToggleSlideshow: () => void;
   onPrint: () => void;
   onExportPptx?: (mode: 'image' | 'editable') => void;

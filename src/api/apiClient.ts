@@ -180,16 +180,23 @@ export const apiClient = {
     return null;
   },
   // Read a host's MCP config file (Claude Desktop / Cursor) for display + register.
-  mcpGetHostConfig: async (host: string): Promise<{ supported: boolean; path?: string; exists?: boolean; text?: string; hasEntry?: boolean; invalid?: boolean; subset?: boolean }> => {
+  mcpGetHostConfig: async (host: string, overridePath?: string): Promise<{ supported: boolean; path?: string; exists?: boolean; text?: string; hasEntry?: boolean; invalid?: boolean; subset?: boolean }> => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    if (isElectron()) return await (window as any).electronAPI.mcpGetHostConfig(host);
+    if (isElectron()) return await (window as any).electronAPI.mcpGetHostConfig(host, overridePath);
     return { supported: false };
   },
   // Register (overwrite) the `mdp` entry in that host's config, preserving others.
-  mcpRegisterHost: async (host: string): Promise<{ success: boolean; path?: string; error?: string; backup?: string }> => {
+  // `overridePath` targets a user-chosen file instead of the platform-default guess.
+  mcpRegisterHost: async (host: string, overridePath?: string): Promise<{ success: boolean; path?: string; error?: string; backup?: string }> => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    if (isElectron()) return await (window as any).electronAPI.mcpRegisterHost(host);
+    if (isElectron()) return await (window as any).electronAPI.mcpRegisterHost(host, overridePath);
     return { success: false, error: 'Not available on the web build.' };
+  },
+  // Open a native picker so the user chooses the host config JSON themselves.
+  mcpPickHostConfig: async (host: string): Promise<{ canceled: boolean; path?: string; error?: string }> => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (isElectron()) return await (window as any).electronAPI.mcpPickHostConfig(host);
+    return { canceled: true };
   },
 
   // Machine-local toggle: connect SSH links through their `proxyJump` bastion, or

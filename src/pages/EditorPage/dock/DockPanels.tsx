@@ -11,6 +11,9 @@ import CachedIcon from '@mui/icons-material/Cached';
 import SmartphoneIcon from '@mui/icons-material/Smartphone';
 import DevicesIcon from '@mui/icons-material/Devices';
 import PresentToAllIcon from '@mui/icons-material/PresentToAll';
+import RecordVoiceOverIcon from '@mui/icons-material/RecordVoiceOver';
+import SmartDisplayIcon from '@mui/icons-material/SmartDisplay';
+import TipsAndUpdatesIcon from '@mui/icons-material/TipsAndUpdates';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import PrintIcon from '@mui/icons-material/Print';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
@@ -532,7 +535,10 @@ export const PreviewPanel: React.FC = () => {
           </Tooltip>
         )}
         <Box sx={{ flex: 1 }} />
+        <Tooltip title="Suggest a module for the selection / current slide"><span><IconButton size="small" sx={toolBtnSx} disabled={!h.canPresent} onClick={h.onSuggestModule}><TipsAndUpdatesIcon fontSize="small" /></IconButton></span></Tooltip>
         <Tooltip title="Open Presenter View"><span><IconButton size="small" sx={toolBtnSx} disabled={!h.canPresent} onClick={h.onOpenPresenter}><PresentToAllIcon fontSize="small" /></IconButton></span></Tooltip>
+        <Tooltip title="Rehearse (read @script aloud + time vs @time)"><span><IconButton size="small" sx={toolBtnSx} disabled={!h.canPresent} onClick={h.onRehearse}><RecordVoiceOverIcon fontSize="small" /></IconButton></span></Tooltip>
+        <Tooltip title="Auto-play with narration (read @script aloud, auto-advance; [[step]] drives builds)"><span><IconButton size="small" sx={toolBtnSx} disabled={!h.canPresent} onClick={h.onAutoPlay}><SmartDisplayIcon fontSize="small" /></IconButton></span></Tooltip>
         <Tooltip title="Start Slideshow (F5)"><span><IconButton size="small" sx={toolBtnSx} disabled={!h.canPresent} onClick={h.onToggleSlideshow}><PlayArrowIcon fontSize="small" /></IconButton></span></Tooltip>
         <Tooltip title="Slide Overview"><span><IconButton size="small" sx={{ ...toolBtnSx, color: h.isSlideOverview ? 'var(--app-text-strong)' : 'var(--app-text-muted)' }} disabled={!h.canPresent} onClick={h.onToggleOverview}><GridViewIcon fontSize="small" /></IconButton></span></Tooltip>
         <Tooltip title="Export (PDF / PowerPoint)">

@@ -204,7 +204,9 @@ export const renderSlideHTML = (block: RawBlock, globalContext: SlideContext, pa
   // `<!-- @script: … -->` — the read-aloud manuscript (separate from @note).
   const scriptRegex = /<!--\s*@script:\s*([\s\S]*?)\s*-->/g;
   slideMarkdown = slideMarkdown.replace(scriptRegex, (_, scriptContent) => {
-    extractedScripts.push(scriptContent.trim());
+    // `[[step]]` markers drive the auto-narration build stepping; strip them from
+    // the DISPLAYED script (the auto-play reads them from the slide's raw markdown).
+    extractedScripts.push(scriptContent.trim().replace(/\[\[\s*step\s*\]\]/gi, ' ').replace(/\s+/g, ' ').trim());
     return "";
   });
   const scriptMarkdown = restore(extractedScripts.join('\n\n'));

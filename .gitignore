@@ -36,3 +36,4 @@ docs
 # Machine-local app state (SSH jump bypass toggle, etc.)
 .mdp-local.json
 .mdp-cache/
+.mcp.json

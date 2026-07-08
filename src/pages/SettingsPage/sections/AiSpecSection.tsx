@@ -7,6 +7,7 @@ import { apiClient } from '../../../api/apiClient';
 import { loadedModules, isModuleDisabled } from '../../../features/modules/moduleManager';
 import { loadedEffects } from '../../../features/effects/effectManager';
 import { buildSlideSpecPrompt } from '../../../features/ai/slideSpecPrompt';
+import { loadTaxonomy } from '../../../features/ai/loadTaxonomy';
 import type { ThemeOption } from '../../../types';
 
 // Settings → "AI prompt": assemble ONE English prompt (built-in slide format spec
@@ -29,9 +30,10 @@ export const AiSpecSection: React.FC = () => {
     const styleProfile = (window as any).__mdpScopeStyleProfile as string | undefined;
     let themes: ThemeOption[] = [];
     try { themes = await apiClient.getThemes(scopeDirs); } catch { /* themes optional */ }
+    const taxonomy = await loadTaxonomy(scopeDirs || []).catch(() => undefined);
     const modules = Object.values(loadedModules).map((m) => m.config).filter((c) => !isModuleDisabled(c.name));
     const effects = Object.values(loadedEffects).map((e) => e.config);
-    setPrompt(buildSlideSpecPrompt(modules, { effects, themes, aiNotes, styleProfile }));
+    setPrompt(buildSlideSpecPrompt(modules, { effects, themes, aiNotes, styleProfile, taxonomy }));
     setCopied(false);
   }, []);
 

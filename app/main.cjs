@@ -355,6 +355,13 @@ function hostConfigPath(host) {
   if (host === 'claude-code') return path.join(app.getPath('home'), '.claude.json');
   return null;
 }
+// The config file to actually read/write for a host: an explicit user-picked path
+// wins over the platform-default guess (the guess is often wrong for non-standard
+// installs). `override` must be a non-empty string; anything else falls back.
+function resolveHostConfigPath(host, override) {
+  if (typeof override === 'string' && override.trim()) return override.trim();
+  return hostConfigPath(host);
+}
 // Claude Code's file is huge and sensitive → show ONLY its mcpServers section, and
 // register with the explicit stdio `type`.
 const isBigHostFile = (host) => host === 'claude-code';
@@ -362,8 +369,8 @@ const isBigHostFile = (host) => host === 'claude-code';
 // Read a host config for display: path, existence, the shown text (the whole small
 // file, or just mcpServers for the big Claude Code file), whether `mdp` is already
 // registered, and whether the file is unparseable.
-ipcMain.handle('mcpGetHostConfig', async (event, host) => {
-  const p = hostConfigPath(host);
+ipcMain.handle('mcpGetHostConfig', async (event, host, overridePath) => {
+  const p = resolveHostConfigPath(host, overridePath);
   if (!p) return { supported: false };
   try {
     const raw = fsSync.readFileSync(p, 'utf8');
@@ -381,11 +388,31 @@ ipcMain.handle('mcpGetHostConfig', async (event, host) => {
   }
 });
 
+// Let the user PICK the host config JSON themselves, so MDP never has to guess a
+// path. Defaults the dialog to the platform-default location. Returns the chosen
+// absolute path (or { canceled: true }).
+ipcMain.handle('mcpPickHostConfig', async (event, host) => {
+  const guess = hostConfigPath(host);
+  const opts = {
+    title: 'Choose the MCP host config file',
+    properties: ['openFile', 'createDirectory', 'promptToCreate', 'showHiddenFiles'],
+    filters: [{ name: 'JSON', extensions: ['json'] }, { name: 'All files', extensions: ['*'] }],
+  };
+  if (guess) opts.defaultPath = guess;
+  try {
+    const res = await dialog.showOpenDialog(mainWindow, opts);
+    if (res.canceled || !res.filePaths || !res.filePaths.length) return { canceled: true };
+    return { canceled: false, path: res.filePaths[0] };
+  } catch (e) {
+    return { canceled: true, error: e.message };
+  }
+});
+
 // Register (overwrite) the `mdp` entry in a host config, PRESERVING every other key
 // and server. Refuses to touch a file that exists but isn't valid JSON. Stashes a
 // one-file backup first (important for the big Claude Code config).
-ipcMain.handle('mcpRegisterHost', async (event, host) => {
-  const p = hostConfigPath(host);
+ipcMain.handle('mcpRegisterHost', async (event, host, overridePath) => {
+  const p = resolveHostConfigPath(host, overridePath);
   if (!p) return { success: false, error: 'This host is set up by copying the snippet.' };
   let config = {};
   let existed = false;

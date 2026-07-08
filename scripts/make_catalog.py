@@ -9,7 +9,7 @@ import json
 BASE = 'official-assets'
 
 def generate_catalog():
-    target_dirs = ['effects', 'modules', 'snippets', 'templates', 'themes']
+    target_dirs = ['effects', 'modules', 'snippets', 'taxonomy', 'templates', 'themes']
     catalog = {}
 
     for target in target_dirs:

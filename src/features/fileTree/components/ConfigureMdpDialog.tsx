@@ -8,6 +8,7 @@ import { loadedModules } from '../../modules/moduleManager';
 import { type MdpContent, parseContent, contentPath, effectiveDisabledModules, effectiveAiNotes, effectiveStyleProfile } from '../../workspace/mdpContent';
 import { resolveMdpConfigDirs, collectScopedAssetPaths } from '../../workspace/mdpScope';
 import { buildSlideSpecPrompt } from '../../ai/slideSpecPrompt';
+import { loadTaxonomy } from '../../ai/loadTaxonomy';
 import { parseMdmodXml, type ModuleConfig } from '../../../utils/moduleParser';
 import { parseMdpfxXml, type EffectConfig } from '../../../utils/effectParser';
 import { syncOfficialCatalog } from '../../catalog/syncService';
@@ -82,11 +83,12 @@ export const ConfigureMdpDialog: React.FC<Props> = ({ open, configDir, fileTree,
       for (const p of collectScopedAssetPaths(fileTree, chain, 'effects', '.mdpfx.xml')) {
         try { const d = parseMdpfxXml(await apiClient.readFileText(p)); if (d) fxByName.set(d.config.name, d.config); } catch { /* skip */ }
       }
+      const taxonomy = await loadTaxonomy(chain).catch(() => undefined);
       const prompt = buildSlideSpecPrompt(
         [...modByName.values()].filter((c) => !disabled.has(c.name)),
         // Ancestors' saved notes/style + THIS dialog's live (possibly unsaved) values.
         {
-          effects: [...fxByName.values()], themes,
+          effects: [...fxByName.values()], themes, taxonomy,
           aiNotes: effectiveAiNotes([...contents.slice(0, -1), content]),
           styleProfile: effectiveStyleProfile([...contents.slice(0, -1), content]).text,
         },

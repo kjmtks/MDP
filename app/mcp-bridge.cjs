@@ -305,6 +305,67 @@ function outlineDeck(text, cpm) {
   };
 }
 
+// Design / consistency LINT over a deck \u2014 advisory, complements validate_deck
+// (syntax) and measure_slides (overflow). Pure text analysis: per-slide density &
+// structure checks plus a few deck-level consistency checks. severity: 'warn' =
+// likely a real problem, 'info' = a style nudge. slide 0 = a deck-level finding.
+function lintDeck(text) {
+  const blocks = splitBlocks(text);
+  const meta = blocks[0] || '';
+  const slideRaws = blocks.slice(1);
+  const findings = [];
+  const add = (slide, severity, code, message) => findings.push({ slide, severity, code, message });
+
+  if (!metaField(meta, 'title')) add(0, 'warn', 'no-title', 'The deck has no @title on the meta page.');
+  if (!metaField(meta, 'theme')) add(0, 'info', 'no-theme', 'No @theme is set; the deck uses the default theme.');
+
+  const headingLevels = [];
+  const headingSeen = new Map();
+
+  slideRaws.forEach((raw, i) => {
+    const n = i + 1;
+    const hidden = /<!--\s*@hide\s*-->/i.test(raw);
+    if (hidden) return;
+    const cover = /<!--\s*@cover\s*-->/i.test(raw);
+    const noComments = raw.replace(/<!--[\s\S]*?-->/g, ' ');
+    const modules = [...new Set([...raw.matchAll(/<!--\s*@([a-zA-Z][\w-]*)/g)].map((m) => m[1]).filter((x) => !BUILTIN_DIRECTIVES.has(x)))];
+    const images = noComments.match(/!\[([^\]]*)\]\(([^)]+)\)/g) || [];
+    const hasVisual = modules.length > 0 || images.length > 0;
+    const chars = noComments.replace(/\s+/g, '').length;
+    const bullets = (noComments.match(/^\s*(?:[-*+]|\d+\.)\s+\S/gm) || []).length;
+
+    const hm = noComments.match(/^\s*(#{1,6})\s+(.+)$/m);
+    if (!cover) {
+      if (!hm) add(n, 'warn', 'no-heading', 'Slide has no heading (#).');
+      else {
+        headingLevels.push(hm[1].length);
+        const key = hm[2].trim().toLowerCase();
+        if (key) {
+          if (headingSeen.has(key)) add(n, 'info', 'duplicate-heading', `Heading "${hm[2].trim()}" repeats slide ${headingSeen.get(key)}.`);
+          else headingSeen.set(key, n);
+        }
+      }
+    }
+    if (bullets > 7) add(n, 'warn', 'too-many-bullets', `${bullets} bullets on one slide \u2014 split or group (aim \u2264 ~6).`);
+    if (chars > 550 && !hasVisual) add(n, 'warn', 'text-heavy', `Text-heavy (${chars} chars) with no module/image \u2014 add a visual or split.`);
+    if (!cover && chars < 40 && !hasVisual) add(n, 'info', 'sparse', 'Very little content and no visual \u2014 merge or expand.');
+    for (const img of images) {
+      const alt = (img.match(/!\[([^\]]*)\]/) || [])[1];
+      if (!alt || !alt.trim()) { add(n, 'info', 'image-no-alt', 'Image has no alt text (add it for context / accessibility).'); break; }
+    }
+    if (noComments.split('\n').some((l) => l.trim().length > 220 && !l.trim().startsWith('|'))) {
+      add(n, 'info', 'long-line', 'A very long line/paragraph \u2014 consider breaking it up.');
+    }
+  });
+
+  const uniqLevels = [...new Set(headingLevels)];
+  if (uniqLevels.length > 1) add(0, 'info', 'mixed-heading-levels', `Slides mix heading levels (${uniqLevels.sort().map((l) => '#'.repeat(l)).join(', ')}) \u2014 pick one level for slide titles.`);
+
+  findings.sort((a, b) => (a.slide - b.slide) || a.code.localeCompare(b.code));
+  const summary = findings.reduce((acc, f) => (acc[f.severity] = (acc[f.severity] || 0) + 1, acc), {});
+  return { slideCount: slideRaws.length, summary, findings };
+}
+
 // MDP decks are UTF-8. We read/write UTF-8 everywhere, but PRESERVE a file's
 // original byte encoding on round-trip so an AI edit never introduces a spurious
 // whole-file diff: strip a leading BOM for the AI's view, remember whether the file
@@ -656,6 +717,12 @@ async function callToolInner(method, p, baseDir) {
       return { path: deckPath, ...outlineDeck(text, ctx.getReadingCpm ? ctx.getReadingCpm() : 320), note: 'Per-slide `seconds` and total `estimatedMinutes` are a rough talk-time estimate: a slide\'s `<!-- @time … -->` if set (explicitTime), else read time of its `<!-- @script: … -->` at the user\'s reading speed, else a complexity estimate (base + bullets + visuals). @note does NOT affect time (it\'s supplementary). Set @time or write an @script for accuracy. Hidden slides excluded.' };
     }
 
+    case 'lint_deck': {
+      const deckPath = p.path ? requireDeckPath(p.path) : await activeDeckPath();
+      const { text } = await currentDeckText(baseDir, deckPath);
+      return { path: deckPath, ...lintDeck(text), note: 'Design & consistency advisories — complements validate_deck (syntax/params) and measure_slides (overflow/fill). severity: warn = likely issue, info = style nudge. slide 0 = deck-level. Use judgment; not every finding needs a change.' };
+    }
+
     case 'search_decks': {
       const query = String(p.query || '').toLowerCase();
       const wantTags = Array.isArray(p.tags) ? p.tags.map((t) => String(t).toLowerCase()) : [];
@@ -829,6 +896,32 @@ async function callToolInner(method, p, baseDir) {
     }
     case 'render_deck_overview': return await relay('renderDeckOverview', { thumbWidth: p.thumbWidth ? Number(p.thumbWidth) : undefined }, 170000);
     case 'get_slide_spec': return await relay('spec', {}, 30000);
+    case 'get_module_spec': {
+      const names = Array.isArray(p.names) ? p.names.map((n) => String(n)) : (p.name ? [String(p.name)] : []);
+      if (!names.length) throw new Error('Provide "names": an array of module names (from the get_slide_spec index).');
+      return await relay('moduleSpec', { names }, 20000);
+    }
+    case 'find_modules': {
+      const query = p.query != null ? String(p.query) : undefined;
+      const tags = Array.isArray(p.tags) ? p.tags.map((t) => String(t)) : undefined;
+      if (!query && !(tags && tags.length)) throw new Error('Provide "query" and/or "tags" to search modules.');
+      return await relay('findModules', { query, tags }, 20000);
+    }
+    case 'suggest_modules': {
+      const text = String(p.text ?? '');
+      if (!text.trim()) throw new Error('Provide "text": the slide content (or a description of it) to recommend modules for.');
+      return await relay('suggestModules', { text, limit: p.limit != null ? Number(p.limit) : undefined }, 20000);
+    }
+    case 'get_effect_spec': {
+      const names = Array.isArray(p.names) ? p.names.map((n) => String(n)) : (p.name ? [String(p.name)] : []);
+      if (!names.length) throw new Error('Provide "names": animation effect names (from the get_slide_spec effect index).');
+      return await relay('effectSpec', { names }, 20000);
+    }
+    case 'suggest_effects': {
+      const text = String(p.text ?? '');
+      if (!text.trim()) throw new Error('Provide "text": the mood/intent to recommend effects for (e.g. "subtle", "energetic").');
+      return await relay('suggestEffects', { text, limit: p.limit != null ? Number(p.limit) : undefined }, 20000);
+    }
     case 'get_active_deck': return await relay('activeDeck', {}, 10000);
     case 'open_deck': return await relay('openDeck', { path: requireDeckPath(p.path) }, 20000);
     case 'goto_slide': return await relay('gotoSlide', { slide: Number(p.slide) }, 10000);

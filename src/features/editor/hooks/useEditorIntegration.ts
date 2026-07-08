@@ -10,6 +10,7 @@ import { drawioCollapsePlugin } from '../extensions/DrawioCollapsePlugin';
 import { imageDropPasteHandler } from '../extensions/imageDropPasteHandler';
 import { base64Folding } from '../base64Folding';
 import { noteCollapsePlugin } from '../extensions/NoteCollapsePlugin';
+import { scriptCollapsePlugin } from '../extensions/ScriptCollapsePlugin';
 import { themeCollapsePlugin } from '../extensions/ThemeCollapsePlugin';
 import { imageDefCollapsePlugin } from '../extensions/ImageDefCollapsePlugin';
 import { moduleSettingsPlugin } from '../extensions/ModuleSettingsPlugin';
@@ -215,6 +216,7 @@ export const useEditorIntegration = ({
       imageDefCollapsePlugin,
       activeSlideTheme,
       noteCollapsePlugin,
+      scriptCollapsePlugin,
       themeCollapsePlugin,
       moduleSettingsPlugin,
       tagSettingsPlugin,

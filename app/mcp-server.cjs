@@ -72,8 +72,33 @@ const num = (description) => ({ type: 'number', description });
 const TOOLS = [
   {
     name: 'get_slide_spec',
-    description: 'The complete MDP slide-authoring specification: file format, directives, authoring rules, plus every theme, animation effect and module AVAILABLE FOR THE CURRENT DECK\'S FOLDER (modules describe themselves). Call this FIRST before writing or editing any .slide.md content.',
+    description: 'The complete MDP slide-authoring specification: file format, directives, authoring rules, plus every theme AVAILABLE FOR THE CURRENT DECK\'S FOLDER, and COMPACT INDEXES of the available modules and animation effects (one line each, grouped). Call this FIRST before writing or editing any .slide.md content. To keep it small, modules and effects appear only as indexes — after picking the ones you\'ll use, call get_module_spec / get_effect_spec for their full parameters/examples (or suggest_modules / suggest_effects to pick by content/mood).',
     inputSchema: S({}),
+  },
+  {
+    name: 'get_module_spec',
+    description: 'Get the FULL self-descriptions (parameters, body/section format, and examples) for specific modules by name — the detail deliberately omitted from get_slide_spec\'s compact index. Call this after scanning the index in get_slide_spec: pass the handful of module names you intend to use, then write their directives. Cheaper than dumping every module up front.',
+    inputSchema: S({ names: { type: 'array', items: { type: 'string' }, description: 'Module names to expand, e.g. ["barchart","callout"] (with or without a leading @).' } }, ['names']),
+  },
+  {
+    name: 'get_effect_spec',
+    description: 'Get the FULL spec (parameters, aiSpec, examples) for specific animation EFFECTS by name — the detail omitted from get_slide_spec\'s compact effect index. Call after scanning that index: pass the effect names you\'ll use as a @transition or @build. Effects drive slide transitions (<!-- @transition NAME … -->) and in-slide builds (<!-- @build effect: NAME … -->).',
+    inputSchema: S({ names: { type: 'array', items: { type: 'string' }, description: 'Effect names to expand, e.g. ["fade","zoom"].' } }, ['names']),
+  },
+  {
+    name: 'suggest_effects',
+    description: 'Recommend animation effects for a MOOD/INTENT (free text like "subtle", "energetic", "draw attention", "reveal step by step", "3d flip"). Returns a compact shortlist with whether each fits a @transition or @build, and its style tags. Then call get_effect_spec for the full args of the ones you adopt. Useful for authoring an effect-rich slide style.',
+    inputSchema: S({ text: str('The mood/intent to match, e.g. "energetic and playful"'), limit: num('Max suggestions (default 6)') }, ['text']),
+  },
+  {
+    name: 'find_modules',
+    description: 'Search the available modules by free text and/or taxonomy tags, returning a COMPACT list (name, kind, tags, one-line description) — the same shape as the get_slide_spec index, filtered. Use it to narrow down when the index is large: e.g. tags:["statistics"] or query:"timeline". Then call get_module_spec for the full spec of the ones you pick. Tags come from each module\'s taxonomy (shown as [..] in the index).',
+    inputSchema: S({ query: str('Free text matched against module name, description and tags (case-insensitive)'), tags: { type: 'array', items: { type: 'string' }, description: 'Only modules carrying ALL of these taxonomy tags, e.g. ["charts","comparison"].' } }),
+  },
+  {
+    name: 'suggest_modules',
+    description: 'Recommend modules for a slide\'s CONTENT: paste the slide markdown (or a short description of what the slide will show) and get a ranked shortlist of modules that fit, each with the reason it was suggested. Uses content signals (bullet lists, numbered steps, math, tables, comparisons, dates, percentages, headline numbers, code, quotes, images, label:value data) plus the taxonomy. Call get_module_spec for the full spec of any you adopt. Returns a note when a plain heading/list/table is likely best.',
+    inputSchema: S({ text: str('The slide markdown, or a description of the intended slide content'), limit: num('Max suggestions (default 6)') }, ['text']),
   },
   {
     name: 'get_style_samples',
@@ -132,7 +157,7 @@ const TOOLS = [
   },
   {
     name: 'list_modules',
-    description: 'List the modules available for a deck\'s folder (its cascading .mdp scope), with the path of each definition file. Modules already self-describe inside get_slide_spec; use read_module only when you need the exact template/CSS/script.',
+    description: 'List the modules available for a deck\'s folder (its cascading .mdp scope), with the path of each definition file. To learn HOW to use a module, use the index in get_slide_spec plus get_module_spec (its parameters/examples); use read_module only when you need the exact template/CSS/script.',
     inputSchema: S({ deck: str('Deck path whose scope to use (default: the active deck)') }),
   },
   {
@@ -208,6 +233,11 @@ const TOOLS = [
   {
     name: 'validate_deck',
     description: 'FAST deterministic lint of a deck (default: the active one) BEFORE visual checks: unknown module/directive names, disabled modules, unknown @theme / transition / build effect names, unknown or missing-required module parameters, and unbalanced <!-- @end --> per slide. Fix errors, then run measure_slides.',
+    inputSchema: S({ path: str('Deck path (default: the active deck)') }),
+  },
+  {
+    name: 'lint_deck',
+    description: 'DESIGN & CONSISTENCY advisories for a deck (default: the active one) — complements validate_deck (syntax) and measure_slides (overflow). Flags: slides with no heading, too many bullets, text-heavy slides with no visual, sparse slides, images missing alt text, duplicate headings, mixed heading levels, and missing @title/@theme. Returns findings with severity (warn/info) and slide number (0 = deck-level). Use after drafting to tighten a deck; apply your judgment — not every finding needs a change.',
     inputSchema: S({ path: str('Deck path (default: the active deck)') }),
   },
   {

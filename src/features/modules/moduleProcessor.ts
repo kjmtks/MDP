@@ -16,8 +16,12 @@ export function parseArguments(argString: string): Record<string, string> {
 
     if (escapeNext) {
       // Inside an array literal, keep the backslash so the array splitter (not
-      // this pass) resolves `\,` `\[` `\]`; elsewhere it just escapes the char.
-      currentPart += inBracket ? '\\' + char : char;
+      // this pass) resolves `\,` `\[` `\]`. Outside a bracket, only CONSUME the
+      // backslash for the escapes this parser owns (`\,` `\"` `\\`); preserve it
+      // for everything else so LaTeX in params survives (`\(`, `\cup`, `\alpha`…).
+      if (inBracket) currentPart += '\\' + char;
+      else if (char === ',' || char === '"' || char === '\\') currentPart += char;
+      else currentPart += '\\' + char;
       escapeNext = false;
       continue;
     }
@@ -227,7 +231,7 @@ function renderModuleTemplate(mod: ModuleData, sections: string[], argsStr: stri
 
 type Token =
   | { type: 'text', text: string }
-  | { type: 'start', name: string, argsStr: string, indent: string }
+  | { type: 'start', name: string, argsStr: string, indent: string, raw: string }
   | { type: 'separator', indent: string }
   | { type: 'end', name: string, indent: string };
 
@@ -276,7 +280,7 @@ export const applyModulesToMarkdown = (markdown: string): string => {
     } else if (isEnd) {
       tokens.push({ type: 'end', name: name || '', indent });
     } else if (!isEnd && name) {
-      tokens.push({ type: 'start', name, argsStr, indent });
+      tokens.push({ type: 'start', name, argsStr, indent, raw: match[0] });
     } else {
       tokens.push({ type: 'text', text: match[0] });
     }
@@ -299,7 +303,7 @@ export const applyModulesToMarkdown = (markdown: string): string => {
       // A disabled module is treated as unknown → its directive passes through
       // (renders as nothing) and its body, if any, stays as plain markdown.
       const mod = isModuleDisabled(token.name) ? undefined : loadedModules[token.name];
-      if (mod && mod.config.type === 'block') {
+      if (mod && mod.config.type === 'block' && !mod.config.selfClosing) {
         stack.push({
           name: token.name,
           argsStr: token.argsStr,
@@ -310,9 +314,11 @@ export const applyModulesToMarkdown = (markdown: string): string => {
           // it identifies the directive for transforms / property / delete.
           ord: manipOrd++
         });
-      } else if (mod && mod.config.type === 'inline') {
-        // Self-contained inline module: render in place. Takes an `ord` from the
-        // same document-order counter as blocks (so it's selectable too).
+      } else if (mod && (mod.config.type === 'inline' || mod.config.selfClosing)) {
+        // Self-contained: an inline module OR a self-closing (bodyless) block module.
+        // Render in place immediately — a self-closing block must NOT open a region
+        // (else it would swallow the rest of the slide). It still emits block-level
+        // output (renderModuleTemplate wraps a non-inline module in a <div>).
         const ord = manipOrd++;
         let html = renderModuleTemplate(mod, [], token.argsStr, ord);
         if (token.indent) html = html.replace(/\n/g, '\n' + token.indent);
@@ -320,7 +326,12 @@ export const applyModulesToMarkdown = (markdown: string): string => {
         if (stack.length > 0) stack[stack.length - 1].currentSectionStr += html;
         else rootStr += html;
       } else {
-        const text = `${token.indent}<!-- @${token.name} ${token.argsStr} -->`;
+        // Unknown / non-module directive (e.g. `@script:`, `@note:`, `@time`): pass
+        // the ORIGINAL comment through verbatim. Reconstructing it as
+        // `@${name} ${argsStr}` injected a space for colon-attached directives
+        // (`@script:` → `@script :`), which broke downstream `@script:` extraction
+        // for single-line scripts and silently dropped the read-aloud manuscript.
+        const text = token.raw;
         if (stack.length > 0) stack[stack.length - 1].currentSectionStr += text;
         else rootStr += text;
       }

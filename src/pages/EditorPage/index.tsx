@@ -14,6 +14,9 @@ import { matchAction } from '../../features/settings/shortcuts/matcher';
 import { ACTIONS_BY_SCOPE } from '../../features/settings/shortcuts/registry';
 import { DrawioEditor } from '../../features/drawio/components/DrawioEditor';
 import { ConnectDialog } from '../../features/remote/components/ConnectDialog';
+import { RehearsalDialog } from '../../features/rehearsal/RehearsalDialog';
+import { SuggestModuleDialog } from '../../features/modules/components/SuggestModuleDialog';
+import { AutoPlayView } from '../../features/autoplay/AutoPlayView';
 import { PrintContainer } from '../../features/slide/components/PrintContainer';
 import { SlideOverviewGrid } from '../../features/slide/components/SlideOverviewGrid';
 
@@ -1095,6 +1098,20 @@ export default function EditorPage() {
     window.open(`${baseUrl}#/presenter?channel=${channelId}&token=${encodeURIComponent(token)}`, '_blank', 'width=1000,height=800');
   }, [channelId, token]);
 
+  const [rehearseOpen, setRehearseOpen] = useState(false);
+  const [autoPlayOpen, setAutoPlayOpen] = useState(false);
+  const [suggestOpen, setSuggestOpen] = useState(false);
+  const [suggestText, setSuggestText] = useState('');
+  const openSuggestModule = useCallback(() => {
+    // Analyze the editor selection, else the current slide's markdown.
+    let text = '';
+    const view = editorRef.current?.view;
+    if (view) { const sel = view.state.selection.main; if (!sel.empty) text = view.state.sliceDoc(sel.from, sel.to); }
+    if (!text) text = (mdSlides[currentSlideIndex] as { raw?: string })?.raw || '';
+    setSuggestText(text);
+    setSuggestOpen(true);
+  }, [editorRef, mdSlides, currentSlideIndex]);
+
   const handleSwitchToRemote = useCallback(() => {
     const baseUrl = window.location.href.split('#')[0];
     window.location.href = `${baseUrl}#/remote`;
@@ -1749,6 +1766,9 @@ export default function EditorPage() {
     onSwitchToRemote: handleSwitchToRemote,
     onOpenConnectDialog: openConnectDialog,
     onOpenPresenter: openPresenterTool,
+    onRehearse: () => setRehearseOpen(true),
+    onAutoPlay: () => setAutoPlayOpen(true),
+    onSuggestModule: openSuggestModule,
     onToggleSlideshow: toggleSlideshow,
     onPrint: handlePrint,
     onExportPptx: (mode: PptxMode) => { void exportPptx(mode); },
@@ -1757,7 +1777,7 @@ export default function EditorPage() {
     isSlideOverview,
     canPresent: slides.length > 0,
   }), [handleOpenFolderWithFlag, handleManualSync, handleSwitchToRemote, openConnectDialog,
-    openPresenterTool, toggleSlideshow, handlePrint, exportPptx, pptxExporting, toggleSlideOverview, isSlideOverview, slides.length]);
+    openPresenterTool, openSuggestModule, toggleSlideshow, handlePrint, exportPptx, pptxExporting, toggleSlideOverview, isSlideOverview, slides.length]);
 
   const editorSlice: EditorSharedProps = {
     tabs, activeTabIndex, currentFileName, effectiveFileType, markdown, lastUpdated,
@@ -1775,6 +1795,14 @@ export default function EditorPage() {
       <DrawioEditor open={!!drawioForAdd} onClose={() => setDrawioForAdd(null)} initialBase64Xml={drawioForAdd?.initial || undefined} onSave={handleDrawioForAddSave} />
 
       <ConnectDialog open={isConnectDialogOpen} onClose={() => setIsConnectDialogOpen(false)} channelId={channelId} token={token} ipCandidates={remoteIps} port={remotePort} />
+
+      <RehearsalDialog open={rehearseOpen} onClose={() => setRehearseOpen(false)} slides={mdSlides.map((s) => ({ raw: (s as { raw?: string }).raw || '', scriptHtml: (s as { scriptHtml?: string }).scriptHtml || '' }))} />
+
+      <SuggestModuleDialog open={suggestOpen} onClose={() => setSuggestOpen(false)} text={suggestText} onInsert={handleInsertText} />
+
+      <AutoPlayView open={autoPlayOpen} onClose={() => setAutoPlayOpen(false)} basePath={basePath} slideSize={mdSlideSize}
+        slides={mdSlides.map((s) => { const d = s as { html?: string; raw?: string; className?: string; header?: string; footer?: string; stepCount?: number };
+          return { html: d.html || '', raw: d.raw || '', className: d.className, header: d.header, footer: d.footer, stepCount: d.stepCount || 0 }; })} />
 
       {moduleSettings && (
         <ModuleSettingsDialog

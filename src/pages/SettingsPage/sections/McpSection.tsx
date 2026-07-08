@@ -14,7 +14,7 @@ type HostCfg = { supported: boolean; path?: string; exists?: boolean; text?: str
 // Code = user scope in ~/.claude.json). Claude Code / VS Code that aren't here stay
 // copy-only.
 const REGISTERABLE: HostId[] = ['claude-desktop', 'cursor', 'claude-code'];
-const HOST_LABEL: Record<HostId, string> = { 'claude-desktop': 'Claude Desktop', 'claude-code': 'Claude Code', cursor: 'Cursor', vscode: 'VS Code' };
+const HOST_LABEL: Record<HostId, string> = { 'claude-desktop': 'Claude Desktop', 'claude-code': 'Claude Code', cursor: 'Cursor', vscode: 'VS Code (Claude)' };
 
 const hostToggleSx = {
   textTransform: 'none', fontSize: '0.78rem', py: 0.4, color: 'var(--app-text-secondary)', borderColor: 'var(--app-border-subtle)',
@@ -51,8 +51,8 @@ function snippetFor(host: HostId, info: McpInfo): { text: string; hint: string }
       };
     case 'vscode':
       return {
-        text: JSON.stringify({ servers: { mdp: { type: 'stdio', ...server } } }, null, 2),
-        hint: 'Save as .vscode/mcp.json in your workspace (VS Code with GitHub Copilot; enable MCP in Copilot settings).',
+        text: JSON.stringify({ mcpServers: { mdp: { type: 'stdio', ...server } } }, null, 2),
+        hint: 'Save as .mcp.json in your workspace ROOT (for the Claude Code extension / CLI in VS Code). Reload the window / start a new Claude session and APPROVE the project MCP server when prompted. (Not VS Code / GitHub Copilot — that uses a different .vscode/mcp.json with a "servers" key and is not targeted here.)',
       };
   }
 }
@@ -70,23 +70,41 @@ export const McpSection: React.FC = () => {
   const [registering, setRegistering] = useState(false);
   const [registered, setRegistered] = useState(false);
 
+  // A user-picked config-file path for the current host overrides the platform
+  // guess. Persisted per host in settings so it's remembered across sessions.
+  const pathOverride = settings.mcpHostConfigPaths?.[host] || undefined;
+  const setPathOverride = (p: string | undefined) => {
+    const next = { ...(settings.mcpHostConfigPaths || {}) };
+    if (p) next[host] = p; else delete next[host];
+    update({ mcpHostConfigPaths: next });
+  };
+
   const refresh = () => { apiClient.getMcpInfo().then(setInfo).catch(() => {}); };
   useEffect(() => { refresh(); }, []);
   // The bridge starts/stops asynchronously after the toggle — re-read shortly after.
   useEffect(() => { const t = setTimeout(refresh, 400); return () => clearTimeout(t); }, [settings.mcpEnabled]);
 
-  // On host switch, load that host's current config file (registerable hosts only).
-  const loadHostCfg = () => { apiClient.mcpGetHostConfig(host).then(setHostCfg).catch(() => setHostCfg(null)); };
+  // Load the host's current config file (registerable hosts only), from the
+  // user-chosen path if set, else the platform default.
+  const loadHostCfg = () => { apiClient.mcpGetHostConfig(host, pathOverride).then(setHostCfg).catch(() => setHostCfg(null)); };
   useEffect(() => {
     setRegistered(false);
     if (REGISTERABLE.includes(host)) loadHostCfg(); else setHostCfg(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [host]);
+  }, [host, pathOverride]);
+
+  const chooseFile = async () => {
+    try {
+      const r = await apiClient.mcpPickHostConfig(host);
+      if (!r.canceled && r.path) setPathOverride(r.path); // triggers reload via effect
+      else if (r.error) reportError(r.error);
+    } catch (e) { reportError('Could not open the file picker.', { detail: e }); }
+  };
 
   const register = async () => {
     setRegistering(true);
     try {
-      const r = await apiClient.mcpRegisterHost(host);
+      const r = await apiClient.mcpRegisterHost(host, pathOverride);
       if (r.success) { setRegistered(true); loadHostCfg(); setTimeout(() => setRegistered(false), 3000); }
       else reportError(r.error || 'Could not write the config file.');
     } finally { setRegistering(false); }
@@ -141,13 +159,13 @@ export const McpSection: React.FC = () => {
           <ToggleButton value="claude-desktop" sx={hostToggleSx}>Claude Desktop</ToggleButton>
           <ToggleButton value="claude-code" sx={hostToggleSx}>Claude Code</ToggleButton>
           <ToggleButton value="cursor" sx={hostToggleSx}>Cursor</ToggleButton>
-          <ToggleButton value="vscode" sx={hostToggleSx}>VS Code</ToggleButton>
+          <ToggleButton value="vscode" sx={hostToggleSx}>VS Code (Claude)</ToggleButton>
         </ToggleButtonGroup>
 
         {registerable ? (
           <>
             <div className="settings-field-hint">
-              Config file: <code>{hostCfg!.path}</code>
+              Config file: <code>{hostCfg!.path}</code> {pathOverride ? '(you chose this file)' : '(default location — guessed)'}
               {' — '}
               {!hostCfg!.exists
                 ? 'not created yet; Register will create it.'
@@ -156,6 +174,23 @@ export const McpSection: React.FC = () => {
                   : hostCfg!.hasEntry
                     ? 'MDP is already registered here; Register overwrites that entry (other servers are kept).'
                     : 'MDP is not registered yet.'}
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', margin: '2px 0 6px' }}>
+              <Button variant="text" size="small" onClick={chooseFile}
+                sx={{ textTransform: 'none', color: 'var(--app-text-secondary)' }}>
+                Choose config file…
+              </Button>
+              {pathOverride && (
+                <Button variant="text" size="small" onClick={() => setPathOverride(undefined)}
+                  sx={{ textTransform: 'none', color: 'var(--app-text-muted)' }}>
+                  Use default location
+                </Button>
+              )}
+            </div>
+            <div className="settings-field-hint" style={{ marginTop: 0 }}>
+              If the path above isn't where your {HOST_LABEL[host]} config actually lives, click <b>Choose config
+              file…</b> and pick it yourself (in {HOST_LABEL[host]}, open Settings → Developer → Edit Config to
+              locate it). MDP will read and register into the file you pick.
             </div>
             {hostCfg!.subset && (
               <div className="settings-field-hint">
@@ -218,10 +253,10 @@ export const McpSection: React.FC = () => {
       <div className="settings-field">
         <div className="settings-field-label">Available tools</div>
         <div className="settings-field-hint">
-          get_slide_spec (format + your modules/themes) · list_decks / read_deck (also for style imitation) ·
+          get_slide_spec (format + module/effect indexes) · get_module_spec / get_effect_spec (full spec for chosen ones) · find_modules · suggest_modules / suggest_effects (recommend by content/mood) · list_decks / read_deck (also for style imitation) ·
           write_deck / append_slide / replace_slide (edits open decks live, unsaved) · list_modules / read_module ·
           list_themes · get_active_deck / open_deck / goto_slide / insert_at_cursor ·
-          measure_slides (overflow &amp; fill check, low token) · render_slide_image (visual check, higher token).
+          measure_slides (overflow &amp; fill check, low token) · lint_deck (design/consistency advisories) · render_slide_image (visual check, higher token).
         </div>
       </div>
     </div>

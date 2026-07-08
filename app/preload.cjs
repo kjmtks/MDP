@@ -25,8 +25,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setAppSettings: (obj) => ipcRenderer.invoke('setAppSettings', obj),
   setMcpEnabled: (enabled) => ipcRenderer.invoke('setMcpEnabled', enabled),
   getMcpInfo: () => ipcRenderer.invoke('getMcpInfo'),
-  mcpGetHostConfig: (host) => ipcRenderer.invoke('mcpGetHostConfig', host),
-  mcpRegisterHost: (host) => ipcRenderer.invoke('mcpRegisterHost', host),
+  mcpGetHostConfig: (host, overridePath) => ipcRenderer.invoke('mcpGetHostConfig', host, overridePath),
+  mcpRegisterHost: (host, overridePath) => ipcRenderer.invoke('mcpRegisterHost', host, overridePath),
+  mcpPickHostConfig: (host) => ipcRenderer.invoke('mcpPickHostConfig', host),
   onMcpRequest: (cb) => {
     const handler = (e, d) => cb(d);
     ipcRenderer.on('mcp-request', handler);

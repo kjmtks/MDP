@@ -18,6 +18,10 @@ export interface EffectConfig {
   parameters: EffectParam[];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   snippets: any[];
+  // Taxonomy tags (from `<tags>a, b, c</tags>`): FIRST tag = usage bucket
+  // (transition | emphasis | special), the rest style descriptors. Used to group
+  // the compact effect index and power suggest_effects. Empty when unset.
+  tags: string[];
 }
 
 export interface EffectData {
@@ -45,6 +49,8 @@ export const parseMdpfxXml = (content: string): EffectData | null => {
   const name = root.querySelector('name')?.textContent?.trim() || '';
   const description = root.querySelector('description')?.textContent?.trim() || '';
   const aiSpec = root.querySelector('aiSpec')?.textContent?.trim() || undefined;
+  const tags = (root.querySelector('tags')?.textContent || '')
+    .split(',').map((t) => t.trim().toLowerCase()).filter(Boolean);
 
   const parameters = parseParamElements(root);
 
@@ -61,7 +67,7 @@ export const parseMdpfxXml = (content: string): EffectData | null => {
   });
 
   return {
-    config: { name, description, aiSpec, parameters, snippets },
+    config: { name, description, aiSpec, parameters, snippets, tags },
     style: root.querySelector('style')?.textContent?.trim() || '',
     script: root.querySelector('script')?.textContent?.trim() || '',
   };

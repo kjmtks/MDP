@@ -53,11 +53,20 @@ export interface ModuleConfig {
   parameters: ModuleParam[];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   snippets: any[];
+  // Taxonomy tags (from `<tags>a, b, c</tags>`), used to group/screen modules in
+  // the AI prompt. The FIRST tag decides the module's primary group; the rest are
+  // secondary (cross-listing / search). Empty when the module declares none.
+  tags: string[];
   // When true, this module's regions capture pointer/keys so interacting with
   // them (e.g. clicking a timer button) does not advance the slide.
   interactive: boolean;
   // A block module whose output should flow INLINE (`<render inline="true">`).
   inlineRender?: boolean;
+  // A "block" module that takes NO body — it renders from parameters alone, so it is
+  // used self-contained like an inline directive (NO `<!-- @end -->`). Inferred when
+  // the render never references `sections`/`content` (override with `<selfClosing>`).
+  // Its output is still block-level (a div), unlike a true inline module.
+  selfClosing?: boolean;
   // Present when the module opted into on-preview manipulation (block modules).
   manipulate?: ManipulateConfig;
 }
@@ -142,6 +151,8 @@ export const parseMdmodXml = (content: string): ModuleData | null => {
   const description = root.querySelector("description")?.textContent?.trim() || "";
   const aiSpec = root.querySelector("aiSpec")?.textContent?.trim() || undefined;
   const interactive = root.querySelector("interactive")?.textContent?.trim() === "true";
+  const tags = (root.querySelector("tags")?.textContent || "")
+    .split(",").map(t => t.trim().toLowerCase()).filter(Boolean);
 
   // Manipulation capability (block or inline modules). Axis tokens: 'x'|'y'|'xy';
   // 'true'/'both' => 'xy'; '' / 'false' / 'none' => disabled.
@@ -177,6 +188,17 @@ export const parseMdmodXml = (content: string): ModuleData | null => {
   // inline element (no surrounding block) so it flows within text (e.g. @stamp).
   const inlineRender = root.querySelector("render")?.getAttribute("inline") === "true";
 
+  const renderStr = root.querySelector("render")?.textContent?.trim() || "return '';";
+  // SELF-CLOSING block: a `type=block` module that takes NO body — used without a
+  // `<!-- @end -->` (it must NOT open a region, or it would swallow the rest of the
+  // slide). Inferred when the render never touches `sections`/`content`; an explicit
+  // `<selfClosing>true|false</selfClosing>` overrides the inference.
+  const scExplicit = root.querySelector("selfClosing")?.textContent?.trim();
+  const usesBody = /\b(sections|content)\b/.test(renderStr);
+  const selfClosing = scExplicit === 'true' ? true
+    : scExplicit === 'false' ? false
+    : (type === 'block' && !inlineRender && !usesBody);
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const snippets: any[] = [];
   root.querySelectorAll("snippets > snippet").forEach(s => {
@@ -190,8 +212,8 @@ export const parseMdmodXml = (content: string): ModuleData | null => {
   });
 
   return {
-    config: { name, type, description, aiSpec, parameters, snippets, interactive, manipulate, inlineRender },
-    render: root.querySelector("render")?.textContent?.trim() || "return '';",
+    config: { name, type, description, aiSpec, parameters, snippets, tags, interactive, manipulate, inlineRender, selfClosing },
+    render: renderStr,
     style: root.querySelector("style")?.textContent?.trim() || "",
     script: root.querySelector("script")?.textContent?.trim() || ""
   };
