@@ -1,6 +1,7 @@
 <effect>
   <name>wipe</name>
   <description>Reveal with a left-to-right clip wipe.</description>
+  <tags>transition, reveal, mask</tags>
   <aiSpec><![CDATA[
 A hard clip edge sweeps left-to-right to reveal, then off to the right to leave — clean
 and directional, no fade or movement. Strong as a slide transition; also fine as a

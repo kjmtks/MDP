@@ -1,6 +1,7 @@
 <effect>
   <name>fly</name>
   <description>Slide up + fade. Good as a build for revealing list items / paragraphs.</description>
+  <tags>transition, motion</tags>
   <aiSpec><![CDATA[
 Content rises a short distance upward while fading in, and drifts up and out on leave. Best as a build
 enter/exit — ideal for revealing list items, bullet points, or paragraphs one step at a time. Subtle

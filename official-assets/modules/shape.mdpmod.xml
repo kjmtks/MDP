@@ -157,6 +157,7 @@ Example:
     }
     .mdp-shape-text > :first-child { margin-top: 0; }
     .mdp-shape-text > :last-child { margin-bottom: 0; }
+    .mdp-shape-text * { color: inherit !important; }
   ]]></style>
 
   <script></script>

@@ -48,15 +48,15 @@ Example:
     const okColor = args.color_ok || '#22c55e';
     const errColor = args.color_err || '#ef4444';
     const title = String(args.title || '').trim();
-    const cell = (v, ok) => `<div class="mdp-cm-cell ${ok ? 'ok' : 'err'}">${v}</div>`;
+    const cell = (v, ok, area) => `<div class="mdp-cm-cell ${ok ? 'ok' : 'err'}" style="grid-area:${area}">${v}</div>`;
     const titleHtml = title ? `<div class="mdp-cm-title">${esc(title)}</div>` : '';
     let html = `\n\n<div class="mdp-mod-confusionmatrix" style="--cm-ok:${okColor}; --cm-err:${errColor};">${titleHtml}<div class="mdp-cm-grid">` +
-      `<div class="mdp-cm-corner"></div>` +
-      `<div class="mdp-cm-axis mdp-cm-axis-x">Predicted</div>` +
-      `<div class="mdp-cm-col">${pos}</div><div class="mdp-cm-col">${neg}</div>` +
-      `<div class="mdp-cm-axis mdp-cm-axis-y"><span>Actual</span></div>` +
-      `<div class="mdp-cm-row">${pos}</div>${cell(tp, true)}${cell(fn, false)}` +
-      `<div class="mdp-cm-row">${neg}</div>${cell(fp, false)}${cell(tn, true)}` +
+      `<div class="mdp-cm-corner" style="grid-area:corner"></div>` +
+      `<div class="mdp-cm-axis mdp-cm-axis-x" style="grid-area:axisx">Predicted</div>` +
+      `<div class="mdp-cm-col" style="grid-area:colp">${pos}</div><div class="mdp-cm-col" style="grid-area:coln">${neg}</div>` +
+      `<div class="mdp-cm-axis mdp-cm-axis-y" style="grid-area:axisy"><span>Actual</span></div>` +
+      `<div class="mdp-cm-row" style="grid-area:rowp">${pos}</div>${cell(tp, true, 'tp')}${cell(fn, false, 'fn')}` +
+      `<div class="mdp-cm-row" style="grid-area:rown">${neg}</div>${cell(fp, false, 'fp')}${cell(tn, true, 'tn')}` +
       `</div>`;
     if (String(args.metrics) === 'true') {
       const acc = (tp + tn) / ((tp + tn + fp + fn) || 1);
@@ -76,11 +76,9 @@ Example:
   <style><![CDATA[
     .mdp-mod-confusionmatrix { display: inline-block; margin: 1rem 0; }
     .mdp-cm-title { font-weight: 700; text-align: center; margin-bottom: 8px; }
-    .mdp-cm-grid { display: grid; grid-template-columns: auto auto auto; grid-template-rows: auto auto auto auto; gap: 4px; align-items: stretch; }
-    .mdp-cm-corner { grid-row: 1 / 3; grid-column: 1 / 2; }
-    .mdp-cm-axis-x { grid-column: 2 / 4; }
+    .mdp-cm-grid { display: grid; grid-template-columns: auto auto auto auto; gap: 4px; align-items: stretch; grid-template-areas: "corner corner axisx axisx" "corner corner colp coln" "axisy rowp tp fn" "axisy rown fp tn"; }
     .mdp-cm-axis { text-align: center; font-weight: 700; color: var(--app-text-muted, #888); font-size: 0.85em; letter-spacing: 0.04em; }
-    .mdp-cm-axis-y { grid-row: 3 / 5; grid-column: 1 / 2; display: flex; align-items: center; justify-content: center; }
+    .mdp-cm-axis-y { display: flex; align-items: center; justify-content: center; }
     .mdp-cm-axis-y span { writing-mode: vertical-rl; transform: rotate(180deg); }
     .mdp-cm-col, .mdp-cm-row { display: flex; align-items: center; justify-content: center; font-weight: 600; padding: 4px 8px; }
     .mdp-cm-cell { min-width: 72px; min-height: 56px; display: flex; align-items: center; justify-content: center; font-size: 1.4em; font-weight: 800; border-radius: 8px; }

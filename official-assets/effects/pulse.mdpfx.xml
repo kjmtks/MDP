@@ -1,6 +1,7 @@
 <effect>
   <name>pulse</name>
   <description>A one-shot scale pulse — intended for build emphasis.</description>
+  <tags>emphasis, subtle</tags>
   <aiSpec><![CDATA[
 A single gentle scale-up-and-back "heartbeat". Attention effect — use as a build
 emphasis to draw the eye to existing content without moving it around. Subtler than

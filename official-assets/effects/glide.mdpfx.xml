@@ -1,6 +1,7 @@
 <effect>
   <name>glide</name>
   <description>Gentle horizontal glide with a fade. The element eases in from the right and leaves to the left. Softer than the hard slide. Works as a slide transition and as a build (enter/exit).</description>
+  <tags>transition, motion, subtle</tags>
   <aiSpec><![CDATA[
 Gentle horizontal glide with a fade: content eases in from the right and leaves to the left over a
 short distance. Softer and shorter than a hard slide. Works as a slide transition and as a build

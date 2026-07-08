@@ -1,6 +1,7 @@
 <effect>
   <name>skew</name>
   <description>Skew in. The element slides in with a horizontal skew that straightens as it settles. Works as a slide transition and as a build (enter/exit).</description>
+  <tags>emphasis, motion</tags>
   <aiSpec><![CDATA[
 Content slants in from the right and straightens as it lands, fading up — a snappy,
 slightly stylish entrance. Works as a slide transition and as a build enter/exit.

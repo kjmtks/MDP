@@ -77,7 +77,7 @@ Ctrl+K
       font-size: 0.85em;
       line-height: 1;
       padding: 3px 7px;
-      color: var(--sc-accent, var(--text-color, #1f2937));
+      color: var(--sc-accent, var(--inline-code-text, var(--text-color, #1f2937)));
       background-color: var(--inline-code-bg, #f3f4f6);
       border: 1px solid var(--border-color, #d1d5db);
       border-bottom-width: 2px;

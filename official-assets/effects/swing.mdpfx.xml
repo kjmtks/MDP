@@ -1,6 +1,7 @@
 <effect>
   <name>swing</name>
   <description>Pendulum swing from the top for emphasis. Falls back to a fade when used as a transition. Works as an emphasis, a slide transition, and a build (enter/exit).</description>
+  <tags>emphasis, energetic</tags>
   <aiSpec><![CDATA[
 Content rocks back and forth like a pendulum hanging from its top edge, then settles.
 Attention effect — best as a build emphasis for a light, playful accent. As a

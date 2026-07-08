@@ -1,6 +1,7 @@
 <effect>
   <name>iris</name>
   <description>Circular iris open from the center using a clip-path. The content expands from a point. Works as a slide transition and as a build (enter/exit).</description>
+  <tags>transition, reveal, mask</tags>
   <aiSpec><![CDATA[
 A circular mask opens from the center outward, revealing content from a point (and closing back to a
 point on leave), like a camera iris. Works as a slide transition and as a build enter/exit. Distinctive

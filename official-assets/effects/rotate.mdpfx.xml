@@ -1,6 +1,7 @@
 <effect>
   <name>rotate</name>
   <description>Rotate and scale in. The element spins slightly and grows into place while fading in. Works as a slide transition and as a build (enter/exit).</description>
+  <tags>emphasis, motion</tags>
   <aiSpec><![CDATA[
 Content tilts in, untwisting and growing from slightly small while it fades up.
 Playful and dynamic. Works as a slide transition and as a build enter/exit. Pick it

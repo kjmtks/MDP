@@ -1,6 +1,7 @@
 <effect>
   <name>bounce</name>
   <description>JavaScript-driven bounce (Web Animations API). Tests the JS-hook path. Best as a build.</description>
+  <tags>emphasis, energetic</tags>
   <aiSpec><![CDATA[
 Element springs in from above, overshoots, and bounces a few times before settling; leave drops it
 downward. There is also a lively in-place emphasis bounce. Best as a build (enter, exit, or emphasis)

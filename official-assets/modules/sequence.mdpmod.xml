@@ -59,9 +59,9 @@ Block module: split the body with `<!-- @ -->`, one TERM per section (Markdown, 
     let html = `\n\n<div class="mdp-mod-sequence" style="--sq-c:${color};"><div class="mdp-sq-strip">`;
     terms.forEach((t, i) => {
       if (i) html += `<span class="mdp-sq-sep">${esc(sep)}</span>`;
-      html += `<span class="mdp-sq-term">\n\n${t}\n\n</span>`;
+      html += `<div class="mdp-sq-term">\n\n${t}\n\n</div>`;
     });
-    if (String(args.tail) === 'true') html += `<span class="mdp-sq-sep">${esc(sep)}</span><span class="mdp-sq-term mdp-sq-tail">…</span>`;
+    if (String(args.tail) === 'true') html += `<span class="mdp-sq-sep">${esc(sep)}</span><div class="mdp-sq-term mdp-sq-tail">…</div>`;
     html += `</div>`;
     if (args.rule) html += `<div class="mdp-sq-rule">\n\n${args.rule}\n\n</div>`;
     html += `</div>\n\n`;

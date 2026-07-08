@@ -1,6 +1,7 @@
 <effect>
   <name>fade</name>
   <description>Cross-fade. Works as a slide transition and as a build (enter/exit).</description>
+  <tags>transition, subtle</tags>
   <aiSpec><![CDATA[
 Soft opacity cross-fade with no motion or directional bias. The most subtle, neutral option and a
 safe default for both slide transitions and build enter/exit. Choose it whenever you want a clean,

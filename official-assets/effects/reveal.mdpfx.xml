@@ -1,6 +1,7 @@
 <effect>
   <name>reveal</name>
   <description>Wipe-reveal from left to right using a clip-path. The content is uncovered progressively. Works as a slide transition and as a build (enter/exit).</description>
+  <tags>transition, reveal</tags>
   <aiSpec><![CDATA[
 Content is uncovered left-to-right by a moving clip edge, with no movement or fade —
 crisp and editorial. Good as a slide transition and as a build enter/exit. Choose it

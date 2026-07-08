@@ -1,6 +1,7 @@
 <effect>
   <name>drop</name>
   <description>Drop in from above with a slight overshoot, then settle. On leave it drops downward out of view. Works as a slide transition and as a build (enter/exit).</description>
+  <tags>transition, motion</tags>
   <aiSpec><![CDATA[
 Content falls in from above with a slight overshoot and settles, then drops downward out of view on
 leave (paired with a fade). Works as both a slide transition and a build enter/exit. Gives a sense of

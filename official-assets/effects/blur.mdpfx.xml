@@ -1,6 +1,7 @@
 <effect>
   <name>blur</name>
   <description>Blur in/out. The element fades from a soft blur into focus. Works as a slide transition and as a build (enter/exit).</description>
+  <tags>transition, subtle, focus</tags>
   <aiSpec><![CDATA[
 Content defocuses from a soft blur into sharp focus (and back out on leave), combined with a fade.
 Works both as a slide transition and as a build enter/exit. Dreamy and a touch cinematic, slightly

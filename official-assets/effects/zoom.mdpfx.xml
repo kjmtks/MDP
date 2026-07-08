@@ -1,6 +1,7 @@
 <effect>
   <name>zoom</name>
   <description>Scale + fade. Works as a slide transition and as a build.</description>
+  <tags>transition, motion</tags>
   <aiSpec><![CDATA[
 Content fades up while growing slightly into place (and scales past on exit) — a smooth,
 focusing "push-in". Works well as a slide transition and as a build enter/exit. A safe,

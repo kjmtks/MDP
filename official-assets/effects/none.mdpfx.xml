@@ -1,6 +1,7 @@
 <effect>
   <name>none</name>
   <description>No animation — switch instantly. Use to disable a global transition on a single slide.</description>
+  <tags>special</tags>
   <aiSpec><![CDATA[
 The no-op effect: disables animation entirely, switching instantly with no motion or fade. Use it as a
 slide transition to override a global/deck-wide transition on a single slide, or as a build to make
