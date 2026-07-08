@@ -108,7 +108,7 @@ item 4
     .mdp-mm-kids { margin-top: 6px; display: flex; flex-direction: column; gap: 3px; }
     .mdp-mm-right .mdp-mm-kids { padding-left: 18px; border-left: 2px solid color-mix(in srgb, var(--mm-c) 45%, transparent); margin-left: 12px; }
     .mdp-mm-left .mdp-mm-kids { padding-right: 18px; border-right: 2px solid color-mix(in srgb, var(--mm-c) 45%, transparent); margin-right: 12px; }
-    .mdp-mm-kid { font-size: 0.92em; color: var(--app-text, inherit); }
+    .mdp-mm-kid { font-size: 0.92em; color: inherit; }
     .mdp-mm-kid > :first-child { margin: 0; }
   ]]></style>
 </module>

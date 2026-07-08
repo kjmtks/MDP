@@ -62,7 +62,7 @@ Permutations | O(n!)
     rows.forEach((r) => {
       const c = colors[rank(r.o)];
       html += `<div class="mdp-bo-row"><span class="mdp-bo-name">${esc(r.name)}</span>` +
-        `<span class="mdp-bo-pill" style="--bo-c:${c};">\n\n\\(${r.o}\\)\n\n</span></div>`;
+        `<div class="mdp-bo-pill" style="--bo-c:${c};">\n\n\\(${r.o}\\)\n\n</div></div>`;
     });
     html += `</div>\n\n`;
     return html;
@@ -75,7 +75,7 @@ Permutations | O(n!)
     .mdp-bo-pill {
       background: color-mix(in srgb, var(--bo-c) 15%, transparent); color: var(--bo-c);
       border: 1px solid color-mix(in srgb, var(--bo-c) 45%, transparent);
-      border-radius: 999px; padding: 2px 12px; font-weight: 700;
+      border-radius: 999px; padding: 2px 12px; font-weight: 700; display: inline-flex; align-items: center;
     }
     .mdp-bo-pill > :first-child { margin: 0; }
   ]]></style>

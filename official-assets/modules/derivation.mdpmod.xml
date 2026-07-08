@@ -63,7 +63,8 @@ Example:
     .mdp-mod-derivation { margin: 1rem 0; display: grid; grid-template-columns: 1fr auto; gap: 6px 22px; align-items: baseline; }
     .mdp-dv-row { display: contents; }
     .mdp-dv-expr { }
-    .mdp-dv-expr > :first-child { margin: 0; }
+    .mdp-dv-expr > :first-child { margin: 0; display: inline; }
+    .mdp-dv-expr .katex-display { display: inline-block; margin: 0; }
     .mdp-dv-reason { color: var(--dv-color); font-size: 0.85em; text-align: right; white-space: nowrap; }
     .mdp-dv-reason:not(:empty)::before { content: '('; }
     .mdp-dv-reason:not(:empty)::after { content: ')'; }

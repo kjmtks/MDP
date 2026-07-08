@@ -44,7 +44,7 @@ For a right triangle with legs \(a, b\) and hypotenuse \(c\),
     const head = `${name}${number ? ' ' + esc(number) : ''}${title ? ' (' + esc(title) + ')' : ''}.`;
     const body = (content || '').trim();
     const styleKind = /definition|example|remark/.test(kind) ? 'plain' : 'italic';
-    return `\n\n<div class="mdp-mod-theorem mdp-th-${styleKind}" style="--th-color:${color};"><span class="mdp-th-head">${head}</span> <span class="mdp-th-body">\n\n${body}\n\n</span></div>\n\n`;
+    return `\n\n<div class="mdp-mod-theorem mdp-th-${styleKind}" style="--th-color:${color};"><span class="mdp-th-head">${head}</span> <div class="mdp-th-body">\n\n${body}\n\n</div></div>\n\n`;
   ]]></render>
   <style><![CDATA[
     .mdp-mod-theorem {
@@ -53,6 +53,7 @@ For a right triangle with legs \(a, b\) and hypotenuse \(c\),
       background: color-mix(in srgb, var(--th-color) 7%, transparent);
     }
     .mdp-th-head { font-weight: 700; color: var(--th-color); margin-right: 4px; }
+    .mdp-th-body { display: inline; }
     .mdp-th-italic .mdp-th-body { font-style: italic; }
     .mdp-th-body > :first-child { margin-top: 0; display: inline; }
     .mdp-th-body > :last-child { margin-bottom: 0; }

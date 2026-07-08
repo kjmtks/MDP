@@ -5,11 +5,11 @@
   <tags>proofs, equations</tags>
   <aiSpec><![CDATA[
 A PROOF block for maths slides — leads with an italic "Proof." and ends with a
-right-aligned QED tombstone ∎. Block module: the body is the argument (Markdown, with
+right-aligned hollow QED square □. Block module: the body is the argument (Markdown, with
 inline \(math\) and display \[math\]).
 Parameters:
   `label` (text, default "Proof") — the lead word (e.g. "Sketch", "Lemma", "証明").
-  `qed` (text, default "∎") — the end symbol; set to "" to hide it.
+  `qed` (text, default "□") — the end symbol; set to "" to hide it.
   `accent` (color, default inherit) — colors the lead word, QED mark and (if on) the rule.
   `border` (boolean, default false) — draw a left accent rule beside the proof.
   `fontsize` (text CSS length, default inherit) — font size of the whole block, e.g. 0.9em or 15px.
@@ -20,7 +20,7 @@ Assume \(n\) is even, so \(n = 2k\). Then \(n^2 = 4k^2\) is divisible by 4.
 ]]></aiSpec>
   <parameters>
     <param name="label" type="text" default="Proof" label="Lead word" desc="The italic lead word before the proof, e.g. Sketch or Lemma." />
-    <param name="qed" type="text" default="∎" label="End symbol" desc="Tombstone shown at the end; set empty to hide." />
+    <param name="qed" type="text" default="□" label="End symbol" desc="Tombstone shown at the end; set empty to hide." />
     <param name="accent" type="color" default="" label="Accent color" desc="Colors the lead word, end symbol and rule; blank = inherit text color." />
     <param name="border" type="boolean" default="false" label="Left rule" desc="Draw a left accent rule beside the proof." />
     <param name="fontsize" type="text" default="" label="Font size" desc="CSS length for the whole block, e.g. 0.9em; blank = inherit." />
@@ -38,22 +38,29 @@ Suppose \(n\) is even. Then \(n = 2k\), so \(n^2 = 4k^2 = 2(2k^2)\) is even. \(\
   <render><![CDATA[
     const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     const label = esc((args.label || 'Proof').trim());
-    const qedRaw = (args.qed != null) ? String(args.qed) : '∎';
-    const qed = esc(qedRaw.trim());
+    const qedRaw = (args.qed != null) ? String(args.qed) : '□';
+    const qedTrim = qedRaw.trim();
     const accent = (args.accent && String(args.accent).trim()) || 'inherit';
+    const qedColor = (args.accent && String(args.accent).trim()) || 'currentColor';
     const fontsize = (args.fontsize && String(args.fontsize).trim()) || 'inherit';
     const border = String(args.border) === 'true';
     const cls = 'mdp-mod-proof' + (border ? ' mdp-pf-bordered' : '');
     const body = (content || '').trim();
-    const qedSpan = qed ? `<span class="mdp-pf-qed">${qed}</span>` : '';
-    return `\n\n<div class="${cls}" style="--pf-accent:${accent}; --pf-size:${fontsize};"><span class="mdp-pf-lead">${label}.</span> <span class="mdp-pf-body">\n\n${body}\n\n</span>${qedSpan}</div>\n\n`;
+    // The default QED mark is a HOLLOW square drawn with a border (font-independent —
+    // the bare □ glyph renders filled/as tofu in many fonts). A custom qed is text.
+    const qedSpan = !qedTrim ? '' :
+      (qedTrim === '□' || qedTrim === '\\square')
+        ? `<span class="mdp-pf-qed" style="width:0.62em;height:0.62em;border:1.6px solid ${qedColor};box-sizing:border-box;margin-top:0.34em;"></span>`
+        : `<span class="mdp-pf-qed">${esc(qedTrim)}</span>`;
+    return `\n\n<div class="${cls}" style="--pf-accent:${accent}; --pf-size:${fontsize};"><span class="mdp-pf-lead">${label}.</span> <div class="mdp-pf-body">\n\n${body}\n\n</div>${qedSpan}</div>\n\n`;
   ]]></render>
   <style><![CDATA[
     .mdp-mod-proof { margin: 1rem 0; position: relative; font-size: var(--pf-size, inherit); }
     .mdp-pf-bordered { border-left: 3px solid var(--pf-accent, var(--accent-color)); padding-left: 0.9em; }
     .mdp-pf-lead { font-style: italic; margin-right: 4px; color: var(--pf-accent, inherit); }
+    .mdp-pf-body { display: inline; }
     .mdp-pf-body > :first-child { margin-top: 0; display: inline; }
     .mdp-pf-body > :last-child { margin-bottom: 0; }
-    .mdp-pf-qed { float: right; font-size: 1.1em; color: var(--pf-accent, inherit); }
+    .mdp-pf-qed { float: right; display: inline-block; font-size: 1.1em; color: var(--pf-accent, inherit); }
   ]]></style>
 </module>

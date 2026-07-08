@@ -85,6 +85,7 @@ C - A
     .mdp-ng-edge { stroke: currentColor; stroke-width: 1; fill: none; opacity: 0.75; }
     .mdp-ng-node { fill: color-mix(in srgb, var(--ng-c) 18%, transparent); stroke: var(--ng-c); stroke-width: 1.2; }
     .mdp-ng-nlbl { fill: currentColor; font-size: 6.5px; font-weight: 700; }
-    .mdp-ng-elbl { fill: currentColor; font-size: 5.5px; opacity: 0.85; }
+    .mdp-ng-elbl { fill: currentColor; font-size: 8px; font-weight: 700; opacity: 1;
+      paint-order: stroke; stroke: var(--panel-bg, #fff); stroke-width: 2.5px; stroke-linejoin: round; }
   ]]></style>
 </module>

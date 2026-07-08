@@ -69,6 +69,7 @@ Parameters:
     for (let i = 0; i <= N; i++) { const v = lo + span * i / N; curve.push([gx(v), base - peak * g(v)]); }
     const linePath = 'M' + curve.map((p) => p[0].toFixed(2) + ',' + p[1].toFixed(2)).join(' L');
     let shade = '';
+    let regionLabel = '';
     const fromRaw = String(args.from ?? '').trim(), toRaw = String(args.to ?? '').trim();
     if (fromRaw !== '' || toRaw !== '') {
       const a = fromRaw !== '' ? parseFloat(fromRaw) : lo;
@@ -83,13 +84,13 @@ Parameters:
       shade = `<path d="${area}" class="mdp-ds-fill"/>`;
       if (args.label) {
         const mid = gx((s0 + s1) / 2);
-        shade += `<text x="${mid.toFixed(2)}" y="${(base - 2).toFixed(2)}" class="mdp-ds-lbl" text-anchor="middle">${esc(args.label)}</text>`;
+        regionLabel = `<text x="${mid.toFixed(2)}" y="${(base - 2).toFixed(2)}" class="mdp-ds-lbl" text-anchor="middle">${esc(args.label)}</text>`;
       }
     }
     const meanLine = showMean ? `<line x1="${gx(mean).toFixed(2)}" y1="${(base - peak).toFixed(2)}" x2="${gx(mean).toFixed(2)}" y2="${base}" class="mdp-ds-mean"/>` : '';
     const axis = `<line x1="0" y1="${base}" x2="${W}" y2="${base}" class="mdp-ds-axis"/>`;
     return `\n\n<div class="mdp-mod-distribution" style="--ds-color:${color}; --ds-fill:${fillPct}%; width: min(100%, ${mw}px); margin:${marginStr};"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">` +
-      `${shade}<path d="${linePath}" class="mdp-ds-curve"/>${meanLine}${axis}</svg></div>\n\n`;
+      `${shade}<path d="${linePath}" class="mdp-ds-curve"/>${meanLine}${axis}${regionLabel}</svg></div>\n\n`;
   ]]></render>
   <style><![CDATA[
     .mdp-mod-distribution { width: min(100%, 440px); margin: 1rem auto; }

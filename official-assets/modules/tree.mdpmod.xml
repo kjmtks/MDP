@@ -200,21 +200,19 @@ A leaf node with **Markdown**
     }
     /* horizontal bar halves (::before = left, ::after = right) + the ::after's
        border-left is the vertical stem down into each child. */
-    .mdp-tree-lines > .mdp-tree-kids > .mdp-tree-slot::before,
-    .mdp-tree-lines > .mdp-tree-kids > .mdp-tree-slot::after {
-      content: ''; position: absolute; top: 0; right: 50%;
-      width: 50%; height: 20px; border-top: 2px solid var(--tree-color, #3b82f6);
+    /* horizontal connector bar across the top of each child slot */
+    .mdp-tree-lines > .mdp-tree-kids > .mdp-tree-slot::before {
+      content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 20px;
+      border-top: 2px solid var(--tree-color, #3b82f6);
     }
+    /* one vertical stem from the bar straight down into the child */
     .mdp-tree-lines > .mdp-tree-kids > .mdp-tree-slot::after {
-      right: auto; left: 50%; border-left: 2px solid var(--tree-color, #3b82f6);
+      content: ''; position: absolute; top: 0; left: 50%; height: 20px;
+      border-left: 2px solid var(--tree-color, #3b82f6);
     }
+    /* trim the outer half of the bar on the end children; a lone child has no bar */
+    .mdp-tree-lines > .mdp-tree-kids > .mdp-tree-slot:first-child::before { left: 50%; width: 50%; }
+    .mdp-tree-lines > .mdp-tree-kids > .mdp-tree-slot:last-child::before { width: 50%; }
     .mdp-tree-lines > .mdp-tree-kids > .mdp-tree-slot:only-child::before { display: none; }
-    .mdp-tree-lines > .mdp-tree-kids > .mdp-tree-slot:only-child::after { border-top: 0 none; }
-    .mdp-tree-lines > .mdp-tree-kids > .mdp-tree-slot:first-child::before { border: 0 none; }
-    .mdp-tree-lines > .mdp-tree-kids > .mdp-tree-slot:last-child::after { border-top: 0 none; }
-    .mdp-tree-lines > .mdp-tree-kids > .mdp-tree-slot:last-child::before {
-      border-right: 2px solid var(--tree-color, #3b82f6); border-radius: 0 6px 0 0;
-    }
-    .mdp-tree-lines > .mdp-tree-kids > .mdp-tree-slot:first-child::after { border-radius: 6px 0 0 0; }
   ]]></style>
 </module>

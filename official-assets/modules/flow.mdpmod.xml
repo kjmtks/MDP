@@ -84,11 +84,13 @@ Done
       background: color-mix(in srgb, var(--fl-color) 8%, transparent); text-align: center;
     }
     .mdp-fl-decision .mdp-fl-inner {
-      border: 2px solid var(--fl-color); padding: 14px 24px; text-align: center;
+      border: 2px solid var(--fl-color); text-align: center;
       background: color-mix(in srgb, var(--fl-color) 12%, transparent);
-      transform: rotate(45deg); border-radius: var(--fl-radius, 8px); margin: 12px;
+      transform: rotate(45deg); border-radius: var(--fl-radius, 8px);
+      aspect-ratio: 1; min-width: 90px; display: grid; place-items: center;
+      margin: 18px;
     }
-    .mdp-fl-decision .mdp-fl-inner > * { transform: rotate(-45deg); margin: 0; }
+    .mdp-fl-decision .mdp-fl-inner > * { transform: rotate(-45deg); margin: 0; max-width: 120px; }
     .mdp-fl-step .mdp-fl-inner > * { margin: 0; }
     .mdp-fl-arrow { position: relative; font-size: 1.4em; line-height: 1; color: var(--fl-color); padding: 4px 0; }
     .mdp-fl-edge { position: absolute; left: 100%; top: 50%; transform: translateY(-50%); margin-left: 6px; font-size: 0.6em; font-weight: 700; white-space: nowrap; color: var(--fl-color); }

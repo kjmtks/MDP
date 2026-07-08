@@ -61,6 +61,7 @@ E = mc^2
     .mdp-mod-equation { display: flex; align-items: center; margin: 1rem 0; gap: 8px; }
     .mdp-eq-body { flex: 1; text-align: center; min-width: 0; overflow-x: auto; }
     .mdp-eq-body > :first-child { margin: 0; }
+    .mdp-eq-body .katex-display { margin: 0; }
     .mdp-eq-tag { flex: 0 0 auto; color: var(--eq-tagcolor, var(--app-text-muted, #888)); font-variant-numeric: tabular-nums; }
   ]]></style>
 </module>

@@ -14,6 +14,7 @@ Parameters:
   `a` / `b`   — circle labels (default A, B).
   `formula`   — caption under the diagram (Markdown, so \( \) math works, e.g. \(A \cup B\); default none).
   `color`     — highlight colour of the shaded region (default theme accent).
+  `colora` / `colorb` — outline & label colour of circle A / B (defaults: accent, red).
   `intensity` — 0–100 shade opacity percentage of the highlight (default 40).
   `width`     — CSS width of the diagram (default blank = 380px), e.g. 260px or 60%.
   `showu`     — true | false (default true): show the "U" universe label.
@@ -28,6 +29,8 @@ Example:
     <param name="b" type="text" default="B" label="Right label" desc="Label for the right circle." />
     <param name="formula" type="text" default="" label="Caption formula" desc="Caption below the diagram; \( \) math works." />
     <param name="color" type="color" default="var(--accent-color)" label="Highlight" desc="Colour of the shaded region." />
+    <param name="colora" type="color" default="var(--accent-color)" label="Set A colour" desc="Outline/label colour of the left circle." />
+    <param name="colorb" type="color" default="#ef4444" label="Set B colour" desc="Outline/label colour of the right circle." />
     <param name="intensity" type="number" default="40" min="0" max="100" label="Shade intensity (%)" desc="Opacity of the highlight fill." />
     <param name="width" type="text" default="" label="Width" desc="CSS width of the diagram; blank = 380px." />
     <param name="showu" type="boolean" default="true" label="Show U label" desc="Show the universe 'U' label." />
@@ -45,6 +48,8 @@ Example:
     const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     const op = String(args.op || 'intersect');
     const color = args.color || 'var(--accent-color)';
+    const colorA = (args.colora && String(args.colora).trim()) || 'var(--accent-color)';
+    const colorB = (args.colorb && String(args.colorb).trim()) || '#ef4444';
     const width = (args.width || '').trim();
     const intensityRaw = (args.intensity === undefined || args.intensity === '') ? 40 : parseFloat(args.intensity);
     const intensity = Number.isFinite(intensityRaw) ? Math.max(0, Math.min(100, intensityRaw)) : 40;
@@ -52,7 +57,7 @@ Example:
     const showFrame = String(args.frame === undefined ? 'true' : args.frame) !== 'false';
     const uid = 'so' + op.replace(/[^a-z]/g, '') + String(args.a || 'A').length + String(args.b || 'B').length;
     const A = { x: 62, y: 50, r: 34 }, B = { x: 98, y: 50, r: 34 };
-    const circ = (c, cls) => `<circle cx="${c.x}" cy="${c.y}" r="${c.r}" class="${cls}"/>`;
+    const circ = (c, cls, col) => `<circle cx="${c.x}" cy="${c.y}" r="${c.r}" class="${cls}"${col ? ` style="stroke:${col}"` : ''}/>`;
     const defs = `<defs>` +
       `<clipPath id="${uid}-ca"><circle cx="${A.x}" cy="${A.y}" r="${A.r}"/></clipPath>` +
       `<mask id="${uid}-ma"><rect x="0" y="0" width="160" height="100" fill="#fff"/><circle cx="${A.x}" cy="${A.y}" r="${A.r}" fill="#000"/></mask>` +
@@ -70,9 +75,9 @@ Example:
     const frameRect = showFrame ? `<rect x="2" y="2" width="156" height="96" rx="6" class="mdp-so-frame"/>` : '';
     const uText = showU ? `<text x="8" y="13" class="mdp-so-u">U</text>` : '';
     const frame = frameRect + uText +
-      circ(A, 'mdp-so-circle') + circ(B, 'mdp-so-circle') +
-      `<text x="${A.x - A.r + 6}" y="${A.y - A.r + 2}" class="mdp-so-lbl">${esc(args.a || 'A')}</text>` +
-      `<text x="${B.x + B.r - 6}" y="${B.y - B.r + 2}" class="mdp-so-lbl" text-anchor="end">${esc(args.b || 'B')}</text>`;
+      circ(A, 'mdp-so-circle', colorA) + circ(B, 'mdp-so-circle', colorB) +
+      `<text x="${A.x - A.r + 6}" y="${A.y - A.r + 2}" class="mdp-so-lbl" style="fill:${colorA}">${esc(args.a || 'A')}</text>` +
+      `<text x="${B.x + B.r - 6}" y="${B.y - B.r + 2}" class="mdp-so-lbl" text-anchor="end" style="fill:${colorB}">${esc(args.b || 'B')}</text>`;
     let styleVars = `--so-c:${color};--so-fill:${intensity}%;`;
     if (width) styleVars += `--so-w:${width};`;
     let html = `\n\n<div class="mdp-mod-setops" style="${styleVars}"><svg viewBox="0 0 160 100" preserveAspectRatio="xMidYMid meet">${defs}${fill}${frame}</svg>`;
