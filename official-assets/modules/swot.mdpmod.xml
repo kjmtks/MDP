@@ -1,0 +1,72 @@
+<module>
+  <name>swot</name>
+  <type>block</type>
+  <description>SWOT grid — Strengths / Weaknesses / Opportunities / Threats, colour-coded. Body = 4 sections in that order.</description>
+  <tags>grouping, comparison</tags>
+  <aiSpec><![CDATA[
+A SWOT ANALYSIS grid (Strengths, Weaknesses, Opportunities, Threats). Block module:
+the body is FOUR sections split by `<!-- @ -->`, in the order S, W, O, T. Each cell is
+Markdown (a short bullet list works well). Cells are colour-coded (S/O positive,
+W/T caution) with a heading. Use custom headings via `labels` (comma-separated) for
+other languages.
+
+<!-- @swot -->
+- Strong brand
+- Loyal users
+<!-- @ -->
+- Small team
+<!-- @ -->
+- New markets
+<!-- @ -->
+- Competition
+<!-- @end -->
+]]></aiSpec>
+  <parameters>
+    <param name="labels" type="text" default="Strengths,Weaknesses,Opportunities,Threats" label="Quadrant headings" desc="comma-separated S,W,O,T" />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Diagrams</category>
+      <label>SWOT grid</label>
+      <text><![CDATA[<!-- @swot -->
+- Strong brand
+- Loyal customers
+<!-- @ -->
+- Limited budget
+<!-- @ -->
+- Emerging markets
+<!-- @ -->
+- New competitors
+<!-- @end -->]]></text>
+      <description>Strengths / Weaknesses / Opportunities / Threats, colour-coded 2×2.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const heads = String(args.labels || 'Strengths,Weaknesses,Opportunities,Threats').split(',').map((x) => x.trim());
+    const cells = sections.slice(0, 4).map((s) => (s || '').trim());
+    while (cells.length < 4) cells.push('');
+    const keys = ['s', 'w', 'o', 't'];
+    let html = `\n\n<div class="mdp-mod-swot">`;
+    cells.forEach((c, i) => {
+      html += `<div class="mdp-swot-cell mdp-swot-${keys[i]}"><div class="mdp-swot-head">${esc(heads[i] || '')}</div><div class="mdp-swot-body">\n\n${c}\n\n</div></div>`;
+    });
+    html += `</div>\n\n`;
+    return html;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-swot { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 1rem 0; }
+    .mdp-swot-cell { border-radius: 8px; padding: 10px 12px; border: 2px solid; }
+    .mdp-swot-head { font-weight: 700; margin-bottom: 4px; }
+    .mdp-swot-s { border-color: #22c55e; background: color-mix(in srgb, #22c55e 8%, transparent); }
+    .mdp-swot-w { border-color: #ef4444; background: color-mix(in srgb, #ef4444 8%, transparent); }
+    .mdp-swot-o { border-color: #3b82f6; background: color-mix(in srgb, #3b82f6 8%, transparent); }
+    .mdp-swot-t { border-color: #f59e0b; background: color-mix(in srgb, #f59e0b 8%, transparent); }
+    .mdp-swot-s .mdp-swot-head { color: #16a34a; }
+    .mdp-swot-w .mdp-swot-head { color: #dc2626; }
+    .mdp-swot-o .mdp-swot-head { color: #2563eb; }
+    .mdp-swot-t .mdp-swot-head { color: #d97706; }
+    .mdp-swot-body ul { margin: 0; padding-left: 1.1em; }
+    .mdp-swot-body > :first-child { margin-top: 0; } .mdp-swot-body > :last-child { margin-bottom: 0; }
+  ]]></style>
+</module>

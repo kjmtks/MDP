@@ -1,16 +1,30 @@
 <module>
   <name>mark</name>
   <type>block</type>
-  <description>Highlighted text. The text to highlight is the block body, so it may contain spaces, commas and inline Markdown. Renders inline.</description>
+  <description>Highlighter-pen highlight for a span of text. The body is the text to highlight (may contain spaces, commas and inline Markdown) and it renders inline so it flows mid-sentence.</description>
+  <tags>inline, decoration</tags>
   <aiSpec><![CDATA[
-Highlight (marker-pen) a span of text to draw attention to it. The body is the
-text to highlight; it may contain spaces, commas and inline Markdown. Renders
-inline despite being a block module, so it flows mid-sentence. Set `color` for
-the highlight background.
+HIGHLIGHT (marker-pen) a span of text to draw attention to it. Although declared as a
+block module it renders INLINE (a single <span>), so it flows mid-sentence inside a
+paragraph. The BODY (between the directive and <!-- @end -->) is the text to highlight;
+it may contain spaces, commas and inline Markdown.
+Not for: full callout/attention boxes (use @callout) or code (use a fenced code block).
+Parameters:
+  • color — highlight background color (default #fde68a, a soft yellow).
+  • textcolor — text color inside the highlight (default: blank = theme text color).
+  • radius — CSS corner radius of the highlight, e.g. 3px or 0.4em (default: blank = 3px).
+  • bold — render the highlighted text in bold (true/false, default false).
+
+<!-- @mark color: #bfdbfe, bold: true -->
+the key result
+<!-- @end -->
 ]]></aiSpec>
 
   <parameters>
-    <param name="color" type="color" default="#fde68a" label="Highlight Color" />
+    <param name="color" type="color" default="#fde68a" label="Highlight color" desc="Background color of the marker highlight." />
+    <param name="textcolor" type="color" default="" label="Text color" desc="Text color inside the highlight; blank keeps the theme text color." />
+    <param name="radius" type="text" default="" label="Corner radius" desc="CSS corner radius of the highlight (e.g. 3px, 0.4em); blank = default 3px." />
+    <param name="bold" type="boolean" default="false" label="Bold text" desc="Render the highlighted text in bold." />
   </parameters>
 
   <snippets>
@@ -22,12 +36,27 @@ Important text
 <!-- @end -->]]></text>
       <description>Highlighted (marked) text. Body = the text to highlight.</description>
     </snippet>
+    <snippet>
+      <category>UI Parts</category>
+      <label>Bold highlight</label>
+      <text><![CDATA[<!-- @mark color: #bfdbfe, bold: true -->
+the key result
+<!-- @end -->]]></text>
+      <description>Highlight with a custom color and bold text.</description>
+    </snippet>
   </snippets>
 
   <render inline="true"><![CDATA[
     const body = sections[0] ? sections[0].trim() : '';
     const color = (args.color && String(args.color).trim()) || '#fde68a';
-    return '<span class="mdp-mod-mark" style="background-color: ' + color + ';">' + body + '</span>';
+    const textcolor = args.textcolor && String(args.textcolor).trim();
+    const radius = args.radius && String(args.radius).trim();
+    const bold = String(args.bold) === 'true';
+    let style = 'background-color: ' + color + ';';
+    if (textcolor) style += ' color: ' + textcolor + ';';
+    if (radius) style += ' border-radius: ' + radius + ';';
+    if (bold) style += ' font-weight: 700;';
+    return '<span class="mdp-mod-mark" style="' + style + '">' + body + '</span>';
   ]]></render>
 
   <style><![CDATA[

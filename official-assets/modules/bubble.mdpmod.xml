@@ -2,33 +2,62 @@
   <name>bubble</name>
   <type>block</type>
   <description>A speech bubble / callout with a pointing tail. Body shape (ellipse, rectangle, rounded, cloud), tail direction/length, fill, border and text. Move / resize / rotate on the preview in Edit layout.</description>
+  <tags>callout, freeform</tags>
   <aiSpec><![CDATA[
 A free-floating speech or thought bubble with a pointing tail — for annotating
 or commenting on something on the slide. Block module: the body is the text
-inside the bubble. Shape (`type`: rounded/rectangle/ellipse/cloud) and tail
-`angle`/`length` are parameters; position/size come from x/y/w/h and it can be
-moved/resized/rotated on the preview. Use `tailtype: thought` for a thinking cloud.
-Example: `<!-- @bubble type: rounded, x: 50, y: 35, w: 32, h: 18, angle: 110 -->`.
+inside the bubble. Position and size come from x/y/w/h and can be moved / resized
+/ rotated on the preview (Edit layout) — you do not normally hand-write those.
+For an avatar chat line in flow use @balloon; for a titled panel use @card.
+
+Shape & tail:
+- type (select: rounded | rectangle | ellipse | cloud, default rounded): bubble outline shape.
+- corner (number, default 14): rounded-rectangle corner size (0–50).
+- cloudbumps (number, default 10): number of bumps on the cloud shape (4–24).
+- angle (number deg, default 110): tail direction — 0=right, 90=down, 180=left, 270=up (0–360).
+- tailtype (select: pointer | thought, default pointer): a solid pointer or trailing thought puffs.
+- length (number, default 22): tail length; 0 hides the tail (0–70).
+- tailwidth (number deg, default 18): pointer tail base width (2–120).
+- tailpuffs (number, default 3): trailing circles for a thought tail (1–6).
+
+Fill, border & text:
+- fill (color, default #ffffff): bubble fill color.
+- fillopacity (number %, default 100): fill opacity (0–100); lower to let the slide show through.
+- bordercolor (color, default #333333): outline color.
+- borderwidth (number px, default 2): outline thickness (0–30).
+- borderstyle (select: solid | dashed | dotted, default solid): outline line style.
+- shadow (boolean, default false): soft drop shadow behind the bubble.
+- textcolor (color, default #333333): text color.
+- fontsize (CSS length, default 1em): text size, e.g. 1.1em or 18px.
+- halign (select: left | center | right, default center) / valign (select: top | middle | bottom, default middle): text alignment.
+
+Usage:
+<!-- @bubble type: rounded, x: 50, y: 35, w: 32, h: 18, angle: 110, shadow: true, borderstyle: dashed -->
+Look here!
+<!-- @end -->
 ]]></aiSpec>
 
   <manipulate position="xy" size="xy" rotation="true" minW="6" maxW="100" minH="4" maxH="100" />
 
   <parameters>
-    <param name="type" type="select" default="rounded" label="Shape" options="rounded:Rounded rectangle,rectangle:Rectangle,ellipse:Ellipse,cloud:Cloud" />
+    <param name="type" type="select" default="rounded" label="Shape" options="rounded:Rounded rectangle,rectangle:Rectangle,ellipse:Ellipse,cloud:Cloud" desc="Bubble outline shape." />
     <param name="corner" type="number" default="14" label="Corner radius" desc="Rounded-rectangle corner size" min="0" max="50" />
     <param name="cloudbumps" type="number" default="10" label="Cloud bumps" desc="Cloud complexity (number of bumps)" min="4" max="24" integer="true" />
     <param name="angle" type="number" default="110" label="Tail angle (deg)" desc="Direction the tail points: 0=right, 90=down, 180=left, 270=up" min="0" max="360" />
-    <param name="tailtype" type="select" default="pointer" label="Tail type" options="pointer:Pointer,thought:Thought (puffs)" />
+    <param name="tailtype" type="select" default="pointer" label="Tail type" options="pointer:Pointer,thought:Thought (puffs)" desc="Solid pointer tail or trailing thought puffs." />
     <param name="length" type="number" default="22" label="Tail length" desc="0 hides the tail" min="0" max="70" />
     <param name="tailwidth" type="number" default="18" label="Tail width" desc="Pointer tail base width, in degrees" min="2" max="120" />
     <param name="tailpuffs" type="number" default="3" label="Thought puffs" desc="Number of trailing circles (thought tail)" min="1" max="6" integer="true" />
-    <param name="fill" type="color" default="#ffffff" label="Fill" options="#ffffff:White,#fef9c3:Note,var(--accent-color):Accent,#3b82f6:Blue,#10b981:Green,#fee2e2:Pink,transparent:None" />
-    <param name="bordercolor" type="color" default="#333333" label="Border color" />
-    <param name="borderwidth" type="number" default="2" label="Border width (px)" min="0" max="30" />
-    <param name="textcolor" type="color" default="#333333" label="Text color" />
+    <param name="fill" type="color" default="#ffffff" label="Fill" options="#ffffff:White,#fef9c3:Note,var(--accent-color):Accent,#3b82f6:Blue,#10b981:Green,#fee2e2:Pink,transparent:None" desc="Bubble fill color." />
+    <param name="fillopacity" type="number" default="100" label="Fill opacity (%)" desc="Fill opacity; lower to let the slide show through." min="0" max="100" integer="true" />
+    <param name="bordercolor" type="color" default="#333333" label="Border color" desc="Outline color." />
+    <param name="borderwidth" type="number" default="2" label="Border width (px)" desc="Outline thickness." min="0" max="30" />
+    <param name="borderstyle" type="select" default="solid" label="Border style" options="solid:Solid,dashed:Dashed,dotted:Dotted" desc="Outline line style." />
+    <param name="shadow" type="boolean" default="false" label="Shadow" desc="Soft drop shadow behind the bubble." />
+    <param name="textcolor" type="color" default="#333333" label="Text color" desc="Text color." />
     <param name="fontsize" type="text" default="1em" label="Font size" desc="CSS size, e.g. 1.1em or 18px" />
-    <param name="halign" type="select" default="center" label="Horizontal align" options="left,center,right" />
-    <param name="valign" type="select" default="middle" label="Vertical align" options="top,middle,bottom" />
+    <param name="halign" type="select" default="center" label="Horizontal align" options="left,center,right" desc="Horizontal text alignment." />
+    <param name="valign" type="select" default="middle" label="Vertical align" options="top,middle,bottom" desc="Vertical text alignment." />
   </parameters>
 
   <snippets>
@@ -63,6 +92,10 @@ Hmm…
     const fs = args.fontsize || '1em';
     const h = (args.halign || 'center').toLowerCase();
     const v = (args.valign || 'middle').toLowerCase();
+    const fillOpacity = (() => { const n = parseFloat(args.fillopacity); return Number.isFinite(n) ? Math.max(0, Math.min(100, n)) / 100 : 1; })();
+    const borderStyle = (args.borderstyle || 'solid').toLowerCase();
+    const dash = borderStyle === 'dashed' ? ' stroke-dasharray="6 4"' : borderStyle === 'dotted' ? ' stroke-dasharray="1 4" stroke-linecap="round"' : '';
+    const shadow = (args.shadow === true || args.shadow === 'true');
     const justify = h === 'left' ? 'flex-start' : h === 'right' ? 'flex-end' : 'center';
     const alignItems = v === 'top' ? 'flex-start' : v === 'bottom' ? 'flex-end' : 'center';
     const textAlign = h === 'left' ? 'left' : h === 'right' ? 'right' : 'center';
@@ -136,7 +169,7 @@ Hmm…
     const tailType = (args.tailtype || 'pointer').toLowerCase();
     // Sharp pointer tip (miter); body curves are tangent-continuous so miter only
     // affects the genuinely sharp corners (the tail tip / mouth).
-    const A_ATTR = `fill="${fill}" stroke="${bc}" stroke-width="${bw}" vector-effect="non-scaling-stroke" stroke-linejoin="miter" stroke-miterlimit="10"`;
+    const A_ATTR = `fill="${fill}" fill-opacity="${fillOpacity}" stroke="${bc}" stroke-width="${bw}" vector-effect="non-scaling-stroke" stroke-linejoin="miter" stroke-miterlimit="10"${dash}`;
     // CENTRIPETAL Catmull-Rom → cubic-bezier. Unlike the uniform variant it never
     // overshoots, so a rounded rectangle's straight edge meets its corner cleanly
     // (no bulge/dent) and the curve hugs the sampled boundary. Densely sampled so
@@ -195,7 +228,7 @@ Hmm…
 
     const textOpen = `<div class="mdp-bubble-text" style="color: ${tc}; font-size: ${fs}; justify-content: ${justify}; align-items: ${alignItems}; text-align: ${textAlign};">`;
     // Text is a normal HTML layer (not SVG) stacked over the shape.
-    return `\n\n<div class="mdp-mod-bubble">${bodySvg}${textOpen}\n\n${bodyStr}\n\n</div></div>\n\n`;
+    return `\n\n<div class="mdp-mod-bubble${shadow ? ' mdp-bubble-shadow' : ''}">${bodySvg}${textOpen}\n\n${bodyStr}\n\n</div></div>\n\n`;
   ]]></render>
 
   <style><![CDATA[
@@ -214,6 +247,7 @@ Hmm…
       display: block;
       overflow: visible;
     }
+    .mdp-bubble-shadow .mdp-bubble-svg { filter: drop-shadow(0 4px 8px rgba(0,0,0,0.25)); }
     .mdp-bubble-text {
       position: absolute;
       inset: 0;

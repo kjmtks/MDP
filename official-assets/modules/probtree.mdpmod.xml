@@ -1,0 +1,103 @@
+<module>
+  <name>probtree</name>
+  <type>block</type>
+  <description>A two-level probability tree: branches with probabilities, leaves showing the joint probability (auto-multiplied). Sections: each = one branch, "Label | p" lines.</description>
+  <tags>probability, hierarchy</tags>
+  <aiSpec><![CDATA[
+A PROBABILITY TREE (two levels, left→right) with the joint probability computed at
+each leaf. Use for conditional-probability / Bayes setups. Block module: split the body
+with `<!-- @ -->`, one FIRST-LEVEL branch per section:
+  • the section's FIRST line is that branch: `Label | p` (p as 0.3 or 30%),
+  • each following line is a second-level outcome under it: `Label | p`.
+Parameters:
+  `root` (text, default "Start") — label of the start node.
+  `joint` (boolean, default true) — false hides the auto-computed p1×p2 at leaves.
+  `color` (color, default accent) — accent for nodes and connectors.
+  `percent` (boolean, default false) — show probabilities as percentages (30%) instead of decimals (0.3).
+  `precision` (number 0-6, default 4) — max decimal places when rounding probabilities.
+  `gap` (number px 0-80, default 18) — vertical spacing between first-level branches.
+
+<!-- @probtree root: Weather, percent: true -->
+Rain | 0.3
+Late | 0.5
+On time | 0.5
+<!-- @ -->
+Sun | 0.7
+Late | 0.1
+On time | 0.9
+<!-- @end -->
+]]></aiSpec>
+  <parameters>
+    <param name="root" type="text" default="Start" label="Root label" desc="Label of the start node on the left." />
+    <param name="joint" type="boolean" default="true" label="Show joint probabilities" desc="Show the auto-computed p1×p2 value at each leaf." />
+    <param name="color" type="color" default="var(--accent-color)" label="Accent" desc="Accent color for nodes and connector lines." />
+    <param name="percent" type="boolean" default="false" label="Show as percent" desc="Display probabilities as percentages (30%) instead of decimals (0.3)." />
+    <param name="precision" type="number" default="4" label="Decimal places" desc="Maximum decimal places when rounding probabilities." min="0" max="6" integer="true" />
+    <param name="gap" type="number" default="18" label="Branch spacing (px)" desc="Vertical gap between first-level branches." min="0" max="80" integer="true" />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Math</category>
+      <label>Probability tree</label>
+      <text><![CDATA[<!-- @probtree root: Test -->
+Positive | 0.2
+Disease | 0.9
+Healthy | 0.1
+<!-- @ -->
+Negative | 0.8
+Disease | 0.05
+Healthy | 0.95
+<!-- @end -->]]></text>
+      <description>Two-level tree; joint probabilities auto-computed at leaves.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const parseP = (s) => { const m = String(s).trim().match(/^([\d.]+)\s*(%?)$/); if (!m) return NaN; const v = parseFloat(m[1]); return m[2] ? v / 100 : v; };
+    const showJoint = String(args.joint) !== 'false';
+    const percent = String(args.percent) === 'true';
+    let precN = parseInt(args.precision, 10); const prec = (precN >= 0 && precN <= 6) ? precN : 4;
+    let gapN = parseInt(args.gap, 10); const gap = (gapN >= 0 && gapN <= 80) ? gapN : 18;
+    const branches = [];
+    sections.map((s) => (s || '').trim()).filter(Boolean).forEach((s) => {
+      const lines = s.split('\n').map((l) => l.trim()).filter(Boolean);
+      if (!lines.length) return;
+      const parse = (l) => { const i = l.lastIndexOf('|'); return i < 0 ? { label: l, p: NaN } : { label: l.slice(0, i).trim(), p: parseP(l.slice(i + 1)) }; };
+      const head = parse(lines[0]);
+      branches.push({ ...head, kids: lines.slice(1).map(parse) });
+    });
+    if (!branches.length) return `<div>(probtree: sections of "Label | p" lines)</div>`;
+    const fp = (p) => { if (!Number.isFinite(p)) return '?'; return percent ? (+(p * 100).toFixed(prec)).toString() + '%' : (+p.toFixed(prec)).toString(); };
+    let html = `\n\n<div class="mdp-mod-probtree" style="--pb-c:${args.color || 'var(--accent-color)'}; --pb-gap:${gap}px;">` +
+      `<div class="mdp-pb-root">${esc(args.root || 'Start')}</div><div class="mdp-pb-l1">`;
+    branches.forEach((b) => {
+      html += `<div class="mdp-pb-branch"><div class="mdp-pb-node"><span class="mdp-pb-p">${fp(b.p)}</span><span class="mdp-pb-lbl">${esc(b.label)}</span></div>`;
+      if (b.kids.length) {
+        html += `<div class="mdp-pb-l2">`;
+        b.kids.forEach((k) => {
+          const joint = Number.isFinite(b.p) && Number.isFinite(k.p) ? b.p * k.p : NaN;
+          html += `<div class="mdp-pb-leaf"><span class="mdp-pb-p">${fp(k.p)}</span><span class="mdp-pb-lbl">${esc(k.label)}</span>` +
+            (showJoint ? `<span class="mdp-pb-joint">${fp(joint)}</span>` : '') + `</div>`;
+        });
+        html += `</div>`;
+      }
+      html += `</div>`;
+    });
+    html += `</div></div>\n\n`;
+    return html;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-probtree { display: flex; align-items: center; gap: 26px; margin: 1.2rem 0; }
+    .mdp-pb-root { padding: 8px 16px; border: 2px solid var(--pb-c); border-radius: 10px; background: color-mix(in srgb, var(--pb-c) 12%, transparent); font-weight: 800; white-space: nowrap; }
+    .mdp-pb-l1 { display: flex; flex-direction: column; gap: var(--pb-gap, 18px); flex: 1; }
+    .mdp-pb-branch { display: flex; align-items: center; gap: 26px; position: relative; }
+    .mdp-pb-branch::before { content: ''; position: absolute; left: -26px; top: 50%; width: 24px; height: 2px; background: color-mix(in srgb, var(--pb-c) 55%, transparent); }
+    .mdp-pb-node { display: flex; align-items: center; gap: 8px; padding: 5px 12px; border: 1.5px solid var(--pb-c); border-radius: 8px; font-weight: 700; white-space: nowrap; }
+    .mdp-pb-l2 { display: flex; flex-direction: column; gap: 6px; }
+    .mdp-pb-leaf { display: flex; align-items: center; gap: 8px; position: relative; padding-left: 24px; white-space: nowrap; }
+    .mdp-pb-leaf::before { content: ''; position: absolute; left: 0; top: 50%; width: 18px; height: 2px; background: color-mix(in srgb, currentColor 30%, transparent); }
+    .mdp-pb-p { font-size: 0.8em; font-weight: 800; color: var(--pb-c); font-variant-numeric: tabular-nums; }
+    .mdp-pb-joint { margin-left: 10px; font-size: 0.8em; font-weight: 700; color: var(--app-text-muted, #888); font-variant-numeric: tabular-nums; }
+    .mdp-pb-joint::before { content: '= '; }
+  ]]></style>
+</module>

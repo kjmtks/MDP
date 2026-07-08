@@ -1,0 +1,100 @@
+<module>
+  <name>funnel</name>
+  <type>block</type>
+  <description>A funnel chart: stages narrowing top to bottom, each with value and auto-computed conversion % from the previous stage. One stage per section, "Label | value".</description>
+  <tags>charts, comparison</tags>
+  <aiSpec><![CDATA[
+A FUNNEL chart for conversion / pipeline stages — each stage's width shrinks with its
+value, and the conversion rate between stages is computed automatically.
+
+Body: split the sections with `<!-- @ -->`, one stage per section written
+`Label | value` (biggest value first). Values may include commas/spaces (e.g.
+`10,000`). Widths are relative to the largest value.
+
+When NOT to use: for arbitrary category comparisons use @barchart; the funnel implies
+a shrinking sequence.
+
+Parameters:
+  - `color`      : base color; stages fade downward from it. Default var(--accent-color).
+  - `percent`    : first | previous | none — show each stage as a percent of the FIRST
+                   stage, of the PREVIOUS stage (default), or hide the percentages.
+  - `showvalues` : true/false — print the raw value on each stage. Default true.
+  - `minwidth`   : smallest stage width as a percent (keeps tiny stages readable).
+                   Default 18. Range 0–100.
+  - `gap`        : vertical gap between stages in px. Default 6. Range 0–40.
+  - `radius`     : stage corner radius in px. Default 8. Range 0–30.
+
+<!-- @funnel percent: previous, showvalues: false, gap: 10 -->
+Visitors | 10000
+<!-- @ -->
+Sign-ups | 2400
+<!-- @ -->
+Paid | 480
+<!-- @end -->
+]]></aiSpec>
+  <parameters>
+    <param name="color" type="color" default="var(--accent-color)" label="Base color" desc="Base color; stages fade downward from it." />
+    <param name="percent" type="select" default="previous" options="previous,first,none" label="Percentage vs" desc="Show each stage as % of the previous stage, the first stage, or hide." />
+    <param name="showvalues" type="boolean" default="true" label="Show values" desc="Print the raw value on each stage." />
+    <param name="minwidth" type="number" default="18" min="0" max="100" step="1" label="Min stage width (%)" desc="Smallest stage width, so tiny stages stay readable." />
+    <param name="gap" type="number" default="6" min="0" max="40" step="1" label="Gap (px)" desc="Vertical gap between stages." />
+    <param name="radius" type="number" default="8" min="0" max="30" step="1" label="Corner radius (px)" desc="Corner radius of the stage shapes." />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Data</category>
+      <label>Funnel (conversion)</label>
+      <text><![CDATA[<!-- @funnel percent: previous -->
+Visitors | 10000
+<!-- @ -->
+Sign-ups | 2400
+<!-- @ -->
+Paid | 480
+<!-- @end -->]]></text>
+      <description>Narrowing stages with auto conversion percentages.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const color = args.color || 'var(--accent-color)';
+    const mode = String(args.percent || 'previous');
+    const showVals = String(args.showvalues) !== 'false';
+    const minW = Number.isFinite(parseFloat(args.minwidth)) ? Math.max(0, Math.min(100, parseFloat(args.minwidth))) : 18;
+    const gap = Math.max(0, Math.min(40, Number.isFinite(parseFloat(args.gap)) ? parseFloat(args.gap) : 6));
+    const radius = Math.max(0, Math.min(30, Number.isFinite(parseFloat(args.radius)) ? parseFloat(args.radius) : 8));
+    const stages = [];
+    sections.map((s) => (s || '').trim()).filter(Boolean).forEach((s) => {
+      const i = s.lastIndexOf('|');
+      if (i < 0) return;
+      const v = parseFloat(s.slice(i + 1).replace(/[,\s]/g, ''));
+      if (Number.isFinite(v)) stages.push({ label: s.slice(0, i).trim(), v });
+    });
+    if (!stages.length) return `<div>(funnel: "Label | value" per section)</div>`;
+    const top = Math.max(...stages.map((s) => s.v)) || 1;
+    let html = `\n\n<div class="mdp-mod-funnel" style="--fu-c:${color}; --fu-radius:${radius}px; gap:${gap}px;">`;
+    stages.forEach((s, i) => {
+      const w = Math.max(minW, (s.v / top) * 100);
+      const mix = (85 - i * Math.min(16, 60 / stages.length)).toFixed(0);
+      let pct = '';
+      if (mode !== 'none' && i > 0) {
+        const base = mode === 'first' ? stages[0].v : stages[i - 1].v;
+        if (base > 0) pct = `<span class="mdp-fu-pct">${((s.v / base) * 100).toFixed(1)}%</span>`;
+      }
+      const valSpan = showVals ? `<span class="mdp-fu-val">${s.v.toLocaleString('en-US')}</span>` : '';
+      html += `<div class="mdp-fu-stagewrap">` +
+        `<div class="mdp-fu-stage" style="width:${w.toFixed(1)}%; background: color-mix(in srgb, var(--fu-c) ${mix}%, transparent);">` +
+        `<span class="mdp-fu-label">${esc(s.label)}</span>${valSpan}</div>${pct}</div>`;
+    });
+    html += `</div>\n\n`;
+    return html;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-funnel { display: flex; flex-direction: column; align-items: center; gap: 6px; margin: 1rem 0; }
+    .mdp-fu-stagewrap { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+    .mdp-fu-stage { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 18px; border-radius: var(--fu-radius, 8px); color: #fff; clip-path: polygon(0 0, 100% 0, 96% 100%, 4% 100%); }
+    .mdp-fu-label { font-weight: 700; text-shadow: 0 1px 2px rgba(0,0,0,.35); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .mdp-fu-val { font-weight: 800; font-variant-numeric: tabular-nums; text-shadow: 0 1px 2px rgba(0,0,0,.35); }
+    .mdp-fu-pct { font-size: 0.78em; font-weight: 700; color: var(--app-text-muted, #888); }
+    .mdp-fu-pct::before { content: '↓ '; }
+  ]]></style>
+</module>

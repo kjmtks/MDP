@@ -1,0 +1,99 @@
+<module>
+  <name>boxplot</name>
+  <type>block</type>
+  <description>Horizontal box-and-whisker plots on a shared scale — one series per section, "label | min q1 median q3 max". For comparing distributions (five-number summaries).</description>
+  <tags>statistics, charts, distribution</tags>
+  <aiSpec><![CDATA[
+BOX-AND-WHISKER plots for comparing distributions by their five-number summaries.
+Block module: split the body with `<!-- @ -->`, one series per section written
+`label | min q1 median q3 max` (five space-separated numbers). All series share
+one horizontal scale. Use this when you already have the quartiles; for a raw
+frequency distribution use @histogram, and for arbitrary plots use @chartjs.
+
+Body: one `label | min q1 median q3 max` per section. Numbers are sorted defensively, so order within a section is forgiving.
+
+Parameters:
+- color (color, default var(--accent-color)): box/whisker/median color.
+- min (number, default blank = auto): fixes the scale's low end; blank auto-fits the data.
+- max (number, default blank = auto): fixes the scale's high end; blank auto-fits the data.
+- showscale (boolean, default true): show the min/max scale readout under the rows.
+- rowheight (number px, default 26): height of each plotting row (12–80).
+- sort (select: none | asc | desc, default none): none keeps written order; asc/desc sort series by median.
+- fillopacity (number %, default 22): opacity of the box fill tint (0–100).
+
+Usage:
+<!-- @boxplot sort: desc, showscale: true -->
+Group A | 2 5 8 11 15
+<!-- @ -->
+Group B | 4 6 7 9 12
+<!-- @end -->
+]]></aiSpec>
+  <parameters>
+    <param name="color" type="color" default="var(--accent-color)" label="Box color" desc="Box, whisker and median color." />
+    <param name="min" type="number" default="" label="Scale min" desc="Low end of the shared scale; blank = auto." />
+    <param name="max" type="number" default="" label="Scale max" desc="High end of the shared scale; blank = auto." />
+    <param name="showscale" type="boolean" default="true" label="Show scale" desc="Show the min/max readout under the rows." />
+    <param name="rowheight" type="number" default="26" label="Row height (px)" desc="Height of each plotting row." min="12" max="80" integer="true" />
+    <param name="sort" type="select" default="none" label="Sort" options="none:As written,asc:By median (low to high),desc:By median (high to low)" desc="Series ordering by median." />
+    <param name="fillopacity" type="number" default="22" label="Box fill %" desc="Opacity of the box fill tint." min="0" max="100" integer="true" />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Data</category>
+      <label>Box plot (five-number)</label>
+      <text><![CDATA[<!-- @boxplot -->
+Group A | 2 5 8 11 15
+<!-- @ -->
+Group B | 4 6 7 9 12
+<!-- @end -->]]></text>
+      <description>Box-and-whisker rows; each "label | min q1 median q3 max".</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const color = args.color || 'var(--accent-color)';
+    const showScale = !(args.showscale === false || args.showscale === 'false');
+    const rowH = (() => { const n = parseFloat(args.rowheight); return Number.isFinite(n) && n > 0 ? n : 26; })();
+    const sort = (args.sort || 'none').toLowerCase();
+    const fillOp = (() => { const n = parseFloat(args.fillopacity); return Number.isFinite(n) ? Math.max(0, Math.min(100, n)) : 22; })();
+    const series = [];
+    sections.map((s) => (s || '').trim()).filter(Boolean).forEach((s) => {
+      const i = s.indexOf('|');
+      const label = i >= 0 ? s.slice(0, i).trim() : '';
+      const nums = (i >= 0 ? s.slice(i + 1) : s).trim().split(/\s+/).map(parseFloat).filter((x) => Number.isFinite(x));
+      if (nums.length >= 5) series.push({ label, v: nums.slice(0, 5).sort((a, b) => a - b) });
+    });
+    if (!series.length) return `<div>(boxplot: "label | min q1 median q3 max" per section)</div>`;
+    if (sort === 'asc') series.sort((a, b) => a.v[2] - b.v[2]);
+    else if (sort === 'desc') series.sort((a, b) => b.v[2] - a.v[2]);
+    const all = series.flatMap((s) => s.v);
+    let lo = args.min !== '' && args.min != null ? parseFloat(args.min) : Math.min(...all);
+    let hi = args.max !== '' && args.max != null ? parseFloat(args.max) : Math.max(...all);
+    if (!Number.isFinite(lo)) lo = 0; if (!Number.isFinite(hi)) hi = 1; if (hi === lo) hi = lo + 1;
+    const pct = (v) => ((v - lo) / (hi - lo)) * 100;
+    let rows = '';
+    series.forEach((s) => {
+      const [mn, q1, med, q3, mx] = s.v;
+      rows += `<div class="mdp-bp-row"><div class="mdp-bp-label">${esc(s.label)}</div><div class="mdp-bp-track">` +
+        `<div class="mdp-bp-whisker" style="left:${pct(mn).toFixed(2)}%; width:${(pct(mx) - pct(mn)).toFixed(2)}%;"></div>` +
+        `<div class="mdp-bp-cap" style="left:${pct(mn).toFixed(2)}%;"></div>` +
+        `<div class="mdp-bp-cap" style="left:${pct(mx).toFixed(2)}%;"></div>` +
+        `<div class="mdp-bp-box" style="left:${pct(q1).toFixed(2)}%; width:${(pct(q3) - pct(q1)).toFixed(2)}%;"></div>` +
+        `<div class="mdp-bp-median" style="left:${pct(med).toFixed(2)}%;"></div>` +
+        `</div></div>`;
+    });
+    const scale = showScale ? `<div class="mdp-bp-scale"><span>${(+lo.toFixed(4))}</span><span>${(+hi.toFixed(4))}</span></div>` : '';
+    return `\n\n<div class="mdp-mod-boxplot" style="--bp-c:${color}; --bp-h:${rowH}px; --bp-fill:${fillOp}%;">${rows}${scale}</div>\n\n`;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-boxplot { margin: 1rem 0; display: flex; flex-direction: column; gap: 10px; }
+    .mdp-bp-row { display: grid; grid-template-columns: minmax(60px, auto) 1fr; align-items: center; gap: 12px; }
+    .mdp-bp-label { font-weight: 600; text-align: right; }
+    .mdp-bp-track { position: relative; height: var(--bp-h, 26px); }
+    .mdp-bp-whisker { position: absolute; top: 50%; height: 2px; background: currentColor; transform: translateY(-50%); opacity: 0.6; }
+    .mdp-bp-cap { position: absolute; top: 50%; width: 2px; height: 14px; background: currentColor; transform: translate(-50%, -50%); opacity: 0.6; }
+    .mdp-bp-box { position: absolute; top: 50%; height: 20px; background: color-mix(in srgb, var(--bp-c) var(--bp-fill, 22%), transparent); border: 1.5px solid var(--bp-c); border-radius: 4px; transform: translateY(-50%); }
+    .mdp-bp-median { position: absolute; top: 50%; width: 2.5px; height: 20px; background: var(--bp-c); transform: translate(-50%, -50%); }
+    .mdp-bp-scale { display: flex; justify-content: space-between; font-size: 0.75em; color: var(--app-text-muted, #888); margin-left: 72px; }
+  ]]></style>
+</module>

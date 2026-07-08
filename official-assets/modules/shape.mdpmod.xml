@@ -2,25 +2,46 @@
   <name>shape</name>
   <type>block</type>
   <description>A geometric shape (rectangle, triangle, ellipse, diamond, pentagon, hexagon, star) with fill, border and centred text. Move / resize / rotate it on the preview in Edit layout.</description>
+  <tags>freeform, decoration</tags>
   <aiSpec><![CDATA[
-Use to draw a labelled geometric shape (callout box, badge, diagram node) placed on a
-slide. The shape fills its box and is positioned/sized via x/y/w/h args (percent of the
-slide, center origin). Block module: the body is the centred label text (markdown), and
-may be empty for a blank shape. Example:
-`<!-- @shape type: diamond, fill: #3b82f6, x: 50, y: 40, w: 30, h: 24 -->\n**Decision**\n<!-- @end -->`
+Use to draw a labelled geometric shape (callout box, badge, diagram node) placed on a slide.
+The shape fills its box and is positioned/sized via x/y/w/h args (percent of the slide, center
+origin) which you set by dragging in Edit layout. Block module: the body is the centred label
+text (Markdown), and may be empty for a blank shape.
+
+Parameters:
+  `type`        — rectangle | triangle | ellipse | diamond | pentagon | hexagon | star (default rectangle).
+  `fill`        — fill colour (default theme accent); use "transparent" for outline-only.
+  `opacity`     — 0–1 fill opacity (default 1).
+  `borderwidth` — border thickness in px (default 0 = none).
+  `bordercolor` — border colour (default theme border).
+  `textcolor`   — label colour (default #ffffff).
+  `fontsize`    — CSS size of the label, e.g. 1.2em or 18px (default 1em).
+  `radius`      — corner radius 0–50 for the RECTANGLE only (default 0 = sharp corners).
+  `halign`      — left | center | right (default center): horizontal text alignment.
+  `valign`      — top | middle | bottom (default middle): vertical text alignment.
+  `shadow`      — true | false (default false): soft drop shadow under the shape.
+
+Example:
+<!-- @shape type: rectangle, fill: #3b82f6, radius: 12, shadow: true, x: 50, y: 40, w: 30, h: 16 -->
+**Decision**
+<!-- @end -->
 ]]></aiSpec>
 
   <manipulate position="xy" size="xy" rotation="true" minW="5" maxW="100" minH="3" maxH="100" />
 
   <parameters>
-    <param name="type" type="select" default="rectangle" label="Shape" options="rectangle:Rectangle,triangle:Triangle,ellipse:Ellipse,diamond:Diamond,pentagon:Pentagon,hexagon:Hexagon,star:Star" />
-    <param name="fill" type="color" default="var(--accent-color)" label="Fill" options="var(--accent-color):Accent,#3b82f6:Blue,#10b981:Green,#f59e0b:Amber,#ef4444:Red,#8b5cf6:Purple,#e5e7eb:Gray,transparent:None" />
-    <param name="borderwidth" type="number" default="0" label="Border width (px)" min="0" max="40" />
-    <param name="bordercolor" type="color" default="var(--border-color)" label="Border color" />
-    <param name="textcolor" type="color" default="#ffffff" label="Text color" />
-    <param name="fontsize" type="text" default="1em" label="Font size" desc="CSS size, e.g. 1.2em or 18px" />
-    <param name="halign" type="select" default="center" label="Horizontal align" options="left,center,right" />
-    <param name="valign" type="select" default="middle" label="Vertical align" options="top,middle,bottom" />
+    <param name="type" type="select" default="rectangle" label="Shape" options="rectangle:Rectangle,triangle:Triangle,ellipse:Ellipse,diamond:Diamond,pentagon:Pentagon,hexagon:Hexagon,star:Star" desc="Which shape to draw." />
+    <param name="fill" type="color" default="var(--accent-color)" label="Fill" options="var(--accent-color):Accent,#3b82f6:Blue,#10b981:Green,#f59e0b:Amber,#ef4444:Red,#8b5cf6:Purple,#e5e7eb:Gray,transparent:None" desc="Fill colour; 'None' = transparent (outline only)." />
+    <param name="opacity" type="number" default="1" min="0" max="1" step="0.05" label="Fill opacity" desc="Fill opacity from 0 (clear) to 1 (solid)." />
+    <param name="borderwidth" type="number" default="0" label="Border width (px)" min="0" max="40" desc="Border thickness in px; 0 = no border." />
+    <param name="bordercolor" type="color" default="var(--border-color)" label="Border color" desc="Border colour." />
+    <param name="textcolor" type="color" default="#ffffff" label="Text color" desc="Label text colour." />
+    <param name="fontsize" type="text" default="1em" label="Font size" desc="CSS size, e.g. 1.2em or 18px." />
+    <param name="radius" type="number" default="0" min="0" max="50" label="Corner radius" desc="Rounded corners for the rectangle only; 0 = sharp." />
+    <param name="halign" type="select" default="center" label="Horizontal align" options="left,center,right" desc="Horizontal text alignment." />
+    <param name="valign" type="select" default="middle" label="Vertical align" options="top,middle,bottom" desc="Vertical text alignment." />
+    <param name="shadow" type="boolean" default="false" label="Drop shadow" desc="Soft drop shadow under the shape." />
   </parameters>
 
   <snippets>
@@ -34,20 +55,25 @@ may be empty for a blank shape. Example:
     <snippet>
       <category>Layout</category>
       <label>Shape (labelled box)</label>
-      <text><![CDATA[<!-- @shape type: rectangle, fill: #3b82f6, x: 50, y: 40, w: 30, h: 16 -->
+      <text><![CDATA[<!-- @shape type: rectangle, fill: #3b82f6, radius: 12, x: 50, y: 40, w: 30, h: 16 -->
 **Label**
 <!-- @end -->]]></text>
-      <description>A rectangle with centred text. Move/resize in Edit layout.</description>
+      <description>A rounded rectangle with centred text. Move/resize in Edit layout.</description>
     </snippet>
   </snippets>
 
   <render><![CDATA[
     const type = (args.type || 'rectangle').toLowerCase();
     const fill = args.fill || 'var(--accent-color)';
+    const opRaw = (args.opacity === undefined || args.opacity === '') ? 1 : parseFloat(args.opacity);
+    const opacity = Number.isFinite(opRaw) ? Math.max(0, Math.min(1, opRaw)) : 1;
     const bw = args.borderwidth || '0';
     const bc = args.bordercolor || 'var(--border-color)';
     const tc = args.textcolor || '#ffffff';
     const fs = args.fontsize || '1em';
+    const radiusRaw = parseFloat(args.radius);
+    const radius = Number.isFinite(radiusRaw) ? Math.max(0, Math.min(50, radiusRaw)) : 0;
+    const shadow = String(args.shadow) === 'true';
     const h = (args.halign || 'center').toLowerCase();
     const v = (args.valign || 'middle').toLowerCase();
     const justify = h === 'left' ? 'flex-start' : h === 'right' ? 'flex-end' : 'center';
@@ -74,7 +100,7 @@ may be empty for a blank shape. Example:
       return p.join(' ');
     };
     const top = -Math.PI / 2; // first vertex at the top
-    const common = `fill="${fill}" stroke="${bc}" stroke-width="${bw}" vector-effect="non-scaling-stroke" stroke-linejoin="round"`;
+    const common = `fill="${fill}" fill-opacity="${opacity}" stroke="${bc}" stroke-width="${bw}" vector-effect="non-scaling-stroke" stroke-linejoin="round"`;
     // Fill the viewBox edge-to-edge so the shape hugs its box (and the selection
     // frame). The SVG uses overflow:visible + non-scaling-stroke, so any border
     // straddles the edge instead of being clipped.
@@ -82,7 +108,7 @@ may be empty for a blank shape. Example:
     if (type === 'ellipse') {
       inner = `<ellipse cx="50" cy="50" rx="50" ry="50" ${common}/>`;
     } else if (type === 'rectangle' || type === 'rect' || type === 'square') {
-      inner = `<rect x="0" y="0" width="100" height="100" ${common}/>`;
+      inner = `<rect x="0" y="0" width="100" height="100" rx="${radius}" ry="${radius}" ${common}/>`;
     } else {
       let pts;
       if (type === 'triangle') pts = '50,0 100,100 0,100';
@@ -95,8 +121,9 @@ may be empty for a blank shape. Example:
     }
     const svg = `<svg class="mdp-shape-svg" viewBox="0 0 100 100" preserveAspectRatio="none">${inner}</svg>`;
     const textOpen = `<div class="mdp-shape-text" style="color: ${tc}; font-size: ${fs}; justify-content: ${justify}; align-items: ${alignItems}; text-align: ${textAlign};">`;
+    const rootCls = 'mdp-mod-shape' + (shadow ? ' has-shadow' : '');
     // Blank lines around the content so markdown renders it inside the text layer.
-    return `\n\n<div class="mdp-mod-shape">${svg}${textOpen}\n\n${bodyStr}\n\n</div></div>\n\n`;
+    return `\n\n<div class="${rootCls}">${svg}${textOpen}\n\n${bodyStr}\n\n</div></div>\n\n`;
   ]]></render>
 
   <style><![CDATA[
@@ -115,6 +142,9 @@ may be empty for a blank shape. Example:
       height: 100%;
       display: block;
       overflow: visible;
+    }
+    .mdp-mod-shape.has-shadow .mdp-shape-svg {
+      filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.28));
     }
     .mdp-shape-text {
       position: absolute;

@@ -1,0 +1,83 @@
+<module>
+  <name>iconlist</name>
+  <type>block</type>
+  <description>A list where each item leads with an emoji / icon and its text. Body = one item per section, "icon Title" then optional detail.</description>
+  <tags>list, grouping</tags>
+  <aiSpec><![CDATA[
+A FEATURE / ICON LIST — each row starts with an emoji icon, then a bold title and
+optional description. Good for feature highlights, benefits, principles. Block module:
+split the body with `<!-- @ -->`, one item per section. Begin each section with the
+emoji/symbol, then the text (line 1 = title, the rest = detail, Markdown). For status
+columns use @kanban; for a plain card grid use @grid.
+
+Parameters:
+  - `columns`: grid columns (1-6, default 1). Items flow into that many columns.
+  - `color`: title colour (any CSS colour; default var(--accent-color)).
+  - `iconsize` (small|medium|large, default medium): size of the leading icon.
+  - `gap`: CSS grid gap between items (default 14px 20px).
+  - `valign` (top|center, default top): vertical alignment of icon against its text.
+
+Example:
+<!-- @iconlist columns: 2, iconsize: large -->
+🚀 **Fast**
+Sub-second builds.
+<!-- @ -->
+🔒 **Secure**
+Loopback-only, token auth.
+<!-- @end -->
+]]></aiSpec>
+  <parameters>
+    <param name="columns" type="number" default="1" label="Columns" desc="Number of columns to flow the items into." min="1" max="6" integer="true" />
+    <param name="color" type="color" default="var(--accent-color)" label="Title color" desc="Colour of each item's title line." />
+    <param name="iconsize" type="select" default="medium" label="Icon size" desc="Size of the leading emoji / icon." options="small:Small,medium:Medium,large:Large" />
+    <param name="gap" type="text" default="14px 20px" label="Gap" desc="CSS grid gap between items, e.g. 14px 20px." />
+    <param name="valign" type="select" default="top" label="Icon alignment" desc="Vertical alignment of the icon against its text." options="top:Top,center:Center" />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Presentation UI</category>
+      <label>Icon feature list</label>
+      <text><![CDATA[<!-- @iconlist columns: 2 -->
+🚀 **Fast**
+Sub-second incremental builds.
+<!-- @ -->
+🔒 **Secure**
+Runs locally with token auth.
+<!-- @ -->
+🧩 **Extensible**
+Author your own modules.
+<!-- @ -->
+📴 **Offline**
+No CDN required.
+<!-- @end -->]]></text>
+      <description>Each section: an emoji then title + detail. columns: n for a grid.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const color = args.color || 'var(--accent-color)';
+    const cols = Math.max(1, Math.min(6, parseInt(args.columns, 10) || 1));
+    const iconSize = { small: '1.2em', medium: '1.6em', large: '2.2em' }[String(args.iconsize || 'medium').toLowerCase()] || '1.6em';
+    const gap = (args.gap && String(args.gap).trim()) || '14px 20px';
+    const valign = String(args.valign || 'top').toLowerCase() === 'center' ? 'center' : 'flex-start';
+    const items = sections.map((s) => (s || '').trim()).filter(Boolean);
+    let html = `\n\n<div class="mdp-mod-iconlist" style="--il-color:${color}; --il-icon-size:${iconSize}; --il-valign:${valign}; grid-template-columns: repeat(${cols}, 1fr); gap: ${gap};">`;
+    items.forEach((it) => {
+      // Split off a leading emoji / symbol cluster.
+      const m = it.match(/^(\S+)\s+([\s\S]*)$/);
+      const icon = m ? m[1] : '•';
+      const body = m ? m[2] : it;
+      html += `<div class="mdp-il-item"><div class="mdp-il-icon">${icon}</div><div class="mdp-il-text">\n\n${body}\n\n</div></div>`;
+    });
+    html += `</div>\n\n`;
+    return html;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-iconlist { display: grid; gap: 14px 20px; margin: 1rem 0; }
+    .mdp-il-item { display: flex; gap: 12px; align-items: var(--il-valign, flex-start); }
+    .mdp-il-icon { font-size: var(--il-icon-size, 1.6em); line-height: 1.2; flex: 0 0 auto; }
+    .mdp-il-text { min-width: 0; }
+    .mdp-il-text > :first-child { margin-top: 0; color: var(--il-color); }
+    .mdp-il-text > :last-child { margin-bottom: 0; }
+    .mdp-il-text > :first-child { font-weight: 700; }
+  ]]></style>
+</module>

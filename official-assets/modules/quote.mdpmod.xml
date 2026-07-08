@@ -2,14 +2,32 @@
   <name>quote</name>
   <type>block</type>
   <description>Beautifully displays quotes from papers or books.</description>
+  <tags>quote</tags>
   <aiSpec><![CDATA[
-Display a styled pull-quote with a large decorative quotation mark — good for
-citing papers, books or notable people. Block module: the body (between the
-directive and @end) is the quoted text. Set the `author` param to show an
-attribution line beneath the quote.
+A styled PULL-QUOTE with a large decorative quotation mark — good for citing
+papers, books or notable people. Block module: the body (between the directive and
+@end) is the quoted text (Markdown allowed).
+Do NOT use this for code or for a plain blockquote — this is a decorated, attributed
+callout.
+Parameters:
+  `author` (text, default "") — attribution line shown beneath the quote.
+  `source` (text, default "") — a second, smaller attribution line (book, paper, year).
+  `align` (select left|center|right, default left) — text alignment of the quote body.
+  `accent` (color, default accent) — the left rule color.
+  `bg` (color, default #f4f6f7) — panel background.
+  `textcolor` (color, default #34495e) — quote text color.
+
+<!-- @quote author: Alan Kay, source: 1971, accent: #7c3aed -->
+The best way to predict the future is to invent it.
+<!-- @end -->
 ]]></aiSpec>
   <parameters>
-    <param name="author" type="text" default="" label="Author" />
+    <param name="author" type="text" default="" label="Author" desc="Attribution line shown beneath the quote." />
+    <param name="source" type="text" default="" label="Source" desc="Second smaller attribution line (book, paper, year)." />
+    <param name="align" type="select" default="left" label="Text align" desc="Alignment of the quote body." options="left,center,right" />
+    <param name="accent" type="color" default="var(--accent-color)" label="Accent" desc="Color of the left rule." />
+    <param name="bg" type="color" default="#f4f6f7" label="Background" desc="Panel background color." />
+    <param name="textcolor" type="color" default="#34495e" label="Text color" desc="Color of the quote text." />
   </parameters>
   <snippets>
     <snippet>
@@ -22,17 +40,26 @@ The best way to predict the future is to invent it.
     </snippet>
   </snippets>
   <render><![CDATA[
-    const author = args.author || '';
+    const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const author = String(args.author || '').trim();
+    const source = String(args.source || '').trim();
+    const alignRaw = String(args.align || 'left').toLowerCase();
+    const align = (['left', 'center', 'right'].indexOf(alignRaw) >= 0) ? alignRaw : 'left';
+    const alignCss = (align === 'left') ? 'inherit' : align;
+    const accent = (args.accent && String(args.accent).trim()) || 'var(--accent-color)';
+    const bg = (args.bg && String(args.bg).trim()) || '#f4f6f7';
+    const textcolor = (args.textcolor && String(args.textcolor).trim()) || '#34495e';
     const contentStr = sections[0] ? sections[0].trim() : '';
     return `\n\n
-<div class="mdp-mod-quote">
+<div class="mdp-mod-quote" style="--quote-accent:${accent}; --quote-bg:${bg}; --quote-text:${textcolor}; --quote-align:${alignCss};">
 <div class="mdp-quote-icon">“</div>
 <div class="mdp-quote-content">
 
 ${contentStr}
 
 </div>
-${author ? `<div class="mdp-quote-author">— ${author}</div>` : ''}
+${author ? `<div class="mdp-quote-author">— ${esc(author)}</div>` : ''}
+${source ? `<div class="mdp-quote-source">${esc(source)}</div>` : ''}
 </div>
 \n\n`;
   ]]></render>
@@ -41,8 +68,8 @@ ${author ? `<div class="mdp-quote-author">— ${author}</div>` : ''}
       position: relative;
       margin: 1rem 2rem;
       padding: 1.5em 2em;
-      background: #f4f6f7;
-      border-left: 4px solid var(--accent-color);
+      background: var(--quote-bg, #f4f6f7);
+      border-left: 4px solid var(--quote-accent, var(--accent-color));
       border-radius: 4px 8px 8px 4px;
       font-style: italic;
     }
@@ -60,8 +87,9 @@ ${author ? `<div class="mdp-quote-author">— ${author}</div>` : ''}
       position: relative;
       z-index: 1;
       font-size: 1.2em;
-      color: #34495e;
+      color: var(--quote-text, #34495e);
       line-height: 1.6;
+      text-align: var(--quote-align, left);
     }
     .mdp-quote-content > *:first-child { margin-top: 0; }
     .mdp-quote-content > *:last-child { margin-bottom: 0; }
@@ -72,6 +100,13 @@ ${author ? `<div class="mdp-quote-author">— ${author}</div>` : ''}
       color: #7f8c8d;
       font-style: normal;
       font-size: 0.95em;
+    }
+    .mdp-quote-source {
+      text-align: right;
+      color: #7f8c8d;
+      font-style: normal;
+      font-size: 0.82em;
+      opacity: 0.9;
     }
   ]]></style>
 </module>

@@ -1,0 +1,76 @@
+<module>
+  <name>histogram</name>
+  <type>block</type>
+  <description>A histogram computed from raw numbers: paste values in the body, it bins them and draws the bars (bin edges labeled). For distributions of measured data.</description>
+  <tags>distribution, statistics, charts</tags>
+  <aiSpec><![CDATA[
+A HISTOGRAM built from RAW VALUES — paste the numbers, it does the binning and draws
+the distribution with counts above the bars and bin edges below. Block module: the
+body is a list of numbers separated by spaces, commas or newlines (sections split by
+`<!-- @ -->` are merged). Use @barchart when you already have category→value pairs
+and @chartjs for full-featured charts; @histogram is only for raw samples.
+Params:
+  • bins — number of equal-width bins, integer 1–24; blank (default) = auto,
+    roughly the square root of the sample count (clamped to 3–12).
+  • min / max — force the lower/upper edge of the binned range; blank (default) =
+    the data minimum/maximum. Values outside [min, max] are dropped.
+  • color — bar colour; default var(--accent-color).
+
+<!-- @histogram bins: 6 -->
+4.1 4.5 4.4 5.0 5.1 5.3 5.2 6.0 6.1 5.9 7.2 8.0
+<!-- @end -->
+]]></aiSpec>
+  <parameters>
+    <param name="bins" type="number" default="" label="Bins" min="1" max="24" step="1" integer="true" desc="Number of equal-width bins; leave blank for auto (about the square root of the sample count)." />
+    <param name="min" type="number" default="" label="Range min" desc="Lower edge of the binned range; leave blank to use the data minimum. Smaller values are dropped." />
+    <param name="max" type="number" default="" label="Range max" desc="Upper edge of the binned range; leave blank to use the data maximum. Larger values are dropped." />
+    <param name="color" type="color" default="var(--accent-color)" label="Bar color" desc="Fill and outline colour of the bars." />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Data</category>
+      <label>Histogram (from raw values)</label>
+      <text><![CDATA[<!-- @histogram bins: 6 -->
+4.1 4.5 4.4 5.0 5.1 5.3 5.2 6.0 6.1 5.9 7.2 8.0
+<!-- @end -->]]></text>
+      <description>Bins raw numbers and draws the distribution.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const color = args.color || 'var(--accent-color)';
+    const vals = sections.join(' ').split(/[\s,]+/).map(parseFloat).filter(Number.isFinite);
+    if (!vals.length) return `<div>(histogram: put numbers in the body)</div>`;
+    let lo = args.min !== '' && args.min != null ? parseFloat(args.min) : Math.min(...vals);
+    let hi = args.max !== '' && args.max != null ? parseFloat(args.max) : Math.max(...vals);
+    if (!Number.isFinite(lo)) lo = 0; if (!Number.isFinite(hi)) hi = 1;
+    if (hi === lo) hi = lo + 1;
+    let bins = parseInt(args.bins, 10);
+    if (!Number.isFinite(bins) || bins < 1) bins = Math.max(3, Math.min(12, Math.round(Math.sqrt(vals.length))));
+    const w = (hi - lo) / bins;
+    const counts = new Array(bins).fill(0);
+    vals.forEach((v) => {
+      if (v < lo || v > hi) return;
+      counts[Math.min(bins - 1, Math.floor((v - lo) / w))]++;
+    });
+    const peak = Math.max(...counts) || 1;
+    const fmt = (v) => { const r = +v.toFixed(2); return String(r); };
+    let bars = '';
+    counts.forEach((c, i) => {
+      bars += `<div class="mdp-hg-col"><div class="mdp-hg-count">${c || ''}</div>` +
+        `<div class="mdp-hg-bar" style="height:${((c / peak) * 100).toFixed(1)}%;"></div>` +
+        `<div class="mdp-hg-edge">${fmt(lo + i * w)}</div></div>`;
+    });
+    return `\n\n<div class="mdp-mod-histogram" style="--hg-c:${color};"><div class="mdp-hg-plot">${bars}` +
+      `<div class="mdp-hg-col mdp-hg-last"><div class="mdp-hg-edge">${fmt(hi)}</div></div></div></div>\n\n`;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-histogram { margin: 1rem 0; }
+    .mdp-hg-plot { display: flex; align-items: stretch; height: 180px; border-bottom: 2px solid currentColor; position: relative; padding-bottom: 0; }
+    .mdp-hg-col { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; position: relative; }
+    .mdp-hg-last { flex: 0; }
+    .mdp-hg-bar { background: color-mix(in srgb, var(--hg-c) 65%, transparent); border: 1px solid var(--hg-c); border-bottom: none; border-radius: 3px 3px 0 0; margin: 0 1px; }
+    .mdp-hg-count { text-align: center; font-size: 0.75em; font-weight: 700; color: var(--app-text-muted, #888); padding-bottom: 2px; }
+    .mdp-hg-edge { position: absolute; bottom: -22px; left: 0; transform: translateX(-50%); font-size: 0.72em; color: var(--app-text-muted, #888); }
+    .mdp-mod-histogram::after { content: ''; display: block; height: 24px; }
+  ]]></style>
+</module>

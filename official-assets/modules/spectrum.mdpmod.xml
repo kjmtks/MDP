@@ -1,0 +1,73 @@
+<module>
+  <name>spectrum</name>
+  <type>block</type>
+  <description>A labelled gradient scale with an optional marker — for placing something on a continuum (low↔high, cold↔hot, disagree↔agree).</description>
+  <tags>comparison, charts</tags>
+  <aiSpec><![CDATA[
+A SPECTRUM / continuum bar: a gradient from one end to the other with end labels and an
+optional marker showing where something sits. Block module, params only (no body). Good for
+maturity, sentiment, positioning. (For discrete categories use a chart; this is a continuum.)
+
+Parameters:
+  `left` / `right` — the end labels (default "Low" / "High").
+  `value`          — 0–100 marker position (default -1 = no marker).
+  `marker`         — the marker's caption (default none).
+  `from` / `to`    — gradient colours at the left / right ends (default #3b82f6 / #ef4444).
+  `height`         — bar thickness in px, 4–60 (default 14).
+  `markercolor`    — colour of the marker pin outline and caption chip (default #111).
+  `labels`         — true | false (default true): show the end labels below the bar.
+
+Example:
+<!-- @spectrum left: Manual, right: Automated, value: 70, marker: We are here, height: 20, markercolor: #10b981 -->
+]]></aiSpec>
+  <parameters>
+    <param name="left" type="text" default="Low" label="Left label" desc="Label at the left end of the bar." />
+    <param name="right" type="text" default="High" label="Right label" desc="Label at the right end of the bar." />
+    <param name="value" type="number" default="-1" min="-1" max="100" label="Marker position (0-100)" desc="Marker position along the bar; -1 = no marker." />
+    <param name="marker" type="text" default="" label="Marker caption" desc="Caption shown above the marker pin." />
+    <param name="from" type="color" default="#3b82f6" label="Left color" desc="Gradient colour at the left end." />
+    <param name="to" type="color" default="#ef4444" label="Right color" desc="Gradient colour at the right end." />
+    <param name="height" type="number" default="14" min="4" max="60" label="Bar height (px)" desc="Thickness of the gradient bar." />
+    <param name="markercolor" type="color" default="" label="Marker color" desc="Pin outline and caption chip colour; blank = #111." />
+    <param name="labels" type="boolean" default="true" label="Show end labels" desc="Show the left/right labels below the bar." />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Diagrams</category>
+      <label>Spectrum scale</label>
+      <text><![CDATA[<!-- @spectrum left: Manual, right: Automated, value: 70, marker: We are here -->]]></text>
+      <description>A gradient continuum with end labels and a positioned marker.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const from = args.from || '#3b82f6';
+    const to = args.to || '#ef4444';
+    const value = parseFloat(args.value);
+    const hasMarker = Number.isFinite(value) && value >= 0;
+    const pos = Math.max(0, Math.min(100, value));
+    const markerCap = esc((args.marker || '').trim());
+    const heightRaw = parseFloat(args.height);
+    const height = Number.isFinite(heightRaw) ? Math.max(4, Math.min(60, heightRaw)) : 14;
+    const markerColor = (args.markercolor || '').trim();
+    const showLabels = String(args.labels === undefined ? 'true' : args.labels) !== 'false';
+    let rootStyle = `--sp-h:${height}px;`;
+    if (markerColor) rootStyle += `--sp-mk:${markerColor};`;
+    const marker = hasMarker
+      ? `<div class="mdp-sp-marker" style="left:${pos}%;"><div class="mdp-sp-pin"></div>${markerCap ? `<div class="mdp-sp-cap">${markerCap}</div>` : ''}</div>`
+      : '';
+    const ends = showLabels
+      ? `<div class="mdp-sp-ends"><span>${esc(args.left || '')}</span><span>${esc(args.right || '')}</span></div>`
+      : '';
+    return `\n\n<div class="mdp-mod-spectrum" style="${rootStyle}"><div class="mdp-sp-bar" style="background:linear-gradient(90deg, ${from}, ${to});">${marker}</div>` +
+      ends + `</div>\n\n`;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-spectrum { margin: 1.4rem 0 1rem; }
+    .mdp-sp-bar { position: relative; height: var(--sp-h, 14px); border-radius: 7px; }
+    .mdp-sp-marker { position: absolute; top: 50%; transform: translate(-50%, -50%); }
+    .mdp-sp-pin { width: 20px; height: 20px; border-radius: 50%; background: #fff; border: 3px solid var(--sp-mk, #111); box-shadow: 0 1px 4px rgba(0,0,0,0.4); }
+    .mdp-sp-cap { position: absolute; top: -1.8em; left: 50%; transform: translateX(-50%); white-space: nowrap; font-size: 0.8em; font-weight: 700; background: var(--sp-mk, #111); color: #fff; padding: 1px 6px; border-radius: 4px; }
+    .mdp-sp-ends { display: flex; justify-content: space-between; margin-top: 6px; font-weight: 600; font-size: 0.9em; }
+  ]]></style>
+</module>

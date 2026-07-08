@@ -1,0 +1,108 @@
+<module>
+  <name>pricing</name>
+  <type>block</type>
+  <description>Pricing tiers side by side. Body = one section per tier: first line = name, second = price, then a bullet list of features. `highlight` features one tier.</description>
+  <tags>comparison, cards</tags>
+  <aiSpec><![CDATA[
+A PRICING TABLE — plan tiers side by side. Use this for plan/tier comparison; for a
+generic column layout use @multicolumn and for a labelled data grid use @table.
+Block module: split the body with <!-- @ -->, one section per TIER. In a tier, line 1 =
+the plan NAME, line 2 = the PRICE, and the remaining bullets ("- …") are features (Markdown).
+Parameters:
+  • highlight — 1-based index of the tier to feature/recommend (integer, default 0 = none).
+  • color — accent color for names, borders and the featured tier (default var(--accent-color)).
+  • badge — small ribbon text shown on the featured tier, e.g. "Popular" (default blank = none).
+  • radius — CSS corner radius of each tier card (default 10px).
+  • gap — CSS length of the space between tiers (default 12px).
+
+<!-- @pricing highlight: 2, badge: Most popular -->
+Free
+$0 / mo
+- 1 project
+- Community support
+<!-- @ -->
+Pro
+$12 / mo
+- Unlimited projects
+- Priority support
+<!-- @ -->
+Team
+$40 / mo
+- SSO
+- Admin controls
+<!-- @end -->
+]]></aiSpec>
+  <parameters>
+    <param name="highlight" type="number" default="0" label="Featured tier (1-based)" desc="Which tier to visually feature; 0 = none." integer="true" min="0" max="20" step="1" />
+    <param name="color" type="color" default="var(--accent-color)" label="Accent color" desc="Accent color for names, borders and the featured tier." />
+    <param name="badge" type="text" default="" label="Featured badge" desc="Ribbon text on the featured tier (e.g. Most popular); blank = no ribbon." />
+    <param name="radius" type="text" default="10px" label="Card radius" desc="CSS corner radius of each tier card (e.g. 10px, 1rem)." />
+    <param name="gap" type="text" default="12px" label="Tier gap" desc="CSS length of the space between tiers (e.g. 12px, 1rem)." />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Presentation UI</category>
+      <label>Pricing tiers</label>
+      <text><![CDATA[<!-- @pricing highlight: 2 -->
+Free
+$0 / mo
+- 1 project
+- Community support
+<!-- @ -->
+Pro
+**$12** / mo
+- Unlimited projects
+- Priority support
+<!-- @ -->
+Team
+$40 / mo
+- SSO & admin
+<!-- @end -->]]></text>
+      <description>Plan tiers side by side; line1=name, line2=price, bullets=features. highlight: n features a tier.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const color = args.color || 'var(--accent-color)';
+    const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const highlight = parseInt(args.highlight, 10) || 0;
+    const badge = args.badge ? esc(String(args.badge).trim()) : '';
+    const radius = args.radius && String(args.radius).trim();
+    const gap = args.gap && String(args.gap).trim();
+    const tiers = sections.map((s) => (s || '').trim()).filter(Boolean);
+    let cvars = `--pr-color:${color};`;
+    if (radius) cvars += `--pr-radius:${radius};`;
+    if (gap) cvars += `gap:${gap};`;
+    let html = `\n\n<div class="mdp-mod-pricing" style="${cvars}">`;
+    tiers.forEach((tt, idx) => {
+      const lines = tt.split('\n');
+      const name = (lines.shift() || '').replace(/^#+\s*/, '').trim();
+      const price = (lines.shift() || '').trim();
+      const feats = lines.join('\n').trim();
+      const on = (idx + 1) === highlight;
+      html += `<div class="mdp-pr-tier${on ? ' is-featured' : ''}">` +
+        (on && badge ? `<div class="mdp-pr-badge">${badge}</div>` : '') +
+        `<div class="mdp-pr-name">${esc(name)}</div>` +
+        `<div class="mdp-pr-price">\n\n${price}\n\n</div>` +
+        `<div class="mdp-pr-feats">\n\n${feats}\n\n</div></div>`;
+    });
+    html += `</div>\n\n`;
+    return html;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-pricing { margin: 1rem 0; display: flex; gap: 12px; align-items: stretch; }
+    .mdp-pr-tier {
+      position: relative;
+      flex: 1 1 0; border: 2px solid color-mix(in srgb, var(--pr-color) 30%, transparent);
+      border-radius: var(--pr-radius, 10px); padding: 14px 12px; display: flex; flex-direction: column; gap: 8px;
+      background: var(--panel-bg, rgba(255,255,255,0.75));
+    }
+    .mdp-pr-tier.is-featured { border-color: var(--pr-color); box-shadow: 0 6px 20px color-mix(in srgb, var(--pr-color) 30%, transparent); transform: translateY(-4px); }
+    .mdp-pr-badge { position: absolute; top: -11px; left: 50%; transform: translateX(-50%); background: var(--pr-color); color: #fff; font-size: 0.7em; font-weight: 700; padding: 2px 10px; border-radius: 999px; white-space: nowrap; }
+    .mdp-pr-name { font-weight: 700; text-align: center; color: var(--pr-color); }
+    .mdp-pr-price { text-align: center; font-size: 1.4em; font-weight: 800; }
+    .mdp-pr-price > :first-child, .mdp-pr-price > :last-child { margin: 0; }
+    .mdp-pr-feats ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 0.9em; }
+    .mdp-pr-feats li::before { content: '✓ '; color: var(--pr-color); font-weight: 700; }
+    .mdp-pr-feats > :first-child { margin-top: 0; } .mdp-pr-feats > :last-child { margin-bottom: 0; }
+  ]]></style>
+</module>

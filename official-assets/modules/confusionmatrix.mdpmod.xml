@@ -1,0 +1,92 @@
+<module>
+  <name>confusionmatrix</name>
+  <type>block</type>
+  <description>A 2×2 confusion matrix (TP/FP/FN/TN) with predicted/actual axis labels, correct cells green and error cells red. Optionally shows accuracy/precision/recall.</description>
+  <tags>matrices, statistics</tags>
+  <aiSpec><![CDATA[
+A 2×2 CONFUSION MATRIX for a binary classifier. Correct cells (TP, TN) are green;
+error cells (FP, FN) are red. Rows = Actual, columns = Predicted. Takes no body — the
+four counts and labels are all parameters. Not a general heatmap or data table.
+
+Parameters:
+  • tp / fp / fn / tn (integer ≥ 0, default 0) — the four cell counts.
+  • pos (text, default Positive) — label of the positive class.
+  • neg (text, default Negative) — label of the negative class.
+  • metrics (boolean, default false) — also show accuracy / precision / recall / F1 below.
+  • title (text, default empty) — optional heading shown above the matrix.
+  • color_ok (color, default #22c55e) — accent for the correct (TP/TN) cells.
+  • color_err (color, default #ef4444) — accent for the error (FP/FN) cells.
+
+Example:
+<!-- @confusionmatrix tp: 85, fp: 10, fn: 5, tn: 100, metrics: true, title: Model A -->
+]]></aiSpec>
+  <parameters>
+    <param name="tp" type="number" default="0" label="True Positive" desc="Count of true positives" min="0" integer="true" />
+    <param name="fp" type="number" default="0" label="False Positive" desc="Count of false positives" min="0" integer="true" />
+    <param name="fn" type="number" default="0" label="False Negative" desc="Count of false negatives" min="0" integer="true" />
+    <param name="tn" type="number" default="0" label="True Negative" desc="Count of true negatives" min="0" integer="true" />
+    <param name="pos" type="text" default="Positive" label="Positive label" desc="Label of the positive class" />
+    <param name="neg" type="text" default="Negative" label="Negative label" desc="Label of the negative class" />
+    <param name="metrics" type="boolean" default="false" label="Show accuracy/precision/recall" desc="Also show accuracy / precision / recall / F1 below" />
+    <param name="title" type="text" default="" label="Title" desc="Optional heading shown above the matrix" />
+    <param name="color_ok" type="color" default="#22c55e" label="Correct color" desc="Accent for the correct (TP/TN) cells" />
+    <param name="color_err" type="color" default="#ef4444" label="Error color" desc="Accent for the error (FP/FN) cells" />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Math</category>
+      <label>Confusion matrix</label>
+      <text><![CDATA[<!-- @confusionmatrix tp: 85, fp: 10, fn: 5, tn: 100, metrics: true -->]]></text>
+      <description>2×2 confusion matrix with optional accuracy/precision/recall.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const n = (v) => { const x = parseFloat(v); return Number.isFinite(x) ? x : 0; };
+    const tp = n(args.tp), fp = n(args.fp), fn = n(args.fn), tn = n(args.tn);
+    const pos = esc(args.pos || 'Positive'), neg = esc(args.neg || 'Negative');
+    const okColor = args.color_ok || '#22c55e';
+    const errColor = args.color_err || '#ef4444';
+    const title = String(args.title || '').trim();
+    const cell = (v, ok) => `<div class="mdp-cm-cell ${ok ? 'ok' : 'err'}">${v}</div>`;
+    const titleHtml = title ? `<div class="mdp-cm-title">${esc(title)}</div>` : '';
+    let html = `\n\n<div class="mdp-mod-confusionmatrix" style="--cm-ok:${okColor}; --cm-err:${errColor};">${titleHtml}<div class="mdp-cm-grid">` +
+      `<div class="mdp-cm-corner"></div>` +
+      `<div class="mdp-cm-axis mdp-cm-axis-x">Predicted</div>` +
+      `<div class="mdp-cm-col">${pos}</div><div class="mdp-cm-col">${neg}</div>` +
+      `<div class="mdp-cm-axis mdp-cm-axis-y"><span>Actual</span></div>` +
+      `<div class="mdp-cm-row">${pos}</div>${cell(tp, true)}${cell(fn, false)}` +
+      `<div class="mdp-cm-row">${neg}</div>${cell(fp, false)}${cell(tn, true)}` +
+      `</div>`;
+    if (String(args.metrics) === 'true') {
+      const acc = (tp + tn) / ((tp + tn + fp + fn) || 1);
+      const prec = tp / ((tp + fp) || 1);
+      const rec = tp / ((tp + fn) || 1);
+      const f1 = (2 * prec * rec) / ((prec + rec) || 1);
+      const pc = (x) => (x * 100).toFixed(1) + '%';
+      html += `<div class="mdp-cm-metrics">` +
+        `<span><b>Accuracy</b> ${pc(acc)}</span>` +
+        `<span><b>Precision</b> ${pc(prec)}</span>` +
+        `<span><b>Recall</b> ${pc(rec)}</span>` +
+        `<span><b>F1</b> ${f1.toFixed(3)}</span></div>`;
+    }
+    html += `</div>\n\n`;
+    return html;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-confusionmatrix { display: inline-block; margin: 1rem 0; }
+    .mdp-cm-title { font-weight: 700; text-align: center; margin-bottom: 8px; }
+    .mdp-cm-grid { display: grid; grid-template-columns: auto auto auto; grid-template-rows: auto auto auto auto; gap: 4px; align-items: stretch; }
+    .mdp-cm-corner { grid-row: 1 / 3; grid-column: 1 / 2; }
+    .mdp-cm-axis-x { grid-column: 2 / 4; }
+    .mdp-cm-axis { text-align: center; font-weight: 700; color: var(--app-text-muted, #888); font-size: 0.85em; letter-spacing: 0.04em; }
+    .mdp-cm-axis-y { grid-row: 3 / 5; grid-column: 1 / 2; display: flex; align-items: center; justify-content: center; }
+    .mdp-cm-axis-y span { writing-mode: vertical-rl; transform: rotate(180deg); }
+    .mdp-cm-col, .mdp-cm-row { display: flex; align-items: center; justify-content: center; font-weight: 600; padding: 4px 8px; }
+    .mdp-cm-cell { min-width: 72px; min-height: 56px; display: flex; align-items: center; justify-content: center; font-size: 1.4em; font-weight: 800; border-radius: 8px; }
+    .mdp-cm-cell.ok { background: color-mix(in srgb, var(--cm-ok, #22c55e) 18%, transparent); color: #16a34a; border: 1px solid color-mix(in srgb, var(--cm-ok, #22c55e) 40%, transparent); }
+    .mdp-cm-cell.err { background: color-mix(in srgb, var(--cm-err, #ef4444) 15%, transparent); color: #dc2626; border: 1px solid color-mix(in srgb, var(--cm-err, #ef4444) 35%, transparent); }
+    .mdp-cm-metrics { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 10px; font-size: 0.9em; }
+    .mdp-cm-metrics b { color: var(--app-text-muted, #888); font-weight: 600; margin-right: 4px; }
+  ]]></style>
+</module>

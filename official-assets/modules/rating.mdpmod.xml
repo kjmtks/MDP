@@ -1,0 +1,66 @@
+<module>
+  <name>rating</name>
+  <type>inline</type>
+  <description>Star rating (filled / half / empty stars) for a score out of max. Inline, so it sits in a line or a table cell.</description>
+  <tags>inline, badge</tags>
+  <aiSpec><![CDATA[
+An inline STAR RATING — show a score as filled/half/empty stars, e.g. in a
+comparison, review or scorecard (works inside table cells). No body; params only.
+Parameters:
+  `value` (number, default 0) — the score out of `max`; halves are supported, e.g. 3.5.
+  `max` (integer 1-10, default 5) — number of stars.
+  `color` (color, default #f5a623) — fill color of the stars.
+  `emptycolor` (color, default auto) — color of the empty portion; blank = a faded tint of `color`.
+  `symbol` (select star|heart|circle|square|diamond, default star) — the glyph to repeat.
+  `size` (number px, default inherit) — glyph size; blank = inherit the text size.
+  `gap` (number px 0-20, default 1) — spacing between glyphs.
+  `showValue` (boolean, default false) — append the numeric "value/max" readout.
+
+Example: <!-- @rating value: 4.5, symbol: heart, showValue: true -->.
+]]></aiSpec>
+  <parameters>
+    <param name="value" type="number" default="0" label="Score" desc="Score out of max; halves allowed, e.g. 3.5." min="0" max="10" step="0.5" />
+    <param name="max" type="number" default="5" label="Out of" desc="Number of stars." min="1" max="10" integer="true" />
+    <param name="color" type="color" default="#f5a623" label="Star color" desc="Fill color of the stars." />
+    <param name="emptycolor" type="color" default="" label="Empty color" desc="Color of the empty portion; blank = a faded tint of the star color." />
+    <param name="symbol" type="select" default="star" label="Symbol" desc="The glyph to repeat." options="star,heart,circle,square,diamond" />
+    <param name="size" type="number" default="" label="Size (px)" desc="Glyph size; blank = inherit the surrounding text size." min="8" max="120" integer="true" />
+    <param name="gap" type="number" default="1" label="Gap (px)" desc="Spacing between glyphs." min="0" max="20" integer="true" />
+    <param name="showValue" type="boolean" default="false" label="Show number" desc="Append the numeric value/max readout." />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>UI Parts</category>
+      <label>Star rating</label>
+      <text><![CDATA[<!-- @rating value: 4, max: 5 -->]]></text>
+      <description>Inline star rating out of max; value may be fractional (e.g. 3.5).</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const color = args.color || '#f5a623';
+    const empty = (args.emptycolor && String(args.emptycolor).trim()) || '';
+    const symbols = { star: '★', heart: '♥', circle: '●', square: '■', diamond: '◆' };
+    const sym = symbols[String(args.symbol || 'star').toLowerCase()] || '★';
+    const max = Math.max(1, Math.round(parseFloat(args.max) || 5));
+    const value = Math.max(0, Math.min(max, parseFloat(args.value) || 0));
+    const showValue = String(args.showValue) === 'true';
+    let szN = parseInt(args.size, 10); const sizeCss = (szN > 0) ? ('font-size:' + Math.min(120, szN) + 'px;') : '';
+    let gN = parseInt(args.gap, 10); const gap = (gN >= 0 && gN <= 20) ? gN : 1;
+    let stars = '';
+    for (let i = 1; i <= max; i++) {
+      const fill = Math.max(0, Math.min(1, value - (i - 1))); // 0, .5-ish, or 1
+      const pct = Math.round(fill * 100);
+      stars += `<span class="mdp-rt-star"><span class="mdp-rt-empty">${sym}</span><span class="mdp-rt-fill" style="width:${pct}%;">${sym}</span></span>`;
+    }
+    const num = showValue ? `<span class="mdp-rt-num">${value}${'/' + max}</span>` : '';
+    const styleVars = `--rt-color:${color}; --rt-gap:${gap}px; ${sizeCss}` + (empty ? `--rt-empty-c:${empty};` : '');
+    return `<span class="mdp-mod-rating" style="${styleVars}" title="${value} / ${max}">${stars}${num}</span>`;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-rating { display: inline-flex; align-items: center; gap: var(--rt-gap, 1px); vertical-align: -0.1em; line-height: 1; }
+    .mdp-rt-star { position: relative; display: inline-block; }
+    .mdp-rt-empty { color: var(--rt-empty-c, color-mix(in srgb, var(--rt-color) 30%, transparent)); }
+    .mdp-rt-fill { position: absolute; left: 0; top: 0; overflow: hidden; white-space: nowrap; color: var(--rt-color); }
+    .mdp-rt-num { margin-left: 0.4em; font-size: 0.85em; font-weight: 700; color: var(--rt-color); }
+  ]]></style>
+</module>

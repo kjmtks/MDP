@@ -2,18 +2,36 @@
   <name>stamp</name>
   <type>block</type>
   <description>A decorated label — a "stamp" such as CONFIDENTIAL, DRAFT or INTERNAL. The label is the block BODY (so spaces, commas and symbols are fine). Designed to drop inside a slide's @header / @footer block, but works in body text too. The default "double" style reproduces the classic double-bordered header badge.</description>
+  <tags>decoration, badge</tags>
   <aiSpec><![CDATA[
-Use for a decorated status label / badge such as CONFIDENTIAL, DRAFT, INTERNAL. The body
-is the label text (spaces, commas and symbols are fine; defaults to CONFIDENTIAL if empty).
-Block module but renders INLINE (a decorated span), so it sits within a header/footer or
-body text rather than as its own block. Often dropped inside a slide's @header / @footer.
+Use for a decorated status label / badge such as CONFIDENTIAL, DRAFT, INTERNAL. The body is the
+label text (spaces, commas and symbols are fine; defaults to CONFIDENTIAL if empty). Block module
+but renders INLINE (a decorated span), so it sits within a header/footer or body text rather than
+as its own block. Often dropped inside a slide's @header / @footer.
+
+Parameters:
+  `variant`   — double | solid | outline | plain (default double): the badge style.
+  `color`     — badge colour (default theme accent).
+  `size`      — sm | md | lg (default md): overall size.
+  `uppercase` — true | false (default false): force the label to uppercase.
+  `rotate`    — tilt angle in degrees, -45 to 45 (default 0), for a classic angled stamp.
+
+Example:
+<!-- @stamp variant: outline, color: #ef4444, rotate: -8, uppercase: true -->
+Draft
+<!-- @end -->
 ]]></aiSpec>
 
   <parameters>
     <param name="variant" type="select" default="double" label="Style"
-      options="double:Double border,solid:Solid fill,outline:Outline,plain:Plain text" />
+      options="double:Double border,solid:Solid fill,outline:Outline,plain:Plain text"
+      desc="The badge style." />
     <param name="color" type="color" default="var(--accent-color)" label="Color"
-      options="var(--accent-color):Accent,#ef4444:Red,#f59e0b:Amber,#10b981:Green,#3b82f6:Blue,#64748b:Slate" />
+      options="var(--accent-color):Accent,#ef4444:Red,#f59e0b:Amber,#10b981:Green,#3b82f6:Blue,#64748b:Slate"
+      desc="Badge colour." />
+    <param name="size" type="select" default="md" options="sm:Small,md:Medium,lg:Large" label="Size" desc="Overall size of the stamp." />
+    <param name="uppercase" type="boolean" default="false" label="Uppercase" desc="Force the label text to uppercase." />
+    <param name="rotate" type="number" default="0" min="-45" max="45" label="Rotate (deg)" desc="Tilt angle for a classic angled stamp." />
   </parameters>
 
   <snippets>
@@ -43,11 +61,17 @@ CONFIDENTIAL
     const label = sections[0] ? sections[0].trim() : '';
     const txt = label !== '' ? label : 'CONFIDENTIAL';
     const variant = (['double', 'solid', 'outline', 'plain'].indexOf(String(args.variant || 'double').toLowerCase()) >= 0)
-      ? String(args.variant).toLowerCase() : 'double';
+      ? String(args.variant || 'double').toLowerCase() : 'double';
     const color = (args.color && String(args.color).trim()) || 'var(--accent-color)';
+    const size = (['sm', 'md', 'lg'].indexOf(String(args.size || 'md').toLowerCase()) >= 0) ? String(args.size || 'md').toLowerCase() : 'md';
+    const upper = String(args.uppercase) === 'true';
+    const rotRaw = parseFloat(args.rotate);
+    const rot = Number.isFinite(rotRaw) ? Math.max(-45, Math.min(45, rotRaw)) : 0;
+    let style = '--stamp-color: ' + color + ';';
+    if (rot) style += ' transform: rotate(' + rot + 'deg);';
+    const cls = 'mdp-mod-stamp mdp-stamp--' + variant + (size !== 'md' ? ' st-' + size : '') + (upper ? ' is-upper' : '');
     // Inline element (block module + inline render): flows within the header/text.
-    return '<span class="mdp-mod-stamp mdp-stamp--' + variant + '" style="--stamp-color: ' + color + ';">'
-      + esc(txt) + '</span>';
+    return '<span class="' + cls + '" style="' + style + '">' + esc(txt) + '</span>';
   ]]></render>
 
   <style><![CDATA[
@@ -60,6 +84,9 @@ CONFIDENTIAL
       border-radius: 4px;
       vertical-align: middle;
     }
+    .mdp-mod-stamp.st-sm { font-size: 0.8em; padding: 1px 8px; letter-spacing: 0.08em; }
+    .mdp-mod-stamp.st-lg { font-size: 1.25em; padding: 3px 16px; }
+    .mdp-mod-stamp.is-upper { text-transform: uppercase; }
     /* Classic double-bordered badge (the former built-in header look). */
     .mdp-stamp--double {
       color: var(--stamp-color);

@@ -1,0 +1,53 @@
+{
+  "$comment": "Module taxonomy for the AI slide-authoring prompt. TWO LEVELS: groups (top) each own a set of tags (leaf). A module's <tags> (in its .mdpmod.xml) place it: its FIRST tag decides its group; the rest are secondary/cross-listing. A workspace can override this per folder with .mdp/taxonomy.json (same shape; if it has a 'groups' array it fully replaces this default). Array order = display order. Edit freely — this is data, not code.",
+  "groups": [
+    {
+      "id": "math",
+      "label": "Math & science",
+      "desc": "equations, proofs, geometry, function/coordinate plots, logic, sets & probability, matrices, sequences",
+      "tags": ["equations", "proofs", "geometry", "plots", "logic", "sets", "probability", "matrices", "numberline", "sequences", "fractions", "algorithms", "distribution"]
+    },
+    {
+      "id": "charts",
+      "label": "Charts & data",
+      "desc": "quantitative charts and stat displays built from your numbers (bars, distributions, KPIs, comparisons)",
+      "tags": ["charts", "bars", "comparison", "kpi", "statistics"]
+    },
+    {
+      "id": "diagrams",
+      "label": "Diagrams & flows",
+      "desc": "relationships, processes, hierarchies, cycles, timelines and node graphs",
+      "tags": ["flow", "process", "hierarchy", "cycle", "relationship", "timeline", "network"]
+    },
+    {
+      "id": "layout",
+      "label": "Layout & structure",
+      "desc": "arranging content on the slide: multi-column, grids, cards, free-placed boxes, grouping",
+      "tags": ["columns", "grid", "cards", "freeform", "grouping", "containers"]
+    },
+    {
+      "id": "content",
+      "label": "Content & callouts",
+      "desc": "emphasized text blocks and media: callouts, notes, quotes, lists, references, figures/images, tables",
+      "tags": ["callout", "note", "quote", "list", "reference", "heading", "table", "media"]
+    },
+    {
+      "id": "ui",
+      "label": "UI & inline elements",
+      "desc": "small chrome: badges, buttons, device/app mockups, inline marks, decorations, interactive widgets",
+      "tags": ["badge", "button", "mockup", "inline", "decoration", "interactive"]
+    },
+    {
+      "id": "utility",
+      "label": "Styling & utilities",
+      "desc": "apply CSS classes or inline styles to a slide or region (no visible element of their own)",
+      "tags": ["styling"]
+    },
+    {
+      "id": "other",
+      "label": "Other",
+      "desc": "modules whose tags are not in any group above",
+      "tags": []
+    }
+  ]
+}

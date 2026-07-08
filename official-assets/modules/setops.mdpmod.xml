@@ -1,0 +1,94 @@
+<module>
+  <name>setops</name>
+  <type>block</type>
+  <description>A two-set Venn diagram with a set OPERATION region highlighted: union, intersection, difference, symmetric difference, or complement — inside a universe box U.</description>
+  <tags>sets, logic</tags>
+  <aiSpec><![CDATA[
+A SET-OPERATION diagram: two circles A and B inside a universe rectangle U, with the region
+for one operation shaded. Params only (no body). Use @venn for a plain 2–3 set diagram with
+member lists; @setops is for showing WHICH region an operation selects.
+
+Parameters:
+  `op`        — which region to shade: union | intersect | a-only | b-only | xor | complement | none
+                (default intersect).
+  `a` / `b`   — circle labels (default A, B).
+  `formula`   — caption under the diagram (Markdown, so \( \) math works, e.g. \(A \cup B\); default none).
+  `color`     — highlight colour of the shaded region (default theme accent).
+  `intensity` — 0–100 shade opacity percentage of the highlight (default 40).
+  `width`     — CSS width of the diagram (default blank = 380px), e.g. 260px or 60%.
+  `showu`     — true | false (default true): show the "U" universe label.
+  `frame`     — true | false (default true): draw the universe rectangle border.
+
+Example:
+<!-- @setops op: xor, a: Cats, b: Dogs, formula: \(A \triangle B\), intensity: 55, width: 300px -->
+]]></aiSpec>
+  <parameters>
+    <param name="op" type="select" default="intersect" options="union,intersect,a-only,b-only,xor,complement,none" label="Operation" desc="Which region to shade." />
+    <param name="a" type="text" default="A" label="Left label" desc="Label for the left circle." />
+    <param name="b" type="text" default="B" label="Right label" desc="Label for the right circle." />
+    <param name="formula" type="text" default="" label="Caption formula" desc="Caption below the diagram; \( \) math works." />
+    <param name="color" type="color" default="var(--accent-color)" label="Highlight" desc="Colour of the shaded region." />
+    <param name="intensity" type="number" default="40" min="0" max="100" label="Shade intensity (%)" desc="Opacity of the highlight fill." />
+    <param name="width" type="text" default="" label="Width" desc="CSS width of the diagram; blank = 380px." />
+    <param name="showu" type="boolean" default="true" label="Show U label" desc="Show the universe 'U' label." />
+    <param name="frame" type="boolean" default="true" label="Universe frame" desc="Draw the universe rectangle border." />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Math</category>
+      <label>Set operation (Venn region)</label>
+      <text><![CDATA[<!-- @setops op: intersect, formula: \(A \cap B\) -->]]></text>
+      <description>Two-set diagram with the operation's region shaded.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const op = String(args.op || 'intersect');
+    const color = args.color || 'var(--accent-color)';
+    const width = (args.width || '').trim();
+    const intensityRaw = (args.intensity === undefined || args.intensity === '') ? 40 : parseFloat(args.intensity);
+    const intensity = Number.isFinite(intensityRaw) ? Math.max(0, Math.min(100, intensityRaw)) : 40;
+    const showU = String(args.showu === undefined ? 'true' : args.showu) !== 'false';
+    const showFrame = String(args.frame === undefined ? 'true' : args.frame) !== 'false';
+    const uid = 'so' + op.replace(/[^a-z]/g, '') + String(args.a || 'A').length + String(args.b || 'B').length;
+    const A = { x: 62, y: 50, r: 34 }, B = { x: 98, y: 50, r: 34 };
+    const circ = (c, cls) => `<circle cx="${c.x}" cy="${c.y}" r="${c.r}" class="${cls}"/>`;
+    const defs = `<defs>` +
+      `<clipPath id="${uid}-ca"><circle cx="${A.x}" cy="${A.y}" r="${A.r}"/></clipPath>` +
+      `<mask id="${uid}-ma"><rect x="0" y="0" width="160" height="100" fill="#fff"/><circle cx="${A.x}" cy="${A.y}" r="${A.r}" fill="#000"/></mask>` +
+      `<mask id="${uid}-mb"><rect x="0" y="0" width="160" height="100" fill="#fff"/><circle cx="${B.x}" cy="${B.y}" r="${B.r}" fill="#000"/></mask>` +
+      `<mask id="${uid}-mab"><rect x="0" y="0" width="160" height="100" fill="#fff"/><circle cx="${A.x}" cy="${A.y}" r="${A.r}" fill="#000"/><circle cx="${B.x}" cy="${B.y}" r="${B.r}" fill="#000"/></mask>` +
+      `</defs>`;
+    let fill = '';
+    const fA = circ(A, 'mdp-so-fill'), fB = circ(B, 'mdp-so-fill');
+    if (op === 'union') fill = fA + fB;
+    else if (op === 'intersect') fill = `<g clip-path="url(#${uid}-ca)">${fB}</g>`;
+    else if (op === 'a-only') fill = `<g mask="url(#${uid}-mb)">${fA}</g>`;
+    else if (op === 'b-only') fill = `<g mask="url(#${uid}-ma)">${fB}</g>`;
+    else if (op === 'xor') fill = `<g mask="url(#${uid}-mb)">${fA}</g><g mask="url(#${uid}-ma)">${fB}</g>`;
+    else if (op === 'complement') fill = `<rect x="2" y="2" width="156" height="96" rx="6" class="mdp-so-fill" mask="url(#${uid}-mab)"/>`;
+    const frameRect = showFrame ? `<rect x="2" y="2" width="156" height="96" rx="6" class="mdp-so-frame"/>` : '';
+    const uText = showU ? `<text x="8" y="13" class="mdp-so-u">U</text>` : '';
+    const frame = frameRect + uText +
+      circ(A, 'mdp-so-circle') + circ(B, 'mdp-so-circle') +
+      `<text x="${A.x - A.r + 6}" y="${A.y - A.r + 2}" class="mdp-so-lbl">${esc(args.a || 'A')}</text>` +
+      `<text x="${B.x + B.r - 6}" y="${B.y - B.r + 2}" class="mdp-so-lbl" text-anchor="end">${esc(args.b || 'B')}</text>`;
+    let styleVars = `--so-c:${color};--so-fill:${intensity}%;`;
+    if (width) styleVars += `--so-w:${width};`;
+    let html = `\n\n<div class="mdp-mod-setops" style="${styleVars}"><svg viewBox="0 0 160 100" preserveAspectRatio="xMidYMid meet">${defs}${fill}${frame}</svg>`;
+    if (args.formula) html += `<div class="mdp-so-formula">\n\n${args.formula}\n\n</div>`;
+    html += `</div>\n\n`;
+    return html;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-setops { width: min(100%, var(--so-w, 380px)); margin: 1rem auto; text-align: center; }
+    .mdp-mod-setops svg { width: 100%; height: auto; }
+    .mdp-so-frame { fill: none; stroke: currentColor; stroke-width: 0.8; opacity: 0.5; }
+    .mdp-so-circle { fill: none; stroke: currentColor; stroke-width: 1; }
+    .mdp-so-fill { fill: color-mix(in srgb, var(--so-c) var(--so-fill, 40%), transparent); }
+    .mdp-so-u { fill: currentColor; font-size: 7px; font-weight: 700; opacity: 0.6; }
+    .mdp-so-lbl { fill: currentColor; font-size: 7px; font-weight: 700; }
+    .mdp-so-formula { margin-top: 4px; font-weight: 600; }
+    .mdp-so-formula > :first-child { margin: 0; }
+  ]]></style>
+</module>

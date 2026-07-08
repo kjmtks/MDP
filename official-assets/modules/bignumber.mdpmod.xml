@@ -1,17 +1,42 @@
 <module>
   <name>bignumber</name>
   <type>block</type>
-  <description>A single large highlighted statistic</description>
+  <description>A single large highlighted statistic (KPI) with an optional label and caption, split into up to three body sections.</description>
+  <tags>kpi</tags>
   <aiSpec><![CDATA[
-Showcase one headline statistic or KPI in large type with supporting text.
-Block module split by `<!-- @ -->` into up to three sections: section 1 = the
-big number/value (e.g. "98%"), section 2 = a label, section 3 = a smaller
-caption. Only the number is required; label and caption are optional.
-Example: `98%` `<!-- @ -->` `Customer satisfaction` `<!-- @ -->` `1,200 responses`.
+Showcase ONE headline statistic or KPI in large type with supporting text — a
+conversion rate, revenue figure, satisfaction score, etc. Use it to make a single
+number the focal point of a slide. For several bars side by side use @barchart;
+for a titled block of prose use @card.
+
+Body: split by `<!-- @ -->` into up to three sections:
+- section 1 (required) = the big number/value, e.g. "98%" or "$1.2M".
+- section 2 (optional) = a short label under it.
+- section 3 (optional) = a smaller caption/footnote.
+
+Parameters:
+- color (color, default var(--accent-color)): the big number's color.
+- align (select: left | center | right, default center): text alignment of the whole block.
+- numbersize (CSS length, default 3.5em): font size of the big number, e.g. 3em or 72px.
+- trend (select: none | up | down, default none): prepend a green ▲ or red ▼ arrow before the number.
+- labelcolor (color, default empty = theme): color of the label line (section 2).
+
+Usage:
+<!-- @bignumber color: #16a34a, trend: up, numbersize: 4em -->
++24%
+<!-- @ -->
+Year-over-year growth
+<!-- @ -->
+Measured across 1,200 responses
+<!-- @end -->
 ]]></aiSpec>
 
   <parameters>
-    <param name="color" type="color" default="var(--accent-color)" label="Number Color" />
+    <param name="color" type="color" default="var(--accent-color)" label="Number Color" desc="Color of the big number." />
+    <param name="align" type="select" default="center" label="Align" options="left:Left,center:Center,right:Right" desc="Text alignment of the whole block." />
+    <param name="numbersize" type="text" default="3.5em" label="Number size" desc="CSS size of the big number, e.g. 3em or 72px." />
+    <param name="trend" type="select" default="none" label="Trend arrow" options="none:None,up:Up (green),down:Down (red)" desc="Optional arrow before the number." />
+    <param name="labelcolor" type="color" default="" label="Label color" desc="Color of the label line; blank = theme default." />
   </parameters>
 
   <snippets>
@@ -27,15 +52,33 @@ Measured across 1,200 responses
 <!-- @end -->]]></text>
       <description>Large statistic with label and caption</description>
     </snippet>
+    <snippet>
+      <category>Data</category>
+      <label>Big Number (trend)</label>
+      <text><![CDATA[<!-- @bignumber color: #16a34a, trend: up -->
++24%
+<!-- @ -->
+Year-over-year growth
+<!-- @end -->]]></text>
+      <description>KPI with a colored up/down trend arrow.</description>
+    </snippet>
   </snippets>
 
   <render><![CDATA[
     const color = args.color || 'var(--accent-color)';
+    const align = (args.align || 'center').toLowerCase();
+    const textAlign = align === 'left' ? 'left' : align === 'right' ? 'right' : 'center';
+    const numSize = (args.numbersize && String(args.numbersize).trim()) || '3.5em';
+    const trend = (args.trend || 'none').toLowerCase();
+    const arrow = trend === 'up' ? '<span class="bignumber-trend" style="color:#16a34a;">&#9650;</span> '
+      : trend === 'down' ? '<span class="bignumber-trend" style="color:#dc2626;">&#9660;</span> ' : '';
     const numberStr = sections[0] ? sections[0].trim() : '';
     const labelStr = sections[1] ? sections[1].trim() : '';
     const captionStr = sections[2] ? sections[2].trim() : '';
-    let html = `\n\n<div class="mdp-mod-bignumber">`;
-    html += `<div class="bignumber-value" style="color: ${color};">${numberStr}</div>`;
+    let labelVar = '';
+    if (args.labelcolor && String(args.labelcolor).trim()) labelVar = ' --bn-label:' + String(args.labelcolor).trim() + ';';
+    let html = `\n\n<div class="mdp-mod-bignumber" style="text-align:${textAlign};${labelVar}">`;
+    html += `<div class="bignumber-value" style="color: ${color}; font-size: ${numSize};">${arrow}${numberStr}</div>`;
     if (labelStr) html += `<div class="bignumber-label">${labelStr}</div>`;
     if (captionStr) html += `<div class="bignumber-caption">${captionStr}</div>`;
     html += `</div>\n\n`;
@@ -56,7 +99,7 @@ Measured across 1,200 responses
     .mdp-mod-bignumber .bignumber-label {
       font-size: 1.1em;
       font-weight: 600;
-      color: var(--text-color, #1f2937);
+      color: var(--bn-label, var(--text-color, #1f2937));
       margin-top: 0.25rem;
     }
     .mdp-mod-bignumber .bignumber-caption {

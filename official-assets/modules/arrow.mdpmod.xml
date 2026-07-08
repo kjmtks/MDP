@@ -2,19 +2,27 @@
   <name>arrow</name>
   <type>inline</type>
   <description>Arrow connecting elements. 8 directions and several shapes (triangle, chevron, line, double).</description>
+  <tags>decoration, relationship</tags>
   <aiSpec><![CDATA[
 Insert a directional arrow glyph to point between or connect items (e.g. show
 flow or a "leads to" relationship). Inline module with no body — everything is
-controlled by parameters: `direction` (8 compass directions) and `shape`
-(triangle/chevron/line/double). Often placed on its own between two blocks.
-Example: `<!-- @arrow direction: down, shape: triangle -->`.
+controlled by parameters. `direction` (default down) is one of the 8 compass
+directions: up, down, left, right, up-right, up-left, down-right, down-left.
+`shape` (default triangle) is triangle | chevron | line | double. `size`
+(default 40px) is a CSS length for the glyph's width/height. `margin` (default
+"1rem 0 0 0") is a CSS margin shorthand around the arrow. `color` (default
+var(--accent-color)) sets the arrow color. Often placed on its own line between
+two blocks to show a downward flow.
+
+Example:
+<!-- @arrow direction: down, shape: triangle, size: 40px -->
 ]]></aiSpec>
   <parameters>
-    <param name="direction" type="select" default="down" label="Direction" options="up:Up,down:Down,left:Left,right:Right,up-right:Up-right,up-left:Up-left,down-right:Down-right,down-left:Down-left" />
-    <param name="shape" type="select" default="triangle" label="Shape" options="triangle:Triangle,chevron:Chevron,line:Line arrow,double:Double chevron" />
+    <param name="direction" type="select" default="down" label="Direction" desc="Which way the arrow points (8 compass directions)" options="up:Up,down:Down,left:Left,right:Right,up-right:Up-right,up-left:Up-left,down-right:Down-right,down-left:Down-left" />
+    <param name="shape" type="select" default="triangle" label="Shape" desc="Arrow glyph style" options="triangle:Triangle,chevron:Chevron,line:Line arrow,double:Double chevron" />
     <param name="size" type="text" default="40px" label="Size" desc="CSS size, e.g. 40px" />
     <param name="margin" type="text" default="1rem 0 0 0" label="Margin" desc="CSS margin shorthand" />
-    <param name="color" type="color" default="var(--accent-color)" label="Color" />
+    <param name="color" type="color" default="var(--accent-color)" label="Color" desc="Arrow color" />
   </parameters>
   <snippets>
     <snippet>

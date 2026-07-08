@@ -1,0 +1,66 @@
+<module>
+  <name>equation</name>
+  <type>block</type>
+  <description>A centered display equation with a right-aligned equation number, e.g. (1). Body = the LaTeX (no delimiters needed).</description>
+  <tags>equations</tags>
+  <aiSpec><![CDATA[
+A numbered DISPLAY EQUATION — the formula shown large and centered with an equation
+number off to the side, like in a paper. Block module.
+
+Body: just the LaTeX of the equation. Do NOT wrap it in \[ \] or $$ — the module adds
+the display delimiters itself. One equation per module; use several modules with
+different `number`s to reference them from your prose.
+
+When NOT to use: for a titled formula with a "where" legend use @formula; for inline
+math in a sentence just write \( ... \) directly.
+
+Parameters:
+  - `number` : the tag shown in parentheses on the side, e.g. 1 or 3.2. Default blank
+               (no number). Any short text.
+  - `align`  : left | center | right — horizontal alignment of the formula. Default center.
+  - `numberside` : left | right — which side the (number) sits on. Default right.
+  - `size`   : small | normal | large — overall size of the equation. Default normal.
+  - `color`  : color of the (number) tag. Default the muted theme color. Any CSS color.
+
+<!-- @equation number: 1, size: large -->
+E = mc^2
+<!-- @end -->
+]]></aiSpec>
+  <parameters>
+    <param name="number" type="text" default="" label="Equation number" desc="Tag shown in parentheses, e.g. 1 or 3.2; blank = no number." />
+    <param name="align" type="select" default="center" options="left,center,right" label="Alignment" desc="Horizontal alignment of the formula." />
+    <param name="numberside" type="select" default="right" options="left,right" label="Number side" desc="Which side the (number) tag sits on." />
+    <param name="size" type="select" default="normal" options="small,normal,large" label="Size" desc="Overall size of the displayed equation." />
+    <param name="color" type="color" default="var(--app-text-muted, #888)" label="Number color" desc="Color of the (number) tag." />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Math</category>
+      <label>Numbered equation</label>
+      <text><![CDATA[<!-- @equation number: 1 -->
+\nabla \cdot \mathbf{E} = \frac{\rho}{\varepsilon_0}
+<!-- @end -->]]></text>
+      <description>Centered display equation with a right-aligned (n) tag. Body is LaTeX (no delimiters).</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const number = (args.number || '').trim();
+    const body = (content || '').trim();
+    const align = String(args.align || 'center').toLowerCase();
+    const side = String(args.numberside || 'right').toLowerCase();
+    const size = String(args.size || 'normal').toLowerCase();
+    const scale = size === 'small' ? '0.85em' : size === 'large' ? '1.3em' : '1em';
+    const tagColor = args.color || 'var(--app-text-muted, #888)';
+    const tag = number ? `<span class="mdp-eq-tag">(${esc(number)})</span>` : '';
+    const bodyDiv = `<div class="mdp-eq-body" style="text-align:${align};">\n\n\\[ ${body} \\]\n\n</div>`;
+    const inner = side === 'left' ? tag + bodyDiv : bodyDiv + tag;
+    return `\n\n<div class="mdp-mod-equation" style="font-size:${scale}; --eq-tagcolor:${tagColor};">${inner}</div>\n\n`;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-equation { display: flex; align-items: center; margin: 1rem 0; gap: 8px; }
+    .mdp-eq-body { flex: 1; text-align: center; min-width: 0; overflow-x: auto; }
+    .mdp-eq-body > :first-child { margin: 0; }
+    .mdp-eq-tag { flex: 0 0 auto; color: var(--eq-tagcolor, var(--app-text-muted, #888)); font-variant-numeric: tabular-nums; }
+  ]]></style>
+</module>

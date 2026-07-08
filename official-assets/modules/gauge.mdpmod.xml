@@ -1,0 +1,92 @@
+<module>
+  <name>gauge</name>
+  <type>block</type>
+  <description>A semicircular gauge / dial showing one value within a range, with a needle, the value big in the middle, and an optional caption. For KPIs, utilization, scores.</description>
+  <tags>kpi, charts</tags>
+  <aiSpec><![CDATA[
+A semicircular GAUGE (dial) for ONE headline value — utilization, a score, or
+progress toward a cap. Inline directive, no body. Use it for a single number in
+context of its range; for many series use @barchart, and for a plain progress bar
+use @progress.
+
+Parameters:
+  - `value` (required): the real number the needle points to (any number).
+  - `min` / `max`: the two ends of the gauge's RANGE (defaults 0 and 100). The
+    needle and arc fill are computed as (value - min) / (max - min).
+  - `label`: caption shown under the value (default none).
+  - `unit`: suffix appended to the value, e.g. `%`, ` GB` (default none).
+  - `color`: arc + value colour (any CSS colour; default var(--accent-color)).
+  - `zones` (true|false, default false): when true the arc auto-colours
+    green -> amber -> red by how far along the range the value sits (overrides color).
+  - `width`: CSS length capping the dial width (default 260px; shrinks on narrow slides).
+  - `thickness`: arc/track stroke width in px (2-20, default 9).
+  - `showrange` (true|false, default true): show the min/max end labels.
+  - `align` (left|center|right, default center): horizontal placement of the dial.
+
+Example:
+<!-- @gauge value: 72, max: 100, unit: %, label: CPU load, zones: true, width: 300px -->
+]]></aiSpec>
+  <parameters>
+    <param name="value" type="number" required="true" default="0" label="Value" desc="The number the needle points to (any real number within min..max)." />
+    <param name="min" type="number" default="0" label="Min" desc="Low end of the gauge range." />
+    <param name="max" type="number" default="100" label="Max" desc="High end of the gauge range." />
+    <param name="label" type="text" default="" label="Label" desc="Caption shown under the value (optional)." />
+    <param name="unit" type="text" default="" label="Unit suffix" desc="Text appended after the value, e.g. % or GB." />
+    <param name="color" type="color" default="var(--accent-color)" label="Arc color" desc="Colour of the arc and the big value. Ignored when zones is on." />
+    <param name="zones" type="boolean" default="false" label="Green/amber/red by value" desc="Auto-colour the arc by how far the value is along the range." />
+    <param name="width" type="text" default="260px" label="Dial width" desc="CSS length capping the dial width, e.g. 260px or 20em." />
+    <param name="thickness" type="number" default="9" label="Arc thickness (px)" desc="Stroke width of the arc and track." min="2" max="20" step="0.5" />
+    <param name="showrange" type="boolean" default="true" label="Show range labels" desc="Show the min and max numbers at the arc ends." />
+    <param name="align" type="select" default="center" label="Align" desc="Horizontal placement of the dial." options="left:Left,center:Center,right:Right" />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Data</category>
+      <label>Gauge / dial</label>
+      <text><![CDATA[<!-- @gauge value: 72, max: 100, unit: %, label: CPU load, zones: true -->]]></text>
+      <description>Semicircular dial with needle and big value.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const v = parseFloat(args.value) || 0;
+    const lo = Number.isFinite(parseFloat(args.min)) ? parseFloat(args.min) : 0;
+    const hi = Number.isFinite(parseFloat(args.max)) ? parseFloat(args.max) : 100;
+    const frac = Math.max(0, Math.min(1, (v - lo) / ((hi - lo) || 1)));
+    let color = args.color || 'var(--accent-color)';
+    if (String(args.zones) === 'true') color = frac < 0.6 ? '#16a34a' : frac < 0.85 ? '#f59e0b' : '#dc2626';
+    const R = 50, CX = 60, CY = 62;
+    const arcLen = Math.PI * R;
+    const ang = Math.PI * (1 - frac); // radians from +x axis
+    const nx = CX + (R - 10) * Math.cos(ang), ny = CY - (R - 10) * Math.sin(ang);
+    const track = `M${CX - R},${CY} A${R},${R} 0 0 1 ${CX + R},${CY}`;
+    const fmt = (x) => String(+(+x).toFixed(2));
+    // Flexibility params (defaults reproduce the original look exactly).
+    const gw = (args.width && String(args.width).trim()) || '260px';
+    const sw = Math.max(2, Math.min(20, parseFloat(args.thickness) || 9));
+    const showRange = String(args.showrange) !== 'false';
+    const al = String(args.align || 'center').toLowerCase();
+    const mx = al === 'left' ? '1rem auto 1rem 0' : al === 'right' ? '1rem 0 1rem auto' : '1rem auto';
+    return `\n\n<div class="mdp-mod-gauge" style="--gg-c:${color}; --gg-w:${gw}; --gg-sw:${sw}; margin:${mx};"><svg viewBox="0 0 120 78" preserveAspectRatio="xMidYMid meet">` +
+      `<path d="${track}" class="mdp-gg-track"/>` +
+      `<path d="${track}" class="mdp-gg-arc" style="stroke-dasharray:${(frac * arcLen).toFixed(1)} ${arcLen.toFixed(1)};"/>` +
+      `<line x1="${CX}" y1="${CY}" x2="${nx.toFixed(1)}" y2="${ny.toFixed(1)}" class="mdp-gg-needle"/>` +
+      `<circle cx="${CX}" cy="${CY}" r="3.5" class="mdp-gg-hub"/>` +
+      (showRange ? `<text x="${CX - R}" y="${CY + 9}" class="mdp-gg-end" text-anchor="middle">${fmt(lo)}</text>` +
+      `<text x="${CX + R}" y="${CY + 9}" class="mdp-gg-end" text-anchor="middle">${fmt(hi)}</text>` : '') +
+      `</svg><div class="mdp-gg-value">${fmt(v)}${esc(args.unit || '')}</div>` +
+      (args.label ? `<div class="mdp-gg-label">${esc(args.label)}</div>` : '') +
+      `</div>\n\n`;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-gauge { width: min(100%, var(--gg-w, 260px)); margin: 1rem auto; text-align: center; }
+    .mdp-mod-gauge svg { width: 100%; height: auto; overflow: visible; }
+    .mdp-gg-track { fill: none; stroke: color-mix(in srgb, currentColor 12%, transparent); stroke-width: var(--gg-sw, 9); stroke-linecap: round; }
+    .mdp-gg-arc { fill: none; stroke: var(--gg-c); stroke-width: var(--gg-sw, 9); stroke-linecap: round; }
+    .mdp-gg-needle { stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+    .mdp-gg-hub { fill: currentColor; }
+    .mdp-gg-end { fill: var(--app-text-muted, #888); font-size: 6px; }
+    .mdp-gg-value { font-size: 2em; font-weight: 800; margin-top: -0.4em; color: var(--gg-c); font-variant-numeric: tabular-nums; }
+    .mdp-gg-label { color: var(--app-text-muted, #888); font-weight: 600; }
+  ]]></style>
+</module>

@@ -1,0 +1,124 @@
+<module>
+  <name>fishbone</name>
+  <type>block</type>
+  <description>A fishbone (Ishikawa) cause-and-effect diagram: spine to the effect head, category bones above/below with their causes. First section = effect, each following = "Category" + cause lines.</description>
+  <tags>relationship, hierarchy</tags>
+  <aiSpec><![CDATA[
+A FISHBONE (Ishikawa) cause-and-effect diagram — a spine pointing at an effect on the
+right, with category "bones" branching above and below, each listing its causes.
+
+Body: split the sections with `<!-- @ -->`.
+  - The FIRST section = the EFFECT (the head box, right side). Markdown allowed.
+  - Each following section = one CATEGORY bone: its FIRST LINE is the category name,
+    the remaining lines are that category's causes (one cause per line; a leading "- "
+    is stripped).
+Categories alternate above/below the spine. Keep to <= 6 categories and <= 4 causes each.
+
+When NOT to use: for general node graphs use @mermaid; for a linear process use @flow.
+
+Parameters:
+  - `color`     : spine, bones and category accent. Default var(--accent-color). CSS color.
+  - `headcolor` : accent for the effect head box only. Default blank = same as `color`.
+  - `showcauses`: true/false — show the cause lines under each category. Default true
+                  (false shows just the category names, for a high-level view).
+  - `compact`   : true/false — denser text and smaller boxes. Default false.
+  - `headwidth` : max width of the effect head box in px. Default 200. Range 80–400.
+
+<!-- @fishbone color: #c0392b, compact: true -->
+Late delivery
+<!-- @ -->
+People
+Training
+Staffing
+<!-- @ -->
+Process
+Handoffs
+Approvals
+<!-- @end -->
+]]></aiSpec>
+  <parameters>
+    <param name="color" type="color" default="var(--accent-color)" label="Accent color" desc="Spine, bones and category accent color." />
+    <param name="headcolor" type="color" default="" label="Head color" desc="Accent for the effect head box; blank = same as accent color." />
+    <param name="showcauses" type="boolean" default="true" label="Show causes" desc="Show the cause lines under each category (off = names only)." />
+    <param name="compact" type="boolean" default="false" label="Compact" desc="Denser text and smaller boxes." />
+    <param name="headwidth" type="number" default="200" min="80" max="400" step="10" label="Head width (px)" desc="Maximum width of the effect head box." />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Diagram</category>
+      <label>Fishbone (Ishikawa)</label>
+      <text><![CDATA[<!-- @fishbone -->
+Effect
+<!-- @ -->
+People
+cause 1
+cause 2
+<!-- @ -->
+Process
+cause 3
+cause 4
+<!-- @end -->]]></text>
+      <description>Effect head + category bones with causes, alternating above/below.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const color = args.color || 'var(--accent-color)';
+    const headColor = (args.headcolor && String(args.headcolor).trim()) ? args.headcolor : color;
+    const showCauses = String(args.showcauses) !== 'false';
+    const compact = String(args.compact) === 'true';
+    const hw = Math.max(80, Math.min(400, parseFloat(args.headwidth) || 200));
+    const secs = sections.map((s) => (s || '').trim()).filter(Boolean);
+    if (secs.length < 2) return `<div>(fishbone: first section = effect, then category sections)</div>`;
+    const effect = secs[0];
+    const cats = secs.slice(1).map((s) => {
+      const nl = s.indexOf('\n');
+      return {
+        name: nl >= 0 ? s.slice(0, nl).trim() : s,
+        causes: nl >= 0 ? s.slice(nl + 1).split('\n').map((l) => l.replace(/^-\s+/, '').trim()).filter(Boolean) : [],
+      };
+    });
+    const top = cats.filter((_, i) => i % 2 === 0);
+    const bottom = cats.filter((_, i) => i % 2 === 1);
+    const cols = Math.max(top.length, bottom.length, 1);
+    const cat = (c, dir) => {
+      let causes = '';
+      if (showCauses) c.causes.forEach((x) => { causes += `<div class="mdp-fbn-cause">${esc(x)}</div>`; });
+      return `<div class="mdp-fbn-cat mdp-fbn-${dir}"><div class="mdp-fbn-catname">${esc(c.name)}</div>` +
+        `<div class="mdp-fbn-causes">${causes}</div><div class="mdp-fbn-bone"></div></div>`;
+    };
+    let html = `\n\n<div class="mdp-mod-fishbone${compact ? ' mdp-fbn-compact' : ''}" style="--fbn-c:${color}; --fbn-head:${headColor}; --fbn-cols:${cols}; --fbn-hw:${hw}px;">` +
+      `<div class="mdp-fbn-grid">` +
+      `<div class="mdp-fbn-row mdp-fbn-toprow">${top.map((c) => cat(c, 'top')).join('')}</div>` +
+      `<div class="mdp-fbn-spinewrap"><div class="mdp-fbn-spine"></div></div>` +
+      `<div class="mdp-fbn-row mdp-fbn-bottomrow">${bottom.map((c) => cat(c, 'bottom')).join('')}</div>` +
+      `</div>` +
+      `<div class="mdp-fbn-head">\n\n${effect}\n\n</div>` +
+      `</div>\n\n`;
+    return html;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-fishbone { display: flex; align-items: center; gap: 0; margin: 1.2rem 0; }
+    .mdp-fbn-grid { flex: 1; display: flex; flex-direction: column; }
+    .mdp-fbn-row { display: grid; grid-template-columns: repeat(var(--fbn-cols), 1fr); gap: 12px; padding: 0 24px; }
+    .mdp-fbn-spinewrap { padding: 0 0; }
+    .mdp-fbn-spine { height: 3px; background: var(--fbn-c); border-radius: 2px; position: relative; }
+    .mdp-fbn-spine::before { content: ''; position: absolute; left: -2px; top: 50%; transform: translateY(-50%); width: 10px; height: 10px; border-radius: 50%; background: var(--fbn-c); }
+    .mdp-fbn-cat { position: relative; display: flex; flex-direction: column; align-items: center; }
+    .mdp-fbn-top { padding-bottom: 16px; justify-content: flex-end; }
+    .mdp-fbn-bottom { padding-top: 16px; flex-direction: column-reverse; justify-content: flex-end; }
+    .mdp-fbn-bone { position: absolute; left: 50%; width: 2px; background: color-mix(in srgb, var(--fbn-c) 60%, transparent); transform: skewX(-18deg); }
+    .mdp-fbn-top .mdp-fbn-bone { bottom: 0; height: 14px; }
+    .mdp-fbn-bottom .mdp-fbn-bone { top: 0; height: 14px; }
+    .mdp-fbn-catname { font-weight: 800; padding: 3px 12px; border: 1.5px solid var(--fbn-c); border-radius: 6px; background: color-mix(in srgb, var(--fbn-c) 12%, transparent); white-space: nowrap; }
+    .mdp-fbn-causes { display: flex; flex-direction: column; gap: 2px; align-items: center; margin: 6px 0; }
+    .mdp-fbn-cause { font-size: 0.85em; color: var(--app-text-muted, #777); white-space: nowrap; }
+    .mdp-fbn-head { flex: 0 0 auto; margin-left: 4px; padding: 12px 18px; border: 2px solid var(--fbn-head, var(--fbn-c)); border-radius: 10px; background: color-mix(in srgb, var(--fbn-head, var(--fbn-c)) 15%, transparent); font-weight: 800; max-width: var(--fbn-hw, 200px); text-align: center; }
+    .mdp-fbn-head > :first-child { margin: 0; }
+    .mdp-fbn-toprow { align-items: end; }
+    .mdp-fbn-bottomrow { align-items: start; }
+    .mdp-fbn-compact .mdp-fbn-catname { padding: 2px 8px; font-size: 0.9em; }
+    .mdp-fbn-compact .mdp-fbn-cause { font-size: 0.72em; }
+    .mdp-fbn-compact .mdp-fbn-head { padding: 8px 12px; font-size: 0.9em; }
+  ]]></style>
+</module>

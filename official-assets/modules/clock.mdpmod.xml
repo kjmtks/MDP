@@ -2,11 +2,27 @@
   <name>clock</name>
   <type>inline</type>
   <description>Live wall-clock that shows the current time and ticks every second. Fixed width so it never reflows. Movable on the preview in Edit layout; resize is horizontal-only. Interactive: it never advances the slide.</description>
+  <tags>interactive, media</tags>
   <aiSpec><![CDATA[
-Use to show a live, ticking wall-clock of the current local time. Inline module:
-it takes no body and flows within text or sits on its own line; configure it
-purely through its parameters (format, seconds, size, shape, colors).
-Example: `<!-- @clock format: 12, size: lg -->`.
+Use to show a live, ticking wall-clock of the current local time. Inline module: it
+takes no body and flows within text or sits on its own line; configure it purely
+through its parameters. Each surface (main / presenter / remote) shows its own local
+time — there is no shared/synced clock, and it is not a countdown timer.
+
+Parameters:
+  • format (select: 24 | 12, default 24) — 24-hour or 12-hour (with AM/PM) clock.
+  • seconds (boolean, default true) — include the :SS seconds field.
+  • size (select: sm | md | lg | xl, default md) — readout font size.
+  • shape (select: rounded | pill | square | none, default rounded) — background box style;
+    `none` removes the box entirely.
+  • bg (color, default rgba(0,0,0,0.06)) — background fill of the box.
+  • border (color, default none) — border color; omit for no border.
+  • color (color, default inherited) — text color of the readout.
+  • label (text, default empty) — small caption shown before the time (e.g. "Now").
+  • weight (select: normal | medium | bold, default bold) — font weight of the digits.
+
+Example:
+<!-- @clock format: 12, size: lg, label: Now, weight: medium -->
 ]]></aiSpec>
   <interactive>true</interactive>
 
@@ -15,13 +31,15 @@ Example: `<!-- @clock format: 12, size: lg -->`.
   <manipulate position="xy" size="x" rotation="false" minW="5" maxW="100" />
 
   <parameters>
-    <param name="format" type="select" default="24" label="Clock format" options="24:24-hour,12:12-hour (AM/PM)" />
-    <param name="seconds" type="boolean" default="true" label="Show seconds" />
-    <param name="size" type="select" default="md" label="Size" options="sm:Small,md:Medium,lg:Large,xl:Extra large" />
-    <param name="shape" type="select" default="rounded" label="Background shape" options="rounded:Rounded,pill:Pill,square:Square,none:None" />
-    <param name="bg" type="color" default="rgba(0,0,0,0.06)" label="Background color" />
-    <param name="border" type="color" label="Border color" />
-    <param name="color" type="color" label="Text color" />
+    <param name="format" type="select" default="24" label="Clock format" options="24:24-hour,12:12-hour (AM/PM)" desc="24-hour clock or 12-hour with AM/PM" />
+    <param name="seconds" type="boolean" default="true" label="Show seconds" desc="Include the :SS seconds field" />
+    <param name="size" type="select" default="md" label="Size" options="sm:Small,md:Medium,lg:Large,xl:Extra large" desc="Readout font size" />
+    <param name="shape" type="select" default="rounded" label="Background shape" options="rounded:Rounded,pill:Pill,square:Square,none:None" desc="Background box style; 'none' removes the box" />
+    <param name="bg" type="color" default="rgba(0,0,0,0.06)" label="Background color" desc="Background fill of the box" />
+    <param name="border" type="color" label="Border color" desc="Border color; leave blank for no border" />
+    <param name="color" type="color" label="Text color" desc="Text color of the readout; blank inherits" />
+    <param name="label" type="text" default="" label="Label" desc="Small caption shown before the time (e.g. Now)" />
+    <param name="weight" type="select" default="bold" label="Digit weight" options="normal:Normal,medium:Medium,bold:Bold" desc="Font weight of the time digits" />
   </parameters>
 
   <snippets>
@@ -40,14 +58,18 @@ Example: `<!-- @clock format: 12, size: lg -->`.
   </snippets>
 
   <render><![CDATA[
+    const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     const use12 = (String(args.format).toLowerCase().replace('h', '') === '12');
     const showSec = !(String(args.seconds).toLowerCase() === 'false' || String(args.seconds) === '0');
     const sizes = { sm: 'sm', md: 'md', lg: 'lg', xl: 'xl' };
     const size = sizes[(args.size || 'md').toLowerCase()] || 'md';
-    // Appearance: shape (corner style / no box), background, border, text colour.
-    // Each is optional — omitted args fall back to the stylesheet defaults.
+    // Appearance: shape (corner style / no box), background, border, text colour,
+    // digit weight. Each is optional — omitted args fall back to stylesheet defaults.
     const shape = String(args.shape || 'rounded').toLowerCase();
+    const weights = { normal: '400', medium: '600', bold: '700' };
+    const weight = weights[String(args.weight || 'bold').toLowerCase()] || '700';
     const st = [];
+    st.push('--clock-weight:' + weight);
     if (args.bg) st.push('background:' + args.bg);
     else if (shape === 'none') st.push('background:transparent');
     if (args.border) st.push('border:1.5px solid ' + args.border);
@@ -55,7 +77,10 @@ Example: `<!-- @clock format: 12, size: lg -->`.
     const radius = shape === 'pill' ? '999px' : (shape === 'square' || shape === 'none') ? '0' : '0.5em';
     st.push('border-radius:' + radius);
     if (shape === 'none') st.push('padding:0');
-    const styleAttr = st.length ? ' style="' + st.join(';') + '"' : '';
+    const styleAttr = ' style="' + st.join(';') + '"';
+    // Optional caption before the readout.
+    const label = String(args.label || '').trim();
+    const labelHtml = label ? '<span class="mdp-clock-label">' + esc(label) + '</span>' : '';
     // Fixed digit width: HH:MM:SS (8) or HH:MM (5). AM/PM lives in its own span.
     const chars = showSec ? 8 : 5;
     // Static zero placeholder keeps the width correct before the script paints
@@ -63,6 +88,7 @@ Example: `<!-- @clock format: 12, size: lg -->`.
     const placeholder = showSec ? '00:00:00' : '00:00';
     return '<span class="mdp-mod-clock mdp-interactive mdp-size-' + size + '"' + styleAttr
       + ' data-format="' + (use12 ? '12' : '24') + '" data-seconds="' + (showSec ? '1' : '0') + '">'
+      + labelHtml
       + '<span class="mdp-clock-time" style="width:' + chars + 'ch">' + placeholder + '</span>'
       + (use12 ? '<span class="mdp-clock-ampm">&nbsp;</span>' : '')
       + '</span>';
@@ -82,7 +108,8 @@ Example: `<!-- @clock format: 12, size: lg -->`.
     }
     /* Width is fixed inline (in ch); tabular-nums keeps each digit equal width so
        the readout never shifts as the time ticks. */
-    .mdp-mod-clock .mdp-clock-time { font-weight: 700; text-align: center; }
+    .mdp-mod-clock .mdp-clock-time { font-weight: var(--clock-weight, 700); text-align: center; }
+    .mdp-mod-clock .mdp-clock-label { font-size: 0.7em; font-weight: 600; opacity: 0.7; letter-spacing: 0.03em; }
     .mdp-mod-clock .mdp-clock-ampm { font-size: 0.6em; font-weight: 600; opacity: 0.8; }
     /* When placed (lifted) in Edit layout, fill the box width and centre; height
        stays font-driven (horizontal-only resize). */

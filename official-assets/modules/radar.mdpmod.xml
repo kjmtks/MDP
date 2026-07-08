@@ -1,0 +1,125 @@
+<module>
+  <name>radar</name>
+  <type>block</type>
+  <description>A radar (spider) chart: axes around a circle, one or two data series as polygons. Lines "Label: value" or "Label: v1, v2" for two series.</description>
+  <tags>charts, comparison</tags>
+  <aiSpec><![CDATA[
+A RADAR / SPIDER chart for comparing multi-axis profiles (skills, product scores).
+Block module: one axis per line (sections are merged):
+  `Speed: 8`        one series,
+  `Speed: 8, 6`     two series (same order on every line).
+3–8 axes work best. Do NOT use this for time series or single-metric data.
+Parameters:
+  `max` (number, default auto) — axis maximum; blank = the largest value in the data.
+  `series` (text, default "") — legend names, comma-separated (e.g. "Ours, Theirs").
+  `color` / `color2` (colors) — series 1 and series 2 colors.
+  `grid` (boolean, default true) — show the concentric rings and spokes.
+  `levels` (number 1-8, default 4) — number of concentric rings.
+  `showvalues` (boolean, default false) — print each value at its vertex.
+  `size` (number px 120-800, default 360) — max chart width.
+  `fill` (number % 0-100, default 25) — series polygon fill opacity.
+
+<!-- @radar max: 10, series: "Ours, Theirs", showvalues: true -->
+Speed: 8, 6
+Cost: 5, 9
+Quality: 9, 7
+Support: 7, 4
+<!-- @end -->
+]]></aiSpec>
+  <parameters>
+    <param name="max" type="number" default="" label="Axis max (auto)" desc="Axis maximum; blank = auto (largest value in the data)." />
+    <param name="series" type="text" default="" label="Series names" desc="Legend names, comma-separated, e.g. Ours, Theirs." />
+    <param name="color" type="color" default="var(--accent-color)" label="Series 1 color" desc="Color of the first data series." />
+    <param name="color2" type="color" default="#ef4444" label="Series 2 color" desc="Color of the second data series (if present)." />
+    <param name="grid" type="boolean" default="true" label="Show grid" desc="Show the concentric rings and axis spokes." />
+    <param name="levels" type="number" default="4" label="Ring count" desc="Number of concentric rings." min="1" max="8" integer="true" />
+    <param name="showvalues" type="boolean" default="false" label="Show values" desc="Print each value at its vertex." />
+    <param name="size" type="number" default="360" label="Max width (px)" desc="Maximum chart width." min="120" max="800" integer="true" />
+    <param name="fill" type="number" default="25" label="Fill opacity (%)" desc="Series polygon fill opacity." min="0" max="100" integer="true" />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Data</category>
+      <label>Radar chart</label>
+      <text><![CDATA[<!-- @radar max: 10, series: "Ours, Theirs" -->
+Speed: 8, 6
+Cost: 5, 9
+Quality: 9, 7
+Support: 7, 4
+Docs: 6, 8
+<!-- @end -->]]></text>
+      <description>Spider chart; "Label: value" (or "v1, v2" for two series) per line.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const grid = String(args.grid) !== 'false';
+    let lvN = parseInt(args.levels, 10); const levels = (lvN >= 1 && lvN <= 8) ? lvN : 4;
+    const showvalues = String(args.showvalues) === 'true';
+    let szN = parseInt(args.size, 10); const size = (szN >= 120 && szN <= 800) ? szN : 360;
+    let flN = parseInt(args.fill, 10); const fill = (flN >= 0 && flN <= 100) ? flN : 25;
+    const axes = [];
+    sections.join('\n').split('\n').map((l) => l.trim()).filter(Boolean).forEach((l) => {
+      const i = l.indexOf(':');
+      if (i < 0) return;
+      const vals = l.slice(i + 1).split(',').map((v) => parseFloat(v)).filter(Number.isFinite);
+      if (vals.length) axes.push({ label: l.slice(0, i).trim(), vals });
+    });
+    if (axes.length < 3) return `<div>(radar: at least 3 "Label: value" lines)</div>`;
+    const nSeries = Math.min(2, Math.max(...axes.map((a) => a.vals.length)));
+    let max = parseFloat(args.max);
+    if (!Number.isFinite(max) || max <= 0) max = Math.max(...axes.flatMap((a) => a.vals));
+    const C = 80, R = 56, n = axes.length;
+    const pt = (i, v) => {
+      const th = -Math.PI / 2 + (2 * Math.PI * i) / n;
+      const r = R * Math.max(0, Math.min(1, v / max));
+      return [C + r * Math.cos(th), C + r * Math.sin(th)];
+    };
+    const f = (v) => v.toFixed(1);
+    let svg = '';
+    if (grid) {
+      for (let lv = 1; lv <= levels; lv++) {
+        const k = lv / levels;
+        svg += `<polygon points="${axes.map((_, i) => pt(i, max * k).map(f).join(',')).join(' ')}" class="mdp-rd-ring"/>`;
+      }
+    }
+    axes.forEach((a, i) => {
+      const [x, y] = pt(i, max);
+      if (grid) svg += `<line x1="${C}" y1="${C}" x2="${f(x)}" y2="${f(y)}" class="mdp-rd-spoke"/>`;
+      const [lx, ly] = pt(i, max * 1.22);
+      svg += `<text x="${f(lx)}" y="${f(ly)}" class="mdp-rd-lbl" text-anchor="middle" dominant-baseline="middle">${esc(a.label)}</text>`;
+    });
+    const colors = [args.color || 'var(--accent-color)', args.color2 || '#ef4444'];
+    for (let s = 0; s < nSeries; s++) {
+      const pts = axes.map((a, i) => pt(i, a.vals[Math.min(s, a.vals.length - 1)]).map(f).join(',')).join(' ');
+      svg += `<polygon points="${pts}" class="mdp-rd-series" style="--rd-c:${colors[s]};"/>`;
+    }
+    if (showvalues) {
+      for (let s = 0; s < nSeries; s++) {
+        axes.forEach((a, i) => {
+          const v = a.vals[Math.min(s, a.vals.length - 1)];
+          const [vx, vy] = pt(i, v);
+          svg += `<text x="${f(vx)}" y="${f(vy - 2)}" class="mdp-rd-val" text-anchor="middle" dominant-baseline="middle" style="fill:${colors[s]};">${esc(String(v))}</text>`;
+        });
+      }
+    }
+    let legend = '';
+    const names = String(args.series || '').split(',').map((x) => x.trim()).filter(Boolean);
+    if (names.length) {
+      legend = `<div class="mdp-rd-legend">` + names.slice(0, nSeries).map((nm, i) =>
+        `<span><i style="background:${colors[i]};"></i>${esc(nm)}</span>`).join('') + `</div>`;
+    }
+    return `\n\n<div class="mdp-mod-radar" style="--rd-size:${size}px; --rd-fill:${fill}%;"><svg viewBox="0 0 160 160" preserveAspectRatio="xMidYMid meet">${svg}</svg>${legend}</div>\n\n`;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-radar { width: min(100%, var(--rd-size, 360px)); margin: 1rem auto; text-align: center; }
+    .mdp-mod-radar svg { width: 100%; height: auto; overflow: visible; }
+    .mdp-rd-ring { fill: none; stroke: color-mix(in srgb, currentColor 18%, transparent); stroke-width: 0.5; }
+    .mdp-rd-spoke { stroke: color-mix(in srgb, currentColor 25%, transparent); stroke-width: 0.5; }
+    .mdp-rd-lbl { fill: currentColor; font-size: 6px; font-weight: 600; }
+    .mdp-rd-val { fill: currentColor; font-size: 5px; font-weight: 700; }
+    .mdp-rd-series { fill: color-mix(in srgb, var(--rd-c) var(--rd-fill, 25%), transparent); stroke: var(--rd-c); stroke-width: 1.4; stroke-linejoin: round; }
+    .mdp-rd-legend { display: flex; justify-content: center; gap: 18px; margin-top: 6px; font-size: 0.85em; }
+    .mdp-rd-legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: -2px; }
+  ]]></style>
+</module>

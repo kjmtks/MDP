@@ -1,0 +1,85 @@
+<module>
+  <name>browser</name>
+  <type>block</type>
+  <description>A browser-window mockup (traffic-light dots + URL bar) framing its body — usually a screenshot image. Makes web screenshots look in-context.</description>
+  <tags>mockup</tags>
+  <aiSpec><![CDATA[
+Frame content in a BROWSER WINDOW mockup (traffic-light dots + a URL bar). Block
+module: the body is the window contents — most often a single screenshot
+`![](@alias)`, but any Markdown works. Use it to present a web page / app
+screenshot in context. For a plain framed image without chrome use @card; for a
+generic callout use @bubble.
+
+Body: any Markdown; typically one image.
+
+Parameters:
+- url (text, default empty): address-bar text.
+- theme (select: light | dark, default light): light chrome (white) or dark chrome.
+- maxwidth (number px, default blank = full width): caps the frame width and centers it; blank = fill the column.
+- shadow (boolean, default true): drop shadow under the window.
+- radius (number px, default 10): corner rounding of the window (0–30).
+
+Usage:
+<!-- @browser url: myapp.example.com, theme: dark, maxwidth: 720 -->
+![screenshot](@dashboard)
+<!-- @end -->
+]]></aiSpec>
+  <parameters>
+    <param name="url" type="text" default="" label="Address bar text" desc="Text shown in the URL bar." />
+    <param name="theme" type="select" default="light" label="Theme" options="light:Light,dark:Dark" desc="Light or dark window chrome." />
+    <param name="maxwidth" type="number" default="" label="Max width (px)" desc="Caps and centers the frame; blank = full width." />
+    <param name="shadow" type="boolean" default="true" label="Shadow" desc="Drop shadow under the window." />
+    <param name="radius" type="number" default="10" label="Corner radius (px)" desc="Window corner rounding." min="0" max="30" integer="true" />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>UI Parts</category>
+      <label>Browser mockup</label>
+      <text><![CDATA[<!-- @browser url: example.com -->
+![screenshot](@screenshot)
+<!-- @end -->]]></text>
+      <description>Browser window frame (URL bar) around a screenshot or content.</description>
+    </snippet>
+    <snippet>
+      <category>UI Parts</category>
+      <label>Browser mockup (dark)</label>
+      <text><![CDATA[<!-- @browser url: app.example.com, theme: dark -->
+![screenshot](@screenshot)
+<!-- @end -->]]></text>
+      <description>Dark-themed browser window frame.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const url = esc((args.url || '').trim());
+    const body = (content || '').trim();
+    const theme = (args.theme || 'light').toLowerCase() === 'dark' ? 'dark' : 'light';
+    const shadow = !(args.shadow === false || args.shadow === 'false');
+    const radius = (() => { const n = parseFloat(args.radius); return Number.isFinite(n) && n >= 0 ? n : 10; })();
+    const mw = parseFloat(args.maxwidth);
+    let style = `--br-r:${radius}px;`;
+    if (Number.isFinite(mw) && mw > 0) style += ` max-width:${mw}px; margin-left:auto; margin-right:auto;`;
+    const cls = `mdp-mod-browser mdp-br-${theme}${shadow ? '' : ' mdp-br-noshadow'}`;
+    return `\n\n<div class="${cls}" style="${style}"><div class="mdp-br-bar"><span class="mdp-br-dot"></span><span class="mdp-br-dot"></span><span class="mdp-br-dot"></span><span class="mdp-br-url">${url}</span></div><div class="mdp-br-body">\n\n${body}\n\n</div></div>\n\n`;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-browser { margin: 1rem 0; border-radius: var(--br-r, 10px); overflow: hidden; box-shadow: 0 8px 26px rgba(0,0,0,0.3); border: 1px solid rgba(0,0,0,0.15); background: #fff; }
+    .mdp-mod-browser.mdp-br-noshadow { box-shadow: none; }
+    .mdp-br-bar { display: flex; align-items: center; gap: 7px; padding: 8px 12px; background: #e9ecef; }
+    .mdp-br-dot { width: 12px; height: 12px; border-radius: 50%; background: #ced4da; }
+    .mdp-br-dot:nth-child(1) { background: #ff5f57; } .mdp-br-dot:nth-child(2) { background: #febc2e; } .mdp-br-dot:nth-child(3) { background: #28c840; }
+    .mdp-br-url {
+      flex: 1; margin-left: 8px; background: #fff; border-radius: 6px; padding: 3px 10px;
+      font-size: 0.8em; color: #495057; font-family: ui-monospace, monospace;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .mdp-br-body { line-height: 0; background: #fff; }
+    .mdp-br-body img { display: block; width: 100%; height: auto; }
+    .mdp-br-body > :first-child { margin-top: 0; } .mdp-br-body > :last-child { margin-bottom: 0; }
+
+    .mdp-br-dark { background: #1e1e1e; border-color: rgba(255,255,255,0.12); }
+    .mdp-br-dark .mdp-br-bar { background: #2b2b2b; }
+    .mdp-br-dark .mdp-br-url { background: #1a1a1a; color: #d4d4d4; }
+    .mdp-br-dark .mdp-br-body { background: #1e1e1e; }
+  ]]></style>
+</module>

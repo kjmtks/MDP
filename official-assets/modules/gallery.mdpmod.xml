@@ -1,12 +1,26 @@
 <module>
   <name>gallery</name>
   <type>block</type>
-  <description>Beautifully arranges a set of images and captions in a grid.</description>
+  <description>Arranges several images with optional captions in an even card grid. Body = one image (plus caption line) per section.</description>
+  <tags>media, grid</tags>
   <aiSpec><![CDATA[
-Use to arrange several images (each with an optional caption) in an even grid.
-Block module: split the body with `<!-- @ -->` — one section per gallery item.
-Each section is markdown holding an image plus an optional caption line below it.
-Set `columns` for the grid width; collapses to one column on narrow screens.
+An IMAGE GALLERY — several images, each in a card with an optional caption, laid
+out in an even grid. Block module: split the body with `<!-- @ -->`, one section
+per item; each section is Markdown containing an image (e.g. `![](fig1.png)`) plus
+an optional caption paragraph below it. Use @gallery for a set of pictures; use
+@graph for a single figure that needs axis labels/caption, and @grid for
+text/content cards.
+Param:
+  `columns` — number of grid columns, 1–6 (default 2); collapses to one column on
+  narrow screens.
+
+<!-- @gallery columns: 2 -->
+![Proposed](results/proposed.png)
+Result with the proposed method
+<!-- @ -->
+![Baseline](results/baseline.png)
+Result with the conventional method
+<!-- @end -->
 ]]></aiSpec>
   <parameters>
     <param name="columns" type="number" default="2" label="Columns" desc="Number of columns in the gallery grid" min="1" max="6" integer="true" />
@@ -16,10 +30,10 @@ Set `columns` for the grid width; collapses to one column on narrow screens.
       <category>Presentation UI</category>
       <label>Image Gallery</label>
       <text><![CDATA[<!-- @gallery columns: 2 -->
-![Result 1](https://via.placeholder.com/400x200)
+![Result 1](images/result-1.png)
 Plot result with the proposed method
 <!-- @ -->
-![Result 2](https://via.placeholder.com/400x200)
+![Result 2](images/result-2.png)
 Plot result with the conventional method
 <!-- @end -->]]></text>
       <description>Arranges images in an even grid.</description>

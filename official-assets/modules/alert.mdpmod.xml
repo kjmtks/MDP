@@ -1,13 +1,20 @@
 <module>
   <name>alert</name>
   <type>block</type>
-  <description>Colored alert banner with a leading glyph</description>
+  <description>Colored callout banner with a leading status glyph; the block body is the message (Markdown allowed) and the type parameter picks the severity.</description>
+  <tags>callout, note</tags>
   <aiSpec><![CDATA[
 Draw a colored callout banner with a leading icon to flag a message as info,
 success, warning, or danger. Block module: the body (between the tag and
-`<!-- @end -->`) is the message and may be ordinary markdown. The `type`
-parameter sets both the color and the glyph. Use for cautions, tips, or status
-notes. Example: `<!-- @alert type: warning -->` then the warning text.
+`<!-- @end -->`) is the message and may be ordinary markdown. The only
+parameter is `type` (select: info | success | warning | danger, default info) —
+it sets both the border color and the glyph. Use for cautions, tips, or status
+notes; for a speech-style quote with a speaker use @balloon instead.
+
+Example:
+<!-- @alert type: warning -->
+Back up the workspace **before** running the migration.
+<!-- @end -->
 ]]></aiSpec>
 
   <parameters>

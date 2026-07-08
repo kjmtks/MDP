@@ -1,0 +1,83 @@
+<module>
+  <name>pyramid</name>
+  <type>block</type>
+  <description>Layered pyramid / hierarchy of levels (e.g. Maslow, a strategy stack). Body = one section per level, apex first.</description>
+  <tags>hierarchy, comparison</tags>
+  <aiSpec><![CDATA[
+A layered PYRAMID for hierarchies where each level builds on the one below (needs
+hierarchies, maturity models, a foundation-to-goal stack). Block module: split the
+body with `<!-- @ -->`, one section per level — the FIRST section is the narrow APEX,
+the last is the wide BASE. Each level label is Markdown.
+Do NOT use this for a proportional funnel with numbers (this only shows relative
+width by level position, not data values).
+Parameters:
+  `color` (color, default accent) — the fill; levels shade light→dark down the pyramid.
+  `reverse` (boolean, default false) — flip into an inverted funnel (widest on top).
+  `shade` (boolean, default true) — false makes every level the solid `color` (no gradient).
+  `textcolor` (color, default #14213d) — label text color inside the levels.
+  `gap` (number px 0-24, default 4) — vertical spacing between levels.
+  `radius` (number px 0-32, default 4) — corner rounding of each level.
+
+<!-- @pyramid color: #7c3aed, gap: 6 -->
+Vision
+<!-- @ -->
+Strategy
+<!-- @ -->
+Execution
+<!-- @end -->
+]]></aiSpec>
+  <parameters>
+    <param name="color" type="color" default="var(--accent-color)" label="Fill color" desc="Base fill; levels shade light to dark down the pyramid." />
+    <param name="reverse" type="boolean" default="false" label="Invert (widest on top)" desc="Flip into an inverted funnel with the widest level on top." />
+    <param name="shade" type="boolean" default="true" label="Gradient shading" desc="Shade levels light to dark; off = every level solid color." />
+    <param name="textcolor" type="color" default="#14213d" label="Text color" desc="Label text color inside the levels." />
+    <param name="gap" type="number" default="4" label="Level gap (px)" desc="Vertical spacing between levels." min="0" max="24" integer="true" />
+    <param name="radius" type="number" default="4" label="Corner radius (px)" desc="Corner rounding of each level." min="0" max="32" integer="true" />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Diagrams</category>
+      <label>Pyramid (levels)</label>
+      <text><![CDATA[<!-- @pyramid -->
+**Self-actualization**
+<!-- @ -->
+Esteem
+<!-- @ -->
+Belonging
+<!-- @ -->
+Safety
+<!-- @ -->
+Physiological
+<!-- @end -->]]></text>
+      <description>Layered pyramid; first section = apex (top), last = base (bottom).</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const color = args.color || 'var(--accent-color)';
+    const reverse = String(args.reverse) === 'true';
+    const shade = String(args.shade) !== 'false';
+    const textcolor = (args.textcolor && String(args.textcolor).trim()) || '#14213d';
+    let gapN = parseInt(args.gap, 10); const gap = (gapN >= 0 && gapN <= 24) ? gapN : 4;
+    let radN = parseInt(args.radius, 10); const radius = (radN >= 0 && radN <= 32) ? radN : 4;
+    const secs = sections.map((s) => (s || '').trim()).filter(Boolean);
+    const n = secs.length || 1;
+    let html = `\n\n<div class="mdp-mod-pyramid" style="--py-color:${color}; --py-text:${textcolor}; --py-gap:${gap}px; --py-radius:${radius}px;">`;
+    secs.forEach((s, i) => {
+      const rank = reverse ? (n - i) : (i + 1);   // 1..n from narrow to wide
+      const w = Math.round((rank / n) * 100);
+      const mix = shade ? Math.round((25 + 60 * (rank / n))) : 100;  // darker as it widens
+      html += `<div class="mdp-py-level" style="width:${w}%; background:color-mix(in srgb, var(--py-color) ${mix}%, white);">\n\n${s}\n\n</div>`;
+    });
+    html += `</div>\n\n`;
+    return html;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-pyramid { margin: 1rem 0; display: flex; flex-direction: column; align-items: center; gap: var(--py-gap, 4px); }
+    .mdp-py-level {
+      color: var(--py-text, #14213d); text-align: center; padding: 8px 12px; border-radius: var(--py-radius, 4px);
+      font-weight: 600; box-sizing: border-box; min-width: 4em;
+    }
+    .mdp-py-level > :first-child { margin-top: 0; }
+    .mdp-py-level > :last-child { margin-bottom: 0; }
+  ]]></style>
+</module>

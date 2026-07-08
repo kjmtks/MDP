@@ -1,0 +1,104 @@
+<module>
+  <name>waterfall</name>
+  <type>block</type>
+  <description>A waterfall chart: a starting value, +/- delta bars floating at the running level, and an automatic total bar. Lines "Label | +30" / "Label | -12".</description>
+  <tags>charts, comparison</tags>
+  <aiSpec><![CDATA[
+A WATERFALL chart — shows how a value builds up: a start bar, floating +/- delta
+bars, and a TOTAL bar (added automatically). Block module, one step per line
+(sections merged):
+  `Start | 100`     first line = the absolute starting value,
+  `Sales | +30`     increase (green),
+  `Costs | -12`     decrease (red).
+Params:
+  `total`      — label for the auto total bar (default "Total"; set `none` to omit),
+  `unit`       — suffix printed after values (e.g. %, M) (default ""),
+  `height`     — plot height in pixels (default 210),
+  `showvalues` — print the value on top of each bar (default true),
+  `upcolor`    — fill colour for increase bars (default "#22c55e" green),
+  `downcolor`  — fill colour for decrease bars (default "#ef4444" red).
+
+<!-- @waterfall total: Net, height: 260, unit: k -->
+Start | 100
+Sales | +30
+Costs | -12
+<!-- @end -->
+]]></aiSpec>
+  <parameters>
+    <param name="total" type="text" default="Total" label="Total bar label (none = omit)" desc="Label for the auto-computed total bar; set to none to omit it." />
+    <param name="unit" type="text" default="" label="Value suffix" desc="Suffix printed after each value, e.g. % or M (blank = none)." />
+    <param name="height" type="number" default="210" label="Plot height (px)" desc="Height of the plotting area in pixels." min="80" max="600" step="10" integer="true" />
+    <param name="showvalues" type="boolean" default="true" label="Show values" desc="Print each bar's value above it." />
+    <param name="upcolor" type="color" default="#22c55e" label="Increase color" desc="Fill colour of the positive (increase) bars." />
+    <param name="downcolor" type="color" default="#ef4444" label="Decrease color" desc="Fill colour of the negative (decrease) bars." />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Data</category>
+      <label>Waterfall chart</label>
+      <text><![CDATA[<!-- @waterfall total: Net -->
+Start | 100
+Sales | +30
+Costs | -12
+Tax | -8
+<!-- @end -->]]></text>
+      <description>Start value, +/- floating deltas, automatic total.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const unit = esc(args.unit || '');
+    const steps = [];
+    sections.join('\n').split('\n').map((l) => l.trim()).filter(Boolean).forEach((l) => {
+      const i = l.indexOf('|');
+      if (i < 0) return;
+      const raw = l.slice(i + 1).trim();
+      const v = parseFloat(raw);
+      if (Number.isFinite(v)) steps.push({ label: l.slice(0, i).trim(), v, delta: /^[+\-]/.test(raw) });
+    });
+    if (!steps.length) return `<div>(waterfall: lines like "Label | +30")</div>`;
+    // running levels
+    const bars = [];
+    let cum = 0;
+    steps.forEach((s, i) => {
+      const from = i === 0 && !s.delta ? 0 : cum;
+      cum = i === 0 && !s.delta ? s.v : cum + s.v;
+      bars.push({ label: s.label, lo: Math.min(from, cum), hi: Math.max(from, cum), v: s.v, kind: i === 0 && !s.delta ? 'base' : (s.v >= 0 ? 'up' : 'down') });
+    });
+    const totalLabel = String(args.total ?? 'Total').trim();
+    if (totalLabel && totalLabel.toLowerCase() !== 'none') {
+      bars.push({ label: totalLabel, lo: Math.min(0, cum), hi: Math.max(0, cum), v: cum, kind: 'base' });
+    }
+    const lo = Math.min(0, ...bars.map((b) => b.lo)), hi = Math.max(...bars.map((b) => b.hi), lo + 1);
+    const span = hi - lo;
+    const pct = (v) => ((v - lo) / span) * 100;
+    const fv = (v) => { const r = +v.toFixed(2); return (r > 0 && bars.length ? '' : '') + String(r); };
+    const hRaw = parseInt(args.height, 10);
+    const height = Number.isFinite(hRaw) && hRaw > 0 ? hRaw : 210;
+    const showValues = String(args.showvalues) !== 'false';
+    const upColor = (args.upcolor || '#22c55e').trim() || '#22c55e';
+    const downColor = (args.downcolor || '#ef4444').trim() || '#ef4444';
+    const wrapCls = 'mdp-mod-waterfall' + (showValues ? '' : ' mdp-wf-novalues');
+    let html = `\n\n<div class="${wrapCls}" style="--wf-h:${height}px; --wf-up:${upColor}; --wf-down:${downColor};"><div class="mdp-wf-plot">`;
+    bars.forEach((b) => {
+      html += `<div class="mdp-wf-col"><div class="mdp-wf-bar mdp-wf-${b.kind}" style="bottom:${pct(b.lo).toFixed(1)}%; height:${Math.max(0.8, pct(b.hi) - pct(b.lo)).toFixed(1)}%;">` +
+        `<span class="mdp-wf-val">${b.kind === 'up' ? '+' : ''}${fv(b.v)}${unit}</span></div>` +
+        `<div class="mdp-wf-lbl">${esc(b.label)}</div></div>`;
+    });
+    html += `</div></div>\n\n`;
+    return html;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-waterfall { margin: 1rem 0; }
+    .mdp-wf-plot { display: flex; gap: 10px; height: var(--wf-h, 210px); align-items: stretch; border-bottom: 2px solid currentColor; padding-bottom: 0; }
+    .mdp-wf-col { flex: 1; position: relative; }
+    .mdp-wf-bar { position: absolute; left: 8%; right: 8%; border-radius: 4px; }
+    .mdp-wf-base { background: color-mix(in srgb, var(--accent-color) 60%, transparent); border: 1px solid var(--accent-color); }
+    .mdp-wf-up { background: color-mix(in srgb, var(--wf-up, #22c55e) 55%, transparent); border: 1px solid var(--wf-up-b, #16a34a); }
+    .mdp-wf-down { background: color-mix(in srgb, var(--wf-down, #ef4444) 50%, transparent); border: 1px solid var(--wf-down-b, #dc2626); }
+    .mdp-wf-novalues .mdp-wf-val { display: none; }
+    .mdp-wf-val { position: absolute; top: -20px; left: 50%; transform: translateX(-50%); font-size: 0.78em; font-weight: 700; white-space: nowrap; }
+    .mdp-wf-lbl { position: absolute; bottom: -24px; left: 50%; transform: translateX(-50%); font-size: 0.8em; color: var(--app-text-muted, #888); white-space: nowrap; }
+    .mdp-mod-waterfall::after { content: ''; display: block; height: 28px; }
+  ]]></style>
+</module>

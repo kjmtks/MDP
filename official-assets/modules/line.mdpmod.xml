@@ -1,38 +1,52 @@
 <module>
   <name>line</name>
   <type>inline</type>
-  <description>Draws a straight line across a rectangular box. Pick where the line starts and ends (any corner or edge-midpoint of the box), the end-cap shapes (arrow, triangle, dot, circle, diamond, square, bar, …), the line style (solid / dashed / dotted), colour, thickness and box size.</description>
+  <description>Draws a straight line across a rectangular box. Pick where the line starts and ends (any corner or edge-midpoint of the box), the end-cap shapes (arrow, triangle, dot, circle, diamond, square, bar, ...), the line style (solid / dashed / dotted), colour, thickness and box size.</description>
+  <tags>decoration, freeform</tags>
   <aiSpec><![CDATA[
 Draw a straight LINE across a rectangular box (e.g. a divider, connector or
 annotation). Inline module — no body. The line runs between a START and an END
 anchor, each chosen from the box's 8 edge points: corners `tl tr bl br` and
-edge-midpoints `tc`(top) `bc`(bottom) `lc`(left) `rc`(right). Defaults `lc`→`rc`
-(a horizontal line through the centre); `tc`→`bc` is vertical; corner→corner is
+edge-midpoints `tc`(top) `bc`(bottom) `lc`(left) `rc`(right). Defaults `lc`->`rc`
+(a horizontal line through the centre); `tc`->`bc` is vertical; corner->corner is
 diagonal.
-Params: `start`/`end` (anchors above); `startshape`/`endshape` (end-cap:
-none, arrow, arrow-open, triangle, dot, circle, round, square, diamond, bar);
-`linestyle` (solid | dashed | dotted | dashdot); `color` (blank = theme text
-colour); `thickness` (px); `width`/`height` (CSS lengths sizing the box).
-Example: `<!-- @line start: lc, end: rc, endshape: arrow, color: #ef4444 -->`.
+
+Parameters:
+  - `start` / `end`: the two anchors (see the 8 points above).
+  - `startshape` / `endshape`: end-cap shape — none, arrow, arrow-open, triangle,
+    dot, circle, round, square, diamond, bar. Default start none, end arrow.
+  - `linestyle`: solid (default), dashed, dotted, dashdot.
+  - `color`: any CSS colour; blank = the theme text colour.
+  - `thickness`: line width in px (0.5-20, default 2).
+  - `width` / `height`: CSS lengths sizing the box (defaults 100% and 60px).
+  - `opacity`: line opacity 0-1 (default 1).
+  - `capscale`: multiplier on the end-cap size (0.3-4, default 1).
+  - `align` (left|center|right, default left): horizontal placement when width < 100%.
+
+Example:
+<!-- @line start: lc, end: rc, endshape: arrow, color: #ef4444, opacity: 0.8 -->
 ]]></aiSpec>
 
   <parameters>
-    <param name="start" type="select" default="lc" label="Start point"
+    <param name="start" type="select" default="lc" label="Start point" desc="Anchor where the line begins."
       options="tl:Top-left,tc:Top-center,tr:Top-right,lc:Left-center,rc:Right-center,bl:Bottom-left,bc:Bottom-center,br:Bottom-right" />
-    <param name="end" type="select" default="rc" label="End point"
+    <param name="end" type="select" default="rc" label="End point" desc="Anchor where the line ends."
       options="tl:Top-left,tc:Top-center,tr:Top-right,lc:Left-center,rc:Right-center,bl:Bottom-left,bc:Bottom-center,br:Bottom-right" />
-    <param name="startshape" type="select" default="none" label="Start cap"
+    <param name="startshape" type="select" default="none" label="Start cap" desc="End-cap shape at the start."
       options="none,arrow,arrow-open,triangle,dot,circle,round,square,diamond,bar" />
-    <param name="endshape" type="select" default="arrow" label="End cap"
+    <param name="endshape" type="select" default="arrow" label="End cap" desc="End-cap shape at the end."
       options="none,arrow,arrow-open,triangle,dot,circle,round,square,diamond,bar" />
-    <param name="linestyle" type="select" default="solid" label="Line style"
+    <param name="linestyle" type="select" default="solid" label="Line style" desc="Stroke dash pattern."
       options="solid,dashed,dotted,dashdot" />
     <param name="color" type="color" default="" label="Colour"
       options="#ef4444:Red,#3b82f6:Blue,#10b981:Green,#f59e0b:Amber,#8b5cf6:Purple,#0ea5e9:Sky,#111827:Black,#64748b:Slate"
       desc="Blank uses the theme text colour." />
-    <param name="thickness" type="number" default="2" label="Thickness (px)" min="0.5" max="20" step="0.5" />
+    <param name="thickness" type="number" default="2" label="Thickness (px)" desc="Line stroke width in px." min="0.5" max="20" step="0.5" />
     <param name="width" type="text" default="100%" label="Box width" desc="CSS length (e.g. 100%, 400px, 30em)." />
     <param name="height" type="text" default="60px" label="Box height" desc="CSS length (e.g. 60px, 6em). Gives diagonal/vertical lines room." />
+    <param name="opacity" type="number" default="1" label="Opacity" desc="Line opacity from 0 (transparent) to 1 (solid)." min="0" max="1" step="0.1" />
+    <param name="capscale" type="number" default="1" label="Cap size" desc="Multiplier on the end-cap marker size." min="0.3" max="4" step="0.1" />
+    <param name="align" type="select" default="left" label="Align" desc="Horizontal placement of the box when width is under 100%." options="left:Left,center:Center,right:Right" />
   </parameters>
 
   <snippets>
@@ -63,6 +77,12 @@ Example: `<!-- @line start: lc, end: rc, endshape: arrow, color: #ef4444 -->`.
     const sw = Math.max(0.1, parseFloat(def(args.thickness, '2')) || 2);
     const width = clean(def(args.width, '100%')) || '100%';
     const height = clean(def(args.height, '60px')) || '60px';
+    const op = Math.max(0, Math.min(1, parseFloat(def(args.opacity, '1'))));
+    const opacity = Number.isFinite(op) ? op : 1;
+    const cs = Math.max(0.3, Math.min(4, parseFloat(def(args.capscale, '1')) || 1));
+    const ms = (n) => +(n * cs).toFixed(2);
+    const al = String(def(args.align, 'left')).toLowerCase();
+    const mx = al === 'center' ? '0.5rem auto' : al === 'right' ? '0.5rem 0 0.5rem auto' : '0.5rem 0';
 
     const dashMap = {
       solid: '',
@@ -80,19 +100,19 @@ Example: `<!-- @line start: lc, end: rc, endshape: arrow, color: #ef4444 -->`.
     const uid = 'mdpln' + seq;
 
     // A marker pointing forward (right); orient="auto-start-reverse" makes the
-    // start marker flip outward. markerUnits="strokeWidth" → scales with thickness.
+    // start marker flip outward. markerUnits="strokeWidth" -> scales with thickness.
     const marker = (id, shape) => {
       if (shape === 'none') return '';
       const head = '<marker id="' + id + '" markerUnits="strokeWidth" orient="auto-start-reverse" ';
-      if (shape === 'arrow')      return head + 'viewBox="0 0 12 12" refX="10" refY="6" markerWidth="8" markerHeight="8"><path d="M1,1 L11,6 L1,11 z" fill="' + color + '"/></marker>';
-      if (shape === 'triangle')   return head + 'viewBox="0 0 12 12" refX="10" refY="6" markerWidth="7" markerHeight="9"><path d="M2,1 L11,6 L2,11 z" fill="' + color + '"/></marker>';
-      if (shape === 'arrow-open') return head + 'viewBox="0 0 12 12" refX="9" refY="6" markerWidth="9" markerHeight="9"><path d="M2,2 L10,6 L2,10" fill="none" stroke="' + color + '" stroke-width="1.6"/></marker>';
-      if (shape === 'bar')        return head + 'viewBox="0 0 12 12" refX="6" refY="6" markerWidth="5" markerHeight="9"><path d="M6,1 L6,11" stroke="' + color + '" stroke-width="2"/></marker>';
-      if (shape === 'dot')        return head + 'viewBox="0 0 12 12" refX="6" refY="6" markerWidth="6" markerHeight="6"><circle cx="6" cy="6" r="4" fill="' + color + '"/></marker>';
-      if (shape === 'round')      return head + 'viewBox="0 0 12 12" refX="6" refY="6" markerWidth="5" markerHeight="5"><circle cx="6" cy="6" r="2.6" fill="' + color + '"/></marker>';
-      if (shape === 'circle')     return head + 'viewBox="0 0 12 12" refX="6" refY="6" markerWidth="6" markerHeight="6"><circle cx="6" cy="6" r="3.6" fill="none" stroke="' + color + '" stroke-width="1.4"/></marker>';
-      if (shape === 'square')     return head + 'viewBox="0 0 12 12" refX="6" refY="6" markerWidth="6" markerHeight="6"><rect x="2.5" y="2.5" width="7" height="7" fill="' + color + '"/></marker>';
-      if (shape === 'diamond')    return head + 'viewBox="0 0 12 12" refX="6" refY="6" markerWidth="7" markerHeight="7"><path d="M6,1 L11,6 L6,11 L1,6 z" fill="' + color + '"/></marker>';
+      if (shape === 'arrow')      return head + 'viewBox="0 0 12 12" refX="10" refY="6" markerWidth="' + ms(8) + '" markerHeight="' + ms(8) + '"><path d="M1,1 L11,6 L1,11 z" fill="' + color + '"/></marker>';
+      if (shape === 'triangle')   return head + 'viewBox="0 0 12 12" refX="10" refY="6" markerWidth="' + ms(7) + '" markerHeight="' + ms(9) + '"><path d="M2,1 L11,6 L2,11 z" fill="' + color + '"/></marker>';
+      if (shape === 'arrow-open') return head + 'viewBox="0 0 12 12" refX="9" refY="6" markerWidth="' + ms(9) + '" markerHeight="' + ms(9) + '"><path d="M2,2 L10,6 L2,10" fill="none" stroke="' + color + '" stroke-width="1.6"/></marker>';
+      if (shape === 'bar')        return head + 'viewBox="0 0 12 12" refX="6" refY="6" markerWidth="' + ms(5) + '" markerHeight="' + ms(9) + '"><path d="M6,1 L6,11" stroke="' + color + '" stroke-width="2"/></marker>';
+      if (shape === 'dot')        return head + 'viewBox="0 0 12 12" refX="6" refY="6" markerWidth="' + ms(6) + '" markerHeight="' + ms(6) + '"><circle cx="6" cy="6" r="4" fill="' + color + '"/></marker>';
+      if (shape === 'round')      return head + 'viewBox="0 0 12 12" refX="6" refY="6" markerWidth="' + ms(5) + '" markerHeight="' + ms(5) + '"><circle cx="6" cy="6" r="2.6" fill="' + color + '"/></marker>';
+      if (shape === 'circle')     return head + 'viewBox="0 0 12 12" refX="6" refY="6" markerWidth="' + ms(6) + '" markerHeight="' + ms(6) + '"><circle cx="6" cy="6" r="3.6" fill="none" stroke="' + color + '" stroke-width="1.4"/></marker>';
+      if (shape === 'square')     return head + 'viewBox="0 0 12 12" refX="6" refY="6" markerWidth="' + ms(6) + '" markerHeight="' + ms(6) + '"><rect x="2.5" y="2.5" width="7" height="7" fill="' + color + '"/></marker>';
+      if (shape === 'diamond')    return head + 'viewBox="0 0 12 12" refX="6" refY="6" markerWidth="' + ms(7) + '" markerHeight="' + ms(7) + '"><path d="M6,1 L11,6 L6,11 L1,6 z" fill="' + color + '"/></marker>';
       return '';
     };
 
@@ -102,14 +122,14 @@ Example: `<!-- @line start: lc, end: rc, endshape: arrow, color: #ef4444 -->`.
     const mEnd = endShape !== 'none' ? ' marker-end="url(#' + eId + ')"' : '';
     const dashAttr = dash ? ' stroke-dasharray="' + dash + '"' : '';
 
-    const svg = '<svg class="mdp-mod-line-svg" width="100%" height="100%" style="overflow:visible; display:block;">'
+    const svg = '<svg class="mdp-mod-line-svg" width="100%" height="100%" style="overflow:visible; display:block; opacity:' + opacity + ';">'
       + defs
       + '<line x1="' + sA[0] + '%" y1="' + sA[1] + '%" x2="' + eA[0] + '%" y2="' + eA[1] + '%" '
       + 'stroke="' + color + '" stroke-width="' + sw + '" fill="none" stroke-linecap="round"'
       + dashAttr + mStart + mEnd + '/>'
       + '</svg>';
 
-    return '\n\n<div class="mdp-mod-line" style="width:' + width + '; height:' + height + ';">' + svg + '</div>\n\n';
+    return '\n\n<div class="mdp-mod-line" style="width:' + width + '; height:' + height + '; margin:' + mx + ';">' + svg + '</div>\n\n';
   ]]></render>
 
   <style><![CDATA[

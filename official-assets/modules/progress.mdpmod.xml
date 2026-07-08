@@ -2,16 +2,32 @@
   <name>progress</name>
   <type>inline</type>
   <description>Visually displays a percentage as a progress bar.</description>
+  <tags>kpi, charts</tags>
   <aiSpec><![CDATA[
-Render a horizontal progress bar for a single percentage (completion, scores,
-capacity). Inline module with no body — all input comes from params: `percent`
-(0-100) sets the fill, `label` names what it measures. Use one bar per metric;
-for several, stack multiple progress directives.
+A horizontal PROGRESS BAR for a single percentage — completion, a score, capacity
+or KPI attainment. This module takes NO body; all input comes from params. Show one
+bar per metric; for several metrics, stack multiple progress directives.
+Do NOT use this for a multi-category breakdown (use a bar chart) — it is a single
+0-100 meter.
+Parameters:
+  `percent` (number 0-100, default 50) — the fill amount.
+  `label` (text, default "") — name of what is measured, shown on the left.
+  `color` (color, default accent) — fill and percent-text color.
+  `track` (color, default #eee) — color of the empty track behind the fill.
+  `labelcolor` (color, default #555) — color of the label text.
+  `height` (number px 2-48, default 12) — bar thickness.
+  `showvalue` (boolean, default true) — false hides the "NN%" readout.
+
+<!-- @progress percent: 85, label: Overall Project Progress, color: #2ecc71, height: 16 -->
 ]]></aiSpec>
   <parameters>
-    <param name="percent" type="number" default="50" label="Percent" desc="Fill of the bar, 0-100" min="0" max="100" integer="true" />
-    <param name="label" type="text" default="" label="Label" />
-    <param name="color" type="color" default="var(--accent-color)" label="Bar Color" />
+    <param name="percent" type="number" default="50" label="Percent" desc="Fill of the bar, 0-100." min="0" max="100" integer="true" />
+    <param name="label" type="text" default="" label="Label" desc="Name of the measured metric, shown on the left." />
+    <param name="color" type="color" default="var(--accent-color)" label="Bar Color" desc="Fill and percent-text color." />
+    <param name="track" type="color" default="#eee" label="Track Color" desc="Color of the empty track behind the fill." />
+    <param name="labelcolor" type="color" default="#555" label="Label Color" desc="Color of the label text." />
+    <param name="height" type="number" default="12" label="Bar Height (px)" desc="Thickness of the bar." min="2" max="48" integer="true" />
+    <param name="showvalue" type="boolean" default="true" label="Show Value" desc="Show the NN% readout on the right." />
   </parameters>
   <snippets>
     <snippet>
@@ -25,12 +41,19 @@ for several, stack multiple progress directives.
     const percent = args.percent || '0';
     const label = args.label || '';
     const color = args.color || 'var(--accent-color)';
-    let html = `\n\n<div class="mdp-mod-progress" style="--prog-color: ${color};">
+    const track = (args.track && String(args.track).trim()) || '#eee';
+    const labelcolor = (args.labelcolor && String(args.labelcolor).trim()) || '#555';
+    let hN = parseInt(args.height, 10); const height = (hN >= 2 && hN <= 48) ? hN : 12;
+    const showValue = String(args.showvalue) !== 'false';
+    let html = `\n\n<div class="mdp-mod-progress" style="--prog-color: ${color}; --prog-track: ${track}; --prog-label: ${labelcolor}; --prog-h: ${height}px;">
 <div class="mdp-progress-info">`;
     if (label) {
       html += `<span class="mdp-progress-label">${label}</span>`;
     }
-    html += `<span class="mdp-progress-percent">${percent}%</span>
+    if (showValue) {
+      html += `<span class="mdp-progress-percent">${percent}%</span>`;
+    }
+    html += `
 </div>
 <div class="mdp-progress-bar-bg">
 <div class="mdp-progress-bar-fill" style="width: ${percent}%;"></div>
@@ -50,15 +73,15 @@ for several, stack multiple progress directives.
       font-weight: bold;
     }
     .mdp-progress-label {
-      color: #555;
+      color: var(--prog-label, #555);
     }
     .mdp-progress-percent {
       color: var(--prog-color);
     }
     .mdp-progress-bar-bg {
       width: 100%;
-      height: 12px;
-      background-color: #eee;
+      height: var(--prog-h, 12px);
+      background-color: var(--prog-track, #eee);
       border-radius: 6px;
       overflow: hidden;
     }

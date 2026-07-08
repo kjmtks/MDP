@@ -1,0 +1,87 @@
+<module>
+  <name>unitcircle</name>
+  <type>block</type>
+  <description>The trig unit circle with a marked angle: radius, sin (vertical) and cos (horizontal) segments, angle arc, and optional numeric values.</description>
+  <tags>geometry, plots</tags>
+  <aiSpec><![CDATA[
+The trigonometric UNIT CIRCLE with one angle drawn: the radius to the point, the sin
+segment (vertical, colored), the cos segment (horizontal), and the angle arc θ.
+Block module with NO body — everything is set via params.
+Params:
+  `angle`    — the angle in DEGREES (default 40; range -360..360),
+  `values`   — true → print sin/cos numeric values next to the segments (default false),
+  `color`    — accent colour for the radius / point / arc (default var(--accent-color)),
+  `sincolor` — colour of the sin segment and its label (default "#dc2626" red),
+  `coscolor` — colour of the cos segment and its label (default "#2563eb" blue),
+  `maxwidth` — rendered max width, any CSS length (default "320px").
+
+<!-- @unitcircle angle: 135, values: true, sincolor: #16a34a -->
+]]></aiSpec>
+  <parameters>
+    <param name="angle" type="number" default="40" label="Angle (degrees)" desc="Angle to draw, in degrees (positive = counter-clockwise)." min="-360" max="360" step="5" />
+    <param name="values" type="boolean" default="false" label="Show sin/cos values" desc="Print the numeric sin and cos values instead of the symbols." />
+    <param name="color" type="color" default="var(--accent-color)" label="Accent color" desc="Colour of the radius, point and angle arc." />
+    <param name="sincolor" type="color" default="#dc2626" label="Sin color" desc="Colour of the vertical sin segment and its label." />
+    <param name="coscolor" type="color" default="#2563eb" label="Cos color" desc="Colour of the horizontal cos segment and its label." />
+    <param name="maxwidth" type="text" default="320px" label="Max width" desc="Rendered maximum width, any CSS length, e.g. 320px or 18em." />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Math</category>
+      <label>Unit circle (angle)</label>
+      <text><![CDATA[<!-- @unitcircle angle: 40, values: true -->]]></text>
+      <description>Unit circle with radius, sin/cos segments and the angle arc.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const deg = parseFloat(args.angle);
+    const a = ((Number.isFinite(deg) ? deg : 40) * Math.PI) / 180;
+    const color = args.color || 'var(--accent-color)';
+    const C = 60, R = 46;
+    const x = C + R * Math.cos(a), y = C - R * Math.sin(a);
+    const f = (v) => v.toFixed(2);
+    // axes + circle
+    let svg = `<line x1="4" y1="${C}" x2="116" y2="${C}" class="mdp-uc-axis"/>` +
+      `<line x1="${C}" y1="4" x2="${C}" y2="116" class="mdp-uc-axis"/>` +
+      `<circle cx="${C}" cy="${C}" r="${R}" class="mdp-uc-circle"/>`;
+    // cos (horizontal) and sin (vertical) segments
+    svg += `<line x1="${C}" y1="${C}" x2="${f(x)}" y2="${C}" class="mdp-uc-cos"/>` +
+      `<line x1="${f(x)}" y1="${C}" x2="${f(x)}" y2="${f(y)}" class="mdp-uc-sin"/>`;
+    // radius + point
+    svg += `<line x1="${C}" y1="${C}" x2="${f(x)}" y2="${f(y)}" class="mdp-uc-radius"/>` +
+      `<circle cx="${f(x)}" cy="${f(y)}" r="2" class="mdp-uc-pt"/>`;
+    // angle arc (from +x axis counter-clockwise to a)
+    const r0 = 13;
+    const large = Math.abs(a) % (2 * Math.PI) > Math.PI ? 1 : 0;
+    const sweep = a >= 0 ? 0 : 1;
+    svg += `<path d="M${C + r0},${C} A${r0},${r0} 0 ${large} ${sweep} ${f(C + r0 * Math.cos(a))},${f(C - r0 * Math.sin(a))}" class="mdp-uc-arc"/>`;
+    const mid = a / 2;
+    svg += `<text x="${f(C + (r0 + 6) * Math.cos(mid))}" y="${f(C - (r0 + 6) * Math.sin(mid))}" class="mdp-uc-theta" text-anchor="middle" dominant-baseline="middle">θ</text>`;
+    // labels
+    const showVals = String(args.values) === 'true';
+    const sinLbl = showVals ? Math.sin(a).toFixed(3) : 'sin θ';
+    const cosLbl = showVals ? Math.cos(a).toFixed(3) : 'cos θ';
+    const sinAnchor = Math.cos(a) >= 0 ? 'start' : 'end';
+    svg += `<text x="${f(x + (Math.cos(a) >= 0 ? 3 : -3))}" y="${f((C + y) / 2)}" class="mdp-uc-lbl mdp-uc-lbl-sin" text-anchor="${sinAnchor}" dominant-baseline="middle">${sinLbl}</text>`;
+    svg += `<text x="${f((C + x) / 2)}" y="${f(C + (Math.sin(a) >= 0 ? 8 : -5))}" class="mdp-uc-lbl mdp-uc-lbl-cos" text-anchor="middle">${cosLbl}</text>`;
+    const sinColor = (args.sincolor || '#dc2626').trim() || '#dc2626';
+    const cosColor = (args.coscolor || '#2563eb').trim() || '#2563eb';
+    const maxW = (args.maxwidth || '320px').trim() || '320px';
+    return `\n\n<div class="mdp-mod-unitcircle" style="--uc-c:${color}; --uc-sin:${sinColor}; --uc-cos:${cosColor}; --uc-mw:${maxW};"><svg viewBox="0 0 120 120" preserveAspectRatio="xMidYMid meet">${svg}</svg></div>\n\n`;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-unitcircle { width: min(100%, var(--uc-mw, 320px)); margin: 1rem auto; }
+    .mdp-mod-unitcircle svg { width: 100%; height: auto; overflow: visible; }
+    .mdp-uc-axis { stroke: currentColor; stroke-width: 0.5; opacity: 0.45; }
+    .mdp-uc-circle { fill: none; stroke: currentColor; stroke-width: 0.9; }
+    .mdp-uc-radius { stroke: var(--uc-c); stroke-width: 1.3; }
+    .mdp-uc-pt { fill: var(--uc-c); }
+    .mdp-uc-sin { stroke: var(--uc-sin, #dc2626); stroke-width: 1.6; }
+    .mdp-uc-cos { stroke: var(--uc-cos, #2563eb); stroke-width: 1.6; }
+    .mdp-uc-arc { fill: none; stroke: currentColor; stroke-width: 0.8; }
+    .mdp-uc-theta { fill: currentColor; font-size: 6px; font-style: italic; }
+    .mdp-uc-lbl { font-size: 5.5px; font-weight: 700; }
+    .mdp-uc-lbl-sin { fill: var(--uc-sin, #dc2626); }
+    .mdp-uc-lbl-cos { fill: var(--uc-cos, #2563eb); }
+  ]]></style>
+</module>

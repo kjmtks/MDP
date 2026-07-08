@@ -1,14 +1,31 @@
 <module>
   <name>shortcut</name>
   <type>block</type>
-  <description>A keyboard shortcut as a sequence of keys. The key combination is the block body, joined with "+", e.g. Ctrl+Shift+P. Renders inline.</description>
+  <description>A keyboard shortcut as a sequence of styled key caps. The key combination is the block body, written with "+" separators (e.g. Ctrl+Shift+P). Renders inline so it flows within text.</description>
+  <tags>inline, badge</tags>
   <aiSpec><![CDATA[
-Use to show a keyboard shortcut as styled <kbd> keys (e.g. for docs/tutorials). The body
-is the key combo written with "+" separators (e.g. `Ctrl+Shift+P`); each key is rendered
-as a separate styled key cap. Block module but renders INLINE, so it flows within text.
+Use to show a keyboard shortcut as styled <kbd> key caps (for docs, tutorials, help slides).
+Block module but renders INLINE, so it flows within a sentence rather than as its own block.
+The body is the key combo written with "+" between keys (e.g. `Ctrl+Shift+P`); each key becomes
+one cap. The body ALWAYS uses "+" to separate keys — the `separator` param only changes the
+glyph shown between caps (set it to "then" for sequential chords like Ctrl then K).
+
+Parameters:
+  `size`      — sm | md | lg (default md): size of the key caps.
+  `separator` — text shown between caps (default "+"); e.g. "then" for a key sequence.
+  `color`     — CSS colour that tints the cap text and its bottom lip (default blank = theme colours).
+
+Example:
+<!-- @shortcut size: lg, color: #3b82f6 -->
+Ctrl+Shift+P
+<!-- @end -->
 ]]></aiSpec>
 
-  <parameters></parameters>
+  <parameters>
+    <param name="size" type="select" default="md" options="sm:Small,md:Medium,lg:Large" label="Key size" desc="Size of the key caps." />
+    <param name="separator" type="text" default="+" label="Separator" desc="Glyph shown between caps; e.g. 'then' for a sequence." />
+    <param name="color" type="color" default="" label="Key color" desc="Tints the cap text and bottom lip; blank = theme colours." />
+  </parameters>
 
   <snippets>
     <snippet>
@@ -19,15 +36,28 @@ Ctrl+Shift+P
 <!-- @end -->]]></text>
       <description>Key combination rendered as styled keys. Body = the combo, joined with "+".</description>
     </snippet>
+    <snippet>
+      <category>UI Parts</category>
+      <label>Shortcut (sequence)</label>
+      <text><![CDATA[<!-- @shortcut separator: then -->
+Ctrl+K
+<!-- @end -->]]></text>
+      <description>A sequential chord: caps separated by "then" instead of "+".</description>
+    </snippet>
   </snippets>
 
   <render inline="true"><![CDATA[
     const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const raw = (sections[0] || '').toString();
+    const sep = (args.separator !== undefined && String(args.separator).length > 0) ? String(args.separator) : '+';
+    const size = (['sm', 'md', 'lg'].indexOf(String(args.size || 'md').toLowerCase()) >= 0) ? String(args.size || 'md').toLowerCase() : 'md';
+    const color = (args.color && String(args.color).trim()) || '';
     const parts = raw.split('+').map(function (k) { return k.trim(); }).filter(function (k) { return k.length > 0; });
-    let html = '<span class="mdp-mod-shortcut">';
+    const cls = 'mdp-mod-shortcut' + (size !== 'md' ? ' sc-' + size : '');
+    const styleAttr = color ? ' style="--sc-accent: ' + color + '; --sc-lip: ' + color + ';"' : '';
+    let html = '<span class="' + cls + '"' + styleAttr + '>';
     parts.forEach(function (key, index) {
-      if (index > 0) html += '<span class="shortcut-plus">+</span>';
+      if (index > 0) html += '<span class="shortcut-plus">' + esc(sep) + '</span>';
       html += '<kbd class="shortcut-key">' + esc(key) + '</kbd>';
     });
     html += '</span>';
@@ -47,14 +77,17 @@ Ctrl+Shift+P
       font-size: 0.85em;
       line-height: 1;
       padding: 3px 7px;
-      color: var(--text-color, #1f2937);
+      color: var(--sc-accent, var(--text-color, #1f2937));
       background-color: var(--inline-code-bg, #f3f4f6);
       border: 1px solid var(--border-color, #d1d5db);
       border-bottom-width: 2px;
+      border-bottom-color: var(--sc-lip, var(--border-color, #d1d5db));
       border-radius: 5px;
       box-shadow: var(--shadow-sm, 0 1px 0 rgba(0,0,0,0.15));
       white-space: nowrap;
     }
+    .mdp-mod-shortcut.sc-sm .shortcut-key { font-size: 0.72em; padding: 2px 5px; }
+    .mdp-mod-shortcut.sc-lg .shortcut-key { font-size: 1em; padding: 4px 9px; }
     .mdp-mod-shortcut .shortcut-plus {
       color: var(--muted-color, #6b7280);
       font-size: 0.85em;

@@ -1,15 +1,27 @@
 <module>
   <name>faq</name>
   <type>block</type>
-  <description>Displays a set of Questions (Q) and Answers (A) beautifully.</description>
+  <description>A styled question-and-answer card with big Q and A icons. Body = the question, then &lt;!-- @ --&gt;, then the answer (Markdown).</description>
+  <tags>list, note</tags>
   <aiSpec><![CDATA[
-Use to present one question-and-answer pair with styled Q and A icons. Block
-module: the body has exactly two sections split by `<!-- @ -->` — the first is the
-question, the second is the answer (ordinary markdown). For multiple Q&A pairs,
-stack several faq blocks.
+A Q&A CARD — one question-and-answer pair with big styled "Q" and "A" icons.
+Block module: the body has exactly TWO sections split by `<!-- @ -->` — the FIRST
+is the question, the SECOND is the answer (both ordinary Markdown; the question is
+rendered bold automatically). For several Q&A pairs, stack multiple @faq blocks.
+Use @grid for generic content cards; @faq is specifically for question/answer pairs.
+Param:
+  `color` — accent color of the "Q" icon (default var(--accent-color); the "A"
+  icon stays red).
+
+<!-- @faq -->
+How long does the migration take?
+<!-- @ -->
+**About two weeks.**
+Most of that is the read-only verification phase; the actual cut-over happens overnight.
+<!-- @end -->
 ]]></aiSpec>
   <parameters>
-    <param name="color" type="color" default="var(--accent-color)" label="Color" />
+    <param name="color" type="color" default="var(--accent-color)" label="Color" desc="Accent color of the Q icon (the A icon stays red)." />
   </parameters>
   <snippets>
     <snippet>

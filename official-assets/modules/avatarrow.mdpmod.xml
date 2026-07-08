@@ -1,0 +1,82 @@
+<module>
+  <name>avatarrow</name>
+  <type>block</type>
+  <description>A row of circular avatars with names/roles — for a team, panel or contributors. Body = one person per section: image then name then role.</description>
+  <tags>media, list</tags>
+  <aiSpec><![CDATA[
+A row of TEAM / people cards — circular avatar over a name and role. Block module:
+split the body with `<!-- @ -->`, one person per section written on up to three lines:
+  line 1 = an image (`![](@alias)` or a URL) OR an emoji to use as the avatar,
+  line 2 = the NAME,
+  line 3 = the role / affiliation.
+Parameters: `size` (default 72px) is a CSS length for the avatar diameter;
+`color` (default var(--accent-color)) sets the avatar ring color. Good for team,
+speakers, acknowledgements. For a single speaker with a speech bubble use @balloon.
+
+Example:
+<!-- @avatarrow -->
+![](@alice)
+Alice Kim
+Engineering
+<!-- @ -->
+👩‍🔬
+Bob Sato
+Research
+<!-- @end -->
+]]></aiSpec>
+  <parameters>
+    <param name="size" type="text" default="72px" label="Avatar size" desc="CSS size, e.g. 72px" />
+    <param name="color" type="color" default="var(--accent-color)" label="Ring color" desc="Color of the ring around each avatar" />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Presentation UI</category>
+      <label>Team / avatars row</label>
+      <text><![CDATA[<!-- @avatarrow -->
+![](@alice)
+**Alice Kim**
+Engineering Lead
+<!-- @ -->
+👨‍💻
+**Bob Sato**
+Backend
+<!-- @end -->]]></text>
+      <description>Each section: image or emoji / name / role.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const size = args.size || '72px';
+    const color = args.color || 'var(--accent-color)';
+    const people = sections.map((s) => (s || '').trim()).filter(Boolean);
+    let html = `\n\n<div class="mdp-mod-avatarrow" style="--av-size:${size}; --av-color:${color};">`;
+    people.forEach((p) => {
+      const lines = p.split('\n').map((x) => x.trim());
+      const imgLine = lines.shift() || '';
+      const name = lines.shift() || '';
+      const role = lines.join(' ').trim();
+      let avatar;
+      const im = imgLine.match(/!\[[^\]]*\]\(([^)]+)\)/);
+      if (im) avatar = `<img src="${esc(im[1])}" alt="">`;
+      else if (/^https?:|^@|^\/|^data:/.test(imgLine)) avatar = `<img src="${esc(imgLine.replace(/^@/, ''))}" alt="">`;
+      else avatar = `<span class="mdp-av-emoji">${imgLine}</span>`;
+      html += `<div class="mdp-av-item"><div class="mdp-av-pic">${avatar}</div><div class="mdp-av-name">\n\n${name}\n\n</div>${role ? `<div class="mdp-av-role">${esc(role)}</div>` : ''}</div>`;
+    });
+    html += `</div>\n\n`;
+    return html;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-avatarrow { display: flex; flex-wrap: wrap; gap: 20px; justify-content: center; margin: 1rem 0; }
+    .mdp-av-item { text-align: center; width: calc(var(--av-size) + 3em); }
+    .mdp-av-pic {
+      width: var(--av-size); height: var(--av-size); margin: 0 auto 6px;
+      border-radius: 50%; overflow: hidden; border: 3px solid var(--av-color);
+      display: flex; align-items: center; justify-content: center; background: color-mix(in srgb, var(--av-color) 10%, transparent);
+    }
+    .mdp-av-pic img { width: 100%; height: 100%; object-fit: cover; }
+    .mdp-av-emoji { font-size: calc(var(--av-size) * 0.55); line-height: 1; }
+    .mdp-av-name { font-weight: 700; }
+    .mdp-av-name > * { margin: 0; }
+    .mdp-av-role { font-size: 0.82em; color: var(--app-text-muted, #888); }
+  ]]></style>
+</module>

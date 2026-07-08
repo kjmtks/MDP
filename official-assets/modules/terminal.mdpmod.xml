@@ -1,0 +1,54 @@
+<module>
+  <name>terminal</name>
+  <type>block</type>
+  <description>A terminal / code window frame (traffic-light title bar) around its body. Great for commands, logs and code on dev slides.</description>
+  <tags>mockup</tags>
+  <aiSpec><![CDATA[
+Wrap content in a TERMINAL / code-window frame with a macOS-style title bar. Block
+module: the body is the window contents — typically a fenced code block (```), a
+command, or log output; it renders as normal Markdown. Params: `title` — the
+title-bar text (e.g. bash, deploy.sh; default empty). Use it to make code/commands
+look like a real terminal. For plain code without the window chrome, just use a
+fenced code block instead.
+
+<!-- @terminal title: bash -->
+```
+$ npm run build
+✓ built in 1.2s
+```
+<!-- @end -->
+]]></aiSpec>
+  <parameters>
+    <param name="title" type="text" default="" label="Title bar text" desc="Text shown in the window title bar, e.g. bash or deploy.sh (empty = no title)." />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>UI Parts</category>
+      <label>Terminal window</label>
+      <text><![CDATA[<!-- @terminal title: bash -->
+```
+$ npm install
+$ npm run dev
+```
+<!-- @end -->]]></text>
+      <description>A terminal window frame around commands / code / logs.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const title = esc((args.title || '').trim());
+    const body = (content || '').trim();
+    return `\n\n<div class="mdp-mod-terminal"><div class="mdp-tm-bar"><span class="mdp-tm-dot"></span><span class="mdp-tm-dot"></span><span class="mdp-tm-dot"></span><span class="mdp-tm-title">${title}</span></div><div class="mdp-tm-body">\n\n${body}\n\n</div></div>\n\n`;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-terminal { margin: 1rem 0; border-radius: 10px; overflow: hidden; box-shadow: 0 8px 26px rgba(0,0,0,0.35); background: #1e1e2e; }
+    .mdp-tm-bar { display: flex; align-items: center; gap: 7px; padding: 8px 12px; background: #313244; }
+    .mdp-tm-dot { width: 12px; height: 12px; border-radius: 50%; background: #6c7086; }
+    .mdp-tm-dot:nth-child(1) { background: #f38ba8; } .mdp-tm-dot:nth-child(2) { background: #f9e2af; } .mdp-tm-dot:nth-child(3) { background: #a6e3a1; }
+    .mdp-tm-title { margin-left: 8px; color: #cdd6f4; font-size: 0.85em; font-family: ui-monospace, monospace; }
+    .mdp-tm-body { padding: 12px 14px; color: #cdd6f4; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9em; overflow-x: auto; }
+    .mdp-tm-body pre { margin: 0; background: none; padding: 0; }
+    .mdp-tm-body code { background: none; color: inherit; }
+    .mdp-tm-body > :first-child { margin-top: 0; } .mdp-tm-body > :last-child { margin-bottom: 0; }
+  ]]></style>
+</module>

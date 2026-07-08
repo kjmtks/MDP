@@ -1,0 +1,64 @@
+<module>
+  <name>phone</name>
+  <type>block</type>
+  <description>A smartphone device mockup (rounded frame + notch) framing its body — usually an app screenshot.</description>
+  <tags>mockup</tags>
+  <aiSpec><![CDATA[
+Frame content in a SMARTPHONE mockup (rounded bezel + notch) — for app screenshots and
+mobile UI. Use this for a phone frame; for a desktop/browser frame use @browser and for a
+plain image use standard Markdown.
+Block module: the BODY is the screen contents, usually a single ![](@alias) screenshot,
+but any Markdown works. Keep the image tall (portrait). Pairs well with @multicolumn to
+show a phone beside explanatory text.
+Parameters:
+  • color — bezel/frame color (default #111827, near-black).
+  • notch — show the top notch (true/false, default true).
+  • width — max frame width in px, 120-600 (default 240).
+  • screen — screen background color behind the content (default #fff).
+  • shadow — drop shadow under the device (true/false, default true).
+
+<!-- @phone color: #1f2937, width: 260 -->
+![app](@app-screen)
+<!-- @end -->
+]]></aiSpec>
+  <parameters>
+    <param name="color" type="color" default="#111827" label="Frame color" desc="Color of the phone bezel/frame." />
+    <param name="notch" type="boolean" default="true" label="Show notch" desc="Show the notch at the top of the frame." />
+    <param name="width" type="number" default="240" label="Frame width (px)" desc="Maximum width of the device frame, in pixels." min="120" max="600" step="10" integer="true" />
+    <param name="screen" type="color" default="#fff" label="Screen background" desc="Background color shown behind the screen content." />
+    <param name="shadow" type="boolean" default="true" label="Drop shadow" desc="Show the drop shadow under the device." />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>UI Parts</category>
+      <label>Phone mockup</label>
+      <text><![CDATA[<!-- @phone -->
+![app screenshot](@app)
+<!-- @end -->]]></text>
+      <description>A smartphone frame around a (portrait) screenshot or content.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const color = args.color || '#111827';
+    const body = (content || '').trim();
+    const notch = String(args.notch) !== 'false';
+    const shadow = String(args.shadow) !== 'false';
+    const w = parseInt(args.width, 10);
+    const width = Number.isFinite(w) ? Math.max(120, Math.min(600, w)) : 240;
+    const screen = (args.screen && String(args.screen).trim()) || '#fff';
+    const cls = 'mdp-mod-phone' + (shadow ? '' : ' mdp-ph-noshadow');
+    return `\n\n<div class="${cls}" style="--ph-color:${color}; --ph-width:${width}px; --ph-screen:${screen};">${notch ? '<div class="mdp-ph-notch"></div>' : ''}<div class="mdp-ph-screen">\n\n${body}\n\n</div></div>\n\n`;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-phone {
+      position: relative; width: min(100%, var(--ph-width, 240px)); aspect-ratio: 9 / 19; margin: 1rem auto;
+      background: var(--ph-color, #111827); border-radius: 30px; padding: 10px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+    }
+    .mdp-mod-phone.mdp-ph-noshadow { box-shadow: none; }
+    .mdp-ph-notch { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); width: 38%; height: 18px; background: var(--ph-color, #111827); border-radius: 0 0 12px 12px; z-index: 2; }
+    .mdp-ph-screen { width: 100%; height: 100%; background: var(--ph-screen, #fff); border-radius: 22px; overflow: hidden; line-height: 0; }
+    .mdp-ph-screen img { display: block; width: 100%; height: 100%; object-fit: cover; }
+    .mdp-ph-screen > :first-child { margin-top: 0; } .mdp-ph-screen > :last-child { margin-bottom: 0; }
+  ]]></style>
+</module>

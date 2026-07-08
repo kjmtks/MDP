@@ -1,17 +1,45 @@
 <module>
   <name>timeline</name>
   <type>block</type>
-  <description>Displays multiple contents beautifully as a vertical timeline (steps).</description>
+  <description>Displays multiple content blocks as a vertical timeline of numbered (or custom-labelled) steps.</description>
+  <tags>timeline, process</tags>
   <aiSpec><![CDATA[
 Use to present a sequence of steps / phases / milestones as a vertical timeline with
 numbered (or custom-labelled) markers. Block module: split the body into steps with
-`<!-- @ -->` — one section per step, in order. Each section is ordinary markdown (a
-heading + description works well). `active_index` highlights one step (1-based).
+`<!-- @ -->` — one section per step, in order. Each section is ordinary Markdown (a
+heading + description works well). Do NOT use this for a flat bullet list; use it when the
+order and progression matter.
+
+Parameters:
+  color         — marker/line accent colour (default var(--accent-color)).
+  active_index  — which step is highlighted, 1-based (default 0 = none).
+  indexes       — custom marker labels as a list, e.g. [Phase 1, Phase 2, Phase 3]
+                  (default [] = auto 1,2,3...).
+  markershape   — marker outline: pill (default) | rounded | square.
+  cardbg        — background colour of each step card (default "#ffffff").
+  gap           — vertical spacing between steps as a CSS length (default "2rem").
+  connector     — draw the vertical line linking the markers (default true).
+
+Example:
+<!-- @timeline active_index: 2, color: #2563eb, indexes: [Plan, Build, Ship], gap: 2.5rem -->
+### Plan
+Interview users and scope the work.
+<!-- @ -->
+### Build
+Agile development with continuous review.
+<!-- @ -->
+### Ship
+Integration testing and release.
+<!-- @end -->
 ]]></aiSpec>
   <parameters>
-    <param name="color" type="color" default="var(--accent-color)" label="Color" />
-    <param name="active_index" type="number" default="0" label="Active Step" desc="Which step is highlighted (1-based; 0 = none)" min="0" integer="true" />
-    <param name="indexes" type="[text]" default="[]" label="Custom Labels" desc="Marker labels, e.g. [Phase 1, Phase 2, Phase 3]." />
+    <param name="color" type="color" default="var(--accent-color)" label="Color" desc="Accent colour of the markers and connecting line." />
+    <param name="active_index" type="number" default="0" label="Active Step" desc="Which step is highlighted (1-based; 0 = none)." min="0" integer="true" />
+    <param name="indexes" type="[text]" default="[]" label="Custom Labels" desc="Marker labels, e.g. [Phase 1, Phase 2, Phase 3]. Blank = automatic numbering." />
+    <param name="markershape" type="select" default="pill" label="Marker Shape" desc="Outline shape of the step markers." options="pill:Pill,rounded:Rounded,square:Square" />
+    <param name="cardbg" type="color" default="#ffffff" label="Card Background" desc="Background colour of each step's content card." />
+    <param name="gap" type="text" default="2rem" label="Step Gap" desc="Vertical spacing between steps as a CSS length, e.g. 2rem or 24px." />
+    <param name="connector" type="boolean" default="true" label="Connector Line" desc="Show the vertical line joining the markers." />
   </parameters>
   <snippets>
     <snippet>
@@ -33,20 +61,26 @@ Proceed with agile development and conduct integration testing.
   <render><![CDATA[
     const color = args.color || 'var(--accent-color)';
     const activeIndex = parseInt(args.active_index, 10) || 0;
-    
+    const cardBg = (args.cardbg || '#ffffff').trim() || '#ffffff';
+    const gap = (args.gap || '2rem').trim() || '2rem';
+    const shapeKey = String(args.markershape || 'pill').toLowerCase();
+    const shape = ['pill', 'rounded', 'square'].includes(shapeKey) ? shapeKey : 'pill';
+    const connector = String(args.connector) !== 'false';
+
     const indexesArr = Array.isArray(args.indexes) ? args.indexes : [];
-    
-    let html = `\n\n<div class="mdp-mod-timeline" style="--timeline-color: ${color};">\n`;
-    
+
+    const wrapCls = `mdp-mod-timeline mdp-tl-mk-${shape}` + (connector ? '' : ' mdp-tl-noline');
+    let html = `\n\n<div class="${wrapCls}" style="--timeline-color: ${color}; --timeline-card: ${cardBg}; --timeline-gap: ${gap};">\n`;
+
     sections.forEach((section, index) => {
        const contentStr = section.trim();
        if (!contentStr) return;
-       
+
        const currentNum = index + 1;
        const label = indexesArr[index] !== undefined && indexesArr[index] !== '' ? indexesArr[index] : currentNum;
        const isActive = currentNum === activeIndex;
        const activeClass = isActive ? ' active' : '';
-       
+
        html += `
 <div class="mdp-timeline-item${activeClass}">
   <div class="mdp-timeline-marker${activeClass}">${label}</div>
@@ -58,7 +92,7 @@ ${contentStr}
 </div>
 `;
     });
-    
+
     html += `</div>\n\n`;
     return html;
   ]]></render>
@@ -68,7 +102,7 @@ ${contentStr}
       margin: 1rem 0;
       padding-left: 10px;
     }
-    
+
     .mdp-mod-timeline::before {
       content: '';
       position: absolute;
@@ -81,10 +115,11 @@ ${contentStr}
       border-radius: 2px;
       z-index: 0;
     }
+    .mdp-tl-noline::before { display: none; }
 
     .mdp-timeline-item {
       position: relative;
-      margin-bottom: 2rem;
+      margin-bottom: var(--timeline-gap, 2rem);
       display: flex;
       align-items: flex-start;
       z-index: 1;
@@ -113,6 +148,9 @@ ${contentStr}
       white-space: nowrap;
       transition: transform 0.3s ease, background-color 0.3s, color 0.3s;
     }
+    /* Marker outline shape. Pill reproduces the original 22px radius. */
+    .mdp-tl-mk-rounded .mdp-timeline-marker { border-radius: 8px; }
+    .mdp-tl-mk-square .mdp-timeline-marker { border-radius: 3px; }
 
     .mdp-timeline-marker.active {
       background-color: var(--timeline-color);
@@ -122,7 +160,7 @@ ${contentStr}
     }
 
     .mdp-timeline-content {
-      background: #ffffff;
+      background: var(--timeline-card, #ffffff);
       padding: 1.2rem 1.5rem;
       border-radius: 12px;
       box-shadow: 0 4px 10px rgba(0,0,0,0.05);
@@ -140,8 +178,8 @@ ${contentStr}
 
     .mdp-timeline-content > *:first-child { margin-top: 0; }
     .mdp-timeline-content > *:last-child { margin-bottom: 0; }
-    .mdp-timeline-content h1, 
-    .mdp-timeline-content h2, 
+    .mdp-timeline-content h1,
+    .mdp-timeline-content h2,
     .mdp-timeline-content h3 {
       color: var(--timeline-color);
       margin-top: 0;
@@ -157,7 +195,7 @@ ${contentStr}
       top: 20px;
       width: 16px;
       height: 16px;
-      background: #ffffff;
+      background: var(--timeline-card, #ffffff);
       border-left: 1px solid #f0f0f0;
       border-bottom: 1px solid #f0f0f0;
       transform: rotate(45deg);

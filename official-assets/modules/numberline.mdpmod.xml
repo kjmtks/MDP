@@ -1,0 +1,105 @@
+<module>
+  <name>numberline</name>
+  <type>block</type>
+  <description>A number line with ticks, plus marked points and intervals. Body = one mark per section: a point "3 label" or an interval "[2,5] label".</description>
+  <tags>numberline, sets</tags>
+  <aiSpec><![CDATA[
+A NUMBER LINE with ticks, on which you mark points and intervals — for inequalities,
+domains, ranges, solution sets. Use this for a single 1-D axis; for a 2-D plot use
+@plot and for a polar curve use @polarplot.
+Block module body: one mark per section split by <!-- @ -->:
+  • a point: `3` or `3 label`,
+  • an interval: `[2, 5]` (closed) or `(2, 5)` (open), with an optional label, e.g.
+    `[0, 100) valid` — use a big number for infinity.
+Parameters:
+  • min / max — the numeric range shown on the axis (any real; default 0 and 10).
+  • step — spacing between ticks (must be > 0; default 1).
+  • color — color of the points and intervals (default var(--accent-color)).
+  • ticks — show the numeric label under each tick (true/false, default true).
+  • unit — suffix appended to each tick label, e.g. cm or % (default blank).
+  • arrow — draw the right-hand arrowhead on the axis (true/false, default true).
+  • dotSize — diameter in px of points and interval end-caps (6-24, default 12).
+
+<!-- @numberline min: -1, max: 6, step: 1, unit: cm -->
+[2, 5] valid
+<!-- @ -->
+0 origin
+<!-- @end -->
+]]></aiSpec>
+  <parameters>
+    <param name="min" type="number" default="0" label="Min" desc="Left-hand value of the axis (any real number)." step="1" />
+    <param name="max" type="number" default="10" label="Max" desc="Right-hand value of the axis (any real number)." step="1" />
+    <param name="step" type="number" default="1" label="Tick step" desc="Spacing between ticks; must be greater than 0." min="0.001" step="0.5" />
+    <param name="color" type="color" default="var(--accent-color)" label="Mark color" desc="Color of the marked points and intervals." />
+    <param name="ticks" type="boolean" default="true" label="Tick labels" desc="Show the numeric label under each tick." />
+    <param name="unit" type="text" default="" label="Unit suffix" desc="Text appended to every tick label (e.g. cm, %)." />
+    <param name="arrow" type="boolean" default="true" label="Axis arrow" desc="Draw the arrowhead on the right end of the axis." />
+    <param name="dotSize" type="number" default="12" label="Dot size (px)" desc="Diameter of points and interval end-caps, in pixels." min="6" max="24" step="1" integer="true" />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Math</category>
+      <label>Number line</label>
+      <text><![CDATA[<!-- @numberline min: -2, max: 6, step: 1 -->
+[2, 5] solution
+<!-- @ -->
+(-2, 0)
+<!-- @end -->]]></text>
+      <description>Number line with ticks; sections are points ("3 label") or intervals ("[2,5] label").</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const min = parseFloat(args.min); const max = parseFloat(args.max);
+    const step = Math.abs(parseFloat(args.step)) || 1;
+    const color = args.color || 'var(--accent-color)';
+    const showTicks = String(args.ticks) !== 'false';
+    const unit = args.unit ? String(args.unit) : '';
+    const arrow = String(args.arrow) !== 'false';
+    const dp = parseFloat(args.dotSize);
+    const dot = Number.isFinite(dp) ? Math.max(6, Math.min(24, dp)) : 12;
+    const lo = Number.isFinite(min) ? min : 0, hi = Number.isFinite(max) ? max : 10;
+    const span = (hi - lo) || 1;
+    const pct = (v) => ((v - lo) / span) * 100;
+    let ticks = '';
+    for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) {
+      const lab = showTicks ? `<span>${(+v.toFixed(6))}${esc(unit)}</span>` : '';
+      ticks += `<div class="mdp-nl-tick" style="left:${pct(v).toFixed(2)}%;">${lab}</div>`;
+    }
+    let marks = '';
+    sections.map((s) => (s || '').trim()).filter(Boolean).forEach((s) => {
+      const iv = s.match(/^([\[(])\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*([\])])\s*([\s\S]*)$/);
+      if (iv) {
+        const a = parseFloat(iv[2]), b = parseFloat(iv[3]);
+        const x1 = Math.max(0, Math.min(100, pct(Math.min(a, b)))), x2 = Math.max(0, Math.min(100, pct(Math.max(a, b))));
+        marks += `<div class="mdp-nl-interval" style="left:${x1.toFixed(2)}%; width:${(x2 - x1).toFixed(2)}%; --nl-c:${color};">` +
+          `<span class="mdp-nl-end ${iv[1] === '[' ? 'closed' : 'open'}"></span><span class="mdp-nl-end r ${iv[4] === ']' ? 'closed' : 'open'}"></span></div>` +
+          (iv[5].trim() ? `<div class="mdp-nl-lbl" style="left:${((x1 + x2) / 2).toFixed(2)}%;">${esc(iv[5].trim())}</div>` : '');
+        return;
+      }
+      const pt = s.match(/^(-?[\d.]+)\s*([\s\S]*)$/);
+      if (pt) {
+        const x = pct(parseFloat(pt[1]));
+        marks += `<div class="mdp-nl-point" style="left:${x.toFixed(2)}%; --nl-c:${color};"></div>` +
+          (pt[2].trim() ? `<div class="mdp-nl-lbl" style="left:${x.toFixed(2)}%;">${esc(pt[2].trim())}</div>` : '');
+      }
+    });
+    const lineCls = 'mdp-nl-line' + (arrow ? '' : ' mdp-nl-noarrow');
+    return `\n\n<div class="mdp-mod-numberline" style="--nl-dot:${dot}px;"><div class="${lineCls}">${ticks}${marks}</div></div>\n\n`;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-numberline { margin: 2.2rem 0 1.6rem; padding: 0 4%; }
+    .mdp-nl-line { position: relative; height: 2px; background: currentColor; }
+    .mdp-nl-line::after { content: '▶'; position: absolute; right: -14px; top: 50%; transform: translateY(-50%); font-size: 0.8em; }
+    .mdp-nl-line.mdp-nl-noarrow::after { content: none; }
+    .mdp-nl-tick { position: absolute; top: -5px; width: 2px; height: 10px; background: currentColor; transform: translateX(-50%); }
+    .mdp-nl-tick span { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); font-size: 0.75em; }
+    .mdp-nl-point { position: absolute; top: 50%; width: var(--nl-dot, 12px); height: var(--nl-dot, 12px); border-radius: 50%; background: var(--nl-c); transform: translate(-50%, -50%); }
+    .mdp-nl-interval { position: absolute; top: 50%; height: 6px; background: var(--nl-c); transform: translateY(-50%); border-radius: 3px; }
+    .mdp-nl-end { position: absolute; top: 50%; left: 0; width: var(--nl-dot, 12px); height: var(--nl-dot, 12px); border-radius: 50%; transform: translate(-50%, -50%); border: 2px solid var(--nl-c); }
+    .mdp-nl-end.r { left: auto; right: 0; transform: translate(50%, -50%); }
+    .mdp-nl-end.closed { background: var(--nl-c); }
+    .mdp-nl-end.open { background: var(--panel-bg, #fff); }
+    .mdp-nl-lbl { position: absolute; top: -22px; transform: translateX(-50%); font-size: 0.8em; font-weight: 600; white-space: nowrap; }
+  ]]></style>
+</module>

@@ -2,15 +2,38 @@
   <name>process</name>
   <type>block</type>
   <description>Displays a horizontal chevron-style process flow.</description>
+  <tags>process, flow</tags>
   <aiSpec><![CDATA[
-Show a horizontal chevron/arrow flow for pipelines, workflows or step
-sequences. Block module: split the body with `<!-- @ -->` — one section per
-step, in order, left to right. Use `active` (1-based indices) to highlight the
-current step(s); omit it to highlight all. Each section is the step label.
+A horizontal CHEVRON / arrow flow for pipelines, workflows or ordered step
+sequences (e.g. an ML pipeline, a hiring funnel). Block module: split the body
+with `<!-- @ -->` — one section per step, in order, left to right. Each section is
+the step label (Markdown allowed). Use `active` (1-based indices) to highlight the
+current step(s); omit it to highlight ALL steps.
+Do NOT use this for a vertical timeline or a proportion breakdown — this is a
+left-to-right arrow ribbon only.
+Parameters:
+  `color` (color, default accent) — fill of active steps.
+  `active` (list of numbers, default [] = all) — 1-based step numbers to highlight, e.g. [1] or [1,3].
+  `inactive` (color, default #e2e8f0) — fill of non-highlighted steps.
+  `numbered` (boolean, default false) — prefix each step with its 1-based number.
+  `gap` (number px 0-40, default 5) — spacing between chevrons.
+
+<!-- @process color: var(--accent-color), active: [1], numbered: true -->
+Data Collection
+<!-- @ -->
+Preprocessing
+<!-- @ -->
+Model Training
+<!-- @ -->
+Evaluation
+<!-- @end -->
 ]]></aiSpec>
   <parameters>
-    <param name="color" type="color" default="var(--accent-color)" label="Accent Color" desc="Color of active steps" />
-    <param name="active" type="[number]" default="[]" label="Active Steps" desc="1-based step numbers, e.g. [1] or [1, 3]." />
+    <param name="color" type="color" default="var(--accent-color)" label="Accent Color" desc="Fill color of active steps." />
+    <param name="active" type="[number]" default="[]" label="Active Steps" desc="1-based step numbers, e.g. [1] or [1, 3]. Empty = all active." />
+    <param name="inactive" type="color" default="#e2e8f0" label="Inactive Color" desc="Fill color of non-highlighted steps." />
+    <param name="numbered" type="boolean" default="false" label="Numbered" desc="Prefix each step with its 1-based number." />
+    <param name="gap" type="number" default="5" label="Gap (px)" desc="Spacing between chevrons." min="0" max="40" integer="true" />
   </parameters>
   <snippets>
     <snippet>
@@ -30,18 +53,22 @@ Evaluation
   </snippets>
   <render><![CDATA[
     const color = args.color || 'var(--accent-color)';
+    const inactive = (args.inactive && String(args.inactive).trim()) || '#e2e8f0';
+    const numbered = String(args.numbered) === 'true';
+    let gapN = parseInt(args.gap, 10); const gap = (gapN >= 0 && gapN <= 40) ? gapN : 5;
     const activeArr = Array.isArray(args.active) ? args.active.map(Number) : [];
-    let html = `\n\n<div class="mdp-mod-process" style="--proc-color: ${color};">\n`;
+    let html = `\n\n<div class="mdp-mod-process" style="--proc-color: ${color}; --proc-inactive: ${inactive}; --proc-gap: ${gap}px;">\n`;
     sections.forEach((section, index) => {
       const contentStr = section.trim();
       if (!contentStr) return;
       const currentNum = index + 1;
       const isActive = activeArr.length === 0 || activeArr.includes(currentNum);
-      const stepBg = isActive ? 'var(--proc-color)' : '#e2e8f0';
+      const stepBg = isActive ? 'var(--proc-color)' : 'var(--proc-inactive)';
       const stepText = isActive ? 'white' : '#718096';
+      const numPrefix = numbered ? `<span class="mdp-process-num">${currentNum}</span>` : '';
       html += `
 <div class="mdp-process-step" style="--step-bg: ${stepBg}; --step-text: ${stepText};">
-<div class="mdp-process-content">
+${numPrefix}<div class="mdp-process-content">
 
 ${contentStr}
 
@@ -49,7 +76,7 @@ ${contentStr}
 </div>
       `;
     });
-    
+
     html += `</div>\n\n`;
     return html;
   ]]></render>
@@ -59,7 +86,7 @@ ${contentStr}
       flex-direction: row;
       justify-content: space-between;
       margin: 1rem 0;
-      gap: 5px;
+      gap: var(--proc-gap, 5px);
     }
     .mdp-process-step {
       flex: 1;
@@ -74,6 +101,11 @@ ${contentStr}
       align-items: center;
       justify-content: center;
       transition: background-color 0.3s, color 0.3s;
+    }
+    .mdp-process-num {
+      font-weight: 800;
+      margin-right: 0.4em;
+      opacity: 0.85;
     }
     .mdp-process-step:first-child {
       padding-left: 1em;

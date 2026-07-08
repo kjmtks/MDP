@@ -1,0 +1,114 @@
+<module>
+  <name>matrix</name>
+  <type>block</type>
+  <description>2×2 quadrant matrix (e.g. impact/effort, importance/urgency) with axis labels. Body = 4 sections in reading order (top-left, top-right, bottom-left, bottom-right).</description>
+  <tags>matrices, grid, table</tags>
+  <aiSpec><![CDATA[
+A 2×2 QUADRANT MATRIX for positioning / prioritisation (Eisenhower, impact-effort,
+risk-reward, BCG). Use this for a labelled 2×2 grid; for a numeric scatter use @scatter,
+and for arbitrary side-by-side blocks use @multicolumn.
+Block module: the body is FOUR sections split by <!-- @ -->, in reading order — top-left,
+top-right, bottom-left, bottom-right. Each cell is Markdown (a heading + bullets works well).
+Parameters:
+  • xLabel / yLabel — names of the horizontal / vertical axis (default blank).
+  • xLow / xHigh — labels for the left / right end of the X axis (default blank).
+  • yLow / yHigh — labels for the bottom / top end of the Y axis (default blank).
+  • color — accent color for borders, axis labels and cell tint (default var(--accent-color)).
+  • gap — CSS length of the space between the four cells (default 6px).
+  • radius — CSS corner radius of each cell (default 8px).
+  • minHeight — CSS min-height of each cell (default 3.5em).
+  • fill — cell background tint strength, percent 0-100 (default 6; the top-left cell gets twice this).
+
+<!-- @matrix xLabel: Effort, yLabel: Impact, xLow: Low, xHigh: High, yLow: Low, yHigh: High, fill: 10 -->
+**Quick wins**
+<!-- @ -->
+**Major projects**
+<!-- @ -->
+**Fill-ins**
+<!-- @ -->
+**Thankless tasks**
+<!-- @end -->
+]]></aiSpec>
+  <parameters>
+    <param name="xLabel" type="text" default="" label="X axis label" desc="Name of the horizontal axis (shown below the grid)." />
+    <param name="yLabel" type="text" default="" label="Y axis label" desc="Name of the vertical axis (shown rotated at the left)." />
+    <param name="xLow" type="text" default="" label="X low (left) label" desc="Label for the left (low) end of the X axis." />
+    <param name="xHigh" type="text" default="" label="X high (right) label" desc="Label for the right (high) end of the X axis." />
+    <param name="yLow" type="text" default="" label="Y low (bottom) label" desc="Label for the bottom (low) end of the Y axis." />
+    <param name="yHigh" type="text" default="" label="Y high (top) label" desc="Label for the top (high) end of the Y axis." />
+    <param name="color" type="color" default="var(--accent-color)" label="Accent color" desc="Color for cell borders, axis labels and cell tint." />
+    <param name="gap" type="text" default="6px" label="Cell gap" desc="CSS length of the gap between the four cells (e.g. 6px, 0.5rem)." />
+    <param name="radius" type="text" default="8px" label="Cell corner radius" desc="CSS corner radius of each cell (e.g. 8px, 0.5rem)." />
+    <param name="minHeight" type="text" default="3.5em" label="Cell min height" desc="CSS minimum height of each cell (e.g. 3.5em, 120px)." />
+    <param name="fill" type="number" default="6" label="Cell tint %" desc="Background tint strength of the cells (0 = none); the top-left cell uses twice this." min="0" max="100" step="1" />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Diagrams</category>
+      <label>2×2 matrix</label>
+      <text><![CDATA[<!-- @matrix xLabel: Effort, yLabel: Impact, xLow: Low, xHigh: High, yLow: Low, yHigh: High -->
+**Quick wins**
+- do these first
+<!-- @ -->
+**Big bets**
+<!-- @ -->
+**Maybe later**
+<!-- @ -->
+**Avoid**
+<!-- @end -->]]></text>
+      <description>Four quadrants (TL, TR, BL, BR) with labelled axes.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const color = args.color || 'var(--accent-color)';
+    const vars = [`--mx-color:${color};`];
+    const gap = args.gap && String(args.gap).trim();
+    const radius = args.radius && String(args.radius).trim();
+    const minh = args.minHeight && String(args.minHeight).trim();
+    const fillN = parseFloat(args.fill);
+    if (gap) vars.push(`--mx-gap:${gap};`);
+    if (radius) vars.push(`--mx-radius:${radius};`);
+    if (minh) vars.push(`--mx-minh:${minh};`);
+    if (Number.isFinite(fillN)) {
+      const f = Math.max(0, Math.min(100, fillN));
+      vars.push(`--mx-fill:${f}%;`);
+      vars.push(`--mx-fill0:${Math.min(100, f * 2)}%;`);
+    }
+    const cells = sections.slice(0, 4).map((s) => (s || '').trim());
+    while (cells.length < 4) cells.push('');
+    const cell = (c, i) => `<div class="mdp-mx-cell mdp-mx-c${i}">\n\n${c}\n\n</div>`;
+    const lbl = (v, cls) => v ? `<div class="${cls}">\n\n${v}\n\n</div>` : `<div class="${cls}"></div>`;
+    return `\n\n<div class="mdp-mod-matrix" style="${vars.join('')}">` +
+      lbl(args.yLabel, 'mdp-mx-ylabel') +
+      `<div class="mdp-mx-yends"><span>${(args.yHigh || '')}</span><span>${(args.yLow || '')}</span></div>` +
+      `<div class="mdp-mx-grid">${cells.map(cell).join('')}</div>` +
+      `<div class="mdp-mx-xends"><span>${(args.xLow || '')}</span><span>${(args.xHigh || '')}</span></div>` +
+      lbl(args.xLabel, 'mdp-mx-xlabel') +
+      `</div>\n\n`;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-matrix {
+      display: grid;
+      grid-template-columns: auto auto 1fr;
+      grid-template-rows: 1fr auto auto;
+      gap: 4px 6px;
+      margin: 1rem 0;
+      align-items: stretch;
+    }
+    .mdp-mx-ylabel { grid-column: 1; grid-row: 1; writing-mode: vertical-rl; transform: rotate(180deg); text-align: center; align-self: center; font-weight: bold; color: var(--mx-color); }
+    .mdp-mx-yends { grid-column: 2; grid-row: 1; display: flex; flex-direction: column; justify-content: space-between; font-size: 0.8em; color: var(--mx-color); padding: 4px 2px; }
+    .mdp-mx-grid { grid-column: 3; grid-row: 1; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: var(--mx-gap, 6px); }
+    .mdp-mx-xends { grid-column: 3; grid-row: 2; display: flex; justify-content: space-between; font-size: 0.8em; color: var(--mx-color); padding: 0 4px; }
+    .mdp-mx-xlabel { grid-column: 3; grid-row: 3; text-align: center; font-weight: bold; color: var(--mx-color); }
+    .mdp-mx-cell {
+      border: 2px solid var(--mx-color);
+      border-radius: var(--mx-radius, 8px);
+      padding: 10px 12px;
+      background: color-mix(in srgb, var(--mx-color) var(--mx-fill, 6%), transparent);
+      min-height: var(--mx-minh, 3.5em);
+    }
+    .mdp-mx-c0 { background: color-mix(in srgb, var(--mx-color) var(--mx-fill0, 12%), transparent); }
+    .mdp-mx-cell > :first-child { margin-top: 0; }
+    .mdp-mx-cell > :last-child { margin-bottom: 0; }
+  ]]></style>
+</module>

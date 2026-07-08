@@ -1,17 +1,35 @@
 <module>
   <name>metrics</name>
   <type>block</type>
-  <description>Displays important numbers gigantically for a strong impact.</description>
+  <description>Shows one headline number at huge size for impact (a KPI, result or stat), with a caption and optional supporting text from the body.</description>
+  <tags>kpi, charts</tags>
   <aiSpec><![CDATA[
-Show a single headline number at huge size for impact (KPIs, results, stats).
-The big number and caption come from the `value` and `label` params; the body
-(between the directive and @end) is an optional supporting description shown
-below in smaller text. Use one metrics block per number.
+Show a SINGLE headline number at huge size for impact (KPIs, results, key stats). Use one
+metrics block per number; for several numbers side by side wrap several @metrics in a
+@multicolumn, and for a labelled data table use @table instead.
+The big number and caption come from params; the BODY (between the directive and
+<!-- @end -->) is an optional supporting description shown smaller below.
+Parameters:
+  • value — the big number/text to display, e.g. 100%, 1/10, 3.2× (required).
+  • label — the caption under the number (default "Achievement Rate").
+  • color — color of the big number (default var(--accent-color)).
+  • valueSize — CSS font-size of the big number (default 5em).
+  • align — text alignment of the whole block: left / center / right (default center).
+  • background — card background color (default blank = light grey #fafafa).
+  • trend — small trend arrow beside the number: none / up (green ▲) / down (red ▼) (default none).
+
+<!-- @metrics value: 1/10, label: Execution Time Reduction, trend: down -->
+Achieved a dramatic performance improvement compared to the conventional system.
+<!-- @end -->
 ]]></aiSpec>
   <parameters>
-    <param name="value" type="text" label="Value" desc="The big number to display (e.g. 100%, 1/10)" required="true" />
-    <param name="label" type="text" default="Achievement Rate" label="Label" />
-    <param name="color" type="color" default="var(--accent-color)" label="Value Color" />
+    <param name="value" type="text" label="Value" desc="The big number to display (e.g. 100%, 1/10, 3.2×)." required="true" />
+    <param name="label" type="text" default="Achievement Rate" label="Label" desc="Caption shown under the big number." />
+    <param name="color" type="color" default="var(--accent-color)" label="Value Color" desc="Color of the big number." />
+    <param name="valueSize" type="text" default="5em" label="Value size" desc="CSS font-size of the big number (e.g. 5em, 72px)." />
+    <param name="align" type="select" default="center" label="Alignment" desc="Text alignment of the whole block." options="left:Left,center:Center,right:Right" />
+    <param name="background" type="color" default="" label="Card background" desc="Background color of the card; blank keeps the default light grey." />
+    <param name="trend" type="select" default="none" label="Trend arrow" desc="Small trend indicator shown next to the number." options="none:None,up:Up (green),down:Down (red)" />
   </parameters>
   <snippets>
     <snippet>
@@ -27,10 +45,17 @@ Achieved a dramatic performance improvement compared to the conventional system.
     const val = args.value || '0';
     const label = args.label || '';
     const color = args.color || 'var(--accent-color)';
+    const align = args.align || 'center';
+    const valueSize = (args.valueSize && String(args.valueSize).trim()) || '5em';
+    const bg = args.background && String(args.background).trim();
+    const trend = (args.trend && args.trend !== 'none') ? args.trend : '';
+    const trendHtml = trend ? `<span class="mdp-metrics-trend mdp-trend-${trend}">${trend === 'up' ? '▲' : '▼'}</span>` : '';
     const contentStr = sections[0] ? sections[0].trim() : '';
+    let vars = `--met-color: ${color}; --met-align: ${align}; --met-size: ${valueSize};`;
+    if (bg) vars += ` --met-bg: ${bg};`;
     return `\n\n
-<div class="mdp-mod-metrics" style="--met-color: ${color};">
-  <div class="mdp-metrics-value">${val}</div>
+<div class="mdp-mod-metrics" style="${vars}">
+  <div class="mdp-metrics-value">${val}${trendHtml}</div>
   ${label ? `<div class="mdp-metrics-label">${label}</div>` : ''}
   ${contentStr ? `<div class="mdp-metrics-desc">\n\n${contentStr}\n\n</div>` : ''}
 </div>
@@ -38,20 +63,23 @@ Achieved a dramatic performance improvement compared to the conventional system.
   ]]></render>
   <style><![CDATA[
     .mdp-mod-metrics {
-      text-align: center;
+      text-align: var(--met-align, center);
       margin: 1rem 0;
       padding: 2em;
-      background: #fafafa;
+      background: var(--met-bg, #fafafa);
       border-radius: 12px;
     }
     .mdp-metrics-value {
-      font-size: 5em;
+      font-size: var(--met-size, 5em);
       font-weight: 900;
       line-height: 1;
       color: var(--met-color);
       margin-bottom: 0.1em;
       letter-spacing: -2px;
     }
+    .mdp-metrics-trend { font-size: 0.28em; vertical-align: middle; margin-left: 0.2em; letter-spacing: 0; }
+    .mdp-trend-up { color: #16a34a; }
+    .mdp-trend-down { color: #dc2626; }
     .mdp-metrics-label {
       font-size: 1.2em;
       font-weight: bold;

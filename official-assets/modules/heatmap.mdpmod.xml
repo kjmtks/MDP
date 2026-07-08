@@ -1,0 +1,95 @@
+<module>
+  <name>heatmap</name>
+  <type>block</type>
+  <description>A grid of numbers coloured by value (pale for low, full accent for high) with optional row/column headers, fed by rows of |-separated cells in the body.</description>
+  <tags>charts, matrices, statistics</tags>
+  <aiSpec><![CDATA[
+A HEATMAP — a grid of numeric cells shaded by value (low = pale, high = full colour).
+Good for correlation matrices, score grids, intensity tables. NOT for category→value
+bars (use @barchart) and NOT for binning raw samples (use @histogram). Block module:
+the body is one row per line, cells separated by ` | ` (sections split by `<!-- @ -->`
+are simply merged, so a single section is fine).
+  • If the FIRST row starts with an empty first cell (`| A | B`), it is treated as a
+    COLUMN header row.
+  • A row whose first cell is non-numeric becomes that row's label.
+  • Non-numeric cells render unshaded (muted text).
+The colour scale runs between the min and max of all numeric cells unless overridden.
+Params:
+  • color — colour of the highest-value cells; lower values fade toward transparent.
+    Default var(--accent-color); any CSS colour works.
+  • min — value mapped to the palest shade; blank (default) = auto (data minimum).
+  • max — value mapped to the strongest shade; blank (default) = auto (data maximum).
+
+<!-- @heatmap -->
+| A | B | C
+A | 1 | 0.8 | 0.2
+B | 0.8 | 1 | 0.5
+C | 0.2 | 0.5 | 1
+<!-- @end -->
+]]></aiSpec>
+  <parameters>
+    <param name="color" type="color" default="var(--accent-color)" label="High color" desc="Colour of the highest-value cells; lower values fade toward transparent." />
+    <param name="min" type="number" default="" label="Scale min" desc="Value mapped to the palest shade; leave blank to use the data minimum." />
+    <param name="max" type="number" default="" label="Scale max" desc="Value mapped to the strongest shade; leave blank to use the data maximum." />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Data</category>
+      <label>Heatmap grid</label>
+      <text><![CDATA[<!-- @heatmap -->
+| A | B | C
+A | 1 | 0.8 | 0.2
+B | 0.8 | 1 | 0.5
+C | 0.2 | 0.5 | 1
+<!-- @end -->]]></text>
+      <description>Value grid coloured low→high; optional row/column headers.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const color = args.color || 'var(--accent-color)';
+    const lines = sections.join('\n').split('\n').map((l) => l.trim()).filter(Boolean);
+    if (!lines.length) return `<div>(heatmap: rows of numbers, cells split by | )</div>`;
+    const grid = lines.map((l) => l.split('|').map((c) => c.trim()));
+    const isNum = (v) => v !== '' && Number.isFinite(parseFloat(v)) && /^-?[\d.]+$/.test(v);
+    // Column header row = first row with an empty leading cell.
+    let colHead = null, start = 0;
+    if (grid[0][0] === '') { colHead = grid[0].slice(1); start = 1; }
+    const body = grid.slice(start);
+    // Row labels = first cell if non-numeric across body.
+    const hasRowLabels = body.some((r) => r.length && !isNum(r[0]));
+    const nums = [];
+    body.forEach((r) => { const cells = hasRowLabels ? r.slice(1) : r; cells.forEach((c) => { if (isNum(c)) nums.push(parseFloat(c)); }); });
+    let lo = args.min !== '' && args.min != null ? parseFloat(args.min) : Math.min(...nums);
+    let hi = args.max !== '' && args.max != null ? parseFloat(args.max) : Math.max(...nums);
+    if (!Number.isFinite(lo)) lo = 0; if (!Number.isFinite(hi)) hi = 1; if (hi === lo) hi = lo + 1;
+    const t = (v) => Math.max(0, Math.min(1, (v - lo) / (hi - lo)));
+    const cols = Math.max(...body.map((r) => (hasRowLabels ? r.length - 1 : r.length))) + (hasRowLabels ? 1 : 0);
+    let html = `\n\n<div class="mdp-mod-heatmap" style="--hm-c:${color}; grid-template-columns: repeat(${cols}, auto);">`;
+    if (colHead) {
+      if (hasRowLabels) html += `<div class="mdp-hm-corner"></div>`;
+      colHead.forEach((h) => { html += `<div class="mdp-hm-head">${esc(h)}</div>`; });
+    }
+    body.forEach((r) => {
+      const cells = hasRowLabels ? r.slice(1) : r;
+      if (hasRowLabels) html += `<div class="mdp-hm-rowlabel">${esc(r[0])}</div>`;
+      cells.forEach((c) => {
+        if (isNum(c)) {
+          const a = (0.12 + 0.85 * t(parseFloat(c))).toFixed(3);
+          html += `<div class="mdp-hm-cell" style="background: color-mix(in srgb, var(--hm-c) ${(a * 100).toFixed(1)}%, transparent);">${esc(c)}</div>`;
+        } else {
+          html += `<div class="mdp-hm-cell mdp-hm-empty">${esc(c)}</div>`;
+        }
+      });
+    });
+    html += `</div>\n\n`;
+    return html;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-heatmap { display: inline-grid; gap: 3px; margin: 1rem 0; }
+    .mdp-hm-cell { min-width: 44px; padding: 8px 10px; text-align: center; border-radius: 4px; font-variant-numeric: tabular-nums; font-weight: 600; }
+    .mdp-hm-empty { background: transparent; color: var(--app-text-muted, #888); }
+    .mdp-hm-head, .mdp-hm-rowlabel { display: flex; align-items: center; justify-content: center; font-weight: 700; color: var(--app-text-muted, #888); padding: 4px 8px; }
+    .mdp-hm-corner { background: transparent; }
+  ]]></style>
+</module>

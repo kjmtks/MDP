@@ -1,18 +1,40 @@
 <module>
   <name>multicolumn</name>
   <type>block</type>
-  <description>Multi-column</description>
+  <description>Lays content out in side-by-side columns. Body = one section per column (split by the section separator); each column is ordinary Markdown.</description>
+  <tags>columns, grouping</tags>
   <aiSpec><![CDATA[
-Lay out content in side-by-side columns. Block module: split the body with
-`<!-- @ -->` — one section per column. Each section is ordinary markdown (text,
-lists, images, even other modules). Use `ratio` to size columns relatively
-(e.g. ratio: [1,2,1] for a wider middle column).
+Lay out content in SIDE-BY-SIDE columns. Use this for general two/three-column layouts
+(text beside an image, comparisons, etc.); for a labelled 2×2 grid use @matrix and for
+pricing tiers use @pricing.
+Block module: split the body with <!-- @ --> — one section per column. Each section is
+ordinary Markdown (text, lists, images, even other modules).
+Parameters:
+  • gap — CSS length of the space between columns (default 1.5rem).
+  • align — vertical alignment of the columns: flex-start (top), center, flex-end (bottom), stretch (default flex-start).
+  • ratio — list of flex ratios per column, e.g. [1,2,1] for a wider middle column (default [] = equal).
+  • divider — draw a thin vertical rule between columns (true/false, default false).
+  • dividerColor — color of that rule when divider is on (default blank = muted theme line).
+  • pad — CSS padding applied inside each column, e.g. 0.5rem (default blank = none).
+  • wrap — allow columns to wrap onto a new row when narrow (true/false, default false).
+
+<!-- @multicolumn ratio: [1,2,1], gap: 1.5rem, divider: true -->
+Left
+<!-- @ -->
+Center
+<!-- @ -->
+Right
+<!-- @end -->
 ]]></aiSpec>
 
   <parameters>
-    <param name="gap" type="text" default="1.5rem" label="Gap" desc="CSS length for the space between columns (e.g. 1.5rem)" />
-    <param name="align" type="select" default="flex-start" label="Vertical Alignment" options="flex-start:Top,center:Center,flex-end:Bottom,stretch:Stretch" />
-    <param name="ratio" type="[number]" default="[]" label="Column Ratios" desc="Flex ratio per column (e.g. [1, 2, 1])." />
+    <param name="gap" type="text" default="1.5rem" label="Gap" desc="CSS length for the space between columns (e.g. 1.5rem)." />
+    <param name="align" type="select" default="flex-start" label="Vertical Alignment" desc="How columns align vertically relative to each other." options="flex-start:Top,center:Center,flex-end:Bottom,stretch:Stretch" />
+    <param name="ratio" type="[number]" default="[]" label="Column Ratios" desc="Flex ratio per column (e.g. [1, 2, 1]); empty = all equal." />
+    <param name="divider" type="boolean" default="false" label="Column divider" desc="Draw a thin vertical rule between columns." />
+    <param name="dividerColor" type="color" default="" label="Divider color" desc="Color of the divider rule; blank uses a muted theme line." />
+    <param name="pad" type="text" default="" label="Column padding" desc="CSS padding inside each column (e.g. 0.5rem); blank = none." />
+    <param name="wrap" type="boolean" default="false" label="Wrap columns" desc="Allow columns to wrap onto a new row when the slide is narrow." />
   </parameters>
 
   <snippets>
@@ -28,7 +50,7 @@ Right
     <snippet>
       <category>Layout</category>
       <label>Full-custom multi-column</label>
-      <text><![CDATA[<!-- @multicolumn ratio: [1,2,1], gap: 1.5rem, align: flex-start -->
+      <text><![CDATA[<!-- @multicolumn ratio: [1,2,1], gap: 1.5rem, align: flex-start, divider: true -->
 Left
 <!-- @ -->
 Center
@@ -42,14 +64,21 @@ Right
     const gap = args.gap || '1.5rem';
     const align = args.align || 'flex-start';
     const ratioArr = Array.isArray(args.ratio) ? args.ratio : [];
-    let html = `\n\n<div class="mdp-mod-multicolumn" style="gap: ${gap}; align-items: ${align};">\n`;
+    const divider = String(args.divider) === 'true';
+    const wrap = String(args.wrap) === 'true';
+    const pad = args.pad && String(args.pad).trim();
+    const dividerColor = args.dividerColor && String(args.dividerColor).trim();
+    const cls = 'mdp-mod-multicolumn' + (divider ? ' mdp-has-divider' : '');
+    let cstyle = `gap: ${gap}; align-items: ${align};`;
+    if (wrap) cstyle += ' flex-wrap: wrap;';
+    if (dividerColor) cstyle += ` --mc-divider: ${dividerColor};`;
+    let html = `\n\n<div class="${cls}" style="${cstyle}">\n`;
     sections.forEach((section, index) => {
        const contentStr = section.trim();
        if (!contentStr) return;
-       
        const flexRatio = ratioArr[index] !== undefined && ratioArr[index] !== '' ? ratioArr[index] : '1';
-       
-       html += `<div class="mdp-mod-column" style="flex: ${flexRatio};">
+       const colStyle = `flex: ${flexRatio};` + (pad ? ` padding: ${pad};` : '');
+       html += `<div class="mdp-mod-column" style="${colStyle}">
 
 ${contentStr}
 
@@ -74,6 +103,10 @@ ${contentStr}
       margin: 0;
       padding: 0;
     }
+    .mdp-mod-multicolumn.mdp-has-divider .mdp-mod-column + .mdp-mod-column {
+      border-left: 1px solid var(--mc-divider, color-mix(in srgb, var(--app-text-muted, #888) 35%, transparent));
+      padding-left: 1rem;
+    }
     .mdp-mod-column > :first-child { margin-top: 0; padding-top: 0; }
     .mdp-mod-column > :last-child { margin-bottom: 0; padding-bottom: 0; }
     /* Tighten the vertical rhythm inside columns — the slide default (1rem per
@@ -81,6 +114,6 @@ ${contentStr}
     .mdp-mod-column p { margin: 0.5em 0; }
     .mdp-mod-column ul, .mdp-mod-column ol { margin: 0.4em 0; }
   ]]></style>
-  
+
   <script></script>
 </module>

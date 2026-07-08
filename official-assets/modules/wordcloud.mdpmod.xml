@@ -1,0 +1,92 @@
+<module>
+  <name>wordcloud</name>
+  <type>block</type>
+  <description>A word cloud: words sized by weight, auto-coloured and lightly rotated — deterministic (same input → same layout). One "word weight" per line.</description>
+  <tags>media, decoration</tags>
+  <aiSpec><![CDATA[
+A WORD CLOUD — words sized by weight, auto-coloured, a few gently rotated. Layout is
+deterministic (a hash of the word), so it never jumps between renders. Block module:
+one entry per line (sections merged):
+  `word`            weight 1,
+  `word 8`          weight 8 (any positive number; sizes are scaled to the range),
+  `multi word 3`    everything before a trailing number is the phrase.
+Params:
+  `color`    — single colour for every word instead of the auto palette (default "" = palette),
+  `rotate`   — allow a few words to be rotated 90° (default true; false → all horizontal),
+  `scale`    — overall size multiplier for every word (default 1; e.g. 1.4 = bigger),
+  `align`    — horizontal alignment of the flow: left | center (default) | right,
+  `gap`      — spacing between words, CSS gap shorthand (default "6px 4px"),
+  `maxwidth` — max width of the cloud, any CSS length (default "620px").
+Keep to ~30 words.
+
+<!-- @wordcloud scale: 1.3 -->
+AI 10
+Machine Learning 7
+Data 6
+Cloud 4
+Python 3
+<!-- @end -->
+]]></aiSpec>
+  <parameters>
+    <param name="color" type="color" default="" label="Single color (optional)" desc="Use one colour for every word (blank = automatic multi-colour palette)." />
+    <param name="rotate" type="boolean" default="true" label="Allow rotated words" desc="Allow a few words to be rotated 90 degrees (false = all horizontal)." />
+    <param name="scale" type="number" default="1" label="Size scale" desc="Overall size multiplier applied to every word." min="0.3" max="3" step="0.1" />
+    <param name="align" type="select" default="center" label="Alignment" desc="Horizontal alignment of the word flow." options="left,center,right" />
+    <param name="gap" type="text" default="6px 4px" label="Word gap" desc="Spacing between words as a CSS gap shorthand, e.g. 6px 4px." />
+    <param name="maxwidth" type="text" default="620px" label="Max width" desc="Maximum width of the cloud, any CSS length, e.g. 620px or 40em." />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Diagram</category>
+      <label>Word cloud</label>
+      <text><![CDATA[<!-- @wordcloud -->
+AI 10
+Machine Learning 7
+Data 6
+Cloud 4
+Python 3
+Edge 2
+<!-- @end -->]]></text>
+      <description>Words sized by trailing weight number; deterministic layout.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const palette = ['#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#8b5cf6', '#06b6d4', '#ec4899', '#64748b'];
+    const rotate = String(args.rotate) !== 'false';
+    const hash = (s) => { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0; return h; };
+    const words = [];
+    sections.join('\n').split('\n').map((l) => l.trim()).filter(Boolean).forEach((l) => {
+      const m = l.match(/^(.*?)\s+(\d+(?:\.\d+)?)$/);
+      if (m) words.push({ w: m[1].trim(), v: parseFloat(m[2]) });
+      else words.push({ w: l, v: 1 });
+    });
+    if (!words.length) return `<div>(wordcloud: one "word weight" per line)</div>`;
+    const lo = Math.min(...words.map((x) => x.v)), hi = Math.max(...words.map((x) => x.v));
+    const scRaw = parseFloat(args.scale);
+    const sc = Number.isFinite(scRaw) && scRaw > 0 ? scRaw : 1;
+    const size = (v) => (0.85 + (hi === lo ? 0.6 : ((v - lo) / (hi - lo)) * 1.9)) * sc; // em
+    // deterministic interleave: spread big words through the flow
+    const sorted = words.slice().sort((a, b) => b.v - a.v);
+    const arranged = [];
+    sorted.forEach((w, i) => { if (i % 2 === 0) arranged.push(w); else arranged.unshift(w); });
+    const alignKey = String(args.align || 'center').toLowerCase();
+    const justify = alignKey === 'left' ? 'flex-start' : alignKey === 'right' ? 'flex-end' : 'center';
+    const gap = (args.gap || '6px 4px').trim() || '6px 4px';
+    const maxW = (args.maxwidth || '620px').trim() || '620px';
+    let html = `\n\n<div class="mdp-mod-wordcloud" style="--wc-justify:${justify}; --wc-gap:${gap}; --wc-mw:${maxW};">`;
+    arranged.forEach((x) => {
+      const h = hash(x.w);
+      const c = args.color || palette[h % palette.length];
+      const rot = rotate && (h % 5 === 0) ? (h % 2 ? -90 : 90) : 0;
+      const pad = (h % 3) * 4;
+      html += `<span class="mdp-wc-word" style="font-size:${size(x.v).toFixed(2)}em; color:${c}; margin:0 ${4 + pad}px;${rot ? ` writing-mode:vertical-rl;${rot < 0 ? ' transform:rotate(180deg);' : ''}` : ''}">${esc(x.w)}</span>`;
+    });
+    html += `</div>\n\n`;
+    return html;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-wordcloud { display: flex; flex-wrap: wrap; align-items: center; justify-content: var(--wc-justify, center); gap: var(--wc-gap, 6px 4px); margin: 1.2rem auto; max-width: var(--wc-mw, 620px); text-align: center; line-height: 1.15; }
+    .mdp-wc-word { font-weight: 700; white-space: nowrap; }
+  ]]></style>
+</module>

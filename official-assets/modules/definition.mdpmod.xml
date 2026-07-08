@@ -1,16 +1,34 @@
 <module>
   <name>definition</name>
   <type>block</type>
-  <description>Dictionary-style term and definition entry</description>
+  <description>Renders a dictionary/glossary entry: an accent-colored term heading above its definition, with a vertical accent rule beside the definition body.</description>
+  <tags>note, reference</tags>
   <aiSpec><![CDATA[
-Use to present a term and its definition in a dictionary/glossary style with an
-accent-colored heading and a vertical rule beside the body. Block module: the body
-has exactly two sections split by `<!-- @ -->` — the first is the term, the second
-is its definition (ordinary markdown).
+Use to present a term and its definition in a dictionary/glossary style — an
+accent-colored heading with a vertical rule beside the body. Block module: the body
+has exactly two sections split by `<!-- @ -->` — the first is the term, the second is
+its definition (ordinary Markdown). For a comparison of two options use @compare; for
+a plain callout use @callout.
+
+Parameters:
+  • color (color, default var(--accent-color)) — accent for the term heading and rule.
+  • size (select: sm | md | lg, default md) — overall text scale of the entry.
+  • align (select: left | center | right, default left) — text alignment.
+  • boxed (boolean, default false) — wrap the entry in a subtle tinted card with padding.
+
+Example:
+<!-- @definition color: var(--accent-color), boxed: true -->
+Markdown
+<!-- @ -->
+A lightweight markup language for creating formatted text using a plain-text editor.
+<!-- @end -->
 ]]></aiSpec>
 
   <parameters>
-    <param name="color" type="color" default="var(--accent-color)" label="Accent Color" />
+    <param name="color" type="color" default="var(--accent-color)" label="Accent Color" desc="Accent color for the term heading and the vertical rule" />
+    <param name="size" type="select" default="md" label="Size" options="sm:Small,md:Medium,lg:Large" desc="Overall text scale of the entry" />
+    <param name="align" type="select" default="left" label="Alignment" options="left:Left,center:Center,right:Right" desc="Text alignment of the term and definition" />
+    <param name="boxed" type="boolean" default="false" label="Boxed" desc="Wrap the entry in a subtle tinted card with padding" />
   </parameters>
 
   <snippets>
@@ -28,14 +46,25 @@ A lightweight markup language for creating formatted text using a plain-text edi
 
   <render><![CDATA[
     const color = args.color || 'var(--accent-color)';
+    const sizes = { sm: '0.9em', md: '1em', lg: '1.15em' };
+    const size = sizes[String(args.size || 'md').toLowerCase()] || '1em';
+    const aligns = { left: 'left', center: 'center', right: 'right' };
+    const align = aligns[String(args.align || 'left').toLowerCase()] || 'left';
+    const boxed = String(args.boxed) === 'true';
+    const cls = 'mdp-mod-definition' + (boxed ? ' mdp-def-boxed' : '');
     const termStr = sections[0] ? sections[0].trim() : '';
     const defStr = sections[1] ? sections[1].trim() : '';
-    return `\n\n<div class="mdp-mod-definition"><div class="definition-term" style="color: ${color};">\n\n${termStr}\n\n</div><div class="definition-body" style="border-left-color: ${color};">\n\n${defStr}\n\n</div></div>\n\n`;
+    return `\n\n<div class="${cls}" style="--def-color: ${color}; font-size: ${size}; text-align: ${align};"><div class="definition-term" style="color: ${color};">\n\n${termStr}\n\n</div><div class="definition-body" style="border-left-color: ${color};">\n\n${defStr}\n\n</div></div>\n\n`;
   ]]></render>
 
   <style><![CDATA[
     .mdp-mod-definition {
       margin: 1rem 0;
+    }
+    .mdp-mod-definition.mdp-def-boxed {
+      padding: 0.8rem 1rem;
+      background: color-mix(in srgb, var(--def-color, var(--accent-color)) 6%, transparent);
+      border-radius: 8px;
     }
     .mdp-mod-definition .definition-term {
       font-weight: 700;

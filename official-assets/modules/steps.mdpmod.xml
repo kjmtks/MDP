@@ -1,0 +1,100 @@
+<module>
+  <name>steps</name>
+  <type>block</type>
+  <description>Vertical numbered steps with a connecting line (unlike @process, which is a horizontal chevron flow). Body = one section per step.</description>
+  <tags>process, list</tags>
+  <aiSpec><![CDATA[
+A VERTICAL numbered step list — for procedures, how-tos, sequential instructions (use @process
+instead for a compact horizontal pipeline). Block module: split the body with `<!-- @ -->`, one
+section per step, top to bottom. Each step is Markdown (a bold title on the first line then detail
+reads well).
+
+Parameters:
+  `active`  — 1-based numbers of the step(s) to highlight, as a list e.g. [2] (default [] = all shown normally).
+  `start`   — the number the first step counts from (default 1).
+  `color`   — accent colour for numbers, line and highlight (default theme accent).
+  `numsize` — diameter of the number circles in px, 20–60 (default 34).
+  `compact` — true | false (default false): tighter vertical spacing.
+  `line`    — true | false (default true): show the connecting line between steps.
+  `align`   — left | center | right (default left): text alignment of each step's body.
+
+Example:
+<!-- @steps active: [2], numsize: 40, compact: true -->
+**Install** the dependencies with `npm install`.
+<!-- @ -->
+**Configure** your workspace `.mdp`.
+<!-- @ -->
+**Run** the dev server.
+<!-- @end -->
+]]></aiSpec>
+  <parameters>
+    <param name="color" type="color" default="var(--accent-color)" label="Accent color" desc="Numbers, connecting line and highlight." />
+    <param name="start" type="number" default="1" min="0" integer="true" label="Start number" desc="The number the first step counts from." />
+    <param name="active" type="[number]" default="[]" label="Active steps" desc="1-based numbers to highlight, e.g. [2]." />
+    <param name="numsize" type="number" default="34" min="20" max="60" label="Number size (px)" desc="Diameter of the number circles." />
+    <param name="compact" type="boolean" default="false" label="Compact" desc="Tighter vertical spacing." />
+    <param name="line" type="boolean" default="true" label="Connecting line" desc="Show the line between step numbers." />
+    <param name="align" type="select" default="left" options="left,center,right" label="Body align" desc="Text alignment of each step's body." />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Diagrams</category>
+      <label>Numbered steps</label>
+      <text><![CDATA[<!-- @steps active: [1] -->
+**Collect** the data
+<!-- @ -->
+**Clean** and label it
+<!-- @ -->
+**Train** the model
+<!-- @ -->
+**Evaluate** on the test set
+<!-- @end -->]]></text>
+      <description>Vertical numbered steps; `active: [n]` highlights the current step.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const color = args.color || 'var(--accent-color)';
+    const start = parseInt(args.start, 10) || 1;
+    const active = Array.isArray(args.active) ? args.active.map(Number) : [];
+    const compact = String(args.compact) === 'true';
+    const showLine = String(args.line === undefined ? 'true' : args.line) !== 'false';
+    const align = args.align === 'center' ? 'center' : args.align === 'right' ? 'right' : 'left';
+    const numRaw = parseFloat(args.numsize);
+    const numsize = Number.isFinite(numRaw) ? Math.max(20, Math.min(60, numRaw)) : 34;
+    const steps = sections.map((s) => (s || '').trim());
+    let style = `--st-color:${color};--st-num:${numsize}px;`;
+    if (align !== 'left') style += `--st-body-align:${align};`;
+    const cls = 'mdp-mod-steps' + (compact ? ' is-compact' : '') + (showLine ? '' : ' no-line');
+    let html = `\n\n<div class="${cls}" style="${style}">`;
+    let n = start - 1;
+    steps.forEach((s) => {
+      if (!s && steps.length > 1) return;
+      n += 1;
+      const on = active.length === 0 || active.includes(n);
+      html += `<div class="mdp-step${on ? ' is-active' : ''}"><div class="mdp-step-num">${n}</div><div class="mdp-step-body">\n\n${s}\n\n</div></div>`;
+    });
+    html += `</div>\n\n`;
+    return html;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-steps { margin: 1rem 0; }
+    .mdp-step { display: flex; gap: 14px; position: relative; padding-bottom: 16px; }
+    .mdp-step::before {
+      content: ''; position: absolute; left: calc(var(--st-num, 34px) / 2 - 1px); top: var(--st-num, 34px); bottom: -2px;
+      width: 2px; background: var(--st-color); opacity: 0.4;
+    }
+    .mdp-step:last-child::before { display: none; }
+    .mdp-mod-steps.no-line .mdp-step::before { display: none; }
+    .mdp-step-num {
+      flex: 0 0 auto; width: var(--st-num, 34px); height: var(--st-num, 34px); border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: bold; border: 2px solid var(--st-color); color: var(--st-color);
+      background: var(--panel-bg, rgba(255,255,255,0.9)); z-index: 1;
+    }
+    .mdp-step.is-active .mdp-step-num { background: var(--st-color); color: #fff; }
+    .mdp-step-body { padding-top: 4px; min-width: 0; text-align: var(--st-body-align, left); }
+    .mdp-step-body > :first-child { margin-top: 0; }
+    .mdp-step-body > :last-child { margin-bottom: 0; }
+    .mdp-mod-steps.is-compact .mdp-step { padding-bottom: 8px; gap: 10px; }
+  ]]></style>
+</module>

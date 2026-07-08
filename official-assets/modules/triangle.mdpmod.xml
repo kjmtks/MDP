@@ -1,0 +1,97 @@
+<module>
+  <name>triangle</name>
+  <type>block</type>
+  <description>A labeled triangle (SVG): vertex labels, optional side labels, optional right-angle marker and angle arcs. Geometry illustration.</description>
+  <tags>geometry, plots</tags>
+  <aiSpec><![CDATA[
+A labeled TRIANGLE for geometry (SVG). Inline module with NO body — everything is set
+via params. Coordinates live in a 0–100 box where y grows DOWNWARD.
+Params:
+  `points`      — three "x,y" vertex coordinates, space-separated (three pairs)
+                  (default "12,85 88,85 62,15"),
+  `labels`      — vertex labels, comma-separated (default "A,B,C"),
+  `sides`       — side labels, comma-separated, in order AB,BC,CA (optional),
+  `right`       — vertex label that gets a right-angle square marker (optional),
+  `marks`       — vertex labels that get an angle arc, comma-separated (optional),
+  `color`       — line colour (default var(--accent-color)),
+  `fill`        — fill the triangle with a faint tint (default true; false = outline only),
+  `strokewidth` — outline thickness in the 0–100 units (default "1.2"),
+  `maxwidth`    — rendered max width, any CSS length (default "340px").
+
+<!-- @triangle points: 12,85 88,85 88,25, labels: A,B,C, sides: c,a,b, right: B, fill: false -->
+]]></aiSpec>
+  <parameters>
+    <param name="points" type="text" default="12,85 88,85 62,15" label="Vertices (x,y ×3)" desc="Three space-separated x,y pairs in a 0-100 box (y grows downward), e.g. 12,85 88,85 62,15." />
+    <param name="labels" type="text" default="A,B,C" label="Vertex labels" desc="Comma-separated labels for the three vertices, in point order." />
+    <param name="sides" type="text" default="" label="Side labels (AB,BC,CA)" desc="Comma-separated side labels in order AB, BC, CA (blank = none)." />
+    <param name="right" type="text" default="" label="Right angle at" desc="Vertex label to mark with a right-angle square (blank = none)." />
+    <param name="marks" type="text" default="" label="Angle arcs at" desc="Comma-separated vertex labels to mark with an angle arc (blank = none)." />
+    <param name="color" type="color" default="var(--accent-color)" label="Color" desc="Colour of the triangle outline." />
+    <param name="fill" type="boolean" default="true" label="Fill" desc="Fill the triangle with a faint tint (false = outline only)." />
+    <param name="strokewidth" type="text" default="1.2" label="Line thickness" desc="Outline thickness in the 0-100 coordinate units, e.g. 1.2." />
+    <param name="maxwidth" type="text" default="340px" label="Max width" desc="Rendered maximum width, any CSS length, e.g. 340px or 20em." />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Math</category>
+      <label>Right triangle</label>
+      <text><![CDATA[<!-- @triangle points: 12,85 88,85 88,25, labels: A,B,C, sides: c,a,b, right: B -->]]></text>
+      <description>Labeled triangle with side names and a right-angle marker.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const color = args.color || 'var(--accent-color)';
+    const pts = String(args.points || '12,85 88,85 62,15').trim().split(/\s+/).map((p) => p.split(',').map(parseFloat)).filter((p) => p.length === 2 && p.every(Number.isFinite));
+    if (pts.length !== 3) return `<div>(triangle: points must be three "x,y" pairs)</div>`;
+    const labels = String(args.labels || 'A,B,C').split(',').map((s) => s.trim());
+    const sideLabels = String(args.sides || '').split(',').map((s) => s.trim());
+    const marks = String(args.marks || '').split(',').map((s) => s.trim()).filter(Boolean);
+    const cx = (pts[0][0] + pts[1][0] + pts[2][0]) / 3, cy = (pts[0][1] + pts[1][1] + pts[2][1]) / 3;
+    const away = (p, d) => { const dx = p[0] - cx, dy = p[1] - cy, L = Math.hypot(dx, dy) || 1; return [p[0] + dx / L * d, p[1] + dy / L * d]; };
+    const toward = (p, d) => away(p, -d);
+    let svg = `<polygon points="${pts.map((p) => p.join(',')).join(' ')}" class="mdp-tr-shape"/>`;
+    // side labels: midpoint pushed outward
+    for (let i = 0; i < 3; i++) {
+      const lbl = sideLabels[i];
+      if (!lbl) continue;
+      const a = pts[i], b = pts[(i + 1) % 3];
+      const m = away([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], 7);
+      svg += `<text x="${m[0].toFixed(1)}" y="${m[1].toFixed(1)}" class="mdp-tr-side" text-anchor="middle" dominant-baseline="middle"><tspan font-style="italic">${esc(lbl)}</tspan></text>`;
+    }
+    // vertex labels + angle marks
+    for (let i = 0; i < 3; i++) {
+      const p = pts[i];
+      const o = away(p, 8);
+      if (labels[i]) svg += `<text x="${o[0].toFixed(1)}" y="${o[1].toFixed(1)}" class="mdp-tr-vertex" text-anchor="middle" dominant-baseline="middle">${esc(labels[i])}</text>`;
+      const prev = pts[(i + 2) % 3], next = pts[(i + 1) % 3];
+      const u = (q) => { const dx = q[0] - p[0], dy = q[1] - p[1], L = Math.hypot(dx, dy) || 1; return [dx / L, dy / L]; };
+      const u1 = u(prev), u2 = u(next);
+      if (String(args.right || '').trim() === labels[i]) {
+        const k = 8;
+        const c1 = [p[0] + u1[0] * k, p[1] + u1[1] * k], c2 = [p[0] + u2[0] * k, p[1] + u2[1] * k];
+        const c3 = [p[0] + (u1[0] + u2[0]) * k, p[1] + (u1[1] + u2[1]) * k];
+        svg += `<polyline points="${c1[0].toFixed(1)},${c1[1].toFixed(1)} ${c3[0].toFixed(1)},${c3[1].toFixed(1)} ${c2[0].toFixed(1)},${c2[1].toFixed(1)}" class="mdp-tr-right"/>`;
+      } else if (marks.includes(labels[i])) {
+        const r = 10;
+        const a1 = [p[0] + u1[0] * r, p[1] + u1[1] * r], a2 = [p[0] + u2[0] * r, p[1] + u2[1] * r];
+        const cross = u1[0] * u2[1] - u1[1] * u2[0];
+        svg += `<path d="M${a1[0].toFixed(1)},${a1[1].toFixed(1)} A${r},${r} 0 0 ${cross > 0 ? 1 : 0} ${a2[0].toFixed(1)},${a2[1].toFixed(1)}" class="mdp-tr-arc"/>`;
+      }
+    }
+    const fill = String(args.fill) !== 'false';
+    const strokeW = (args.strokewidth || '1.2').trim() || '1.2';
+    const maxW = (args.maxwidth || '340px').trim() || '340px';
+    const cls = 'mdp-mod-triangle' + (fill ? '' : ' mdp-tr-nofill');
+    return `\n\n<div class="${cls}" style="--tr-c:${color}; --tr-sw:${strokeW}; --tr-mw:${maxW};"><svg viewBox="-6 -6 112 112" preserveAspectRatio="xMidYMid meet">${svg}</svg></div>\n\n`;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-triangle { width: min(100%, var(--tr-mw, 340px)); margin: 1rem auto; }
+    .mdp-mod-triangle svg { width: 100%; height: auto; overflow: visible; }
+    .mdp-tr-shape { fill: color-mix(in srgb, var(--tr-c) 10%, transparent); stroke: var(--tr-c); stroke-width: var(--tr-sw, 1.2); stroke-linejoin: round; }
+    .mdp-tr-nofill .mdp-tr-shape { fill: none; }
+    .mdp-tr-vertex { fill: currentColor; font-size: 6px; font-weight: 700; }
+    .mdp-tr-side { fill: currentColor; font-size: 5.5px; }
+    .mdp-tr-right, .mdp-tr-arc { fill: none; stroke: currentColor; stroke-width: 0.8; }
+  ]]></style>
+</module>

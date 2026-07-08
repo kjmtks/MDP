@@ -1,18 +1,42 @@
 <module>
   <name>compare</name>
   <type>block</type>
-  <description>Layout to compare two elements (e.g., Plan A vs Plan B) side by side.</description>
+  <description>Two labelled panels side by side (e.g. Plan A vs Plan B) with a circular "VS" badge between them.</description>
+  <tags>comparison, columns</tags>
   <aiSpec><![CDATA[
-Use to contrast two options side by side with a "VS" badge between them (e.g.
-Plan A vs Plan B, old vs new). Block module: the body has exactly two sections
-split by `<!-- @ -->` — the first is the left panel, the second the right panel.
-Panel titles and colors come from parameters (left_title / right_title).
+Use to contrast two options side by side with a "VS" badge between them (e.g. Plan A
+vs Plan B, old vs new, before vs after). Block module: the body has exactly two
+sections split by `<!-- @ -->` — the first is the left panel, the second the right
+panel (each ordinary Markdown). Panel titles/colors come from parameters. For a
+multi-row feature checklist use @comparetable; for more than two even panels use
+@columns.
+
+Parameters:
+  • left_title (text, default "Conventional Method") — heading of the left panel.
+  • right_title (text, default "Proposed Method") — heading of the right panel.
+  • color_left (color, default #95a5a6) — accent (border + header) of the left panel.
+  • color_right (color, default var(--accent-color)) — accent of the right panel.
+  • vs (text, default "VS") — text inside the center badge.
+  • badge_color (color, default #333) — background color of the center badge.
+  • layout (select: side | stacked, default side) — panels side by side or stacked vertically.
+  • radius (CSS length, default 8px) — corner radius of the panels.
+
+Example:
+<!-- @compare left_title: Plan A, right_title: Plan B, vs: OR, badge_color: #2563eb -->
+Low cost but takes time.
+<!-- @ -->
+High initial cost but highly efficient in the long run.
+<!-- @end -->
 ]]></aiSpec>
   <parameters>
-    <param name="left_title" type="text" default="Conventional Method" label="Left Title" />
-    <param name="right_title" type="text" default="Proposed Method" label="Right Title" />
-    <param name="color_left" type="color" default="#95a5a6" label="Left Color" />
-    <param name="color_right" type="color" default="var(--accent-color)" label="Right Color" />
+    <param name="left_title" type="text" default="Conventional Method" label="Left Title" desc="Heading of the left panel" />
+    <param name="right_title" type="text" default="Proposed Method" label="Right Title" desc="Heading of the right panel" />
+    <param name="color_left" type="color" default="#95a5a6" label="Left Color" desc="Accent (border and header) of the left panel" />
+    <param name="color_right" type="color" default="var(--accent-color)" label="Right Color" desc="Accent (border and header) of the right panel" />
+    <param name="vs" type="text" default="VS" label="Badge text" desc="Text inside the center badge" />
+    <param name="badge_color" type="color" default="#333" label="Badge color" desc="Background color of the center badge" />
+    <param name="layout" type="select" default="side" label="Layout" options="side:Side by side,stacked:Stacked" desc="Panels side by side or stacked vertically" />
+    <param name="radius" type="text" default="8px" label="Corner radius" desc="CSS length for the panel corner radius (e.g. 8px)" />
   </parameters>
   <snippets>
     <snippet>
@@ -27,15 +51,20 @@ High initial cost but highly efficient in the long run.
     </snippet>
   </snippets>
   <render><![CDATA[
+    const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     const leftTitle = args.left_title || 'A';
     const rightTitle = args.right_title || 'B';
     const colorLeft = args.color_left || '#95a5a6';
     const colorRight = args.color_right || 'var(--accent-color)';
+    const vs = (args.vs !== undefined && String(args.vs) !== '') ? esc(String(args.vs)) : 'VS';
+    const badgeColor = args.badge_color || '#333';
+    const dir = String(args.layout || 'side').toLowerCase() === 'stacked' ? 'column' : 'row';
+    const radius = args.radius || '8px';
     const leftContent = sections[0] ? sections[0].trim() : '';
     const rightContent = sections[1] ? sections[1].trim() : '';
     return `\n\n
-<div class="mdp-mod-compare">
-<div class="mdp-compare-col mdp-compare-left" style="--comp-color: ${colorLeft};">
+<div class="mdp-mod-compare" style="flex-direction: ${dir};">
+<div class="mdp-compare-col mdp-compare-left" style="--comp-color: ${colorLeft}; --comp-radius: ${radius};">
 <div class="mdp-compare-header">${leftTitle}</div>
 <div class="mdp-compare-body">
 
@@ -43,8 +72,8 @@ ${leftContent}
 
 </div>
 </div>
-<div class="mdp-compare-vs">VS</div>
-<div class="mdp-compare-col mdp-compare-right" style="--comp-color: ${colorRight};">
+<div class="mdp-compare-vs" style="background: ${badgeColor};">${vs}</div>
+<div class="mdp-compare-col mdp-compare-right" style="--comp-color: ${colorRight}; --comp-radius: ${radius};">
 <div class="mdp-compare-header">${rightTitle}</div>
 <div class="mdp-compare-body">
 
@@ -66,7 +95,7 @@ ${rightContent}
     .mdp-compare-col {
       flex: 1;
       border: 2px solid var(--comp-color);
-      border-radius: 8px;
+      border-radius: var(--comp-radius, 8px);
       background: var(--bg-color);
       overflow: hidden;
       display: flex;

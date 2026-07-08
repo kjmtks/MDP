@@ -1,17 +1,44 @@
 <module>
   <name>grid</name>
   <type>block</type>
-  <description>Responsive equal card grid</description>
+  <description>A responsive grid of equal-sized content cards; one card per body section.</description>
+  <tags>grid, grouping</tags>
   <aiSpec><![CDATA[
-Use to lay out several equal-sized content cards in a responsive grid. Block
-module: split the body with `<!-- @ -->` — one section per card. Each section is
-ordinary markdown (e.g. a bold heading line plus body text). Set `columns` for the
-grid width; collapses to one column on narrow screens.
+Lay out several equal-sized content cards in a responsive grid — feature tiles,
+comparison points, a set of parallel notes. Block module: split the body with
+`<!-- @ -->`, one section per card. Each section is ordinary Markdown (e.g. a bold
+heading line then body text). The grid collapses to a single column on narrow
+screens. For an icon-led list use @iconlist instead; for status columns use @kanban.
+
+Parameters:
+  - `columns`: number of columns (1-6, default 3).
+  - `gap`: CSS length between cards (default 1rem).
+  - `cardstyle` (card|plain|outline, default card): card = filled panel with border
+    and shadow; outline = border only, no shadow; plain = no box (bare content).
+  - `align` (left|center|right, default left): text alignment inside the cards.
+  - `padding`: CSS padding inside each card (default 14px 16px).
+  - `radius`: CSS corner radius of the cards (default var(--radius-sm)).
+
+Example:
+<!-- @grid columns: 3, cardstyle: outline, align: center -->
+**Fast**
+Sub-second builds.
+<!-- @ -->
+**Secure**
+Local, token auth.
+<!-- @ -->
+**Offline**
+No CDN required.
+<!-- @end -->
 ]]></aiSpec>
 
   <parameters>
-    <param name="columns" type="number" default="3" label="Columns" desc="Number of columns in the card grid" min="1" max="6" integer="true" />
-    <param name="gap" type="text" default="1rem" label="Gap" desc="CSS length between cards, e.g. 1rem or 16px" />
+    <param name="columns" type="number" default="3" label="Columns" desc="Number of columns in the card grid." min="1" max="6" integer="true" />
+    <param name="gap" type="text" default="1rem" label="Gap" desc="CSS length between cards, e.g. 1rem or 16px." />
+    <param name="cardstyle" type="select" default="card" label="Card style" desc="card = filled panel; outline = border only; plain = no box." options="card:Card,outline:Outline,plain:Plain" />
+    <param name="align" type="select" default="left" label="Text align" desc="Text alignment inside each card." options="left:Left,center:Center,right:Right" />
+    <param name="padding" type="text" default="14px 16px" label="Card padding" desc="CSS padding inside each card, e.g. 14px 16px." />
+    <param name="radius" type="text" default="" label="Corner radius" desc="CSS corner radius of the cards; blank = theme default." />
   </parameters>
 
   <snippets>
@@ -33,9 +60,14 @@ Content of the third card.
   </snippets>
 
   <render><![CDATA[
-    const columns = parseInt(args.columns, 10) || 3;
+    const columns = Math.max(1, Math.min(6, parseInt(args.columns, 10) || 3));
     const gap = args.gap || '1rem';
-    let html = `\n\n<div class="mdp-mod-grid" style="grid-template-columns: repeat(${columns}, minmax(0, 1fr)); gap: ${gap};">\n`;
+    const style = String(args.cardstyle || 'card').toLowerCase();
+    const styleClass = style === 'plain' ? ' mdp-grid-plain' : style === 'outline' ? ' mdp-grid-outline' : '';
+    const align = String(args.align || 'left').toLowerCase();
+    const pad = (args.padding && String(args.padding).trim()) || '14px 16px';
+    const radius = (args.radius && String(args.radius).trim()) || 'var(--radius-sm, 8px)';
+    let html = `\n\n<div class="mdp-mod-grid${styleClass}" style="grid-template-columns: repeat(${columns}, minmax(0, 1fr)); gap: ${gap}; text-align: ${align}; --grid-pad: ${pad}; --grid-radius: ${radius};">\n`;
     sections.forEach((section) => {
       const contentStr = section.trim();
       if (!contentStr) return;
@@ -57,12 +89,19 @@ Content of the third card.
     .mdp-mod-grid-card {
       background-color: var(--panel-bg, #ffffff);
       border: 1px solid var(--panel-border, var(--border-color, #e5e7eb));
-      border-radius: var(--radius-sm, 8px);
+      border-radius: var(--grid-radius, var(--radius-sm, 8px));
       box-shadow: var(--shadow-sm, 0 1px 4px rgba(0,0,0,0.08));
-      padding: 14px 16px;
+      padding: var(--grid-pad, 14px 16px);
       min-width: 0;
       color: var(--panel-text, var(--text-color, #1f2937));
       font-size: 0.95em;
+    }
+    .mdp-mod-grid.mdp-grid-outline .mdp-mod-grid-card { box-shadow: none; }
+    .mdp-mod-grid.mdp-grid-plain .mdp-mod-grid-card {
+      background: none;
+      border: none;
+      box-shadow: none;
+      padding: 0;
     }
     .mdp-mod-grid-card > :first-child { margin-top: 0; }
     .mdp-mod-grid-card > :last-child { margin-bottom: 0; }

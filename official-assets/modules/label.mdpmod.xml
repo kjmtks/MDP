@@ -1,16 +1,33 @@
 <module>
   <name>label</name>
   <type>block</type>
-  <description>An outlined tag/label. The text is the block body (spaces / commas / inline Markdown allowed). Renders inline.</description>
+  <description>An outlined pill-shaped tag/badge; the body text is the label. Block module that renders inline.</description>
+  <tags>badge, inline</tags>
   <aiSpec><![CDATA[
-A small pill-shaped tag/badge (e.g. New, Beta, v2.0). The body text is the
-label content; it may contain spaces, commas and inline Markdown. Renders
-inline despite being a block module, so it flows within a heading or sentence.
-Set `color` to tint the text and outline.
+A small pill-shaped tag/badge (e.g. New, Beta, v2.0). The body text (between the
+directive and `<!-- @end -->`) is the label content; it may contain spaces, commas
+and inline Markdown. Renders inline despite being a block module, so it flows within
+a heading or sentence. Use @kbd for keyboard keys instead.
+
+Parameters:
+  - `color`: text/border colour, and fill colour when `fill` is on (any CSS colour;
+    default var(--accent-color)).
+  - `fill` (true|false, default false): solid filled badge (white text on the colour)
+    instead of the outlined transparent style.
+  - `size` (small|medium|large, default medium): badge text size.
+  - `shape` (pill|rounded|square, default pill): corner rounding.
+
+Example:
+<!-- @label color: #ef4444, fill: true, size: small -->
+Beta
+<!-- @end -->
 ]]></aiSpec>
 
   <parameters>
-    <param name="color" type="color" default="var(--accent-color)" label="Color" desc="Text and border color" />
+    <param name="color" type="color" default="var(--accent-color)" label="Color" desc="Text and border colour (fill colour when Fill is on)." />
+    <param name="fill" type="boolean" default="false" label="Fill" desc="Solid filled badge instead of an outline." />
+    <param name="size" type="select" default="medium" label="Size" desc="Badge text size." options="small:Small,medium:Medium,large:Large" />
+    <param name="shape" type="select" default="pill" label="Shape" desc="Corner rounding of the badge." options="pill:Pill,rounded:Rounded,square:Square" />
   </parameters>
 
   <snippets>
@@ -27,7 +44,12 @@ New
   <render inline="true"><![CDATA[
     const body = sections[0] ? sections[0].trim() : '';
     const color = (args.color && String(args.color).trim()) || 'var(--accent-color)';
-    return '<span class="mdp-mod-label" style="color: ' + color + '; border-color: ' + color + ';">' + body + '</span>';
+    const fill = String(args.fill) === 'true';
+    const fs = { small: '0.7em', medium: '0.8em', large: '0.95em' }[String(args.size || 'medium').toLowerCase()] || '0.8em';
+    const rad = { pill: '9999px', rounded: '6px', square: '2px' }[String(args.shape || 'pill').toLowerCase()] || '9999px';
+    let style = 'font-size: ' + fs + '; border-radius: ' + rad + '; border-color: ' + color + '; ';
+    style += fill ? ('color: #fff; background-color: ' + color + ';') : ('color: ' + color + '; background-color: transparent;');
+    return '<span class="mdp-mod-label" style="' + style + '">' + body + '</span>';
   ]]></render>
 
   <style><![CDATA[

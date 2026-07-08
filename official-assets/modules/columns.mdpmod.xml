@@ -1,17 +1,37 @@
 <module>
   <name>columns</name>
   <type>block</type>
-  <description>A simple even N-column text layout</description>
+  <description>Lays the body out in evenly sized side-by-side columns, one column per body section, wrapping to a single column on narrow screens.</description>
+  <tags>columns, grouping</tags>
   <aiSpec><![CDATA[
-Lay out content in evenly sized side-by-side columns. Block module: split the body
+Lay content out in evenly sized side-by-side columns. Block module: split the body
 into columns with `<!-- @ -->` — one section per column. Each section is ordinary
-markdown (text, lists, images, even other modules). Wraps to one column on narrow
-screens. If `count` is omitted it uses the number of sections.
+Markdown (text, lists, images, even other modules). Columns wrap to one column on
+narrow screens. If `count` is omitted the number of non-empty sections is used. This
+is a plain even-width layout; for a labelled two-panel A-vs-B contrast use @compare.
+
+Parameters:
+  • count (number 1..6, default = number of sections) — how many equal columns.
+  • gap (CSS length, default 1.5rem) — horizontal space between columns.
+  • valign (select: top | center | stretch, default stretch) — vertical alignment of
+    columns relative to the tallest one.
+  • align (select: left | center | right, default left) — text alignment inside columns.
+  • divider (boolean, default false) — draw a thin rule between adjacent columns.
+
+Example:
+<!-- @columns count: 2, gap: 2rem, divider: true -->
+Left column content.
+<!-- @ -->
+Right column content.
+<!-- @end -->
 ]]></aiSpec>
 
   <parameters>
-    <param name="count" type="number" default="2" label="Columns" desc="Number of columns" min="1" max="6" integer="true" />
+    <param name="count" type="number" default="2" label="Columns" desc="Number of equal columns (defaults to the section count)" min="1" max="6" integer="true" />
     <param name="gap" type="text" default="1.5rem" label="Gap" desc="CSS length between columns (e.g. 1.5rem)" />
+    <param name="valign" type="select" default="stretch" label="Vertical align" options="top:Top,center:Center,stretch:Stretch" desc="Vertical alignment of columns relative to the tallest" />
+    <param name="align" type="select" default="left" label="Text align" options="left:Left,center:Center,right:Right" desc="Text alignment inside each column" />
+    <param name="divider" type="boolean" default="false" label="Divider" desc="Draw a thin rule between adjacent columns" />
   </parameters>
 
   <snippets>
@@ -29,10 +49,16 @@ Right column content.
 
   <render><![CDATA[
     const gap = args.gap || '1.5rem';
+    const valigns = { top: 'flex-start', center: 'center', stretch: 'stretch' };
+    const valign = valigns[String(args.valign || 'stretch').toLowerCase()] || 'stretch';
+    const aligns = { left: 'left', center: 'center', right: 'right' };
+    const align = aligns[String(args.align || 'left').toLowerCase()] || 'left';
+    const divided = String(args.divider) === 'true';
     const items = sections.filter(function (s) { return s.trim().length > 0; });
     const count = parseInt(args.count, 10) || items.length || 2;
     const basis = (100 / count);
-    let html = `\n\n<div class="mdp-mod-columns" style="gap: ${gap};">\n`;
+    const cls = 'mdp-mod-columns' + (divided ? ' mdp-cols-divided' : '');
+    let html = `\n\n<div class="${cls}" style="gap: ${gap}; align-items: ${valign}; text-align: ${align};">\n`;
     items.forEach(function (section) {
       const contentStr = section.trim();
       html += `<div class="mdp-mod-columns-col" style="flex: 0 0 calc(${basis}% - ${gap}); max-width: calc(${basis}% - ${gap});">\n\n${contentStr}\n\n</div>`;
@@ -53,6 +79,10 @@ Right column content.
     }
     .mdp-mod-columns-col > :first-child { margin-top: 0; }
     .mdp-mod-columns-col > :last-child { margin-bottom: 0; }
+    .mdp-mod-columns.mdp-cols-divided .mdp-mod-columns-col + .mdp-mod-columns-col {
+      border-left: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+      padding-left: inherit;
+    }
     @media (max-width: 700px) {
       .mdp-mod-columns-col {
         flex: 0 0 100% !important;

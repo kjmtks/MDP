@@ -1,0 +1,78 @@
+<module>
+  <name>derivation</name>
+  <type>block</type>
+  <description>A step-by-step derivation: a column of expressions with a reason next to each step. Body = one step per section, "expr | reason".</description>
+  <tags>equations, proofs</tags>
+  <aiSpec><![CDATA[
+A step-by-step DERIVATION / calculation — each line is an expression with the reason
+for that step beside it. Block module: split the body with `<!-- @ -->`, one step per
+section written `expression | reason` (the reason is optional). Write the expression
+as inline math with \( \); usually each line after the first starts with `=`.
+
+Parameters:
+  • color (color, default var(--accent-color)) — color of the reason text (and step numbers).
+  • size (select: sm | md | lg, default md) — overall text scale.
+  • numbered (boolean, default false) — prefix each step with an equation number (1), (2)…
+  • hlast (boolean, default false) — emphasize (bold) the final step as the result.
+
+Example:
+<!-- @derivation numbered: true, hlast: true -->
+\((a+b)^2\) | expand
+<!-- @ -->
+\(= a^2 + 2ab + b^2\) | binomial
+<!-- @end -->
+]]></aiSpec>
+  <parameters>
+    <param name="color" type="color" default="var(--accent-color)" label="Reason color" desc="Color of the reason text and step numbers" />
+    <param name="size" type="select" default="md" label="Size" options="sm:Small,md:Medium,lg:Large" desc="Overall text scale" />
+    <param name="numbered" type="boolean" default="false" label="Numbered" desc="Prefix each step with an equation number (1), (2)…" />
+    <param name="hlast" type="boolean" default="false" label="Highlight result" desc="Emphasize (bold) the final step as the result" />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Math</category>
+      <label>Derivation (steps + reasons)</label>
+      <text><![CDATA[<!-- @derivation -->
+\(\frac{d}{dx}(x^2 \sin x)\) | product rule
+<!-- @ -->
+\(= 2x \sin x + x^2 \cos x\) | differentiate
+<!-- @end -->]]></text>
+      <description>Aligned steps; each section is "expression | reason" (reason optional).</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const color = args.color || 'var(--accent-color)';
+    const sizes = { sm: '0.9em', md: '1em', lg: '1.15em' };
+    const size = sizes[String(args.size || 'md').toLowerCase()] || '1em';
+    const numbered = String(args.numbered) === 'true';
+    const hlast = String(args.hlast) === 'true';
+    const steps = sections.map((s) => (s || '').trim()).filter(Boolean);
+    const cls = 'mdp-mod-derivation' + (numbered ? ' mdp-dv-numbered' : '') + (hlast ? ' mdp-dv-hlast' : '');
+    let html = `\n\n<div class="${cls}" style="--dv-color:${color}; font-size:${size};">`;
+    steps.forEach((st) => {
+      const idx = st.lastIndexOf('|');
+      const expr = (idx >= 0 ? st.slice(0, idx) : st).trim();
+      const reason = idx >= 0 ? st.slice(idx + 1).trim() : '';
+      html += `<div class="mdp-dv-row"><div class="mdp-dv-expr">\n\n${expr}\n\n</div><div class="mdp-dv-reason">${reason ? esc(reason) : ''}</div></div>`;
+    });
+    html += `</div>\n\n`;
+    return html;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-derivation { margin: 1rem 0; display: grid; grid-template-columns: 1fr auto; gap: 6px 22px; align-items: baseline; }
+    .mdp-dv-row { display: contents; }
+    .mdp-dv-expr { }
+    .mdp-dv-expr > :first-child { margin: 0; }
+    .mdp-dv-reason { color: var(--dv-color); font-size: 0.85em; text-align: right; white-space: nowrap; }
+    .mdp-dv-reason:not(:empty)::before { content: '('; }
+    .mdp-dv-reason:not(:empty)::after { content: ')'; }
+    .mdp-mod-derivation.mdp-dv-numbered { counter-reset: mdp-dv-step; }
+    .mdp-mod-derivation.mdp-dv-numbered .mdp-dv-expr::before {
+      counter-increment: mdp-dv-step;
+      content: '(' counter(mdp-dv-step) ') ';
+      color: var(--dv-color); font-size: 0.85em; margin-right: 0.3em;
+    }
+    .mdp-mod-derivation.mdp-dv-hlast .mdp-dv-row:last-child .mdp-dv-expr { font-weight: 700; }
+  ]]></style>
+</module>

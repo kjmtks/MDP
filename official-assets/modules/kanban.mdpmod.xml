@@ -1,0 +1,88 @@
+<module>
+  <name>kanban</name>
+  <type>block</type>
+  <description>Kanban board — columns of cards (To do / Doing / Done). Body = one section per column; each column's first line is its title, then a bullet list of cards.</description>
+  <tags>grouping, list</tags>
+  <aiSpec><![CDATA[
+A KANBAN BOARD — labelled columns holding cards, for status, workstreams or a
+backlog. Block module: split the body with `<!-- @ -->`, one section per COLUMN. In a
+column, the FIRST line is the column title and each following bullet (`- ...`) is a
+card (Markdown). For a plain equal card grid use @grid; for an icon list use @iconlist.
+
+Parameters:
+  - `color`: header accent colour (any CSS colour; default var(--accent-color)).
+  - `gap`: CSS gap between columns (default 12px).
+  - `compact` (true|false, default false): tighter padding and smaller cards.
+  - `align` (center|left|right, default center): alignment of the column titles.
+
+Example:
+<!-- @kanban color: #3b82f6, compact: true -->
+To do
+- Spec the API
+- Draft the UI
+<!-- @ -->
+In progress
+- Auth flow
+<!-- @ -->
+Done
+- Project setup
+<!-- @end -->
+]]></aiSpec>
+  <parameters>
+    <param name="color" type="color" default="var(--accent-color)" label="Header accent" desc="Accent colour of the column titles and card borders." />
+    <param name="gap" type="text" default="12px" label="Column gap" desc="CSS gap between columns, e.g. 12px or 1rem." />
+    <param name="compact" type="boolean" default="false" label="Compact" desc="Tighter padding and smaller card text." />
+    <param name="align" type="select" default="center" label="Title align" desc="Alignment of the column titles." options="center:Center,left:Left,right:Right" />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Presentation UI</category>
+      <label>Kanban board</label>
+      <text><![CDATA[<!-- @kanban -->
+To do
+- Spec the API
+- Draft the UI
+<!-- @ -->
+In progress
+- **Auth** flow
+<!-- @ -->
+Done
+- Project setup
+<!-- @end -->]]></text>
+      <description>Columns of cards; first line of each section = column title, bullets = cards.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const color = args.color || 'var(--accent-color)';
+    const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const gap = (args.gap && String(args.gap).trim()) || '12px';
+    const compact = String(args.compact) === 'true';
+    const al = String(args.align || 'center').toLowerCase();
+    const align = al === 'left' ? 'left' : al === 'right' ? 'right' : 'center';
+    const cls = 'mdp-mod-kanban' + (compact ? ' mdp-kb-compact' : '');
+    const cols = sections.map((s) => (s || '').trim()).filter(Boolean);
+    let html = `\n\n<div class="${cls}" style="--kb-color:${color}; --kb-align:${align}; gap:${gap};">`;
+    cols.forEach((c) => {
+      const lines = c.split('\n');
+      const title = (lines.shift() || '').replace(/^#+\s*/, '').trim();
+      const body = lines.join('\n').trim();
+      html += `<div class="mdp-kb-col"><div class="mdp-kb-title">${esc(title)}</div><div class="mdp-kb-cards">\n\n${body}\n\n</div></div>`;
+    });
+    html += `</div>\n\n`;
+    return html;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-kanban { margin: 1rem 0; display: flex; gap: 12px; align-items: flex-start; overflow-x: auto; }
+    .mdp-kb-col { flex: 1 1 0; min-width: 8em; background: color-mix(in srgb, var(--kb-color) 6%, transparent); border-radius: 8px; padding: 8px; }
+    .mdp-kb-title { font-weight: 700; color: var(--kb-color); text-align: var(--kb-align, center); padding: 4px; border-bottom: 2px solid var(--kb-color); margin-bottom: 8px; }
+    .mdp-kb-cards ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+    .mdp-kb-cards li {
+      background: var(--panel-bg, rgba(255,255,255,0.9)); border: 1px solid color-mix(in srgb, var(--kb-color) 25%, transparent);
+      border-radius: 6px; padding: 6px 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.12); font-size: 0.9em;
+    }
+    .mdp-kb-cards > :first-child { margin-top: 0; } .mdp-kb-cards > :last-child { margin-bottom: 0; }
+    .mdp-mod-kanban.mdp-kb-compact .mdp-kb-col { padding: 5px; min-width: 6.5em; }
+    .mdp-mod-kanban.mdp-kb-compact .mdp-kb-cards li { padding: 4px 6px; font-size: 0.8em; }
+    .mdp-mod-kanban.mdp-kb-compact .mdp-kb-cards ul { gap: 4px; }
+  ]]></style>
+</module>

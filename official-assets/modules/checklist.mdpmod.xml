@@ -1,15 +1,36 @@
 <module>
   <name>checklist</name>
   <type>block</type>
-  <description>A markdown list rendered as a styled checklist</description>
+  <description>Renders an ordinary Markdown bullet list as a styled checklist, each item prefixed with a colored checkmark square.</description>
+  <tags>list</tags>
   <aiSpec><![CDATA[
-Use to present a list of tasks or steps as a checklist with colored checkmark
-squares. Block module: the body is a single ordinary markdown bullet list — each
-list item becomes one checked row. Write normal `-` bullets between the tags.
+Use to present tasks, steps or requirements as a checklist where every item gets a
+colored checkmark square. Block module: the body is a single ordinary Markdown
+bullet list — write normal `-` bullets, one per line, and each list item becomes one
+checked row (nested bullets are kept). Not for interactive/tickable to-dos and not
+for a numbered sequence — use @process or @steps for an ordered workflow.
+
+Parameters:
+  • color (color, default var(--accent-color)) — fill color of the checkmark squares.
+  • shape (select: rounded | square | circle, default rounded) — corner style of the
+    marks; rounded ≈ 4px radius, square = sharp, circle = round dot.
+  • size (select: sm | md | lg, default md) — overall text/mark scale.
+  • align (select: left | center | right, default left) — horizontal alignment of the rows.
+
+Example:
+<!-- @checklist color: #16a34a, shape: circle, size: lg -->
+- Define the goal
+- Gather the requirements
+- Build the prototype
+- Review and ship
+<!-- @end -->
 ]]></aiSpec>
 
   <parameters>
-    <param name="color" type="color" default="var(--accent-color)" label="Mark Color" desc="Color of the checkmark squares" />
+    <param name="color" type="color" default="var(--accent-color)" label="Mark Color" desc="Fill color of the checkmark squares" />
+    <param name="shape" type="select" default="rounded" label="Mark shape" options="rounded:Rounded,square:Square,circle:Circle" desc="Corner style of the checkmark marks" />
+    <param name="size" type="select" default="md" label="Size" options="sm:Small,md:Medium,lg:Large" desc="Overall text and mark scale" />
+    <param name="align" type="select" default="left" label="Alignment" options="left:Left,center:Center,right:Right" desc="Horizontal alignment of the rows" />
   </parameters>
 
   <snippets>
@@ -28,8 +49,14 @@ list item becomes one checked row. Write normal `-` bullets between the tags.
 
   <render><![CDATA[
     const color = args.color || 'var(--accent-color)';
+    const shapes = { rounded: '4px', square: '0', circle: '50%' };
+    const radius = shapes[String(args.shape || 'rounded').toLowerCase()] || '4px';
+    const sizes = { sm: '0.85em', md: '1em', lg: '1.2em' };
+    const size = sizes[String(args.size || 'md').toLowerCase()] || '1em';
+    const aligns = { left: 'left', center: 'center', right: 'right' };
+    const align = aligns[String(args.align || 'left').toLowerCase()] || 'left';
     const contentStr = sections[0] ? sections[0].trim() : '';
-    return `\n\n<div class="mdp-mod-checklist" style="--checklist-mark: ${color};">\n\n${contentStr}\n\n</div>\n\n`;
+    return `\n\n<div class="mdp-mod-checklist" style="--checklist-mark: ${color}; --checklist-radius: ${radius}; font-size: ${size}; text-align: ${align};">\n\n${contentStr}\n\n</div>\n\n`;
   ]]></render>
 
   <style><![CDATA[
@@ -59,7 +86,7 @@ list item becomes one checked row. Write normal `-` bullets between the tags.
       font-weight: 700;
       color: #ffffff;
       background-color: var(--checklist-mark, var(--accent-color, #3b82f6));
-      border-radius: 4px;
+      border-radius: var(--checklist-radius, 4px);
       font-size: 0.85em;
     }
   ]]></style>

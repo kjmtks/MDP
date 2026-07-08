@@ -1,0 +1,98 @@
+<module>
+  <name>matmul</name>
+  <type>block</type>
+  <description>Matrix multiplication A × B = C, computed and drawn as three grids with one row of A, one column of B and the resulting cell highlighted.</description>
+  <tags>matrices, equations</tags>
+  <aiSpec><![CDATA[
+MATRIX MULTIPLICATION visualised: give A and B, it computes C = A×B and draws all three
+as grids, highlighting row i of A, column j of B and cell C[i][j] to show how one entry
+is formed. Use this to TEACH the row-by-column dot-product; for plain static matrices use
+@matrix-free math (KaTeX) instead.
+Block module body: split by <!-- @ --> into exactly two sections:
+  • FIRST section = matrix A: one row per line, numbers separated by spaces or commas,
+  • SECOND section = matrix B (A's number of columns must equal B's number of rows).
+Parameters:
+  • row — which 1-based row of A to highlight (integer, default 1; 0 = disable highlighting).
+  • col — which 1-based column of B to highlight (integer, default 1; 0 = disable).
+  • color — highlight color (default var(--accent-color)).
+  • decimals — max decimal places for displayed numbers (0-10, default 4; trailing zeros trimmed).
+  • showwork — show the "c_ij = a·b + … = value" working line below (true/false, default true).
+  • scale — overall size multiplier of the diagram (0.5-2.5, default 1).
+  • op — the operator symbol drawn between A and B (× · or *, default ×).
+
+<!-- @matmul row: 1, col: 2, decimals: 2 -->
+1 2
+3 4
+<!-- @ -->
+5 6
+7 8
+<!-- @end -->
+]]></aiSpec>
+  <parameters>
+    <param name="row" type="number" default="1" label="Highlight row of A (0=off)" desc="1-based row of A to highlight; 0 disables highlighting." integer="true" min="0" max="99" />
+    <param name="col" type="number" default="1" label="Highlight col of B (0=off)" desc="1-based column of B to highlight; 0 disables highlighting." integer="true" min="0" max="99" />
+    <param name="color" type="color" default="var(--accent-color)" label="Highlight color" desc="Color used to highlight the row, column and result cell." />
+    <param name="decimals" type="number" default="4" label="Decimals" desc="Maximum decimal places shown in cells (trailing zeros are trimmed)." integer="true" min="0" max="10" />
+    <param name="showwork" type="boolean" default="true" label="Show working line" desc="Show the dot-product working (c_ij = … = value) under the grids." />
+    <param name="scale" type="number" default="1" label="Scale" desc="Overall size multiplier of the whole diagram." min="0.5" max="2.5" step="0.1" />
+    <param name="op" type="select" default="×" label="Operator symbol" desc="Symbol drawn between matrix A and matrix B." options="×:× (times),·:· (dot),*:* (asterisk)" />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Math</category>
+      <label>Matrix multiplication</label>
+      <text><![CDATA[<!-- @matmul row: 1, col: 2 -->
+1 2
+3 4
+<!-- @ -->
+5 6
+7 8
+<!-- @end -->]]></text>
+      <description>A × B = C computed and drawn, one row/column/cell highlighted.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const parse = (s) => String(s || '').trim().split('\n').map((l) => l.trim()).filter(Boolean)
+      .map((l) => l.split(/[\s,]+/).map(parseFloat).filter(Number.isFinite)).filter((r) => r.length);
+    const secs = sections.map((s) => (s || '').trim()).filter(Boolean);
+    if (secs.length < 2) return `<div>(matmul: two sections — matrix A, then matrix B)</div>`;
+    const A = parse(secs[0]), B = parse(secs[1]);
+    if (!A.length || !B.length) return `<div>(matmul: rows of numbers in each section)</div>`;
+    if (A[0].length !== B.length) return `<div>(matmul: A is ${A.length}×${A[0].length} but B has ${B.length} rows — inner dimensions must match)</div>`;
+    const C = A.map((row) => B[0].map((_, j) => row.reduce((acc, v, k) => acc + v * B[k][j], 0)));
+    const hr = parseInt(args.row, 10) || 0, hc = parseInt(args.col, 10) || 0;
+    const color = args.color || 'var(--accent-color)';
+    const dp = parseInt(args.decimals, 10);
+    const decimals = Number.isFinite(dp) ? Math.max(0, Math.min(10, dp)) : 4;
+    const fmt = (v) => String(+v.toFixed(decimals));
+    const opSym = args.op ? String(args.op) : '×';
+    const sc = parseFloat(args.scale);
+    const scaleStyle = (Number.isFinite(sc) && sc !== 1) ? ` font-size:${sc}em;` : '';
+    const grid = (M, hRow, hCol, hCell) => {
+      let g = `<div class="mdp-mx-matrix" style="grid-template-columns: repeat(${M[0].length}, auto);">`;
+      M.forEach((row, i) => row.forEach((v, j) => {
+        const on = (hRow && i === hRow - 1) || (hCol && j === hCol - 1) || (hCell && i === hr - 1 && j === hc - 1);
+        g += `<div class="mdp-mx-cell${on ? ' on' : ''}">${fmt(v)}</div>`;
+      }));
+      return g + `</div>`;
+    };
+    const valid = hr >= 1 && hr <= A.length && hc >= 1 && hc <= B[0].length;
+    let html = `\n\n<div class="mdp-mod-matmul" style="--mx-c:${color};${scaleStyle}">` +
+      grid(A, valid ? hr : 0, 0, false) + `<span class="mdp-mx-op">${opSym}</span>` +
+      grid(B, 0, valid ? hc : 0, false) + `<span class="mdp-mx-op">=</span>` +
+      grid(C, 0, 0, valid) + `</div>\n\n`;
+    if (valid && String(args.showwork) !== 'false') {
+      const terms = A[hr - 1].map((v, k) => `${fmt(v)}·${fmt(B[k][hc - 1])}`).join(' + ');
+      html = html.replace(/<\/div>\n\n$/, `<div class="mdp-mx-note">c<sub>${hr}${hc}</sub> = ${terms} = ${fmt(C[hr - 1][hc - 1])}</div></div>\n\n`);
+    }
+    return html;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-matmul { display: flex; align-items: center; justify-content: center; gap: 14px; flex-wrap: wrap; margin: 1.2rem 0; }
+    .mdp-mx-matrix { display: inline-grid; gap: 3px; padding: 6px 10px; border-left: 2.5px solid currentColor; border-right: 2.5px solid currentColor; border-radius: 6px; }
+    .mdp-mx-cell { min-width: 34px; padding: 5px 8px; text-align: center; font-variant-numeric: tabular-nums; font-weight: 600; border-radius: 4px; }
+    .mdp-mx-cell.on { background: color-mix(in srgb, var(--mx-c) 25%, transparent); box-shadow: inset 0 0 0 1.5px var(--mx-c); }
+    .mdp-mx-op { font-size: 1.5em; font-weight: 700; color: var(--app-text-muted, #888); }
+    .mdp-mx-note { flex-basis: 100%; text-align: center; margin-top: 4px; font-size: 0.9em; color: var(--app-text-muted, #888); font-variant-numeric: tabular-nums; }
+  ]]></style>
+</module>

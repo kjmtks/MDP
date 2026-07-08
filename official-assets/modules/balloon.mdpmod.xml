@@ -1,18 +1,37 @@
 <module>
   <name>balloon</name>
   <type>block</type>
-  <description>Creates an interactive chat balloon UI with optional avatar image.</description>
+  <description>A chat/speech balloon with a speaker avatar (image or initial) and name; the body is the spoken message. Left/right direction places the avatar and tail.</description>
+  <tags>callout, mockup</tags>
   <aiSpec><![CDATA[
-Show a chat/speech balloon with a speaker avatar and name — ideal for
-dialogues, Q&A, or persona quotes. Block module: the body is the spoken message
-(ordinary markdown). `direction` (left/right) places the avatar and tail side;
-`name` and optional `image` set the speaker. For a back-and-forth conversation,
-stack several @balloon blocks alternating direction.
+Show a chat/speech balloon with a speaker avatar and name — ideal for dialogues,
+Q&A, or persona quotes. Block module: the body is the spoken message (ordinary
+markdown). For a back-and-forth conversation, stack several @balloon blocks and
+alternate `direction`. For a free-floating callout with a pointing tail use
+@bubble instead; for a titled panel use @card.
+
+Parameters:
+- direction (select: left | right, default left): which side the avatar and tail sit on.
+- name (text, default "User"): speaker name shown under the avatar; its first letter is the fallback avatar initial.
+- image (image, default empty): avatar image URL/path or @alias; when empty a colored initial circle is used.
+- bubblecolor (color, default empty = theme: light grey on left, light green on right): overrides the bubble fill AND its tail color.
+- avatarcolor (color, default empty = theme: accent on left, green on right): overrides the initial-circle background.
+- textcolor (color, default empty = #333): message text color.
+- fontsize (CSS length, default 1em): message text size, e.g. 0.9em or 18px.
+
+Usage:
+<!-- @balloon direction: right, name: Support, bubblecolor: #e0f2fe -->
+Yes, we can absolutely meet that deadline.
+<!-- @end -->
 ]]></aiSpec>
   <parameters>
-    <param name="direction" type="select" default="left" label="Direction" options="left:Left,right:Right" />
-    <param name="name" type="text" default="User" label="Name" />
-    <param name="image" type="image" default="" label="Avatar" desc="URL/path or @alias" />
+    <param name="direction" type="select" default="left" label="Direction" options="left:Left,right:Right" desc="Side the avatar and speech tail sit on." />
+    <param name="name" type="text" default="User" label="Name" desc="Speaker name; first letter is the fallback avatar initial." />
+    <param name="image" type="image" default="" label="Avatar" desc="URL/path or @alias; empty = colored initial circle." />
+    <param name="bubblecolor" type="color" default="" label="Bubble color" desc="Overrides the bubble fill and tail; blank = theme default." />
+    <param name="avatarcolor" type="color" default="" label="Avatar color" desc="Initial-circle background; blank = theme default." />
+    <param name="textcolor" type="color" default="" label="Text color" desc="Message text color; blank = default dark grey." />
+    <param name="fontsize" type="text" default="1em" label="Text size" desc="CSS size for the message, e.g. 0.9em or 18px." />
   </parameters>
   <snippets>
     <snippet>
@@ -33,19 +52,28 @@ Yes, we can absolutely meet that deadline.
     </snippet>
   </snippets>
   <render><![CDATA[
+    const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     const direction = args.direction === 'right' ? 'right' : 'left';
     const name = args.name || '';
     const image = args.image || '';
     const contentStr = sections[0] ? sections[0].trim() : '';
-    
-    const avatarHtml = image 
-      ? `<img src="${image}" class="mdp-avatar-image" alt="${name}" />`
-      : `<div class="mdp-avatar-circle">${name ? name.charAt(0).toUpperCase() : 'U'}</div>`;
 
-    return `\n\n<div class="mdp-mod-balloon mdp-balloon-${direction}">
+    const avatarHtml = image
+      ? `<img src="${esc(image)}" class="mdp-avatar-image" alt="${esc(name)}" />`
+      : `<div class="mdp-avatar-circle">${name ? esc(name.charAt(0).toUpperCase()) : 'U'}</div>`;
+
+    let vars = '';
+    if (args.bubblecolor && String(args.bubblecolor).trim()) vars += '--balloon-bg:' + String(args.bubblecolor).trim() + ';';
+    if (args.avatarcolor && String(args.avatarcolor).trim()) vars += '--balloon-avatar-bg:' + String(args.avatarcolor).trim() + ';';
+    if (args.textcolor && String(args.textcolor).trim()) vars += '--balloon-text:' + String(args.textcolor).trim() + ';';
+    const fs = (args.fontsize && String(args.fontsize).trim()) || '1em';
+    if (fs !== '1em') vars += '--balloon-fs:' + fs + ';';
+    const styleAttr = vars ? ` style="${vars}"` : '';
+
+    return `\n\n<div class="mdp-mod-balloon mdp-balloon-${direction}"${styleAttr}>
 <div class="mdp-balloon-avatar">
 ${avatarHtml}
-${name ? `<div class="mdp-avatar-name">${name}</div>` : ''}
+${name ? `<div class="mdp-avatar-name">${esc(name)}</div>` : ''}
 </div>
 <div class="mdp-balloon-bubble">
 
@@ -70,7 +98,7 @@ ${contentStr}
       align-items: center;
       width: 60px;
     }
-    
+
     .mdp-avatar-image {
       width: 50px;
       height: 50px;
@@ -83,7 +111,7 @@ ${contentStr}
       width: 50px;
       height: 50px;
       border-radius: 50%;
-      background: var(--accent-color);
+      background: var(--balloon-avatar-bg, var(--accent-color));
       color: white;
       display: flex;
       align-items: center;
@@ -92,7 +120,7 @@ ${contentStr}
       font-weight: bold;
     }
     .mdp-balloon-right .mdp-avatar-circle {
-      background: #2ecc71;
+      background: var(--balloon-avatar-bg, #2ecc71);
     }
 
     .mdp-avatar-name {
@@ -104,15 +132,15 @@ ${contentStr}
     }
     .mdp-balloon-bubble {
       position: relative;
-      background: #f1f0f0;
+      background: var(--balloon-bg, #f1f0f0);
       padding: 1em 1.5em;
       border-radius: 15px;
       max-width: 70%;
-      font-size: 1em;
-      color: #333;
+      font-size: var(--balloon-fs, 1em);
+      color: var(--balloon-text, #333);
     }
     .mdp-balloon-right .mdp-balloon-bubble {
-      background: #eafaf1;
+      background: var(--balloon-bg, #eafaf1);
     }
     .mdp-balloon-bubble::before {
       content: '';
@@ -125,13 +153,13 @@ ${contentStr}
       left: -10px;
       border-top: 10px solid transparent;
       border-bottom: 10px solid transparent;
-      border-right: 10px solid #f1f0f0;
+      border-right: 10px solid var(--balloon-bg, #f1f0f0);
     }
     .mdp-balloon-right .mdp-balloon-bubble::before {
       right: -10px;
       border-top: 10px solid transparent;
       border-bottom: 10px solid transparent;
-      border-left: 10px solid #eafaf1;
+      border-left: 10px solid var(--balloon-bg, #eafaf1);
     }
     .mdp-balloon-bubble > *:first-child { margin-top: 0; }
     .mdp-balloon-bubble > *:last-child { margin-bottom: 0; }

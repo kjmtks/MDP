@@ -1,0 +1,70 @@
+<module>
+  <name>statement</name>
+  <type>block</type>
+  <description>A big, centered key statement for a message slide — large type, optional accent, optional small attribution below. Body = the message (Markdown / math).</description>
+  <tags>heading, callout</tags>
+  <aiSpec><![CDATA[
+A large centered KEY STATEMENT for a "message" slide — the one big idea. The body is the
+statement (Markdown, so \( \) math and **bold** work). Use it for a punchy takeaway, a thesis,
+or a big number + phrase.
+
+Parameters:
+  `size`     — font size in rem, ~1 to ~6 (default 2.6).
+  `align`    — center | left (default center).
+  `color`    — text colour (default theme text colour).
+  `weight`   — light | normal | semibold | bold | heavy (default heavy = 800).
+  `by`       — small attribution shown beneath the statement (default none).
+  `quote`    — true | false (default false): wrap the statement in decorative quotation marks.
+  `maxwidth` — max width in rem to keep lines readable (default 0 = full width).
+
+Example:
+<!-- @statement size: 3, weight: bold, quote: true, by: Leonardo da Vinci -->
+Simplicity is the ultimate **sophistication**.
+<!-- @end -->
+]]></aiSpec>
+  <parameters>
+    <param name="size" type="number" default="2.6" min="1" max="6" step="0.1" label="Font size (rem)" desc="Statement font size in rem." />
+    <param name="align" type="select" default="center" options="center,left" label="Align" desc="Text alignment of the statement." />
+    <param name="color" type="color" default="" label="Text color" desc="Statement text colour; blank = theme text." />
+    <param name="weight" type="select" default="heavy" options="light:Light,normal:Normal,semibold:Semibold,bold:Bold,heavy:Heavy" label="Font weight" desc="Weight of the statement text." />
+    <param name="by" type="text" default="" label="Attribution" desc="Small attribution shown beneath." />
+    <param name="quote" type="boolean" default="false" label="Quotation marks" desc="Wrap the statement in decorative quotes." />
+    <param name="maxwidth" type="number" default="0" min="0" max="60" label="Max width (rem)" desc="Constrain line length; 0 = full width." />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Layout</category>
+      <label>Big statement</label>
+      <text><![CDATA[<!-- @statement size: 3, by: Leonardo da Vinci -->
+Simplicity is the ultimate **sophistication**.
+<!-- @end -->]]></text>
+      <description>Large centered key message with optional attribution.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const size = parseFloat(args.size) || 2.6;
+    const align = args.align === 'left' ? 'left' : 'center';
+    const color = args.color ? `color:${args.color};` : '';
+    const weightMap = { light: '300', normal: '400', semibold: '600', bold: '700', heavy: '800' };
+    const weight = weightMap[String(args.weight || 'heavy').toLowerCase()] || '800';
+    const quote = String(args.quote) === 'true';
+    const mwRaw = parseFloat(args.maxwidth);
+    const mw = (Number.isFinite(mwRaw) && mwRaw > 0) ? mwRaw : 0;
+    let style = `--st-size:${size}rem; --st-weight:${weight}; text-align:${align}; ${color}`;
+    if (mw) { style += ` max-width:${mw}rem;`; if (align === 'center') style += ' margin-left:auto; margin-right:auto;'; }
+    let html = `\n\n<div class="mdp-mod-statement" style="${style}"><div class="mdp-st-body${quote ? ' is-quoted' : ''}">\n\n${content}\n\n</div>`;
+    if (args.by) html += `<div class="mdp-st-by">— ${esc(args.by)}</div>`;
+    html += `</div>\n\n`;
+    return html;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-statement { margin: 1.4rem 0; }
+    .mdp-st-body { font-size: var(--st-size, 2.6rem); font-weight: var(--st-weight, 800); line-height: 1.2; letter-spacing: -0.01em; }
+    .mdp-st-body > :first-child { margin-top: 0; }
+    .mdp-st-body > :last-child { margin-bottom: 0; }
+    .mdp-st-body.is-quoted::before { content: '\201C'; margin-right: 0.05em; opacity: 0.45; }
+    .mdp-st-body.is-quoted::after { content: '\201D'; margin-left: 0.05em; opacity: 0.45; }
+    .mdp-st-by { margin-top: 0.8rem; font-size: 1rem; font-weight: 500; color: var(--app-text-muted, #888); }
+  ]]></style>
+</module>

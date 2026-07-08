@@ -1,0 +1,82 @@
+<module>
+  <name>bigo</name>
+  <type>block</type>
+  <description>Algorithm complexity table — names with Big-O pills auto-coloured by growth class (constant→green … factorial→red). Body: "Name | O(...)" per section.</description>
+  <tags>algorithms, comparison, table</tags>
+  <aiSpec><![CDATA[
+An algorithm COMPLEXITY table — each row is an operation and its Big-O, shown as a
+pill auto-coloured by growth class (constant/log = good/green, quadratic+ = bad/red).
+Block module: split the body with `<!-- @ -->`, one row per section written
+`Name | O(...)`. The O(...) is rendered as math. Good for comparing data structures
+or algorithms.
+
+<!-- @bigo -->
+Binary search | O(\log n)
+<!-- @ -->
+Bubble sort | O(n^2)
+<!-- @end -->
+]]></aiSpec>
+  <parameters>
+    <param name="label" type="text" default="" label="Value column header" desc="e.g. Time, Space" />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Math</category>
+      <label>Big-O complexity table</label>
+      <text><![CDATA[<!-- @bigo label: Time -->
+Hash lookup | O(1)
+<!-- @ -->
+Binary search | O(\log n)
+<!-- @ -->
+Merge sort | O(n \log n)
+<!-- @ -->
+Bubble sort | O(n^2)
+<!-- @ -->
+Permutations | O(n!)
+<!-- @end -->]]></text>
+      <description>Rows of "Name | O(...)"; complexity pill auto-coloured by class.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    // Classify a Big-O string into a 0..5 severity for colouring.
+    const rank = (o) => {
+      const s = o.replace(/\s+/g, '').toLowerCase();
+      if (/o\(1\)/.test(s)) return 0;
+      if (/log/.test(s) && !/n\^?\d|n!|\^n/.test(s)) return 1;
+      if (/o\(n\)$|o\(n\)/.test(s) && !/log|n\^|n!|\^n/.test(s)) return 2;
+      if (/nlog|n\\?log/.test(s)) return 3;
+      if (/n\^?2|n\^?3|n\^\{?\d/.test(s)) return 4;
+      if (/\^n|n!|2\^|factorial/.test(s)) return 5;
+      return 2;
+    };
+    const colors = ['#16a34a', '#0891b2', '#2563eb', '#ca8a04', '#ea580c', '#dc2626'];
+    const rows = [];
+    sections.forEach((sec) => {
+      const idx = String(sec || '').indexOf('|');
+      if (idx < 0) return;
+      rows.push({ name: sec.slice(0, idx).trim(), o: sec.slice(idx + 1).trim() });
+    });
+    let html = `\n\n<div class="mdp-mod-bigo">`;
+    if (args.label) html += `<div class="mdp-bo-row mdp-bo-head"><span class="mdp-bo-name"></span><span class="mdp-bo-val">${esc(args.label)}</span></div>`;
+    rows.forEach((r) => {
+      const c = colors[rank(r.o)];
+      html += `<div class="mdp-bo-row"><span class="mdp-bo-name">${esc(r.name)}</span>` +
+        `<span class="mdp-bo-pill" style="--bo-c:${c};">\n\n\\(${r.o}\\)\n\n</span></div>`;
+    });
+    html += `</div>\n\n`;
+    return html;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-bigo { margin: 1rem 0; display: flex; flex-direction: column; gap: 6px; }
+    .mdp-bo-row { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+    .mdp-bo-name { font-weight: 600; }
+    .mdp-bo-head .mdp-bo-val { font-weight: 700; color: var(--app-text-muted, #888); }
+    .mdp-bo-pill {
+      background: color-mix(in srgb, var(--bo-c) 15%, transparent); color: var(--bo-c);
+      border: 1px solid color-mix(in srgb, var(--bo-c) 45%, transparent);
+      border-radius: 999px; padding: 2px 12px; font-weight: 700;
+    }
+    .mdp-bo-pill > :first-child { margin: 0; }
+  ]]></style>
+</module>

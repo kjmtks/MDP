@@ -1,0 +1,85 @@
+<module>
+  <name>comparetable</name>
+  <type>block</type>
+  <description>Feature-comparison table with ✓ / ✗ cells. First section = header row (Feature, plans…); each following section = a feature row.</description>
+  <tags>comparison, table</tags>
+  <aiSpec><![CDATA[
+A FEATURE COMPARISON table (plans, products, options) that turns yes/no cells into
+green ✓ / grey ✗ automatically. Block module: split the body with `<!-- @ -->`. The
+FIRST section is the header row; every following section is a feature row. Within a
+row, separate the cells with ` | ` (pipe). A cell of `yes`/`y`/`true`/`✓`/`o`
+becomes a check; `no`/`n`/`false`/`✗`/`x`/`-` a grey cross; anything else is shown as
+text (Markdown inline). For a two-panel prose contrast use @compare instead.
+
+Parameters:
+  • color (color, default var(--accent-color)) — header background / rule color.
+  • highlight (integer ≥ 0, default 0) — 1-based data column to highlight; 0 = none.
+  • align (select: left | center | right, default center) — alignment of data cells.
+  • markcolor (color, default #16a34a) — color of the ✓ check marks.
+  • zebra (boolean, default false) — shade alternate body rows.
+
+Example:
+<!-- @comparetable highlight: 2, zebra: true -->
+Feature | Free | Pro
+Projects | 1 | Unlimited
+SSO | no | yes
+Support | Community | Priority
+<!-- @end -->
+]]></aiSpec>
+  <parameters>
+    <param name="color" type="color" default="var(--accent-color)" label="Header color" desc="Header background and rule color" />
+    <param name="highlight" type="number" default="0" label="Highlight column (1-based data col)" desc="1-based data column to highlight; 0 = none" min="0" integer="true" />
+    <param name="align" type="select" default="center" label="Cell align" options="left:Left,center:Center,right:Right" desc="Horizontal alignment of data cells" />
+    <param name="markcolor" type="color" default="#16a34a" label="Check color" desc="Color of the ✓ check marks" />
+    <param name="zebra" type="boolean" default="false" label="Zebra rows" desc="Shade alternate body rows" />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Presentation UI</category>
+      <label>Comparison table (✓/✗)</label>
+      <text><![CDATA[<!-- @comparetable highlight: 2 -->
+Feature | Free | Pro
+Projects | 1 | Unlimited
+SSO | no | yes
+Priority support | no | yes
+<!-- @end -->]]></text>
+      <description>First section = header row; rows use ` | `. yes/no become ✓/✗.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const color = args.color || 'var(--accent-color)';
+    const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const hl = parseInt(args.highlight, 10) || 0;
+    const align = ({ left: 'left', center: 'center', right: 'right' })[String(args.align || 'center').toLowerCase()] || 'center';
+    const markColor = args.markcolor || '#16a34a';
+    const zebra = String(args.zebra) === 'true';
+    const rows = sections.join('\n').split('\n').map((l) => l.trim()).filter(Boolean).map((l) => l.split('|').map((c) => c.trim()));
+    if (!rows.length) return `<div>(comparetable: header row then feature rows, cells split by | )</div>`;
+    const cellHtml = (c, ci) => {
+      const v = c.toLowerCase();
+      const hcls = (ci >= 1 && ci === hl) ? ' mdp-ct-hl' : '';
+      if (['yes','y','true','✓','o','○'].includes(v)) return `<td class="mdp-ct-yes${hcls}">✓</td>`;
+      if (['no','n','false','✗','x','×','-','—'].includes(v)) return `<td class="mdp-ct-no${hcls}">✗</td>`;
+      return `<td class="${hcls.trim()}">${esc(c)}</td>`;
+    };
+    const tcls = 'mdp-mod-comparetable' + (zebra ? ' mdp-ct-zebra' : '');
+    let html = `\n\n<table class="${tcls}" style="--ct-color:${color}; --ct-align:${align}; --ct-yes:${markColor};"><thead><tr>`;
+    rows[0].forEach((c, ci) => { html += `<th class="${ci >= 1 && ci === hl ? 'mdp-ct-hl' : ''}">${esc(c)}</th>`; });
+    html += `</tr></thead><tbody>`;
+    rows.slice(1).forEach((r) => { html += `<tr><th scope="row">${esc(r[0] || '')}</th>` + r.slice(1).map((c, i) => cellHtml(c, i + 1)).join('') + `</tr>`; });
+    html += `</tbody></table>\n\n`;
+    return html;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-comparetable { border-collapse: collapse; margin: 1rem 0; width: 100%; }
+    .mdp-mod-comparetable th, .mdp-mod-comparetable td { padding: 8px 12px; border-bottom: 1px solid color-mix(in srgb, var(--ct-color) 20%, transparent); text-align: var(--ct-align, center); }
+    .mdp-mod-comparetable thead th { background: var(--ct-color); color: #fff; }
+    .mdp-mod-comparetable thead th:first-child { background: none; color: inherit; }
+    .mdp-mod-comparetable tbody th { text-align: left; font-weight: 600; }
+    .mdp-mod-comparetable.mdp-ct-zebra tbody tr:nth-child(even) { background: color-mix(in srgb, var(--ct-color) 6%, transparent); }
+    .mdp-ct-yes { color: var(--ct-yes, #16a34a); font-weight: 800; }
+    .mdp-ct-no { color: color-mix(in srgb, currentColor 35%, transparent); }
+    .mdp-ct-hl { background: color-mix(in srgb, var(--ct-color) 10%, transparent); }
+    .mdp-mod-comparetable thead th.mdp-ct-hl { background: color-mix(in srgb, var(--ct-color) 80%, black); }
+  ]]></style>
+</module>

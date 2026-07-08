@@ -1,0 +1,102 @@
+<module>
+  <name>scatter</name>
+  <type>block</type>
+  <description>A scatter plot from "x y" pairs (optional point labels), with axes and an optional least-squares trend line (equation shown). For correlations and 2-D data.</description>
+  <tags>charts, plots, statistics</tags>
+  <aiSpec><![CDATA[
+A SCATTER PLOT from raw pairs — for correlations, clusters, 2-D data. Block module:
+one point per line (sections merged): `x y` or `x y label` (also `x, y`). Params:
+  `trend` — true → draw the least-squares regression line and print y = ax + b
+            with r² under the plot (default false),
+  `xlabel` / `ylabel` — axis captions (default empty = no caption),
+  `color` — point color (any CSS color, default var(--accent-color)).
+Use @funcplot for curves of formulas; @scatter is for data points.
+
+<!-- @scatter trend: true, xlabel: hours, ylabel: score -->
+1 52
+2 55
+3 61
+4 70
+5 74
+<!-- @end -->
+]]></aiSpec>
+  <parameters>
+    <param name="trend" type="boolean" default="false" label="Trend line" desc="Draw the least-squares regression line and show its equation with r²" />
+    <param name="xlabel" type="text" default="" label="X label" desc="Caption under the horizontal axis (empty = none)" />
+    <param name="ylabel" type="text" default="" label="Y label" desc="Caption beside the vertical axis (empty = none)" />
+    <param name="color" type="color" default="var(--accent-color)" label="Point color" desc="Fill color of the data points" />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Data</category>
+      <label>Scatter plot</label>
+      <text><![CDATA[<!-- @scatter trend: true, xlabel: x, ylabel: y -->
+1 52
+2 55
+3 61
+4 70
+5 74
+<!-- @end -->]]></text>
+      <description>Points "x y" per line; optional regression line + r².</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const color = args.color || 'var(--accent-color)';
+    const pts = [];
+    sections.join('\n').split('\n').map((l) => l.trim()).filter(Boolean).forEach((l) => {
+      const m = l.match(/^(-?[\d.]+)[\s,]+(-?[\d.]+)\s*([\s\S]*)$/);
+      if (m) pts.push({ x: parseFloat(m[1]), y: parseFloat(m[2]), label: m[3].trim() });
+    });
+    if (pts.length < 2) return `<div>(scatter: at least two "x y" lines)</div>`;
+    let xlo = Math.min(...pts.map((p) => p.x)), xhi = Math.max(...pts.map((p) => p.x));
+    let ylo = Math.min(...pts.map((p) => p.y)), yhi = Math.max(...pts.map((p) => p.y));
+    if (xhi === xlo) { xhi += 1; xlo -= 1; }
+    if (yhi === ylo) { yhi += 1; ylo -= 1; }
+    const padX = (xhi - xlo) * 0.08, padY = (yhi - ylo) * 0.1;
+    xlo -= padX; xhi += padX; ylo -= padY; yhi += padY;
+    const W = 160, H = 100;
+    const gx = (x) => ((x - xlo) / (xhi - xlo)) * W;
+    const gy = (y) => H - ((y - ylo) / (yhi - ylo)) * H;
+    const f = (v) => v.toFixed(1);
+    let svg = `<rect x="0" y="0" width="${W}" height="${H}" class="mdp-sc-frame"/>`;
+    let caption = '';
+    if (String(args.trend) === 'true') {
+      const n = pts.length;
+      const sx = pts.reduce((a, p) => a + p.x, 0), sy = pts.reduce((a, p) => a + p.y, 0);
+      const sxx = pts.reduce((a, p) => a + p.x * p.x, 0), sxy = pts.reduce((a, p) => a + p.x * p.y, 0);
+      const den = n * sxx - sx * sx;
+      if (den !== 0) {
+        const a = (n * sxy - sx * sy) / den, b = (sy - a * sx) / n;
+        const my = sy / n;
+        const ssRes = pts.reduce((acc, p) => acc + Math.pow(p.y - (a * p.x + b), 2), 0);
+        const ssTot = pts.reduce((acc, p) => acc + Math.pow(p.y - my, 2), 0) || 1;
+        const r2 = 1 - ssRes / ssTot;
+        svg += `<line x1="${f(gx(xlo))}" y1="${f(gy(a * xlo + b))}" x2="${f(gx(xhi))}" y2="${f(gy(a * xhi + b))}" class="mdp-sc-trend"/>`;
+        caption = `<div class="mdp-sc-eq">y = ${+a.toFixed(4)}x ${b >= 0 ? '+' : '−'} ${Math.abs(+b.toFixed(4))} &nbsp; r² = ${+r2.toFixed(3)}</div>`;
+      }
+    }
+    pts.forEach((p) => {
+      svg += `<circle cx="${f(gx(p.x))}" cy="${f(gy(p.y))}" r="2" class="mdp-sc-pt"/>`;
+      if (p.label) svg += `<text x="${f(gx(p.x) + 3)}" y="${f(gy(p.y) - 3)}" class="mdp-sc-lbl">${esc(p.label)}</text>`;
+    });
+    let axes = '';
+    if (args.xlabel) axes += `<div class="mdp-sc-xlabel">${esc(args.xlabel)}</div>`;
+    let html = `\n\n<div class="mdp-mod-scatter" style="--sc-c:${color};">`;
+    if (args.ylabel) html += `<div class="mdp-sc-ylabel">${esc(args.ylabel)}</div>`;
+    html += `<div class="mdp-sc-plotwrap"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">${svg}</svg>${axes}${caption}</div></div>\n\n`;
+    return html;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-scatter { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 1rem 0; }
+    .mdp-sc-plotwrap { width: min(100%, 460px); text-align: center; }
+    .mdp-mod-scatter svg { width: 100%; height: auto; }
+    .mdp-sc-frame { fill: none; stroke: color-mix(in srgb, currentColor 20%, transparent); stroke-width: 0.6; rx: 3; }
+    .mdp-sc-pt { fill: var(--sc-c); opacity: 0.85; }
+    .mdp-sc-lbl { fill: currentColor; font-size: 4.5px; }
+    .mdp-sc-trend { stroke: #dc2626; stroke-width: 0.9; stroke-dasharray: 3 2; }
+    .mdp-sc-eq { font-size: 0.85em; color: var(--app-text-muted, #888); margin-top: 4px; font-variant-numeric: tabular-nums; }
+    .mdp-sc-xlabel { font-size: 0.85em; font-weight: 600; margin-top: 2px; }
+    .mdp-sc-ylabel { font-size: 0.85em; font-weight: 600; writing-mode: vertical-rl; transform: rotate(180deg); }
+  ]]></style>
+</module>

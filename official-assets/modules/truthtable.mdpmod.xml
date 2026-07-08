@@ -1,0 +1,88 @@
+<module>
+  <name>truthtable</name>
+  <type>block</type>
+  <description>A logic truth table with colour-coded T/F cells. First section = header (variables / expression), each following section = a row.</description>
+  <tags>logic, table</tags>
+  <aiSpec><![CDATA[
+A logic TRUTH TABLE. Block module: split the body with `<!-- @ -->`. The FIRST section
+is the header row; each following section is a row. Separate columns with ` | `. Cells
+that are `T`/`1`/`true` render green, `F`/`0`/`false` render grey — anything else is
+shown as-is. Header cells may contain math with \( \) (e.g. \(p \land q\)).
+
+Parameters:
+  color      — header background colour (default var(--accent-color)).
+  align      — cell text alignment: left | center (default) | right.
+  compact    — tighter cell padding for dense tables (default false).
+  truecolor  — text colour of the T cells (default "" = green #16a34a).
+  falsecolor — text colour of the F cells (default "" = muted grey).
+
+<!-- @truthtable color: #2563eb, align: center -->
+\(p\) | \(q\) | \(p \land q\)
+T | T | T
+T | F | F
+F | T | F
+F | F | F
+<!-- @end -->
+]]></aiSpec>
+  <parameters>
+    <param name="color" type="color" default="var(--accent-color)" label="Header color" desc="Background colour of the header row." />
+    <param name="align" type="select" default="center" label="Cell alignment" desc="Horizontal alignment of the cell contents." options="left,center,right" />
+    <param name="compact" type="boolean" default="false" label="Compact" desc="Use tighter cell padding for dense tables." />
+    <param name="truecolor" type="color" default="" label="True cell color" desc="Text colour of T / true cells (blank = default green)." />
+    <param name="falsecolor" type="color" default="" label="False cell color" desc="Text colour of F / false cells (blank = default muted grey)." />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Math</category>
+      <label>Truth table</label>
+      <text><![CDATA[<!-- @truthtable -->
+\(p\) | \(q\) | \(p \to q\)
+T | T | T
+T | F | F
+F | T | T
+F | F | T
+<!-- @end -->]]></text>
+      <description>First section = header, rows follow; columns split by ` | `. T/F colour-coded.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const color = args.color || 'var(--accent-color)';
+    const alignKey = String(args.align || 'center').toLowerCase();
+    const align = ['left', 'center', 'right'].includes(alignKey) ? alignKey : 'center';
+    const compact = String(args.compact) === 'true' || String(args.compact) === '1';
+    const trueC = (args.truecolor || '').trim();
+    const falseC = (args.falsecolor || '').trim();
+    const rows = sections.join('\n').split('\n').map((l) => l.trim()).filter(Boolean).map((l) => l.split('|').map((c) => c.trim()));
+    if (!rows.length) return `<div>(truthtable: a header row then rows, columns split by | )</div>`;
+    const cols = Math.max(...rows.map((r) => r.length));
+    const cellClass = (v) => {
+      const t = v.toLowerCase();
+      if (['t','1','true','⊤'].includes(t)) return 'mdp-tt-t';
+      if (['f','0','false','⊥'].includes(t)) return 'mdp-tt-f';
+      return '';
+    };
+    let styleVars = `--tt-color:${color}; --tt-align:${align}; grid-template-columns: repeat(${cols}, auto);`;
+    if (trueC) styleVars += ` --tt-true:${trueC};`;
+    if (falseC) styleVars += ` --tt-false:${falseC};`;
+    const cls = 'mdp-mod-truthtable' + (compact ? ' mdp-tt-compact' : '');
+    let html = `\n\n<div class="${cls}" style="${styleVars}">`;
+    rows[0].forEach((c) => { html += `<div class="mdp-tt-cell mdp-tt-head">\n\n${c}\n\n</div>`; });
+    rows.slice(1).forEach((r) => {
+      for (let i = 0; i < cols; i++) {
+        const v = r[i] || '';
+        html += `<div class="mdp-tt-cell ${cellClass(v)}">\n\n${v}\n\n</div>`;
+      }
+    });
+    html += `</div>\n\n`;
+    return html;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-truthtable { display: inline-grid; gap: 0; margin: 1rem 0; border: 1px solid color-mix(in srgb, var(--tt-color) 30%, transparent); border-radius: 6px; overflow: hidden; }
+    .mdp-tt-cell { padding: 6px 16px; text-align: var(--tt-align, center); border-right: 1px solid color-mix(in srgb, var(--tt-color) 15%, transparent); border-bottom: 1px solid color-mix(in srgb, var(--tt-color) 15%, transparent); }
+    .mdp-tt-compact .mdp-tt-cell { padding: 3px 8px; }
+    .mdp-tt-cell > :first-child { margin: 0; }
+    .mdp-tt-head { background: var(--tt-color); color: #fff; font-weight: 700; }
+    .mdp-tt-t { color: var(--tt-true, #16a34a); font-weight: 700; background: color-mix(in srgb, #22c55e 10%, transparent); }
+    .mdp-tt-f { color: var(--tt-false, color-mix(in srgb, currentColor 55%, transparent)); background: color-mix(in srgb, currentColor 4%, transparent); }
+  ]]></style>
+</module>

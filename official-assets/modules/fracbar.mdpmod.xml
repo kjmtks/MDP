@@ -1,0 +1,98 @@
+<module>
+  <name>fracbar</name>
+  <type>block</type>
+  <description>Visual fractions: segmented bars or pie discs showing n/d filled — one fraction per section, "3/4 label". For teaching fractions, shares, proportions.</description>
+  <tags>fractions, numberline</tags>
+  <aiSpec><![CDATA[
+VISUAL FRACTIONS — each fraction drawn as a segmented bar (or a pie disc) with the
+numerator portion filled. Good for teaching fractions or comparing simple proportions
+side by side.
+
+Body: split the sections with `<!-- @ -->`, one fraction per section written
+`n/d label` (label optional), e.g. `3/4 remaining`. n and d are whole numbers; if
+n > d it is clamped to d.
+
+When NOT to use: for percentages/values as a chart use @barchart or @chartjs; this is
+a teaching aid for exact fractions.
+
+Parameters:
+  - `style`       : bar | pie — segmented rectangle or disc. Default bar.
+  - `color`       : fill color of the numerator portion. Default var(--accent-color).
+  - `showpercent` : true/false — also print the fraction as a rounded percent. Default false.
+  - `size`        : small | normal | large — size of the bars/discs. Default normal.
+  - `align`       : left | center | right — horizontal placement of the row. Default left.
+
+<!-- @fracbar style: pie, showpercent: true -->
+3/4 done
+<!-- @ -->
+1/3 left
+<!-- @end -->
+]]></aiSpec>
+  <parameters>
+    <param name="style" type="select" default="bar" options="bar,pie" label="Style" desc="Segmented bar or pie disc." />
+    <param name="color" type="color" default="var(--accent-color)" label="Fill color" desc="Fill color of the numerator portion." />
+    <param name="showpercent" type="boolean" default="false" label="Show percent" desc="Also print the fraction as a rounded percent." />
+    <param name="size" type="select" default="normal" options="small,normal,large" label="Size" desc="Size of the bars or discs." />
+    <param name="align" type="select" default="left" options="left,center,right" label="Alignment" desc="Horizontal placement of the row of fractions." />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Math</category>
+      <label>Fraction bars</label>
+      <text><![CDATA[<!-- @fracbar style: bar -->
+3/4 done
+<!-- @ -->
+1/3 left
+<!-- @end -->]]></text>
+      <description>Fractions "n/d label" drawn as segmented bars (or pies).</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const color = args.color || 'var(--accent-color)';
+    const pie = String(args.style) === 'pie';
+    const showPct = String(args.showpercent) === 'true';
+    const size = String(args.size || 'normal').toLowerCase();
+    const dims = size === 'small' ? { bw: '120px', bh: '24px', pie: '60px' }
+      : size === 'large' ? { bw: '240px', bh: '40px', pie: '120px' }
+      : { bw: '180px', bh: '30px', pie: '90px' };
+    const align = String(args.align || 'left').toLowerCase();
+    const justify = align === 'center' ? 'center' : align === 'right' ? 'flex-end' : 'flex-start';
+    const items = [];
+    sections.map((s) => (s || '').trim()).filter(Boolean).forEach((s) => {
+      const m = s.match(/^(\d+)\s*\/\s*(\d+)\s*([\s\S]*)$/);
+      if (m) items.push({ n: parseInt(m[1], 10), d: Math.max(1, parseInt(m[2], 10)), label: m[3].trim() });
+    });
+    if (!items.length) return `<div>(fracbar: "n/d label" per section)</div>`;
+    let html = `\n\n<div class="mdp-mod-fracbar" style="--fb-c:${color}; --fb-bw:${dims.bw}; --fb-bh:${dims.bh}; --fb-pie:${dims.pie}; justify-content:${justify};">`;
+    items.forEach((it) => {
+      const n = Math.min(it.n, it.d);
+      html += `<div class="mdp-fb-item">`;
+      if (pie) {
+        const degs = (n / it.d) * 360;
+        html += `<div class="mdp-fb-pie" style="background: conic-gradient(var(--fb-c) 0deg ${degs.toFixed(1)}deg, color-mix(in srgb, currentColor 10%, transparent) ${degs.toFixed(1)}deg 360deg);"></div>`;
+      } else {
+        html += `<div class="mdp-fb-bar">`;
+        for (let i = 0; i < it.d; i++) html += `<div class="mdp-fb-seg${i < n ? ' on' : ''}"></div>`;
+        html += `</div>`;
+      }
+      const pct = showPct ? ` <span class="mdp-fb-pct">${Math.round((n / it.d) * 100)}%</span>` : '';
+      html += `<div class="mdp-fb-caption"><span class="mdp-fb-frac"><sup>${it.n}</sup>⁄<sub>${it.d}</sub></span>` +
+        (it.label ? ` <span class="mdp-fb-label">${esc(it.label)}</span>` : '') + pct + `</div></div>`;
+    });
+    html += `</div>\n\n`;
+    return html;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-fracbar { display: flex; flex-wrap: wrap; gap: 20px 32px; margin: 1rem 0; align-items: flex-end; }
+    .mdp-fb-item { display: flex; flex-direction: column; gap: 8px; align-items: center; }
+    .mdp-fb-bar { display: flex; gap: 2px; width: var(--fb-bw, 180px); height: var(--fb-bh, 30px); }
+    .mdp-fb-seg { flex: 1; border: 1.5px solid var(--fb-c); border-radius: 3px; background: color-mix(in srgb, currentColor 5%, transparent); }
+    .mdp-fb-seg.on { background: color-mix(in srgb, var(--fb-c) 70%, transparent); }
+    .mdp-fb-pie { width: var(--fb-pie, 90px); height: var(--fb-pie, 90px); border-radius: 50%; border: 1.5px solid var(--fb-c); }
+    .mdp-fb-caption { font-size: 1em; }
+    .mdp-fb-frac { font-weight: 800; font-size: 1.15em; }
+    .mdp-fb-label { color: var(--app-text-muted, #888); margin-left: 4px; }
+    .mdp-fb-pct { color: var(--app-text-muted, #888); font-weight: 700; }
+  ]]></style>
+</module>

@@ -1,0 +1,102 @@
+<module>
+  <name>venn</name>
+  <type>block</type>
+  <description>Two- or three-circle Venn diagram. Body = one section per circle label; optional intersection label via `center`.</description>
+  <tags>relationship, sets</tags>
+  <aiSpec><![CDATA[
+A VENN diagram (2 or 3 overlapping circles) for showing shared vs distinct
+attributes. Block module: split the body with `<!-- @ -->`, one SHORT label per
+circle (2 or 3 sections). Keep labels to a few words. For more than 3 sets use a
+different visual.
+
+Parameters:
+  center   — label for the full intersection (default "" = none).
+  color    — first circle colour (default var(--accent-color)).
+  color2   — second circle colour (default "#ef4444" red).
+  color3   — third circle colour, only used with 3 sets (default "#22c55e" green).
+  opacity  — circle fill opacity, 0..1 (default 0.45).
+  maxwidth — rendered max width, any CSS length (default "400px").
+
+<!-- @venn center: Sweet spot, color2: #f59e0b -->
+Desirable
+<!-- @ -->
+Feasible
+<!-- @ -->
+Viable
+<!-- @end -->
+]]></aiSpec>
+  <parameters>
+    <param name="center" type="text" default="" label="Intersection label" desc="Label placed in the full intersection (blank = none)." />
+    <param name="color" type="color" default="var(--accent-color)" label="First circle color" desc="Fill colour of the first circle." />
+    <param name="color2" type="color" default="#ef4444" label="Second circle color" desc="Fill colour of the second circle." />
+    <param name="color3" type="color" default="#22c55e" label="Third circle color" desc="Fill colour of the third circle (used only with 3 sets)." />
+    <param name="opacity" type="number" default="0.45" label="Circle opacity" desc="Fill opacity of the circles (0 = transparent, 1 = solid)." min="0" max="1" step="0.05" />
+    <param name="maxwidth" type="text" default="400px" label="Max width" desc="Rendered maximum width, any CSS length, e.g. 400px or 24em." />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Diagrams</category>
+      <label>Venn (3 circles)</label>
+      <text><![CDATA[<!-- @venn center: Innovation -->
+Desirable
+<!-- @ -->
+Feasible
+<!-- @ -->
+Viable
+<!-- @end -->]]></text>
+      <description>Three overlapping circles with an intersection label.</description>
+    </snippet>
+    <snippet>
+      <category>Diagrams</category>
+      <label>Venn (2 circles)</label>
+      <text><![CDATA[<!-- @venn -->
+Set A
+<!-- @ -->
+Set B
+<!-- @end -->]]></text>
+      <description>Two overlapping circles.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const labels = sections.map((s) => (s || '').trim()).filter(Boolean).slice(0, 3);
+    const n = labels.length >= 3 ? 3 : 2;
+    const palette = [args.color || 'var(--accent-color)', args.color2 || '#ef4444', args.color3 || '#22c55e'];
+    const opRaw = parseFloat(args.opacity);
+    const opacity = Number.isFinite(opRaw) ? Math.max(0, Math.min(1, opRaw)) : 0.45;
+    const maxW = (args.maxwidth || '400px').trim() || '400px';
+    // Circle centres (as % of the square box); two- and three-set arrangements.
+    const pos = n === 3
+      ? [{ x: 38, y: 36 }, { x: 62, y: 36 }, { x: 50, y: 64 }]
+      : [{ x: 38, y: 50 }, { x: 62, y: 50 }];
+    const lab = n === 3
+      ? [{ x: 26, y: 24 }, { x: 74, y: 24 }, { x: 50, y: 82 }]
+      : [{ x: 24, y: 50 }, { x: 76, y: 50 }];
+    let circles = '', texts = '';
+    for (let i = 0; i < n; i++) {
+      circles += `<div class="mdp-venn-circle" style="left:${pos[i].x}%; top:${pos[i].y}%; background:${palette[i]};"></div>`;
+      texts += `<div class="mdp-venn-label" style="left:${lab[i].x}%; top:${lab[i].y}%;">${esc(labels[i] || '')}</div>`;
+    }
+    const center = (args.center || '').trim() ? `<div class="mdp-venn-center">${esc(args.center.trim())}</div>` : '';
+    return `\n\n<div class="mdp-mod-venn mdp-venn-${n}" style="--venn-op:${opacity}; --venn-mw:${maxW};">${circles}${center}${texts}</div>\n\n`;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-venn { position: relative; width: min(100%, var(--venn-mw, 400px)); aspect-ratio: 1 / 1; margin: 1rem auto; }
+    .mdp-venn-circle {
+      position: absolute; width: 46%; height: 46%; border-radius: 50%;
+      transform: translate(-50%, -50%); opacity: var(--venn-op, 0.45); mix-blend-mode: multiply;
+    }
+    .mdp-venn-label {
+      position: absolute; transform: translate(-50%, -50%);
+      font-weight: 700; text-align: center; max-width: 8em; pointer-events: none;
+    }
+    .mdp-venn-center {
+      position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+      font-weight: 700; font-size: 0.85em; text-align: center; max-width: 6em;
+    }
+    .mdp-venn-2 .mdp-venn-center { top: 50%; }
+    .mdp-venn-3 .mdp-venn-center { top: 46%; }
+    /* On dark themes, screen blending reads better than multiply. */
+    :root[data-app-theme] .mdp-venn-circle { }
+  ]]></style>
+</module>

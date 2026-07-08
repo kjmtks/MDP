@@ -2,13 +2,38 @@
   <name>addstyle</name>
   <type>block</type>
   <description>Apply scoped CSS to a region. Section 1 = CSS, section 2 = content. Selectors are auto-prefixed with a unique scope class, so the CSS only affects this block (e.g. override drawio fonts per diagram).</description>
+  <tags>styling</tags>
   <aiSpec><![CDATA[
 Apply CSS that affects only one block of content (selectors are auto-scoped to
-this instance, so they never leak to other slides/diagrams). Block module split
-by `<!-- @ -->` into two sections: section 1 = raw CSS rules, section 2 = the
-markdown content the CSS applies to. Common use: resize an image or override a
-drawio diagram's font. Gotcha: omit the `<!-- @ -->` separator and the single
-section is treated as content (no CSS applied).
+this instance, so they never leak to other slides/diagrams). Use @addclass
+instead when a suitable theme/utility class already exists. No parameters.
+Block module split by `<!-- @ -->` into two sections: section 1 = raw CSS rules,
+section 2 = the markdown content the CSS applies to. Common use: resize an image
+or override a drawio diagram's font. Flat rules only get scoped; @-rules are left
+as-is. Gotcha: omit the `<!-- @ -->` separator and the single section is treated
+as content (no CSS applied).
+
+You MAY wrap the CSS section in an HTML comment (put `<!--` and `-->` on their own
+lines around the rules). MDP unwraps and applies it as usual, but a PLAIN Markdown
+viewer (e.g. GitHub) then hides the CSS instead of showing it as text. The content
+section is left as-is. (Keep `<!--`/`-->` on their own lines; don't start the CSS
+with an @-rule on the same line as `<!--`.)
+
+Example:
+<!-- @addstyle -->
+img { height: 450px; }
+<!-- @ -->
+![](@screenshot)
+<!-- @end -->
+
+Same, with the CSS hidden from plain Markdown viewers:
+<!-- @addstyle -->
+<!--
+img { height: 450px; }
+-->
+<!-- @ -->
+![](@screenshot)
+<!-- @end -->
 ]]></aiSpec>
 
   <snippets>
@@ -21,6 +46,18 @@ img { height: 450px; }
 ![@image](...)
 <!-- @end -->]]></text>
       <description>Apply CSS only to the content inside this block (selectors auto-scoped).</description>
+    </snippet>
+    <snippet>
+      <category>Layout</category>
+      <label>Scoped style (hidden in plain Markdown)</label>
+      <text><![CDATA[<!-- @addstyle -->
+<!--
+img { height: 450px; }
+-->
+<!-- @ -->
+![@image](...)
+<!-- @end -->]]></text>
+      <description>CSS wrapped in an HTML comment: MDP applies it, a plain Markdown viewer hides it.</description>
     </snippet>
     <snippet>
       <category>Layout</category>
@@ -47,13 +84,19 @@ img { height: 450px; }
   </snippets>
 
   <render><![CDATA[
-    const cssText = (sections[0] || '').trim();
+    const rawCss = (sections[0] || '').trim();
     const inner = (sections[1] || '').trim();
     // Forgiving: with no second section (missing `<!-- @ -->` separator), the
     // single section is the CONTENT, not CSS — otherwise an image/text put there
     // would be swallowed into a <style> tag and vanish.
     if (!inner) {
-      return `\n\n${cssText}\n\n`;
+      return `\n\n${rawCss}\n\n`;
+    }
+    // The CSS may be wrapped in an HTML comment (<!-- … -->) so a PLAIN Markdown
+    // viewer hides it — unwrap it here. Only when the whole section is one comment.
+    let cssText = rawCss;
+    if (cssText.slice(0, 4) === '<!--' && cssText.slice(-3) === '-->') {
+      cssText = cssText.slice(4, -3).trim();
     }
     // Deterministic, instance-unique scope class from the CSS + content.
     let h = 0;

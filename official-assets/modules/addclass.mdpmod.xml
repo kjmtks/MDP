@@ -2,13 +2,23 @@
   <name>addclass</name>
   <type>block</type>
   <description>Wrap a region in a div carrying the given CSS classes. Section 1 = space-separated class names, section 2 = content. Use it to apply theme/utility classes (or your own scoped CSS via @addstyle) to a block of slide content.</description>
+  <tags>styling</tags>
   <aiSpec><![CDATA[
 Wrap a block of slide content in a <div> with extra CSS classes (theme/utility
-classes, or classes you defined via @addstyle). Block module split by
-`<!-- @ -->` into two sections: section 1 = space-separated class names,
-section 2 = the markdown content to wrap. Gotcha: if you omit the `<!-- @ -->`
-separator, the single section is treated as content (no classes applied).
-Example: `<!-- @addclass -->`, then `highlight rounded`, `<!-- @ -->`, then content.
+classes, or classes you defined via @addstyle). Use @addstyle instead when you
+want to write the CSS rules inline; use @addclass when the class already exists.
+No parameters. Block module split by `<!-- @ -->` into two sections:
+section 1 = space-separated class names, section 2 = the markdown content to
+wrap. Class names are sanitized to letters/digits/_/-. Gotcha: if you omit the
+`<!-- @ -->` separator, the single section is treated as content (no classes
+applied).
+
+Example:
+<!-- @addclass -->
+highlight rounded
+<!-- @ -->
+![](@diagram)
+<!-- @end -->
 ]]></aiSpec>
 
   <snippets>

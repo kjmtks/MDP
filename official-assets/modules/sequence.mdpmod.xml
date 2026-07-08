@@ -1,0 +1,80 @@
+<module>
+  <name>sequence</name>
+  <type>block</type>
+  <description>A sequence of terms in boxes joined by arrows — for number sequences, recurrences, iterative processes. One term per section (Markdown/math); optional rule caption.</description>
+  <tags>sequences, numberline</tags>
+  <aiSpec><![CDATA[
+A SEQUENCE strip — terms in boxes joined by arrows, with an optional rule caption.
+For number sequences, recurrences (Fibonacci), iterations (x → f(x) → f(f(x))…).
+Block module: split the body with `<!-- @ -->`, one TERM per section (Markdown, so
+\( \) math works). Params:
+  `rule`  — caption shown under the strip (Markdown/math, quote if it has commas;
+            default empty = no caption),
+  `sep`   — separator glyph between terms (default →),
+  `tail`  — true → append a trailing "…" ellipsis box (default false),
+  `color` — box border/tint color (any CSS color, default var(--accent-color)).
+
+<!-- @sequence rule: "\(a_{n+1} = a_n + a_{n-1}\)", tail: true -->
+1
+<!-- @ -->
+1
+<!-- @ -->
+2
+<!-- @ -->
+3
+<!-- @ -->
+5
+<!-- @end -->
+]]></aiSpec>
+  <parameters>
+    <param name="rule" type="text" default="" label="Rule caption" desc="Caption under the strip; Markdown/math allowed (quote if it contains commas)" />
+    <param name="sep" type="text" default="→" label="Separator" desc="Glyph shown between terms" />
+    <param name="tail" type="boolean" default="false" label="Trailing …" desc="Append a dashed ellipsis box after the last term" />
+    <param name="color" type="color" default="var(--accent-color)" label="Box color" desc="Border and tint color of the term boxes" />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Math</category>
+      <label>Sequence strip</label>
+      <text><![CDATA[<!-- @sequence rule: "\(a_{n+1} = a_n + a_{n-1}\)", tail: true -->
+1
+<!-- @ -->
+1
+<!-- @ -->
+2
+<!-- @ -->
+3
+<!-- @ -->
+5
+<!-- @end -->]]></text>
+      <description>Terms in boxes joined by arrows, optional rule caption.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const color = args.color || 'var(--accent-color)';
+    const sep = args.sep || '→';
+    const terms = sections.map((s) => (s || '').trim()).filter(Boolean);
+    if (!terms.length) return `<div>(sequence: one term per section)</div>`;
+    let html = `\n\n<div class="mdp-mod-sequence" style="--sq-c:${color};"><div class="mdp-sq-strip">`;
+    terms.forEach((t, i) => {
+      if (i) html += `<span class="mdp-sq-sep">${esc(sep)}</span>`;
+      html += `<span class="mdp-sq-term">\n\n${t}\n\n</span>`;
+    });
+    if (String(args.tail) === 'true') html += `<span class="mdp-sq-sep">${esc(sep)}</span><span class="mdp-sq-term mdp-sq-tail">…</span>`;
+    html += `</div>`;
+    if (args.rule) html += `<div class="mdp-sq-rule">\n\n${args.rule}\n\n</div>`;
+    html += `</div>\n\n`;
+    return html;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-sequence { margin: 1rem 0; text-align: center; }
+    .mdp-sq-strip { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px; }
+    .mdp-sq-term { min-width: 44px; padding: 8px 14px; border: 1.5px solid var(--sq-c); border-radius: 8px; background: color-mix(in srgb, var(--sq-c) 8%, transparent); font-weight: 700; }
+    .mdp-sq-term > :first-child { margin: 0; }
+    .mdp-sq-tail { border-style: dashed; color: var(--app-text-muted, #888); }
+    .mdp-sq-sep { font-size: 1.2em; color: var(--app-text-muted, #888); }
+    .mdp-sq-rule { margin-top: 10px; color: var(--app-text-muted, #888); }
+    .mdp-sq-rule > :first-child { margin: 0; }
+  ]]></style>
+</module>

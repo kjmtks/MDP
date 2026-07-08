@@ -1,16 +1,38 @@
 <module>
   <name>infobox</name>
   <type>block</type>
-  <description>Information box</description>
+  <description>A bordered, titled callout panel (note / tip / warning / danger); body = title section then content section.</description>
+  <tags>callout, note</tags>
   <aiSpec><![CDATA[
-Call out important info in a bordered, titled panel — good for notes, tips,
+Call out important information in a bordered, titled panel — notes, tips,
 warnings, danger callouts. Block module: split the body with `<!-- @ -->` into
-two sections — section 1 is the box title (header), section 2 is the body text.
-Set `color` to signal intent (e.g. var(--warning-color) for a warning).
+TWO sections — section 1 is the box title (header), section 2 is the body text
+(Markdown). Set `color` to signal intent (e.g. var(--warning-color) for a warning,
+var(--danger-color) for danger).
+
+Parameters:
+  - `color`: accent colour of the left border and header (any CSS colour;
+    default var(--success-color)).
+  - `icon`: optional emoji/symbol shown before the title (default none).
+  - `accentfill` (true|false, default false): tint the box background and header
+    with the accent colour instead of the neutral panel colours.
+  - `border`: CSS width of the left accent bar (default 6px).
+  - `radius`: CSS corner radius (default var(--radius-sm)).
+
+Example:
+<!-- @infobox color: var(--warning-color), icon: ⚠️, accentfill: true -->
+Heads up
+<!-- @ -->
+This action cannot be undone.
+<!-- @end -->
 ]]></aiSpec>
 
   <parameters>
-    <param name="color" type="color" default="var(--success-color)" label="Accent Color" desc="Border and header color of the box" />
+    <param name="color" type="color" default="var(--success-color)" label="Accent Color" desc="Border and header colour of the box." />
+    <param name="icon" type="text" default="" label="Icon" desc="Optional emoji/symbol shown before the title." />
+    <param name="accentfill" type="boolean" default="false" label="Accent fill" desc="Tint the box background/header with the accent colour." />
+    <param name="border" type="text" default="6px" label="Accent bar width" desc="CSS width of the left accent bar, e.g. 6px or 3px." />
+    <param name="radius" type="text" default="" label="Corner radius" desc="CSS corner radius; blank = theme default." />
   </parameters>
 
   <snippets>
@@ -23,10 +45,10 @@ Set `color` to signal intent (e.g. var(--warning-color) for a warning).
 Information
 <!-- @ -->
 Describe information here
-<!-- @endinfobox -->
+<!-- @end -->
 ]]>
       </text>
-      <description>Standard inofbox</description>
+      <description>Standard infobox</description>
     </snippet>
     <snippet>
       <category>Layout</category>
@@ -40,7 +62,7 @@ Describe warning here
 <!-- @end -->
 ]]>
       </text>
-      <description>Warning inofbox</description>
+      <description>Warning infobox</description>
     </snippet>
     <snippet>
       <category>Layout</category>
@@ -54,16 +76,22 @@ Describe error here
 <!-- @end -->
 ]]>
       </text>
-      <description>Danger inofbox</description>
+      <description>Danger infobox</description>
     </snippet>
   </snippets>
 
-  <render>
-  <![CDATA[
+  <render><![CDATA[
+    const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     const color = args.color || 'var(--accent-color)';
-    const titleStr = sections[0] ? sections[0].trim() : '';
+    let titleStr = sections[0] ? sections[0].trim() : '';
     const contentStr = sections[1] ? sections[1].trim() : '';
-    return `\n\n<div class="mdp-mod-infobox" style="border-left-color: ${color};"><div class="infobox-header" style="color: ${color};">
+    const icon = (args.icon && String(args.icon).trim()) || '';
+    if (icon) titleStr = esc(icon) + ' ' + titleStr;
+    const fill = String(args.accentfill) === 'true';
+    const bw = (args.border && String(args.border).trim()) || '6px';
+    const radius = (args.radius && String(args.radius).trim()) || 'var(--radius-sm)';
+    const cls = 'mdp-mod-infobox' + (fill ? ' mdp-ib-fill' : '');
+    return `\n\n<div class="${cls}" style="border-left-color: ${color}; --ib-c: ${color}; --ib-bw: ${bw}; --ib-radius: ${radius};"><div class="infobox-header" style="color: ${color};">
 
 ${titleStr}
 
@@ -72,17 +100,19 @@ ${titleStr}
 ${contentStr}
 
 </div></div>\n\n`;
-  ]]>
-  </render>
+  ]]></render>
   <style>
     <![CDATA[
       .mdp-mod-infobox {
         background-color: var(--panel-bg);
-        border-left: 6px solid;
-        border-radius: var(--radius-sm);
+        border-left: var(--ib-bw, 6px) solid;
+        border-radius: var(--ib-radius, var(--radius-sm));
         margin: 1rem 0;
         box-shadow: var(--shadow-sm);
         overflow: hidden;
+      }
+      .mdp-mod-infobox.mdp-ib-fill {
+        background-color: color-mix(in srgb, var(--ib-c) 8%, var(--panel-bg));
       }
       .mdp-mod-infobox .infobox-header {
         padding: 0 16px;
@@ -90,6 +120,9 @@ ${contentStr}
         font-size: 1.1em;
         background-color: var(--panel-header-bg);
         border-bottom: 1px solid var(--panel-border);
+      }
+      .mdp-mod-infobox.mdp-ib-fill .infobox-header {
+        background-color: color-mix(in srgb, var(--ib-c) 16%, var(--panel-header-bg));
       }
       .mdp-mod-infobox .infobox-body {
         padding: 0 16px;

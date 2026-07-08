@@ -2,17 +2,36 @@
   <name>button</name>
   <type>block</type>
   <description>A styled pseudo-button link. The label is the block body (spaces / commas / inline Markdown allowed); the destination is the href parameter. Renders inline.</description>
+  <tags>button, mockup</tags>
   <aiSpec><![CDATA[
-A styled button-like link for calls to action or navigation. The body text is
-the button label; the `href` parameter is the link destination. Gotcha:
-declared as a block module but renders inline, so it sits within the surrounding
-flow. Example: `<!-- @button href: https://example.com -->` then `Get Started`
-then `<!-- @end -->`.
+A styled button-like link for calls to action or navigation. The block body is
+the button label; the `href` parameter is the link destination. Gotcha: it is
+declared as a block module but renders INLINE, so it flows within the surrounding
+text. For a small non-clickable status pill use @badge instead.
+
+Body: the button label (inline markdown allowed).
+
+Parameters:
+- href (text, default #): link destination.
+- color (color, default var(--accent-color)): background (solid) or border/text (outline) color.
+- variant (select: solid | outline, default solid): filled button or an outlined one.
+- size (select: sm | md | lg, default md): padding and text size.
+- target (select: _self | _blank, default _self): _blank opens in a new tab (adds rel=noopener).
+- radius (number px, default blank = theme): corner rounding; blank uses the theme's --radius-sm.
+
+Usage:
+<!-- @button href: https://example.com, variant: outline, size: lg, target: _blank -->
+Get Started
+<!-- @end -->
 ]]></aiSpec>
 
   <parameters>
-    <param name="href" type="text" default="#" label="Link URL" desc="Destination the button links to" />
-    <param name="color" type="color" default="var(--accent-color)" label="Background Color" />
+    <param name="href" type="text" default="#" label="Link URL" desc="Destination the button links to." />
+    <param name="color" type="color" default="var(--accent-color)" label="Background Color" desc="Fill (solid) or border/text (outline) color." />
+    <param name="variant" type="select" default="solid" label="Variant" options="solid:Solid,outline:Outline" desc="Filled or outlined button." />
+    <param name="size" type="select" default="md" label="Size" options="sm:Small,md:Medium,lg:Large" desc="Padding and text size." />
+    <param name="target" type="select" default="_self" label="Open in" options="_self:Same tab,_blank:New tab" desc="New tab adds rel=noopener." />
+    <param name="radius" type="number" default="" label="Corner radius (px)" desc="Corner rounding; blank = theme default." min="0" max="40" integer="true" />
   </parameters>
 
   <snippets>
@@ -24,13 +43,30 @@ Get Started
 <!-- @end -->]]></text>
       <description>Styled button-like link. Body = the button label.</description>
     </snippet>
+    <snippet>
+      <category>UI Parts</category>
+      <label>Button (outline)</label>
+      <text><![CDATA[<!-- @button href: https://example.com, variant: outline, target: _blank -->
+Learn more
+<!-- @end -->]]></text>
+      <description>Outlined button that opens in a new tab.</description>
+    </snippet>
   </snippets>
 
   <render inline="true"><![CDATA[
     const body = sections[0] ? sections[0].trim() : '';
     const href = (args.href && String(args.href).trim()) || '#';
     const color = (args.color && String(args.color).trim()) || 'var(--accent-color)';
-    return '<a class="mdp-mod-button" href="' + href + '" style="background-color: ' + color + ';">' + body + '</a>';
+    const variant = (args.variant || 'solid').toLowerCase() === 'outline' ? 'outline' : 'solid';
+    const size = ['sm','md','lg'].indexOf((args.size || 'md').toLowerCase()) >= 0 ? (args.size || 'md').toLowerCase() : 'md';
+    const target = (args.target || '_self') === '_blank' ? '_blank' : '_self';
+    const radius = parseFloat(args.radius);
+    let style = '--btn-c: ' + color + ';';
+    if (variant === 'solid') style += ' background-color: ' + color + ';';
+    if (Number.isFinite(radius) && radius >= 0) style += ' --btn-r: ' + radius + 'px;';
+    const cls = 'mdp-mod-button mdp-btn-' + size + (variant === 'outline' ? ' mdp-btn-outline' : '');
+    const targetAttr = target === '_blank' ? ' target="_blank" rel="noopener"' : '';
+    return '<a class="' + cls + '" href="' + href + '"' + targetAttr + ' style="' + style + '">' + body + '</a>';
   ]]></render>
 
   <style><![CDATA[
@@ -42,12 +78,21 @@ Get Started
       font-size: 0.95em;
       line-height: 1.2;
       text-decoration: none !important;
-      border-radius: var(--radius-sm, 6px);
+      border-radius: var(--btn-r, var(--radius-sm, 6px));
       box-shadow: var(--shadow-sm, 0 2px 6px rgba(0,0,0,0.18));
       vertical-align: middle;
     }
     .mdp-mod-button:hover {
       filter: brightness(0.92);
+    }
+    .mdp-btn-sm { padding: 5px 12px; font-size: 0.82em; }
+    .mdp-btn-md { padding: 8px 18px; font-size: 0.95em; }
+    .mdp-btn-lg { padding: 11px 24px; font-size: 1.1em; }
+    .mdp-mod-button.mdp-btn-outline {
+      background-color: transparent !important;
+      color: var(--btn-c) !important;
+      border: 2px solid var(--btn-c);
+      box-shadow: none;
     }
   ]]></style>
 

@@ -1,0 +1,90 @@
+<module>
+  <name>netgraph</name>
+  <type>block</type>
+  <description>A small node-edge graph (SVG, circular layout): edges like "A -> B weight" (directed) or "A - B" (undirected). For graph theory, state machines, networks.</description>
+  <tags>network, relationship</tags>
+  <aiSpec><![CDATA[
+A NODE-EDGE GRAPH laid out on a circle — for graph theory, small state machines,
+simple networks. Block module: one edge or node per line (sections optional):
+  `A -> B`        directed edge,
+  `A - B`         undirected edge,
+  `A -> B 0.5`    edge with a label (anything after the second node),
+  `A`             a lone node (to include an isolated vertex).
+Nodes are created automatically from edges and placed clockwise in first-appearance
+order. Params: `color` (node fill/stroke color, default var(--accent-color)).
+Keep it small (≤ ~10 nodes); use @drawio for big diagrams, @flow for flowcharts.
+(Not @graph — that wraps a figure image.)
+
+<!-- @netgraph -->
+A -> B
+B -> C 2
+C - A
+<!-- @end -->
+]]></aiSpec>
+  <parameters>
+    <param name="color" type="color" default="var(--accent-color)" label="Node color" desc="Fill and outline color of the node circles." />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Math</category>
+      <label>Node-edge graph</label>
+      <text><![CDATA[<!-- @netgraph -->
+A -> B
+B -> C 2
+C - A
+<!-- @end -->]]></text>
+      <description>Small circular-layout graph from "A -> B" / "A - B" edge lines.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const color = args.color || 'var(--accent-color)';
+    const lines = sections.join('\n').split('\n').map((l) => l.trim()).filter(Boolean);
+    const order = []; const idx = {};
+    const node = (n) => { if (!(n in idx)) { idx[n] = order.length; order.push(n); } return idx[n]; };
+    const edges = [];
+    lines.forEach((l) => {
+      const m = l.match(/^(\S+)\s*(->|--|-)\s*(\S+)\s*(.*)$/);
+      if (m) { edges.push({ a: node(m[1]), b: node(m[3]), dir: m[2] === '->', label: m[4].trim() }); }
+      else node(l);
+    });
+    if (!order.length) return `<div>(netgraph: lines like "A -> B" or "A - B")</div>`;
+    const n = order.length, C = 80, RING = n > 1 ? 58 : 0, NR = 11;
+    const pos = order.map((_, i) => {
+      const th = -Math.PI / 2 + (2 * Math.PI * i) / n;
+      return [C + RING * Math.cos(th), C + RING * Math.sin(th)];
+    });
+    const f = (v) => v.toFixed(1);
+    let svg = `<defs><marker id="mdp-ng-arrow" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 z" fill="currentColor" opacity="0.75"/></marker></defs>`;
+    edges.forEach((e) => {
+      const [x1, y1] = pos[e.a], [x2, y2] = pos[e.b];
+      if (e.a === e.b) { // self-loop
+        svg += `<path d="M${f(x1 - 4)},${f(y1 - NR)} C${f(x1 - 16)},${f(y1 - NR - 22)} ${f(x1 + 16)},${f(y1 - NR - 22)} ${f(x1 + 4)},${f(y1 - NR)}" class="mdp-ng-edge"${e.dir ? ' marker-end="url(#mdp-ng-arrow)"' : ''}/>`;
+        if (e.label) svg += `<text x="${f(x1)}" y="${f(y1 - NR - 20)}" class="mdp-ng-elbl" text-anchor="middle">${esc(e.label)}</text>`;
+        return;
+      }
+      const dx = x2 - x1, dy = y2 - y1, L = Math.hypot(dx, dy) || 1;
+      const sx = x1 + dx / L * (NR + 1), sy = y1 + dy / L * (NR + 1);
+      const ex = x2 - dx / L * (NR + 2.5), ey = y2 - dy / L * (NR + 2.5);
+      svg += `<line x1="${f(sx)}" y1="${f(sy)}" x2="${f(ex)}" y2="${f(ey)}" class="mdp-ng-edge"${e.dir ? ' marker-end="url(#mdp-ng-arrow)"' : ''}/>`;
+      if (e.label) {
+        const mx = (sx + ex) / 2 - dy / L * 6, my = (sy + ey) / 2 + dx / L * 6;
+        svg += `<text x="${f(mx)}" y="${f(my)}" class="mdp-ng-elbl" text-anchor="middle" dominant-baseline="middle">${esc(e.label)}</text>`;
+      }
+    });
+    order.forEach((name, i) => {
+      const [x, y] = pos[i];
+      svg += `<circle cx="${f(x)}" cy="${f(y)}" r="${NR}" class="mdp-ng-node"/>` +
+        `<text x="${f(x)}" y="${f(y)}" class="mdp-ng-nlbl" text-anchor="middle" dominant-baseline="central">${esc(name)}</text>`;
+    });
+    return `\n\n<div class="mdp-mod-netgraph" style="--ng-c:${color};"><svg viewBox="0 0 160 160" preserveAspectRatio="xMidYMid meet">${svg}</svg></div>\n\n`;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-netgraph { width: min(100%, 340px); margin: 1rem auto; }
+    .mdp-mod-netgraph svg { width: 100%; height: auto; overflow: visible; }
+    .mdp-ng-edge { stroke: currentColor; stroke-width: 1; fill: none; opacity: 0.75; }
+    .mdp-ng-node { fill: color-mix(in srgb, var(--ng-c) 18%, transparent); stroke: var(--ng-c); stroke-width: 1.2; }
+    .mdp-ng-nlbl { fill: currentColor; font-size: 6.5px; font-weight: 700; }
+    .mdp-ng-elbl { fill: currentColor; font-size: 5.5px; opacity: 0.85; }
+  ]]></style>
+</module>

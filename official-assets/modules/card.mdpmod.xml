@@ -1,16 +1,38 @@
 <module>
   <name>card</name>
   <type>block</type>
-  <description>Elevated card with a title bar and body</description>
+  <description>An elevated card with a colored title bar and a body, split into exactly two body sections (title, body).</description>
+  <tags>cards, containers</tags>
   <aiSpec><![CDATA[
-Use to highlight a titled chunk of content in a raised card with a colored header
-bar. Block module: the body has exactly two sections split by `<!-- @ -->` — the
-first is the header title, the second is the card body (ordinary markdown).
-Example: `<!-- @card color: #2563eb -->` then `Title` `<!-- @ -->` `Body text`.
+Highlight a titled chunk of content in a raised card with a colored header bar —
+good for feature callouts, definitions, or grouped notes. For a plain framed
+screenshot use @browser; for a small inline label use @badge.
+
+Body: exactly two sections split by `<!-- @ -->`:
+- section 1 = the header title.
+- section 2 = the card body (ordinary markdown).
+
+Parameters:
+- color (color, default var(--accent-color)): header-bar background color.
+- icon (text, default empty): a small emoji/character shown before the title, e.g. an emoji.
+- align (select: left | center | right, default left): header-title alignment.
+- shadow (boolean, default true): drop shadow (elevation).
+- radius (number px, default blank = theme): corner rounding; blank uses the theme's --radius-sm.
+
+Usage:
+<!-- @card color: #2563eb, icon: 🚀, align: center -->
+Launch Plan
+<!-- @ -->
+Ship the beta by Friday and gather feedback.
+<!-- @end -->
 ]]></aiSpec>
 
   <parameters>
-    <param name="color" type="color" default="var(--accent-color)" label="Header Color" />
+    <param name="color" type="color" default="var(--accent-color)" label="Header Color" desc="Header-bar background color." />
+    <param name="icon" type="text" default="" label="Header icon" desc="Emoji/character shown before the title." />
+    <param name="align" type="select" default="left" label="Header align" options="left:Left,center:Center,right:Right" desc="Header-title alignment." />
+    <param name="shadow" type="boolean" default="true" label="Shadow" desc="Drop shadow (elevation)." />
+    <param name="radius" type="number" default="" label="Corner radius (px)" desc="Corner rounding; blank = theme default." min="0" max="40" integer="true" />
   </parameters>
 
   <snippets>
@@ -24,24 +46,44 @@ Card body content goes here.
 <!-- @end -->]]></text>
       <description>Elevated card with header bar</description>
     </snippet>
+    <snippet>
+      <category>Structure</category>
+      <label>Card (icon)</label>
+      <text><![CDATA[<!-- @card color: #2563eb, icon: 🚀 -->
+Launch Plan
+<!-- @ -->
+Ship the beta by Friday.
+<!-- @end -->]]></text>
+      <description>Card with an emoji icon in the header.</description>
+    </snippet>
   </snippets>
 
   <render><![CDATA[
+    const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     const color = args.color || 'var(--accent-color)';
+    const align = (args.align || 'left').toLowerCase();
+    const textAlign = align === 'center' ? 'center' : align === 'right' ? 'right' : 'left';
+    const shadow = !(args.shadow === false || args.shadow === 'false');
+    const radius = parseFloat(args.radius);
+    const icon = (args.icon && String(args.icon).trim()) ? `<span class="card-icon">${esc(String(args.icon).trim())}</span> ` : '';
     const titleStr = sections[0] ? sections[0].trim() : '';
     const bodyStr = sections[1] ? sections[1].trim() : '';
-    return `\n\n<div class="mdp-mod-card"><div class="card-header" style="background-color: ${color};">\n\n${titleStr}\n\n</div><div class="card-body">\n\n${bodyStr}\n\n</div></div>\n\n`;
+    let cardStyle = '';
+    if (Number.isFinite(radius) && radius >= 0) cardStyle = ` style="--card-r:${radius}px;"`;
+    const cls = `mdp-mod-card${shadow ? '' : ' mdp-card-flat'}`;
+    return `\n\n<div class="${cls}"${cardStyle}><div class="card-header" style="background-color: ${color}; text-align: ${textAlign};">\n\n${icon}${titleStr}\n\n</div><div class="card-body">\n\n${bodyStr}\n\n</div></div>\n\n`;
   ]]></render>
 
   <style><![CDATA[
     .mdp-mod-card {
       background-color: var(--panel-bg, #ffffff);
       border: 1px solid var(--panel-border, #e5e7eb);
-      border-radius: var(--radius-sm, 8px);
+      border-radius: var(--card-r, var(--radius-sm, 8px));
       box-shadow: var(--shadow-sm, 0 2px 8px rgba(0,0,0,0.12));
       margin: 1rem 0;
       overflow: hidden;
     }
+    .mdp-mod-card.mdp-card-flat { box-shadow: none; }
     .mdp-mod-card .card-header {
       color: #ffffff;
       padding: 10px 16px;

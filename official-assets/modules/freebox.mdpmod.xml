@@ -2,20 +2,48 @@
   <name>freebox</name>
   <type>block</type>
   <description>Free-floating box you can move, resize and rotate directly on the preview (Edit layout mode).</description>
+  <tags>freeform, containers</tags>
   <aiSpec><![CDATA[
-Use to place a freely positioned container that the user can drag, resize and
-rotate on the preview, or pre-place via x/y/w/h args (percentages, center origin).
-Block module: the body is a single section of ordinary markdown shown inside the
-box; halign/valign control how that content sits within the box.
+A FREELY POSITIONED CONTAINER. It flows normally in the slide until you drag, resize
+or rotate it on the preview in "Edit layout" mode — or you can pre-place it with x/y/
+w/h args. Use it to drop a caption, badge, image or paragraph anywhere on a slide.
+
+Body: a single section of ordinary Markdown, shown inside the box. `halign`/`valign`
+control how that content sits within the box.
+
+Placement args (written back automatically when you drag on the preview; you can also
+set them by hand): `x`/`y` = center position as a percent of the slide, `w`/`h` =
+size as a percent, `rot` = rotation in degrees. Omit them to let the box flow inline.
+
+When NOT to use: for normal slide flow just write Markdown; for a titled callout box
+use a card/callout module instead.
+
+Parameters:
+  - `bg`        : background color/fill. Default transparent. Any CSS color.
+  - `border`    : CSS border shorthand, e.g. `1px solid #ccc`. Default `0` (none).
+  - `halign`    : left | center | right — horizontal text alignment. Default center.
+  - `valign`    : top | middle | bottom — vertical placement of the content. Default middle.
+  - `textcolor` : text color inside the box. Default blank = inherit. Any CSS color.
+  - `radius`    : corner radius in px. Default 6. Range 0–200.
+  - `padding`   : inner padding in px. Default 0. Range 0–400.
+  - `shadow`    : true/false — drop shadow around the box. Default false.
+
+<!-- @freebox x: 50, y: 40, w: 40, h: 20, bg: #111, textcolor: #fff, padding: 12, shadow: true -->
+Positioned box
+<!-- @end -->
 ]]></aiSpec>
 
   <manipulate position="xy" size="xy" rotation="true" minW="5" maxW="100" minH="3" maxH="100" />
 
   <parameters>
-    <param name="bg" type="color" default="rgba(255,255,255,0.0)" label="Background" />
-    <param name="border" type="text" default="0" label="Border" desc="CSS border shorthand, e.g. 1px solid #ccc" />
-    <param name="halign" type="select" default="center" label="Horizontal Align" options="left,center,right" />
-    <param name="valign" type="select" default="middle" label="Vertical Align" options="top,middle,bottom" />
+    <param name="bg" type="color" default="rgba(255,255,255,0.0)" label="Background" desc="Background color/fill of the box." />
+    <param name="border" type="text" default="0" label="Border" desc="CSS border shorthand, e.g. 1px solid #ccc." />
+    <param name="halign" type="select" default="center" label="Horizontal Align" options="left,center,right" desc="Horizontal text alignment inside the box." />
+    <param name="valign" type="select" default="middle" label="Vertical Align" options="top,middle,bottom" desc="Vertical placement of the content inside the box." />
+    <param name="textcolor" type="color" default="" label="Text color" desc="Text color inside the box; blank = inherit." />
+    <param name="radius" type="number" default="6" min="0" max="200" step="1" label="Corner radius (px)" desc="Corner radius of the box." />
+    <param name="padding" type="number" default="0" min="0" max="400" step="2" label="Padding (px)" desc="Inner padding of the box." />
+    <param name="shadow" type="boolean" default="false" label="Shadow" desc="Draw a drop shadow around the box." />
   </parameters>
 
   <snippets>
@@ -48,8 +76,13 @@ Positioned box
     // halign is handled via text-align; content stretches to the full box width
     // (align-items: stretch) so paragraphs/tables/images use the available width.
     const textAlign = h === 'left' ? 'left' : h === 'right' ? 'right' : 'center';
+    const radius = Math.max(0, Math.min(200, Number.isFinite(parseFloat(args.radius)) ? parseFloat(args.radius) : 6));
+    const pad = Math.max(0, Math.min(400, Number.isFinite(parseFloat(args.padding)) ? parseFloat(args.padding) : 0));
+    const shadowCss = String(args.shadow) === 'true' ? '0 2px 12px rgba(0,0,0,0.18)' : 'none';
+    const textcolor = (args.textcolor && String(args.textcolor).trim()) ? args.textcolor : '';
+    const colorCss = textcolor ? ` color:${textcolor};` : '';
     const body = (sections[0] || '').trim();
-    return `\n\n<div class="mdp-mod-freebox" style="background:${bg}; border:${border}; align-items: stretch; justify-content:${justify}; text-align:${textAlign};">\n\n${body}\n\n</div>\n\n`;
+    return `\n\n<div class="mdp-mod-freebox" style="background:${bg}; border:${border}; border-radius:${radius}px; padding:${pad}px; box-shadow:${shadowCss};${colorCss} align-items: stretch; justify-content:${justify}; text-align:${textAlign};">\n\n${body}\n\n</div>\n\n`;
   ]]></render>
 
   <style><![CDATA[

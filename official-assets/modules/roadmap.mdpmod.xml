@@ -1,0 +1,118 @@
+<module>
+  <name>roadmap</name>
+  <type>block</type>
+  <description>Horizontal roadmap of phases along an arrow. Body = one section per phase (split by "&lt;!-- @ --&gt;"): first line = phase title, rest = Markdown items.</description>
+  <tags>timeline, process</tags>
+  <aiSpec><![CDATA[
+A horizontal ROADMAP — phases (quarters, milestones, releases) laid left-to-right along an
+arrow. Block module: split the body with `<!-- @ -->`, one PHASE per section. In a phase, the
+FIRST line is the title (e.g. Q1, MVP) and the rest is Markdown (a short bullet list of
+deliverables). Use @steps or @process instead for a step-by-step procedure rather than a
+time/phase plan.
+
+Parameters:
+  `active`    — 1-based index of the phase to highlight (default 0 = none highlighted).
+  `color`     — accent colour for dots, titles and (unless overridden) the arrow (default theme accent).
+  `linecolor` — CSS colour override for the connecting arrow line only (default blank = a faded accent).
+  `numbered`  — true | false (default false): show the phase number inside each dot.
+  `compact`   — true | false (default false): tighter columns and smaller body text.
+  `align`     — left | center (default left): text alignment of each phase's body.
+
+Example:
+<!-- @roadmap active: 2, numbered: true, color: #10b981 -->
+Q1 — Foundation
+- Auth
+- Data model
+<!-- @ -->
+Q2 — Beta
+- Public beta
+<!-- @ -->
+Q3 — Launch
+- GA release
+<!-- @end -->
+]]></aiSpec>
+  <parameters>
+    <param name="color" type="color" default="var(--accent-color)" label="Accent color" desc="Dots, titles and the arrow line (theme accent by default)." />
+    <param name="active" type="number" default="0" min="0" integer="true" label="Current phase (1-based)" desc="Highlights the Nth phase; 0 = none." />
+    <param name="linecolor" type="color" default="" label="Arrow line color" desc="Overrides just the connecting arrow; blank = faded accent." />
+    <param name="numbered" type="boolean" default="false" label="Numbered dots" desc="Show the phase number inside each dot." />
+    <param name="compact" type="boolean" default="false" label="Compact" desc="Tighter columns and smaller body text." />
+    <param name="align" type="select" default="left" options="left,center" label="Body align" desc="Text alignment of each phase's body." />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Diagrams</category>
+      <label>Roadmap (phases)</label>
+      <text><![CDATA[<!-- @roadmap active: 2 -->
+**Q1** — Foundation
+- Auth & data model
+<!-- @ -->
+**Q2** — Beta
+- Public beta
+<!-- @ -->
+**Q3** — Launch
+- GA release
+<!-- @end -->]]></text>
+      <description>Phases along an arrow, left to right; active: n highlights one.</description>
+    </snippet>
+    <snippet>
+      <category>Diagrams</category>
+      <label>Roadmap (numbered, compact)</label>
+      <text><![CDATA[<!-- @roadmap active: 1, numbered: true, compact: true -->
+**Discovery**
+- Interviews
+<!-- @ -->
+**Design**
+- Prototypes
+<!-- @ -->
+**Delivery**
+- Ship v1
+<!-- @end -->]]></text>
+      <description>Numbered dots with tighter spacing.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const color = args.color || 'var(--accent-color)';
+    const active = parseInt(args.active, 10) || 0;
+    const numbered = String(args.numbered) === 'true';
+    const compact = String(args.compact) === 'true';
+    const align = args.align === 'center' ? 'center' : 'left';
+    const lineColor = (args.linecolor || '').trim();
+    const phases = sections.map((s) => (s || '').trim()).filter(Boolean);
+    let styleVars = `--rm-color:${color};`;
+    if (lineColor) styleVars += `--rm-line:${lineColor};`;
+    if (align !== 'left') styleVars += `--rm-body-align:${align};`;
+    const cls = 'mdp-mod-roadmap' + (numbered ? ' is-numbered' : '') + (compact ? ' is-compact' : '');
+    let html = `\n\n<div class="${cls}" style="${styleVars}"><div class="mdp-rm-track">`;
+    phases.forEach((p, i) => {
+      const lines = p.split('\n');
+      const title = (lines.shift() || '').trim();
+      const body = lines.join('\n').trim();
+      const on = (i + 1) === active;
+      const dotInner = numbered ? String(i + 1) : '';
+      html += `<div class="mdp-rm-phase${on ? ' is-active' : ''}"><div class="mdp-rm-dot">${dotInner}</div><div class="mdp-rm-title">\n\n${title}\n\n</div><div class="mdp-rm-body">\n\n${body}\n\n</div></div>`;
+    });
+    html += `</div></div>\n\n`;
+    return html;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-roadmap { margin: 1rem 0; overflow-x: auto; }
+    .mdp-rm-track { display: flex; align-items: flex-start; gap: 0; position: relative; padding-top: 22px; }
+    .mdp-rm-track::before { content: ''; position: absolute; top: 27px; left: 6%; right: 3%; height: 3px; background: var(--rm-line, color-mix(in srgb, var(--rm-color) 40%, transparent)); }
+    .mdp-rm-track::after { content: '▶'; position: absolute; top: 19px; right: 0; color: var(--rm-line, color-mix(in srgb, var(--rm-color) 40%, transparent)); font-size: 1.1em; line-height: 0; }
+    .mdp-rm-phase { flex: 1 1 0; min-width: 7em; position: relative; padding: 0 8px; text-align: center; }
+    .mdp-rm-dot { width: 14px; height: 14px; border-radius: 50%; background: var(--panel-bg, #fff); border: 3px solid var(--rm-color); margin: 0 auto 8px; position: relative; z-index: 1; }
+    .mdp-rm-phase.is-active .mdp-rm-dot { background: var(--rm-color); box-shadow: 0 0 0 4px color-mix(in srgb, var(--rm-color) 25%, transparent); }
+    .mdp-mod-roadmap.is-numbered .mdp-rm-dot { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; font-size: 0.62em; font-weight: 700; line-height: 1; color: var(--rm-color); }
+    .mdp-mod-roadmap.is-numbered .mdp-rm-phase.is-active .mdp-rm-dot { color: #fff; }
+    .mdp-mod-roadmap.is-numbered .mdp-rm-track::before { top: 30px; }
+    .mdp-mod-roadmap.is-numbered .mdp-rm-track::after { top: 22px; }
+    .mdp-rm-title { font-weight: 700; color: var(--rm-color); }
+    .mdp-rm-title > *, .mdp-rm-body > * { margin: 0; }
+    .mdp-rm-body { font-size: 0.85em; text-align: var(--rm-body-align, left); margin-top: 4px; }
+    .mdp-rm-body ul { margin: 0; padding-left: 1.1em; }
+    .mdp-mod-roadmap.is-compact .mdp-rm-phase { min-width: 5.5em; }
+    .mdp-mod-roadmap.is-compact .mdp-rm-body { font-size: 0.75em; }
+    .mdp-rm-phase.is-active .mdp-rm-title { text-decoration: underline; }
+  ]]></style>
+</module>

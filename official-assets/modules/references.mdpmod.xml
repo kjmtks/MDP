@@ -2,21 +2,51 @@
   <name>references</name>
   <type>block</type>
   <description>Bibliography from raw BibTeX. Independent knobs: layout (list|cards), notation (ieee|apa), marker (number|key|bullet|none), and a custom/omittable header. Handles any entry type with type-aware formatting (place: publisher, In ... for chapters/proceedings, thesis/report types), @string macros, # concatenation, crossref/xdata inheritance, biblatex fields, LaTeX accents and $math$.</description>
+  <tags>reference, list</tags>
   <aiSpec><![CDATA[
 Use to render a bibliography / reference list on a slide. Block module: the body
 (between the opening tag and `<!-- @end -->`) is RAW BibTeX entries pasted verbatim
-(@article{...}, @book{...}, etc.) — not markdown and not split into sections. Each
-BibTeX entry becomes one formatted reference; the chosen notation (IEEE/APA/etc.) is
-applied automatically. LaTeX accents and $math$ are handled.
+(@article{...}, @book{...}, @inproceedings{...}, etc.) — NOT markdown and NOT split into
+sections. Each BibTeX entry becomes one formatted reference; the chosen notation is applied
+automatically. @string macros, # concatenation, crossref/xdata inheritance, LaTeX accents and
+$math$ are all handled. (For a single inline citation in running text, this module is not it.)
+
+Parameters:
+  `layout`   — list | cards (default list). list = numbered/tagged lines; cards = a grid of boxes.
+  `notation` — ieee | apa | chicago | nature (default ieee): the citation style.
+  `marker`   — number | key | bullet | none (default number): the per-item marker
+               (number = [1], key = the BibTeX cite key e.g. [knuth1997], bullet, or none).
+  `title`    — header text (default "References"); empty or "none"/"off"/"false" hides the header.
+  `accent`   — CSS colour overriding the theme accent (default blank = theme accent).
+  `align`    — left | center | right (default left): text alignment of the block.
+  `compact`  — true | false (default false): denser, smaller type for long lists.
+  `columns`  — 1–4 (default 1): split the LIST layout into that many text columns (ignored for cards).
+  `fontsize` — CSS length for the base type (default blank = 0.78em), e.g. 0.7em or 13px.
+
+Example:
+<!-- @references notation: apa, columns: 2, compact: true -->
+@article{einstein1905,
+  author = {Einstein, Albert}, title = {On the Electrodynamics of Moving Bodies},
+  journal = {Annalen der Physik}, volume = {17}, number = {10}, pages = {891--921}, year = {1905}
+}
+@book{knuth1997,
+  author = {Knuth, Donald E.}, title = {The Art of Computer Programming},
+  address = {Reading, MA}, publisher = {Addison-Wesley}, year = {1997}
+}
+<!-- @end -->
 ]]></aiSpec>
   <interactive>false</interactive>
 
   <parameters>
-    <param name="layout" type="select" default="list" label="Layout" options="list:List,cards:Cards" />
-    <param name="notation" type="select" default="ieee" label="Notation Style" options="ieee:IEEE,apa:APA,chicago:Chicago,nature:Nature" />
-    <param name="marker" type="select" default="number" label="Item Marker" options="number:Auto number,key:Cite key,bullet:Bullet,none:None" />
-    <param name="title" type="text" default="References" label="Header" desc="Header text; empty or 'none' hides it" />
-    <param name="accent" type="color" default="" label="Accent Colour" desc="Overrides the theme accent" />
+    <param name="layout" type="select" default="list" label="Layout" options="list:List,cards:Cards" desc="List of formatted lines, or a grid of cards." />
+    <param name="notation" type="select" default="ieee" label="Notation Style" options="ieee:IEEE,apa:APA,chicago:Chicago,nature:Nature" desc="Citation style applied to every entry." />
+    <param name="marker" type="select" default="number" label="Item Marker" options="number:Auto number,key:Cite key,bullet:Bullet,none:None" desc="Per-item marker: [1], the cite key, a bullet, or none." />
+    <param name="title" type="text" default="References" label="Header" desc="Header text; empty or 'none' hides it." />
+    <param name="accent" type="color" default="" label="Accent Colour" desc="Overrides the theme accent (markers, links, rules)." />
+    <param name="align" type="select" default="left" options="left,center,right" label="Text align" desc="Text alignment of the whole block." />
+    <param name="compact" type="boolean" default="false" label="Compact" desc="Denser, smaller type for long lists." />
+    <param name="columns" type="number" default="1" min="1" max="4" integer="true" label="Columns" desc="Split the list layout into N text columns (list only)." />
+    <param name="fontsize" type="text" default="" label="Base font size" desc="CSS length for the base type; blank = 0.78em." />
   </parameters>
 
   <snippets>
@@ -637,7 +667,17 @@ applied automatically. LaTeX accents and $math$ are handled.
       none: 'none', no: 'none', off: 'none', hidden: 'none'
     }, 'number');
     const accent = (args.accent || '').trim();
-    const accentStyle = accent ? ' style="--ref-accent:' + esc(accent) + '"' : '';
+    const align = pick(args.align, { left: 'left', center: 'center', right: 'right' }, 'left');
+    const compact = String(args.compact) === 'true';
+    const columns = Math.max(1, Math.min(4, parseInt(args.columns, 10) || 1));
+    const fontsize = (args.fontsize || '').trim();
+    const styleParts = [];
+    if (accent) styleParts.push('--ref-accent:' + esc(accent));
+    if (align !== 'left') styleParts.push('text-align:' + align);
+    if (fontsize) styleParts.push('--ref-size:' + esc(fontsize));
+    const accentStyle = styleParts.length ? ' style="' + styleParts.join(';') + '"' : '';
+    const rootClass = 'mdp-mod-references' + (compact ? ' is-compact' : '');
+    const olStyle = (layout === 'list' && columns > 1) ? ' style="column-count:' + columns + ';"' : '';
 
     // Header: custom text, or hidden when empty / none / off / false.
     const titleRaw = (args.title == null ? 'References' : String(args.title)).trim();
@@ -645,7 +685,7 @@ applied automatically. LaTeX accents and $math$ are handled.
     const head = hideHeader ? '' : '<div class="mdp-ref-title-head">' + esc(titleRaw) + '</div>';
 
     if (!parsed.length) {
-      return '\n\n<div class="mdp-mod-references"' + accentStyle + '>' + head
+      return '\n\n<div class="' + rootClass + '"' + accentStyle + '>' + head
         + '<div class="mdp-ref-empty">No valid BibTeX entries found.</div></div>\n\n';
     }
 
@@ -658,22 +698,26 @@ applied automatically. LaTeX accents and $math$ are handled.
       inner = '<div class="mdp-ref-cards">'
         + parsed.map(function (e, idx) { return cardBox(e, idx, marker, notation); }).join('') + '</div>';
     } else {
-      inner = '<ol class="mdp-ref-list mk-' + marker + '">'
+      inner = '<ol class="mdp-ref-list mk-' + marker + '"' + olStyle + '>'
         + parsed.map(function (e, idx) { return listItem(e, idx, textOf(e), marker); }).join('') + '</ol>';
     }
     // Single HTML block, no internal blank lines, so markdown leaves it intact.
-    return '\n\n<div class="mdp-mod-references"' + accentStyle + '>' + head + inner + '</div>\n\n';
+    return '\n\n<div class="' + rootClass + '"' + accentStyle + '>' + head + inner + '</div>\n\n';
   ]]></render>
 
   <style><![CDATA[
     .mdp-mod-references {
       --ref-accent: var(--accent-color, #3b82f6);
       margin: 0.5em 0;
-      font-size: 0.78em;
+      font-size: var(--ref-size, 0.78em);
       line-height: 1.45;
       text-align: left;
       color: var(--text-color);
     }
+    .mdp-mod-references.is-compact { font-size: 0.68em; line-height: 1.35; }
+    .mdp-mod-references.is-compact .mdp-ref-list > li { margin-bottom: 0.32em; }
+    .mdp-mod-references.is-compact .mdp-ref-cards { gap: 0.45em; }
+    .mdp-ref-list[style*="column-count"] > li { break-inside: avoid; -webkit-column-break-inside: avoid; }
     .mdp-mod-references .mdp-ref-title-head {
       font-weight: 700;
       font-size: 1.15em;

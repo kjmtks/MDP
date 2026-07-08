@@ -1,0 +1,94 @@
+<module>
+  <name>stackedbar</name>
+  <type>block</type>
+  <description>Horizontal stacked bars for comparing composition: each line "Label | v1 v2 v3", segments coloured per series with a legend from the "series" param. Optional 100% normalization.</description>
+  <tags>bars, comparison, charts</tags>
+  <aiSpec><![CDATA[
+STACKED horizontal BARS — compare how a total is composed across categories. Block module:
+one bar per line (all body sections are merged): `Label | 30 45 25` (segment values in series
+order, separated by spaces or commas). Use @barchart for single-value bars, or @chartjs for a
+full chart; @stackedbar is specifically for part-of-whole composition.
+
+Parameters:
+  `series`     — segment names for the legend, comma-separated (e.g. "iOS, Android, Web"; default none).
+  `normalize`  — true | false (default false): stretch every bar to 100% (composition-only view).
+  `unit`       — suffix appended to printed values (e.g. "%" or "M"; default none).
+  `height`     — bar height in px, 10–80 (default 30).
+  `showvalues` — true | false (default true): print each segment's value inside it when it fits.
+  `colors`     — comma-separated colour override for the segment palette (default built-in palette).
+
+Example:
+<!-- @stackedbar series: "iOS, Android, Web", normalize: true, height: 26, colors: "#0ea5e9, #22c55e, #eab308" -->
+2023 | 30 45 25
+2024 | 35 40 25
+<!-- @end -->
+]]></aiSpec>
+  <parameters>
+    <param name="series" type="text" default="" label="Series names" desc="Legend labels, comma-separated, in segment order." />
+    <param name="normalize" type="boolean" default="false" label="Normalize to 100%" desc="Stretch every bar to 100% for a composition-only view." />
+    <param name="unit" type="text" default="" label="Value suffix" desc="Suffix appended to printed values, e.g. % or M." />
+    <param name="height" type="number" default="30" min="10" max="80" label="Bar height (px)" desc="Height of each bar row." />
+    <param name="showvalues" type="boolean" default="true" label="Show values" desc="Print each segment's value inside it when it fits." />
+    <param name="colors" type="text" default="" label="Segment colors" desc="Comma-separated palette override; blank = built-in." />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Data</category>
+      <label>Stacked bars</label>
+      <text><![CDATA[<!-- @stackedbar series: "iOS, Android, Web", normalize: true -->
+2023 | 30 45 25
+2024 | 35 40 25
+<!-- @end -->]]></text>
+      <description>Composition bars; "Label | v1 v2 v3" per line, legend via series.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const palette = ['#3b82f6', '#f59e0b', '#22c55e', '#ef4444', '#8b5cf6', '#06b6d4', '#64748b'];
+    const custom = String(args.colors || '').split(',').map((x) => x.trim()).filter(Boolean);
+    const pal = custom.length ? custom : palette;
+    const normalize = String(args.normalize) === 'true';
+    const showVals = String(args.showvalues === undefined ? 'true' : args.showvalues) !== 'false';
+    const unit = esc(args.unit || '');
+    const heightRaw = parseFloat(args.height);
+    const height = Number.isFinite(heightRaw) ? Math.max(10, Math.min(80, heightRaw)) : 30;
+    const bars = [];
+    sections.join('\n').split('\n').map((l) => l.trim()).filter(Boolean).forEach((l) => {
+      const i = l.indexOf('|');
+      if (i < 0) return;
+      const vals = l.slice(i + 1).trim().split(/[\s,]+/).map(parseFloat).filter((x) => Number.isFinite(x) && x >= 0);
+      if (vals.length) bars.push({ label: l.slice(0, i).trim(), vals });
+    });
+    if (!bars.length) return `<div>(stackedbar: lines like "Label | 30 45 25")</div>`;
+    const maxTotal = Math.max(...bars.map((b) => b.vals.reduce((a, x) => a + x, 0))) || 1;
+    let html = `\n\n<div class="mdp-mod-stackedbar" style="--sb-h:${height}px;">`;
+    bars.forEach((b) => {
+      const total = b.vals.reduce((a, x) => a + x, 0) || 1;
+      const scale = normalize ? 100 / total : 100 / maxTotal;
+      html += `<div class="mdp-sb-row"><div class="mdp-sb-label">${esc(b.label)}</div><div class="mdp-sb-bar">`;
+      b.vals.forEach((v, i) => {
+        const w = v * scale;
+        html += `<div class="mdp-sb-seg" style="width:${w.toFixed(2)}%; background:${pal[i % pal.length]};">` +
+          (showVals && w >= 9 ? `<span>${+v.toFixed(2)}${unit}</span>` : '') + `</div>`;
+      });
+      html += `</div></div>`;
+    });
+    const names = String(args.series || '').split(',').map((x) => x.trim()).filter(Boolean);
+    if (names.length) {
+      html += `<div class="mdp-sb-legend">` + names.map((nm, i) =>
+        `<span><i style="background:${pal[i % pal.length]};"></i>${esc(nm)}</span>`).join('') + `</div>`;
+    }
+    html += `</div>\n\n`;
+    return html;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-stackedbar { margin: 1rem 0; display: flex; flex-direction: column; gap: 10px; }
+    .mdp-sb-row { display: grid; grid-template-columns: minmax(56px, auto) 1fr; align-items: center; gap: 12px; }
+    .mdp-sb-label { font-weight: 600; text-align: right; }
+    .mdp-sb-bar { display: flex; height: var(--sb-h, 30px); border-radius: 6px; overflow: hidden; background: color-mix(in srgb, currentColor 6%, transparent); }
+    .mdp-sb-seg { display: flex; align-items: center; justify-content: center; color: #fff; font-size: 0.78em; font-weight: 700; text-shadow: 0 1px 2px rgba(0,0,0,.35); min-width: 0; }
+    .mdp-sb-seg span { overflow: hidden; white-space: nowrap; }
+    .mdp-sb-legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 0.85em; margin-top: 2px; }
+    .mdp-sb-legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: -2px; }
+  ]]></style>
+</module>

@@ -1,0 +1,75 @@
+<module>
+  <name>statdelta</name>
+  <type>block</type>
+  <description>A row of KPI stats each with a value and an up/down change (▲/▼, coloured). For dashboards and results slides.</description>
+  <tags>kpi</tags>
+  <aiSpec><![CDATA[
+A row of KPI STATS each showing a big value and a CHANGE (delta) with an up/down
+arrow, coloured green/red. Block module: split the body with `<!-- @ -->`, one stat
+per section written on up to three lines:
+  line 1 = the big VALUE (e.g. $1.2M, 98%),
+  line 2 = the LABEL,
+  line 3 = the CHANGE (e.g. +12%, -3pt) — a leading + is up/green, - is down/red.
+`invert: true` flips the colours (for metrics where down is good).
+
+<!-- @statdelta -->
+$1.2M
+Revenue
++12%
+<!-- @ -->
+4.8%
+Churn
+-0.5pt
+<!-- @end -->
+]]></aiSpec>
+  <parameters>
+    <param name="invert" type="boolean" default="false" label="Down is good" desc="Green for decreases" />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Presentation UI</category>
+      <label>KPI stats with change</label>
+      <text><![CDATA[<!-- @statdelta -->
+$1.2M
+Revenue
++12%
+<!-- @ -->
+2,340
+Active users
++8%
+<!-- @ -->
+4.8%
+Churn
+-0.5pt
+<!-- @end -->]]></text>
+      <description>Each section: value / label / change. +up=green, -down=red.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const invert = String(args.invert) === 'true';
+    const stats = sections.map((s) => (s || '').trim()).filter(Boolean);
+    let html = `\n\n<div class="mdp-mod-statdelta">`;
+    stats.forEach((st) => {
+      const [value = '', label = '', change = ''] = st.split('\n').map((x) => x.trim());
+      const up = /^\+/.test(change) || (/^[^-]/.test(change) && /↑|▲/.test(change));
+      const down = /^-/.test(change) || /↓|▼/.test(change);
+      const good = invert ? down : up;
+      const dir = up ? '▲' : down ? '▼' : '';
+      const cls = change ? (good ? ' is-good' : ' is-bad') : '';
+      html += `<div class="mdp-sd-item"><div class="mdp-sd-value">${esc(value)}</div><div class="mdp-sd-label">${esc(label)}</div>` +
+        (change ? `<div class="mdp-sd-change${cls}">${dir} ${esc(change.replace(/^[+\-]/, ''))}</div>` : '') + `</div>`;
+    });
+    html += `</div>\n\n`;
+    return html;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-statdelta { display: flex; gap: 14px; margin: 1rem 0; flex-wrap: wrap; }
+    .mdp-sd-item { flex: 1 1 0; min-width: 6em; text-align: center; padding: 10px; border-radius: 8px; background: color-mix(in srgb, var(--accent-color, #3b82f6) 5%, transparent); }
+    .mdp-sd-value { font-size: 1.8em; font-weight: 800; line-height: 1.1; }
+    .mdp-sd-label { font-size: 0.85em; color: var(--app-text-muted, #888); margin-top: 2px; }
+    .mdp-sd-change { font-weight: 700; font-size: 0.9em; margin-top: 4px; }
+    .mdp-sd-change.is-good { color: #16a34a; }
+    .mdp-sd-change.is-bad { color: #dc2626; }
+  ]]></style>
+</module>

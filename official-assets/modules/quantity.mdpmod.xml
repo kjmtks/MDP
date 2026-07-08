@@ -1,0 +1,65 @@
+<module>
+  <name>quantity</name>
+  <type>inline</type>
+  <description>An inline physical quantity — value, optional ± uncertainty, and a unit (with ^ superscripts). E.g. 9.81 ± 0.02 m/s^2.</description>
+  <tags>equations, inline</tags>
+  <aiSpec><![CDATA[
+An INLINE physical quantity: a value, an optional ± uncertainty, and a unit. Use it in
+running text where a measurement appears. This is an inline module — do NOT put math
+delimiters here (inline output is not re-typeset); write plain text.
+Parameters:
+  `value` (text) — the number, e.g. 9.81 or 2.998e8.
+  `unc` (text, optional) — ± uncertainty.
+  `unit` (text, optional) — e.g. m/s^2, kg, °C. In the unit, `^n` becomes a superscript.
+  `color` (color, default inherit) — color of the value.
+  `unitcolor` (color, default muted) — color of the unit and uncertainty.
+  `sci` (boolean, default false) — render exponent notation like 2.998e8 as 2.998×10^8.
+  `bold` (boolean, default false) — bold the value.
+
+The speed of light is <!-- @quantity value: 2.998e8, unit: m/s, sci: true -->.
+g = <!-- @quantity value: 9.81, unc: 0.02, unit: m/s^2 -->.
+]]></aiSpec>
+  <parameters>
+    <param name="value" type="text" default="0" label="Value" desc="The numeric value, e.g. 9.81 or 2.998e8." />
+    <param name="unc" type="text" default="" label="Uncertainty (±)" desc="Optional ± uncertainty value." />
+    <param name="unit" type="text" default="" label="Unit" desc="Use ^ for superscripts, e.g. m/s^2." />
+    <param name="color" type="color" default="" label="Value color" desc="Color of the value; blank = inherit text color." />
+    <param name="unitcolor" type="color" default="" label="Unit color" desc="Color of the unit and uncertainty; blank = muted." />
+    <param name="sci" type="boolean" default="false" label="Scientific notation" desc="Render e-notation like 2.998e8 as 2.998×10^8." />
+    <param name="bold" type="boolean" default="false" label="Bold value" desc="Render the value in bold." />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Math</category>
+      <label>Quantity (value ± unit)</label>
+      <text><![CDATA[<!-- @quantity value: 9.81, unc: 0.02, unit: m/s^2 -->]]></text>
+      <description>Inline measurement with optional uncertainty and unit.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const sup = (s) => esc(s).replace(/\^\{([^}]*)\}/g, '<sup>$1</sup>').replace(/\^(-?[\w.]+)/g, '<sup>$1</sup>');
+    let value = esc(String(args.value ?? '').trim());
+    const unc = String(args.unc ?? '').trim();
+    const unit = String(args.unit ?? '').trim();
+    const color = (args.color && String(args.color).trim()) || 'inherit';
+    const unitcolor = (args.unitcolor && String(args.unitcolor).trim()) || '';
+    const sci = String(args.sci) === 'true';
+    const bold = String(args.bold) === 'true';
+    if (sci) value = value.replace(/[eE]([+-]?\d+)/, '×10<sup>$1</sup>');
+    const cls = 'mdp-mod-quantity' + (bold ? ' mdp-qt-strong' : '');
+    const styleVars = `--qt-c:${color};` + (unitcolor ? ` --qt-unit-c:${unitcolor};` : '');
+    let out = `<span class="mdp-qt-val">${value}</span>`;
+    if (unc) out += `<span class="mdp-qt-unc"> ± ${esc(unc)}</span>`;
+    if (unit) out += `<span class="mdp-qt-unit"> ${sup(unit)}</span>`;
+    return `<span class="${cls}" style="${styleVars}">${out}</span>`;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-quantity { white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .mdp-qt-val { color: var(--qt-c, inherit); }
+    .mdp-qt-strong .mdp-qt-val { font-weight: 700; }
+    .mdp-qt-unc { color: var(--qt-unit-c, var(--app-text-muted, #888)); }
+    .mdp-qt-unit { color: var(--qt-unit-c, var(--app-text-muted, #888)); }
+    .mdp-mod-quantity sup { font-size: 0.7em; }
+  ]]></style>
+</module>

@@ -1,145 +1,220 @@
 <module>
   <name>tree</name>
   <type>block</type>
-  <description>Hierarchy / tree diagram from a nested bullet list. Top-down org chart (default) or a left-to-right indented tree.</description>
+  <description>Recursive hierarchy / tree-map. Each @tree is one node whose sections are its label then its children (a nested @tree per branch, plain text per leaf). Labels are full Markdown.</description>
+  <tags>hierarchy, relationship</tags>
   <aiSpec><![CDATA[
-Draw a HIERARCHY / TREE DIAGRAM (org chart, taxonomy, decision tree, file
-hierarchy). Block module whose BODY is a nested Markdown bullet list — indentation
-sets the parent/child levels:
+Draw a HIERARCHY as nested boxes (a tree-map / containment diagram) — org charts,
+taxonomies, breakdowns. The module is RECURSIVE: one `@tree` block is ONE node.
+Split its body with `<!-- @ -->`:
+  • the FIRST section is this node's LABEL, and
+  • each following section is a CHILD — a nested `<!-- @tree -->…<!-- @end -->`
+    for a branch (a child that itself has children), or plain text for a leaf.
+Because each label is a normal section, it renders with the FULL Markdown pipeline
+(**bold**, `code`, math \(x^2\), images, links, modules).
 
 <!-- @tree layout: updown -->
-- Root
-  - Child A
-    - Leaf 1
-    - Leaf 2
-  - Child B
+**Company**
+<!-- @ -->
+<!-- @tree -->
+Engineering
+<!-- @ -->
+Frontend
+<!-- @ -->
+Backend
+<!-- @end -->
+<!-- @ -->
+Design
 <!-- @end -->
 
-layout: `updown` (default) = top-down org chart with connector lines; `right` =
-left-to-right indented tree (file-explorer style). `color` sets the connector /
-border colour. Node labels are plain text. Multiple top-level bullets render as a
-forest. Keep labels short so the chart fits the slide (check with measure_slides).
+Parameters (set per @tree node; children do NOT inherit them — repeat on each node
+for a uniform look):
+  layout   — how a node's children are arranged:
+             `updown` (default) — a row of nested boxes beneath the label (containment);
+             `right` — a stacked, indented column of boxes;
+             `lines` — a classic ORG CHART: children below, joined to the parent by
+                       CONNECTOR LINES (no containing box).
+  color    — border / accent colour (default var(--accent-color)).
+  fontSize — label font size, any CSS size (default 0.9em).
+  gap      — spacing between a node's children, CSS length (default 10px).
+  radius   — box corner radius, CSS length (default 8px).
+  filled   — tint the box background with the accent colour (default true; false =
+             transparent box).
+Keep labels short and check the fit with measure_slides.
+
+<!-- @tree layout: lines, color: #2563eb, radius: 4px -->
+**Company**
+<!-- @ -->
+<!-- @tree layout: lines -->
+Engineering
+<!-- @ -->
+Design
+<!-- @end -->
+<!-- @ -->
+Operations
+<!-- @end -->
 ]]></aiSpec>
   <parameters>
-    <param name="layout" type="select" default="updown" label="Layout" options="updown:Top-down (org chart),right:Left-to-right (indented)" />
-    <param name="color" type="color" default="var(--accent-color)" label="Line / border color" />
-    <param name="fontSize" type="text" default="0.9em" label="Node font size" desc="CSS size, e.g. 0.9em" />
+    <param name="layout" type="select" default="updown" label="Children layout" desc="How this node's children are arranged." options="updown:Row (nested boxes),right:Stacked (indented boxes),lines:Connected (org chart with lines)" />
+    <param name="color" type="color" default="var(--accent-color)" label="Border / accent color" desc="Border and accent colour of this node's box." />
+    <param name="fontSize" type="text" default="0.9em" label="Label font size" desc="CSS size of the label text, e.g. 0.9em or 14px." />
+    <param name="gap" type="text" default="10px" label="Child gap" desc="Spacing between this node's children, CSS length, e.g. 10px." />
+    <param name="radius" type="text" default="8px" label="Corner radius" desc="Box corner radius, CSS length, e.g. 8px." />
+    <param name="filled" type="boolean" default="true" label="Filled background" desc="Tint the box with a faint accent fill (false = transparent box)." />
   </parameters>
   <snippets>
     <snippet>
       <category>Diagrams</category>
-      <label>Tree — org chart</label>
+      <label>Tree — node with children</label>
       <text><![CDATA[<!-- @tree layout: updown -->
-- Company
-  - Engineering
-    - Frontend
-    - Backend
-  - Design
-  - Sales
+**Root**
+<!-- @ -->
+<!-- @tree -->
+Branch A
+<!-- @ -->
+Leaf 1
+<!-- @ -->
+Leaf 2
+<!-- @end -->
+<!-- @ -->
+Leaf B
 <!-- @end -->]]></text>
-      <description>Top-down hierarchy diagram from a nested list (indent = level).</description>
+      <description>Recursive tree-map. First section = label; later sections = children (nested @tree = branch, plain text = leaf). Labels are Markdown.</description>
     </snippet>
     <snippet>
       <category>Diagrams</category>
-      <label>Tree — indented</label>
-      <text><![CDATA[<!-- @tree layout: right -->
-- Root
-  - Branch A
-    - Leaf
-  - Branch B
+      <label>Tree leaf (plain)</label>
+      <text><![CDATA[<!-- @tree -->
+A leaf node with **Markdown**
 <!-- @end -->]]></text>
-      <description>Left-to-right indented tree (file-explorer style).</description>
+      <description>A single node (leaf). Use nested @tree sections to give it children.</description>
     </snippet>
   </snippets>
   <render><![CDATA[
-    const layout = (args.layout || 'updown').toLowerCase() === 'right' ? 'right' : 'updown';
+    const lt = (args.layout || 'updown').toLowerCase();
+    const layout = lt === 'right' ? 'right' : lt === 'lines' ? 'lines' : 'updown';
     const color = args.color || 'var(--accent-color)';
     const fontSize = args.fontSize || '0.9em';
-    const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-    // Module render runs without the markdown engine, so support the common inline
-    // Markdown in node labels ourselves: `code`, **bold**, *italic*, [text](url).
-    const inline = (s) => esc(s)
-      .replace(/`([^`]+)`/g, '<code>$1</code>')
-      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-      .replace(/\*([^*]+)\*/g, '<em>$1</em>')
-      .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<a href="$2">$1</a>');
-
-    // Parse the nested bullet list (indentation = depth) into a forest.
-    const items = [];
-    for (const raw of String(content || '').split('\n')) {
-      const m = raw.match(/^(\s*)(?:[-*+]|\d+\.)\s+(.*\S)\s*$/);
-      if (!m) continue;
-      const indent = m[1].replace(/\t/g, '  ').length;
-      items.push({ indent, label: m[2].trim() });
-    }
-    if (!items.length) return `<div class="mdp-mod-tree-empty">(empty tree — provide a nested bullet list)</div>`;
-
-    const roots = [];
-    const stack = [{ indent: -1, node: { children: roots } }];
-    for (const it of items) {
-      const node = { label: it.label, children: [] };
-      while (stack.length > 1 && it.indent <= stack[stack.length - 1].indent) stack.pop();
-      stack[stack.length - 1].node.children.push(node);
-      stack.push({ indent: it.indent, node });
-    }
-
-    const renderNode = (node) => {
-      const kids = node.children.length ? `<ul>${node.children.map(renderNode).join('')}</ul>` : '';
-      return `<li><span class="mdp-tree-node">${inline(node.label)}</span>${kids}</li>`;
-    };
-    const list = `<ul>${roots.map(renderNode).join('')}</ul>`;
-    return `\n\n<div class="mdp-mod-tree mdp-tree-${layout}" style="--tree-color:${color}; --tree-font:${fontSize};">${list}</div>\n\n`;
+    const gap = (args.gap || '10px').trim() || '10px';
+    const radius = (args.radius || '8px').trim() || '8px';
+    const filled = String(args.filled) !== 'false';
+    const label = (sections[0] || '').trim();
+    const kids = sections.slice(1).map((s) => s.trim()).filter(Boolean);
+    // A child that already rendered as a tree-box is a SUBTREE (pass it through);
+    // anything else is a LEAF (wrap in a box). Each child is then wrapped in a real
+    // `.mdp-tree-slot` element — needed for the `lines` layout's CSS connectors,
+    // because the module's own display:contents wrapper can't host pseudo-elements.
+    // Raw Markdown labels render via the single document markdown pass (blank lines).
+    const kidHtml = kids.map((c) => {
+      const inner = /class="[^"]*mdp-tree-box/.test(c)
+        ? c
+        : `\n\n<div class="mdp-tree-box mdp-tree-leaf">\n\n<div class="mdp-tree-label">\n\n${c}\n\n</div>\n\n</div>\n\n`;
+      return `\n\n<div class="mdp-tree-slot">\n\n${inner}\n\n</div>\n\n`;
+    }).join('\n');
+    const kidsWrap = kids.length ? `\n\n<div class="mdp-tree-kids">\n\n${kidHtml}\n\n</div>\n\n` : '';
+    const cls = `mdp-tree-box mdp-tree-${layout} ${kids.length ? 'mdp-tree-branch' : 'mdp-tree-leaf'}${filled ? '' : ' mdp-tree-nofill'}`;
+    return `\n\n<div class="${cls}" style="--tree-color:${color}; --tree-font:${fontSize}; --tree-gap:${gap}; --tree-radius:${radius};">\n\n<div class="mdp-tree-label">\n\n${label}\n\n</div>\n\n${kidsWrap}</div>\n\n`;
   ]]></render>
   <style><![CDATA[
-    .mdp-mod-tree { margin: 1rem 0; overflow-x: auto; font-size: var(--tree-font, 0.9em); }
-    .mdp-mod-tree ul { list-style: none; margin: 0; padding: 0; }
-    .mdp-tree-node {
+    /* A node box: label on top, children below (row for updown, column for right).
+       Recursion nests boxes; the module wrapper is display:contents so a nested
+       @tree's box is a direct flex child here — flexbox handles the alignment. */
+    .mdp-tree-box {
+      display: inline-flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      margin: 1rem 0;
+      padding: 8px 10px;
+      border: 2px solid var(--tree-color, #3b82f6);
+      border-radius: var(--tree-radius, 8px);
+      background: color-mix(in srgb, var(--tree-color, #3b82f6) 8%, transparent);
+      vertical-align: top;
+      box-sizing: border-box;
+    }
+    /* Transparent-box variant (filled: false). */
+    .mdp-tree-box.mdp-tree-nofill { background: transparent; }
+    /* Nested boxes take their spacing from the parent's kids gap, not their own margin. */
+    .mdp-tree-kids .mdp-tree-box { margin: 0; }
+    /* Per-child slot: transparent for the containment layouts (so the child box is a
+       direct flex item), a real box only for `lines` (to host connector lines). */
+    .mdp-tree-slot { display: contents; }
+
+    .mdp-tree-label {
+      font-size: var(--tree-font, 0.9em);
+      text-align: center;
+      max-width: 22ch;
+    }
+    .mdp-tree-label > :first-child { margin-top: 0; }
+    .mdp-tree-label > :last-child { margin-bottom: 0; }
+    .mdp-tree-label img { max-width: 100%; }
+
+    .mdp-tree-kids {
+      display: flex;
+      gap: var(--tree-gap, 10px);
+      align-items: flex-start;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    /* Row layout (default): children fan out beneath the label. */
+    .mdp-tree-updown { align-items: center; }
+
+    /* Stacked layout: children in a left-aligned column (indented containment). */
+    .mdp-tree-right { align-items: stretch; }
+    .mdp-tree-right > .mdp-tree-label { text-align: left; }
+    .mdp-tree-right > .mdp-tree-kids {
+      flex-direction: column;
+      align-items: stretch;
+      justify-content: flex-start;
+      flex-wrap: nowrap;
+      width: 100%;
+    }
+    .mdp-tree-right .mdp-tree-box { align-items: stretch; }
+    .mdp-tree-right .mdp-tree-label { text-align: left; }
+
+    /* ---- Connected org chart (lines) ----
+       The node is NOT a container box — just a label chip with children joined by
+       pure-CSS connector lines. Slots become real boxes here so their pseudo-
+       elements (the lines) render. */
+    .mdp-tree-lines { border: 0; background: none; padding: 0; gap: 0; align-items: center; }
+    .mdp-tree-lines > .mdp-tree-label {
       display: inline-block;
       border: 2px solid var(--tree-color, #3b82f6);
       border-radius: 6px;
       padding: 4px 10px;
-      background: var(--panel-bg, rgba(255,255,255,0.85));
-      white-space: nowrap;
+      background: color-mix(in srgb, var(--tree-color, #3b82f6) 8%, transparent);
     }
-    .mdp-mod-tree-empty { color: #f04747; font-style: italic; }
-
-    /* ---- Top-down org chart (pure-CSS connectors) ---- */
-    .mdp-tree-updown > ul { display: flex; justify-content: center; }
-    .mdp-tree-updown ul { position: relative; padding-top: 20px; display: flex; justify-content: center; }
-    .mdp-tree-updown li { list-style: none; position: relative; padding: 20px 10px 0; text-align: center; }
-    .mdp-tree-updown li::before, .mdp-tree-updown li::after {
-      content: ''; position: absolute; top: 0; right: 50%;
-      width: 50%; height: 20px; border-top: 2px solid var(--tree-color, #3b82f6);
+    .mdp-tree-lines > .mdp-tree-kids {
+      display: flex; justify-content: center; align-items: flex-start;
+      position: relative; padding-top: 20px; gap: 0; flex-wrap: nowrap;
     }
-    .mdp-tree-updown li::after { right: auto; left: 50%; border-left: 2px solid var(--tree-color, #3b82f6); }
-    .mdp-tree-updown li:only-child::before, .mdp-tree-updown li:only-child::after { display: none; }
-    .mdp-tree-updown li:only-child { padding-top: 0; }
-    .mdp-tree-updown li:first-child::before, .mdp-tree-updown li:last-child::after { border: 0 none; }
-    .mdp-tree-updown li:last-child::before { border-right: 2px solid var(--tree-color, #3b82f6); border-radius: 0 6px 0 0; }
-    .mdp-tree-updown li:first-child::after { border-radius: 6px 0 0 0; }
-    .mdp-tree-updown ul ul::before {
+    /* stem from the parent label down to the children bar */
+    .mdp-tree-lines > .mdp-tree-kids::before {
       content: ''; position: absolute; top: 0; left: 50%;
       width: 0; height: 20px; border-left: 2px solid var(--tree-color, #3b82f6);
     }
-
-    /* ---- Left-to-right indented tree (file-explorer style) ---- */
-    /* --tree-mid ≈ vertical centre of a node from its <li> top, for the elbows. */
-    .mdp-tree-right { --tree-mid: 0.85em; }
-    .mdp-tree-right > ul { padding-left: 0; }
-    .mdp-tree-right ul ul { padding-left: 1.2em; }
-    .mdp-tree-right li { position: relative; padding: 3px 0; }
-    .mdp-tree-right .mdp-tree-node { padding: 2px 8px; }
-    /* Vertical trunk in the gutter, shared by all siblings so it connects them. */
-    .mdp-tree-right ul ul > li::before {
-      content: ''; position: absolute; left: -0.6em; top: 0; bottom: 0;
-      border-left: 2px solid var(--tree-color, #3b82f6);
+    .mdp-tree-lines > .mdp-tree-kids > .mdp-tree-slot {
+      display: flex; flex-direction: column; align-items: center;
+      position: relative; padding: 20px 8px 0;
     }
-    /* The LAST child's trunk stops at its own elbow (no overhang below). */
-    .mdp-tree-right ul ul > li:last-child::before { bottom: auto; height: var(--tree-mid); }
-    /* Horizontal elbow from the trunk into each node. */
-    .mdp-tree-right ul ul > li::after {
-      content: ''; position: absolute; left: -0.6em; top: var(--tree-mid); width: 0.6em;
-      border-top: 2px solid var(--tree-color, #3b82f6);
+    /* horizontal bar halves (::before = left, ::after = right) + the ::after's
+       border-left is the vertical stem down into each child. */
+    .mdp-tree-lines > .mdp-tree-kids > .mdp-tree-slot::before,
+    .mdp-tree-lines > .mdp-tree-kids > .mdp-tree-slot::after {
+      content: ''; position: absolute; top: 0; right: 50%;
+      width: 50%; height: 20px; border-top: 2px solid var(--tree-color, #3b82f6);
     }
+    .mdp-tree-lines > .mdp-tree-kids > .mdp-tree-slot::after {
+      right: auto; left: 50%; border-left: 2px solid var(--tree-color, #3b82f6);
+    }
+    .mdp-tree-lines > .mdp-tree-kids > .mdp-tree-slot:only-child::before { display: none; }
+    .mdp-tree-lines > .mdp-tree-kids > .mdp-tree-slot:only-child::after { border-top: 0 none; }
+    .mdp-tree-lines > .mdp-tree-kids > .mdp-tree-slot:first-child::before { border: 0 none; }
+    .mdp-tree-lines > .mdp-tree-kids > .mdp-tree-slot:last-child::after { border-top: 0 none; }
+    .mdp-tree-lines > .mdp-tree-kids > .mdp-tree-slot:last-child::before {
+      border-right: 2px solid var(--tree-color, #3b82f6); border-radius: 0 6px 0 0;
+    }
+    .mdp-tree-lines > .mdp-tree-kids > .mdp-tree-slot:first-child::after { border-radius: 6px 0 0 0; }
   ]]></style>
 </module>

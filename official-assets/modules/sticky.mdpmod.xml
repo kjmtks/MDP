@@ -1,13 +1,31 @@
 <module>
   <name>sticky</name>
   <type>block</type>
-  <description>A sticky-note memo you place and size yourself in Edit layout (move + resize freely). Tilt with the rotate argument.</description>
+  <description>A sticky-note memo you place and size yourself in Edit layout (move + resize freely), with an optional heading; tilt it with the rotate argument.</description>
+  <tags>note, freeform</tags>
   <aiSpec><![CDATA[
 Use for a sticky-note memo / annotation placed on a slide (a casual aside, reminder, or
-callout). Position and size come from x/y/w/h args (percent of the slide); `rotate` tilts
-the note. Block module: the body is the note's content (markdown); an optional `title` arg
-adds a heading. Example:
-`<!-- @sticky title: Memo, x: 76, y: 30, w: 28, h: 22, rotate: 3 -->\nFix these figures!\n<!-- @end -->`
+callout). It is a block module: the BODY is the note's content (rendered as Markdown). It
+does NOT split into sections. Position and size come from x/y/w/h (percent of the slide)
+chosen on the preview in Edit layout — you do not write those by hand.
+
+Parameters:
+  title      — optional heading shown at the top (default "" = none).
+  titlecolor — heading text colour (default "" = same as note text).
+  color      — note paper colour (default "#fef08a" yellow).
+  textcolor  — body/note text colour (default "#333").
+  halign     — horizontal text alignment: left (default) | center | right.
+  valign     — vertical alignment inside the box: top (default) | middle | bottom.
+  rotate     — tilt in degrees (default -2; range -45..45).
+  font       — typeface: handwritten (default, Comic-Sans style) | sans | serif | mono.
+  fontsize   — CSS font size for the note text, e.g. 1.2em or 18px (default "" = theme size).
+  width      — note width as a CSS length when NOT placed in Edit layout (default "250px");
+               once you move/resize it in Edit layout it fills the placement box instead.
+
+Example:
+<!-- @sticky title: Memo, color: #bfdbfe, font: handwritten, rotate: 3, x: 76, y: 30, w: 28, h: 22 -->
+Fix these figures before the meeting!
+<!-- @end -->
 ]]></aiSpec>
 
   <!-- Position and size are chosen on the preview (Edit layout). Rotation is the
@@ -16,12 +34,16 @@ adds a heading. Example:
   <manipulate position="xy" size="xy" rotation="false" minW="10" maxW="100" minH="5" maxH="100" />
 
   <parameters>
-    <param name="title" type="text" default="" label="Title" desc="Heading shown at the top of the note (optional)" />
-    <param name="titlecolor" type="color" default="" label="Title Color" desc="Title text colour (defaults to the note text colour)" options="#1f2937:Slate,#92400e:Brown,#991b1b:Red,#1e40af:Blue,#166534:Green,#6b21a8:Purple" />
-    <param name="color" type="color" default="#fef08a" label="Note Color" options="#fef08a:Yellow,#fde68a:Amber,#bbf7d0:Green,#bfdbfe:Blue,#fbcfe8:Pink,#fed7aa:Orange,#e9d5ff:Purple,#a5f3fc:Cyan,#e5e7eb:Gray" />
-    <param name="halign" type="select" default="left" label="Horizontal Align" options="left,center,right" />
-    <param name="valign" type="select" default="top" label="Vertical Align" options="top,middle,bottom" />
-    <param name="rotate" type="number" default="-2" label="Rotation" desc="Tilt of the note in degrees" min="-45" max="45" />
+    <param name="title" type="text" default="" label="Title" desc="Heading shown at the top of the note (optional; leave blank for none)." />
+    <param name="titlecolor" type="color" default="" label="Title Color" desc="Title text colour (blank = same as the note text colour)." options="#1f2937:Slate,#92400e:Brown,#991b1b:Red,#1e40af:Blue,#166534:Green,#6b21a8:Purple" />
+    <param name="color" type="color" default="#fef08a" label="Note Color" desc="Paper colour of the sticky note." options="#fef08a:Yellow,#fde68a:Amber,#bbf7d0:Green,#bfdbfe:Blue,#fbcfe8:Pink,#fed7aa:Orange,#e9d5ff:Purple,#a5f3fc:Cyan,#e5e7eb:Gray" />
+    <param name="textcolor" type="color" default="#333" label="Text Color" desc="Colour of the note body text." />
+    <param name="halign" type="select" default="left" label="Horizontal Align" desc="Horizontal alignment of the note text." options="left,center,right" />
+    <param name="valign" type="select" default="top" label="Vertical Align" desc="Vertical alignment of content inside the note box (visible once sized in Edit layout)." options="top,middle,bottom" />
+    <param name="rotate" type="number" default="-2" label="Rotation" desc="Tilt of the note in degrees." min="-45" max="45" step="1" />
+    <param name="font" type="select" default="handwritten" label="Font" desc="Typeface of the note." options="handwritten:Handwritten,sans:Sans-serif,serif:Serif,mono:Monospace" />
+    <param name="fontsize" type="text" default="" label="Font Size" desc="CSS font size for the note text, e.g. 1.2em or 18px (blank = theme default)." />
+    <param name="width" type="text" default="250px" label="Note Width" desc="CSS width used when the note is NOT placed in Edit layout, e.g. 250px or 20em." />
   </parameters>
   <snippets>
     <snippet>
@@ -38,6 +60,11 @@ Please update these figures by the meeting next week!
     const rotate = args.rotate || '-2';
     const title = (args.title || '').trim();
     const titleColor = (args.titlecolor || '').trim();
+    const textColor = (args.textcolor || '').trim();
+    const width = (args.width || '250px').trim() || '250px';
+    const fontSize = (args.fontsize || '').trim();
+    const fontKey = String(args.font || 'handwritten').toLowerCase();
+    const fontCls = ['handwritten', 'sans', 'serif', 'mono'].includes(fontKey) ? fontKey : 'handwritten';
     // halign = horizontal (left/center/right) via text-align; valign = vertical
     // (top/middle/bottom) via flex justify-content (only visible once the note has
     // a fixed height in Edit layout).
@@ -51,24 +78,31 @@ Please update these figures by the meeting next week!
     const titleHtml = title
       ? `<div class="mdp-sticky-title"${titleColor ? ' style="color: ' + titleColor + ';"' : ''}>${title}</div>`
       : '';
-    return `\n\n<div class="mdp-mod-sticky" style="--sticky-color: ${color}; transform: rotate(${rotate}deg); justify-content: ${justify}; text-align: ${textAlign};">${titleHtml}\n\n${contentStr}\n\n</div>\n\n`;
+    let styleStr = `--sticky-color: ${color}; --sticky-w: ${width}; transform: rotate(${rotate}deg); justify-content: ${justify}; text-align: ${textAlign};`;
+    if (textColor) styleStr += ` --sticky-text: ${textColor};`;
+    if (fontSize) styleStr += ` font-size: ${fontSize};`;
+    return `\n\n<div class="mdp-mod-sticky mdp-sticky-font-${fontCls}" style="${styleStr}">${titleHtml}\n\n${contentStr}\n\n</div>\n\n`;
   ]]></render>
   <style><![CDATA[
     .mdp-mod-sticky {
       background: var(--sticky-color);
       padding: 1.5em;
-      width: 250px;
+      width: var(--sticky-w, 250px);
       box-sizing: border-box;
       box-shadow: 2px 4px 10px rgba(0,0,0,0.15);
-      font-family: "Comic Sans MS", "Marker Felt", sans-serif;
-      color: #333;
+      color: var(--sticky-text, #333);
       position: relative;
       /* Column flex so valign (justify-content) and halign (text-align) apply. */
       display: flex;
       flex-direction: column;
     }
+    /* Font options. Handwritten reproduces the original Comic-Sans look. */
+    .mdp-sticky-font-handwritten { font-family: "Comic Sans MS", "Marker Felt", sans-serif; }
+    .mdp-sticky-font-sans { font-family: system-ui, "Segoe UI", Roboto, sans-serif; }
+    .mdp-sticky-font-serif { font-family: Georgia, "Times New Roman", serif; }
+    .mdp-sticky-font-mono { font-family: "SFMono-Regular", Consolas, "Courier New", monospace; }
     /* When placed/sized in Edit layout, fill the manip box (otherwise keep the
-       default 250px note). Content that exceeds the box is shown, not clipped or
+       default width note). Content that exceeds the box is shown, not clipped or
        scrolled. */
     .mdp-manip[data-lifted="1"] .mdp-mod-sticky { width: 100%; height: 100%; overflow: visible; }
     .mdp-mod-sticky::after {

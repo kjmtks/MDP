@@ -1,0 +1,114 @@
+<module>
+  <name>mindmap</name>
+  <type>block</type>
+  <description>A mind map: a central topic with branches fanning out left and right, each branch with sub-items. First section = center, each following section = one branch (first line = title, rest = children).</description>
+  <tags>hierarchy, relationship</tags>
+  <aiSpec><![CDATA[
+A MIND MAP — a central topic with colored branches alternating right/left, each with its
+sub-items. Use this for brainstorming overviews and topic breakdowns; for a strict
+top-down tree/org chart use @tree, and for process steps use @flow.
+Block module: split the body with <!-- @ -->:
+  • FIRST section = the central topic (Markdown),
+  • each following section = one branch: its FIRST LINE is the branch title, the remaining
+    lines are that branch's sub-items (one per line, or a "- " list).
+Keep to ~6 branches. Parameters:
+  • color — override the auto colour used for every branch (default blank = auto palette).
+  • layout — branch placement: alternate (right/left/right…), right (all right), left (all left) (default alternate).
+  • centerColor — accent color of the central node (default blank = var(--accent-color)).
+  • gap — CSS length of the horizontal gap between the sides and the centre (default 28px).
+  • scale — overall size multiplier of the whole map (0.6-2, default 1).
+
+<!-- @mindmap layout: alternate, centerColor: #6d28d9 -->
+**Product**
+<!-- @ -->
+Design
+UI
+UX
+<!-- @ -->
+Tech
+API
+DB
+<!-- @end -->
+]]></aiSpec>
+  <parameters>
+    <param name="color" type="color" default="" label="Override branch color" desc="Force one color for all branches; blank uses the automatic palette." />
+    <param name="layout" type="select" default="alternate" label="Branch layout" desc="Where branches are placed relative to the centre." options="alternate:Alternate sides,right:All on right,left:All on left" />
+    <param name="centerColor" type="color" default="" label="Center color" desc="Accent color of the central node; blank keeps the theme accent." />
+    <param name="gap" type="text" default="28px" label="Side gap" desc="CSS length of the gap between each side and the centre (e.g. 28px, 2rem)." />
+    <param name="scale" type="number" default="1" label="Scale" desc="Overall size multiplier of the whole mind map." min="0.6" max="2" step="0.1" />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Diagram</category>
+      <label>Mind map</label>
+      <text><![CDATA[<!-- @mindmap -->
+**Central topic**
+<!-- @ -->
+Branch A
+item 1
+item 2
+<!-- @ -->
+Branch B
+item 3
+item 4
+<!-- @end -->]]></text>
+      <description>Center + branches (first line = title, rest = sub-items), alternating sides.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const palette = ['#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#8b5cf6', '#06b6d4', '#ec4899'];
+    const secs = sections.map((s) => (s || '').trim()).filter(Boolean);
+    if (!secs.length) return `<div>(mindmap: first section = center, then branches)</div>`;
+    const center = secs[0];
+    const branches = secs.slice(1).map((s, i) => {
+      const nl = s.indexOf('\n');
+      return {
+        title: nl >= 0 ? s.slice(0, nl).trim() : s,
+        kids: nl >= 0 ? s.slice(nl + 1).split('\n').map((l) => l.replace(/^-\s+/, '').trim()).filter(Boolean) : [],
+        color: args.color || palette[i % palette.length],
+      };
+    });
+    const side = (list) => list.map((b) => {
+      let kids = '';
+      b.kids.forEach((k) => { kids += `<div class="mdp-mm-kid">\n\n${k}\n\n</div>`; });
+      return `<div class="mdp-mm-branch" style="--mm-c:${b.color};"><div class="mdp-mm-title">\n\n${b.title}\n\n</div>` +
+        (kids ? `<div class="mdp-mm-kids">${kids}</div>` : '') + `</div>`;
+    }).join('');
+    const layout = args.layout || 'alternate';
+    let right, left;
+    if (layout === 'right') { right = branches; left = []; }
+    else if (layout === 'left') { left = branches; right = []; }
+    else { right = branches.filter((_, i) => i % 2 === 0); left = branches.filter((_, i) => i % 2 === 1); }
+    let cstyle = '';
+    const gap = args.gap && String(args.gap).trim();
+    const centerC = args.centerColor && String(args.centerColor).trim();
+    const sc = parseFloat(args.scale);
+    if (gap) cstyle += `gap:${gap};`;
+    if (centerC) cstyle += `--mm-center-c:${centerC};`;
+    if (Number.isFinite(sc) && sc !== 1) cstyle += `font-size:${sc}em;`;
+    return `\n\n<div class="mdp-mod-mindmap"${cstyle ? ` style="${cstyle}"` : ''}>` +
+      `<div class="mdp-mm-side mdp-mm-left">${side(left)}</div>` +
+      `<div class="mdp-mm-center">\n\n${center}\n\n</div>` +
+      `<div class="mdp-mm-side mdp-mm-right">${side(right)}</div>` +
+      `</div>\n\n`;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-mindmap { display: grid; grid-template-columns: 1fr auto 1fr; gap: 28px; align-items: center; margin: 1.2rem 0; }
+    .mdp-mm-center { justify-self: center; padding: 14px 22px; border-radius: 999px; border: 2px solid var(--mm-center-c, var(--accent-color)); background: color-mix(in srgb, var(--mm-center-c, var(--accent-color)) 12%, transparent); font-weight: 800; font-size: 1.15em; text-align: center; }
+    .mdp-mm-center > :first-child { margin: 0; }
+    .mdp-mm-side { display: flex; flex-direction: column; gap: 16px; }
+    .mdp-mm-left { align-items: flex-end; }
+    .mdp-mm-right { align-items: flex-start; }
+    .mdp-mm-branch { position: relative; max-width: 100%; }
+    .mdp-mm-title { display: inline-block; padding: 6px 14px; border-radius: 999px; background: color-mix(in srgb, var(--mm-c) 18%, transparent); border: 1.5px solid var(--mm-c); font-weight: 700; position: relative; }
+    .mdp-mm-title > :first-child { margin: 0; }
+    .mdp-mm-left .mdp-mm-branch { text-align: right; }
+    .mdp-mm-right .mdp-mm-title::before { content: ''; position: absolute; top: 50%; right: 100%; width: 26px; height: 2px; background: var(--mm-c); }
+    .mdp-mm-left .mdp-mm-title::after { content: ''; position: absolute; top: 50%; left: 100%; width: 26px; height: 2px; background: var(--mm-c); }
+    .mdp-mm-kids { margin-top: 6px; display: flex; flex-direction: column; gap: 3px; }
+    .mdp-mm-right .mdp-mm-kids { padding-left: 18px; border-left: 2px solid color-mix(in srgb, var(--mm-c) 45%, transparent); margin-left: 12px; }
+    .mdp-mm-left .mdp-mm-kids { padding-right: 18px; border-right: 2px solid color-mix(in srgb, var(--mm-c) 45%, transparent); margin-right: 12px; }
+    .mdp-mm-kid { font-size: 0.92em; color: var(--app-text, inherit); }
+    .mdp-mm-kid > :first-child { margin: 0; }
+  ]]></style>
+</module>

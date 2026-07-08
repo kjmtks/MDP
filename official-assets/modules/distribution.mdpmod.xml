@@ -1,0 +1,103 @@
+<module>
+  <name>distribution</name>
+  <type>block</type>
+  <description>A normal (bell) curve (SVG) with the axis, mean line, and an optional shaded region between two values — for illustrating probability / confidence areas.</description>
+  <tags>distribution, plots, statistics</tags>
+  <aiSpec><![CDATA[
+A NORMAL DISTRIBUTION bell curve (schematic, not data-driven) for illustrating
+probability regions, confidence intervals, p-values, and tail areas. Takes NO body —
+everything comes from parameters.
+
+When NOT to use: for plotting real data use @chartjs (bar/line/scatter); for an
+arbitrary y=f(x) curve use @funcplot. This module only draws a Gaussian.
+
+Parameters:
+  - `mean`  : centre of the curve (x of the peak). Default 0. Any real number.
+  - `sd`    : standard deviation (spread). Default 1. Must be > 0 (negatives are
+              treated as their absolute value).
+  - `from`  : left edge of the shaded region, an x-value. Blank = auto (open left
+              tail down to the curve's left end). Use a large number for +/-infinity.
+  - `to`    : right edge of the shaded region, an x-value. Blank = auto (open right
+              tail). Give `from` and/or `to` to shade an area; omit both for no shade.
+  - `label` : caption drawn over the shaded area (e.g. "5%"). Default none.
+  - `color` : curve stroke and fill accent. Default var(--accent-color). Any CSS color.
+  - `showmean` : true/false — draw the dashed mean line. Default true.
+  - `align` : left | center | right — horizontal placement of the figure. Default center.
+  - `maxwidth` : max figure width in px. Default 440. Range 120–1200.
+  - `fill` : shaded-region opacity as a percent. Default 30. Range 0–100.
+
+`from`/`to` are x-values on the same scale as `mean`/`sd` (blank = auto tail).
+
+<!-- @distribution mean: 0, sd: 1, from: 1.64, to: 99, label: 5% tail, maxwidth: 360 -->
+]]></aiSpec>
+  <parameters>
+    <param name="mean" type="number" default="0" step="0.5" label="Mean" desc="Centre of the curve (x of the peak); any real number." />
+    <param name="sd" type="number" default="1" min="0.01" step="0.1" label="Std. deviation" desc="Spread of the curve; must be greater than 0." />
+    <param name="from" type="text" default="" label="Shade from" desc="Left x of the shaded area; blank = auto (open left tail)." />
+    <param name="to" type="text" default="" label="Shade to" desc="Right x of the shaded area; blank = auto (open right tail)." />
+    <param name="label" type="text" default="" label="Region label" desc="Caption drawn over the shaded area, e.g. 5%." />
+    <param name="color" type="color" default="var(--accent-color)" label="Color" desc="Curve stroke and fill accent color." />
+    <param name="showmean" type="boolean" default="true" label="Show mean line" desc="Draw the dashed vertical line at the mean." />
+    <param name="align" type="select" default="center" options="left,center,right" label="Alignment" desc="Horizontal placement of the figure on the slide." />
+    <param name="maxwidth" type="number" default="440" min="120" max="1200" step="20" label="Max width (px)" desc="Maximum rendered width of the figure." />
+    <param name="fill" type="number" default="30" min="0" max="100" step="5" label="Shade opacity (%)" desc="Opacity of the shaded region, 0–100." />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Math</category>
+      <label>Normal distribution (shaded)</label>
+      <text><![CDATA[<!-- @distribution mean: 0, sd: 1, from: 1.64, to: 99, label: 5% tail -->]]></text>
+      <description>Bell curve with an optional shaded region between "from" and "to".</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const mean = parseFloat(args.mean) || 0;
+    const sd = Math.abs(parseFloat(args.sd)) || 1;
+    const color = args.color || 'var(--accent-color)';
+    const showMean = String(args.showmean) !== 'false';
+    const align = String(args.align || 'center').toLowerCase();
+    const mw = Math.max(120, Math.min(1200, parseFloat(args.maxwidth) || 440));
+    const fillPct = Math.max(0, Math.min(100, Number.isFinite(parseFloat(args.fill)) ? parseFloat(args.fill) : 30));
+    const marginStr = align === 'left' ? '1rem auto 1rem 0' : align === 'right' ? '1rem 0 1rem auto' : '1rem auto';
+    const lo = mean - 3.6 * sd, hi = mean + 3.6 * sd, span = hi - lo;
+    const W = 100, H = 60, base = 56, peak = 50; // svg units
+    const gx = (v) => ((v - lo) / span) * W;
+    const g = (v) => Math.exp(-0.5 * Math.pow((v - mean) / sd, 2));
+    const N = 120;
+    const curve = [];
+    for (let i = 0; i <= N; i++) { const v = lo + span * i / N; curve.push([gx(v), base - peak * g(v)]); }
+    const linePath = 'M' + curve.map((p) => p[0].toFixed(2) + ',' + p[1].toFixed(2)).join(' L');
+    let shade = '';
+    const fromRaw = String(args.from ?? '').trim(), toRaw = String(args.to ?? '').trim();
+    if (fromRaw !== '' || toRaw !== '') {
+      const a = fromRaw !== '' ? parseFloat(fromRaw) : lo;
+      const b = toRaw !== '' ? parseFloat(toRaw) : hi;
+      const s0 = Math.max(lo, Math.min(a, b)), s1 = Math.min(hi, Math.max(a, b));
+      const pts = [];
+      for (let i = 0; i <= N; i++) {
+        const v = s0 + (s1 - s0) * i / N;
+        pts.push([gx(v), base - peak * g(v)]);
+      }
+      const area = `M${gx(s0).toFixed(2)},${base} L` + pts.map((p) => p[0].toFixed(2) + ',' + p[1].toFixed(2)).join(' L') + ` L${gx(s1).toFixed(2)},${base} Z`;
+      shade = `<path d="${area}" class="mdp-ds-fill"/>`;
+      if (args.label) {
+        const mid = gx((s0 + s1) / 2);
+        shade += `<text x="${mid.toFixed(2)}" y="${(base - 2).toFixed(2)}" class="mdp-ds-lbl" text-anchor="middle">${esc(args.label)}</text>`;
+      }
+    }
+    const meanLine = showMean ? `<line x1="${gx(mean).toFixed(2)}" y1="${(base - peak).toFixed(2)}" x2="${gx(mean).toFixed(2)}" y2="${base}" class="mdp-ds-mean"/>` : '';
+    const axis = `<line x1="0" y1="${base}" x2="${W}" y2="${base}" class="mdp-ds-axis"/>`;
+    return `\n\n<div class="mdp-mod-distribution" style="--ds-color:${color}; --ds-fill:${fillPct}%; width: min(100%, ${mw}px); margin:${marginStr};"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">` +
+      `${shade}<path d="${linePath}" class="mdp-ds-curve"/>${meanLine}${axis}</svg></div>\n\n`;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-distribution { width: min(100%, 440px); margin: 1rem auto; }
+    .mdp-mod-distribution svg { width: 100%; height: auto; overflow: visible; }
+    .mdp-ds-curve { fill: none; stroke: var(--ds-color); stroke-width: 1.2; }
+    .mdp-ds-fill { fill: color-mix(in srgb, var(--ds-color) var(--ds-fill, 30%), transparent); }
+    .mdp-ds-axis { stroke: currentColor; stroke-width: 0.5; }
+    .mdp-ds-mean { stroke: currentColor; stroke-width: 0.5; stroke-dasharray: 2 2; opacity: 0.5; }
+    .mdp-ds-lbl { fill: currentColor; font-size: 4px; font-weight: 700; }
+  ]]></style>
+</module>

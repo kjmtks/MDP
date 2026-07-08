@@ -2,12 +2,27 @@
   <name>timer</name>
   <type>inline</type>
   <description>Countdown timer with start / pause / reset. Self-contained inline element (no closing tag). Movable on the preview in Edit layout; resize is horizontal-only. Interactive: clicking it does not advance the slide. Auto-starts when presenting if autostart:true.</description>
+  <tags>interactive</tags>
   <aiSpec><![CDATA[
 Use to drop a live countdown timer on a slide (e.g. for exercises, breaks, timed Q&A).
-Inline module with NO body and no closing tag — just the directive; set the duration via
-`minutes`/`seconds`. Interactive: it has start/pause/reset controls and clicking it never
-advances the slide. Set `autostart: true` to begin counting automatically when presenting.
-Example: `<!-- @timer minutes: 5, autostart: true -->`
+Inline module with NO body and no closing tag — just the directive. Interactive: it has
+start/pause/reset controls and clicking it never advances the slide.
+
+Parameters:
+  minutes   — starting minutes (default 5, integer >= 0).
+  seconds   — additional starting seconds (default 0, 0..59). If both are 0 it falls
+              back to 5 minutes.
+  autostart — begin counting automatically when presenting (default false).
+  size      — readout size: sm | md (default) | lg | xl.
+  shape     — background box: rounded (default) | pill | square | none.
+  bg        — background colour (default rgba(0,0,0,0.06)).
+  border    — border colour (default none).
+  color     — text colour (default inherits).
+  label     — short caption printed before the time, e.g. "Break:" (default "" = none).
+  controls  — show the start/pause/reset buttons (default true; false = display-only).
+  align     — alignment when placed in Edit layout: left | center (default) | right.
+
+Example: <!-- @timer minutes: 5, size: lg, label: Break, autostart: true -->
 ]]></aiSpec>
   <interactive>true</interactive>
 
@@ -16,14 +31,17 @@ Example: `<!-- @timer minutes: 5, autostart: true -->`
   <manipulate position="xy" size="x" rotation="false" minW="6" maxW="100" />
 
   <parameters>
-    <param name="minutes" type="number" default="5" label="Minutes" min="0" integer="true" />
-    <param name="seconds" type="number" default="0" label="Seconds" min="0" max="59" integer="true" />
-    <param name="autostart" type="boolean" default="false" label="Auto-start when presenting" />
-    <param name="size" type="select" default="md" label="Size" options="sm:Small,md:Medium,lg:Large,xl:Extra large" />
-    <param name="shape" type="select" default="rounded" label="Background shape" options="rounded:Rounded,pill:Pill,square:Square,none:None" />
-    <param name="bg" type="color" default="rgba(0,0,0,0.06)" label="Background color" />
-    <param name="border" type="color" label="Border color" />
-    <param name="color" type="color" label="Text color" />
+    <param name="minutes" type="number" default="5" label="Minutes" desc="Starting minutes on the clock." min="0" max="999" integer="true" />
+    <param name="seconds" type="number" default="0" label="Seconds" desc="Extra starting seconds added to the minutes (0-59)." min="0" max="59" integer="true" />
+    <param name="autostart" type="boolean" default="false" label="Auto-start when presenting" desc="Begin counting down automatically when the slideshow opens this page." />
+    <param name="size" type="select" default="md" label="Size" desc="Size of the timer readout." options="sm:Small,md:Medium,lg:Large,xl:Extra large" />
+    <param name="shape" type="select" default="rounded" label="Background shape" desc="Corner style of the background box (none = no box)." options="rounded:Rounded,pill:Pill,square:Square,none:None" />
+    <param name="bg" type="color" default="rgba(0,0,0,0.06)" label="Background color" desc="Background colour of the timer box." />
+    <param name="border" type="color" default="" label="Border color" desc="Border colour of the timer box (blank = no border)." />
+    <param name="color" type="color" default="" label="Text color" desc="Colour of the digits (blank = inherit theme text colour)." />
+    <param name="label" type="text" default="" label="Caption" desc="Short caption printed before the time, e.g. Break: (blank = none)." />
+    <param name="controls" type="boolean" default="true" label="Show controls" desc="Show the start/pause and reset buttons (false = display-only)." />
+    <param name="align" type="select" default="center" label="Align (Edit layout)" desc="Alignment inside the box when placed in Edit layout." options="left,center,right" />
   </parameters>
 
   <snippets>
@@ -48,6 +66,7 @@ Example: `<!-- @timer minutes: 5, autostart: true -->`
   </snippets>
 
   <render><![CDATA[
+    const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     const mins = parseInt(args.minutes, 10) || 0;
     const secs = parseInt(args.seconds, 10) || 0;
     let total = mins * 60 + secs;
@@ -66,13 +85,24 @@ Example: `<!-- @timer minutes: 5, autostart: true -->`
     const radius = shape === 'pill' ? '999px' : (shape === 'square' || shape === 'none') ? '0' : '0.5em';
     st.push('border-radius:' + radius);
     if (shape === 'none') st.push('padding:0');
+    // Alignment (visible when placed/lifted in Edit layout). Default center
+    // reproduces the original lifted layout.
+    const alignKey = String(args.align || 'center').toLowerCase();
+    const justify = alignKey === 'left' ? 'flex-start' : alignKey === 'right' ? 'flex-end' : 'center';
+    st.push('justify-content:' + justify);
     const styleAttr = st.length ? ' style="' + st.join(';') + '"' : '';
+    // Optional caption + optional controls.
+    const label = (args.label || '').trim();
+    const labelHtml = label ? '<span class="mdp-timer-label">' + esc(label) + '</span>' : '';
+    const controls = String(args.controls) !== 'false';
+    const wrapCls = 'mdp-mod-timer mdp-interactive mdp-size-' + size + (controls ? '' : ' mdp-timer-nocontrols');
     const mm = String(Math.floor(total / 60)).padStart(2, '0');
     const ss = String(total % 60).padStart(2, '0');
     // Fix the display width to the initial digit count (the value only counts
     // down, so this is the widest it ever gets) — the box never reflows / jitters.
     const chars = mm.length + 1 + ss.length;
-    return '<span class="mdp-mod-timer mdp-interactive mdp-size-' + size + '"' + styleAttr + ' data-seconds="' + total + '" data-autostart="' + autostart + '">'
+    return '<span class="' + wrapCls + '"' + styleAttr + ' data-seconds="' + total + '" data-autostart="' + autostart + '">'
+      + labelHtml
       + '<button class="mdp-timer-btn mdp-timer-start" type="button" title="Start / Pause">&#9654;</button>'
       + '<span class="mdp-timer-display" style="width:' + chars + 'ch">' + mm + ':' + ss + '</span>'
       + '<button class="mdp-timer-btn mdp-timer-reset" type="button" title="Reset">&#8634;</button>'
@@ -100,6 +130,10 @@ Example: `<!-- @timer minutes: 5, autostart: true -->`
       line-height: 1; padding: 0.1em 0.3em; border-radius: 0.3em; color: inherit;
     }
     .mdp-mod-timer .mdp-timer-btn:hover { background: rgba(0, 0, 0, 0.14); }
+    /* Optional caption before the digits. */
+    .mdp-mod-timer .mdp-timer-label { font-weight: 600; opacity: 0.85; }
+    /* Display-only mode: hide the control buttons. */
+    .mdp-mod-timer.mdp-timer-nocontrols .mdp-timer-btn { display: none; }
     /* When placed (lifted) in Edit layout, fill the box width and centre so the
        horizontal resize is visible; height stays font-driven. */
     .mdp-manip[data-lifted="1"] .mdp-mod-timer { display: flex; width: 100%; justify-content: center; box-sizing: border-box; }

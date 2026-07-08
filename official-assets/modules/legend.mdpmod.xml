@@ -1,0 +1,79 @@
+<module>
+  <name>legend</name>
+  <type>block</type>
+  <description>A colour legend / key — swatches with labels, laid out in a row or column. Pairs with charts, maps and diagrams.</description>
+  <tags>reference, grouping</tags>
+  <aiSpec><![CDATA[
+A colour LEGEND / key — coloured swatches next to labels. Block module: split the
+body with `<!-- @ -->`, one entry per section written `#color: Label` (or
+`colorname | Label`), e.g. `#ef4444: Errors`. Use it to explain the colours in a
+chart, diagram or map on the same slide (it does not draw the chart itself).
+
+Parameters:
+  - `direction` (row|column, default row): row wraps horizontally; column stacks.
+  - `shape` (square|circle|line, default square): swatch shape.
+  - `size` (small|medium|large, default medium): swatch size.
+  - `gap`: CSS gap between entries (default 8px 18px).
+  - `bold` (true|false, default false): bold the labels.
+
+Example:
+<!-- @legend direction: column, shape: circle, size: large -->
+#22c55e: Passing
+<!-- @ -->
+#f59e0b: Flaky
+<!-- @ -->
+#ef4444: Failing
+<!-- @end -->
+]]></aiSpec>
+  <parameters>
+    <param name="direction" type="select" default="row" label="Direction" desc="Lay entries in a wrapping row or a vertical column." options="row:Row,column:Column" />
+    <param name="shape" type="select" default="square" label="Swatch shape" desc="Shape of each colour swatch." options="square:Square,circle:Circle,line:Line" />
+    <param name="size" type="select" default="medium" label="Swatch size" desc="Size of the colour swatches." options="small:Small,medium:Medium,large:Large" />
+    <param name="gap" type="text" default="8px 18px" label="Gap" desc="CSS gap between entries, e.g. 8px 18px." />
+    <param name="bold" type="boolean" default="false" label="Bold labels" desc="Show the labels in bold." />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Diagrams</category>
+      <label>Legend (color key)</label>
+      <text><![CDATA[<!-- @legend -->
+#22c55e: Passing
+<!-- @ -->
+#f59e0b: Flaky
+<!-- @ -->
+#ef4444: Failing
+<!-- @end -->]]></text>
+      <description>Colour swatches with labels. Each section: "#color: Label".</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const dir = (args.direction || 'row').toLowerCase() === 'column' ? 'column' : 'row';
+    const shape = (args.shape || 'square').toLowerCase();
+    const size = { small: '11px', medium: '15px', large: '20px' }[String(args.size || 'medium').toLowerCase()] || '15px';
+    const gap = (args.gap && String(args.gap).trim()) || '8px 18px';
+    const weight = String(args.bold) === 'true' ? '700' : '400';
+    const items = [];
+    sections.forEach((s) => {
+      const m = String(s || '').trim().match(/^([\s\S]*?)[:|]\s*([\s\S]+)$/);
+      if (!m) return;
+      items.push({ color: m[1].trim(), label: m[2].trim() });
+    });
+    let html = `\n\n<div class="mdp-mod-legend mdp-lg-${dir}" style="--lg-size:${size}; --lg-weight:${weight}; gap:${gap};">`;
+    items.forEach((it) => {
+      html += `<div class="mdp-lg-item"><span class="mdp-lg-swatch mdp-lg-${shape}" style="--lg-c:${esc(it.color)};"></span><span class="mdp-lg-label">${esc(it.label)}</span></div>`;
+    });
+    html += `</div>\n\n`;
+    return html;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-legend { display: flex; gap: 8px 18px; margin: 0.6rem 0; flex-wrap: wrap; }
+    .mdp-lg-column { flex-direction: column; }
+    .mdp-lg-item { display: inline-flex; align-items: center; gap: 7px; }
+    .mdp-lg-swatch { display: inline-block; background: var(--lg-c); flex: 0 0 auto; }
+    .mdp-lg-square { width: var(--lg-size, 15px); height: var(--lg-size, 15px); border-radius: 3px; }
+    .mdp-lg-circle { width: var(--lg-size, 15px); height: var(--lg-size, 15px); border-radius: 50%; }
+    .mdp-lg-line { width: calc(var(--lg-size, 15px) + 7px); height: 4px; border-radius: 2px; }
+    .mdp-lg-label { font-size: 0.9em; font-weight: var(--lg-weight, 400); }
+  ]]></style>
+</module>

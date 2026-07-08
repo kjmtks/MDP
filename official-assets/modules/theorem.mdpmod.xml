@@ -1,0 +1,60 @@
+<module>
+  <name>theorem</name>
+  <type>block</type>
+  <description>A numbered theorem / lemma / definition / corollary box with a coloured accent. Body = the statement (Markdown + math).</description>
+  <tags>proofs, equations</tags>
+  <aiSpec><![CDATA[
+A THEOREM-style environment for maths/CS slides — a labelled, numbered, accented box
+holding a statement. Block module: the body is the statement (Markdown, and inline
+\(math\) / display \[math\] both render). Params: `kind` — one of theorem, lemma,
+definition, corollary, proposition, example, remark (default theorem; theorem-like
+kinds set the body italic, definition/example/remark stay upright); `number` — free
+text like 1 or 2.3 (default empty = unnumbered); `title` — optional name shown in
+parentheses; `color` — accent colour (default var(--accent-color)). Header reads
+e.g. "Theorem 2 (Pythagoras)."
+
+<!-- @theorem kind: theorem, number: 1, title: Pythagoras -->
+For a right triangle, \(a^2 + b^2 = c^2\).
+<!-- @end -->
+]]></aiSpec>
+  <parameters>
+    <param name="kind" type="select" default="theorem" label="Kind" options="theorem:Theorem,lemma:Lemma,definition:Definition,corollary:Corollary,proposition:Proposition,example:Example,remark:Remark" desc="Environment name shown in the header; theorem-like kinds render the body in italics." />
+    <param name="number" type="text" default="" label="Number" desc="Free-form number such as 1 or 2.3 (empty = unnumbered)." />
+    <param name="title" type="text" default="" label="Title (optional)" desc="Optional name shown in parentheses after the number, e.g. Pythagoras." />
+    <param name="color" type="color" default="var(--accent-color)" label="Accent color" desc="Colour of the left border, header text and box tint." />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Math</category>
+      <label>Theorem box</label>
+      <text><![CDATA[<!-- @theorem kind: theorem, number: 1, title: Pythagoras -->
+For a right triangle with legs \(a, b\) and hypotenuse \(c\),
+\[ a^2 + b^2 = c^2. \]
+<!-- @end -->]]></text>
+      <description>Numbered theorem/lemma/definition box; body is the statement (math renders).</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const kind = (args.kind || 'theorem').toLowerCase();
+    const name = kind.charAt(0).toUpperCase() + kind.slice(1);
+    const number = (args.number || '').trim();
+    const title = (args.title || '').trim();
+    const color = args.color || 'var(--accent-color)';
+    const head = `${name}${number ? ' ' + esc(number) : ''}${title ? ' (' + esc(title) + ')' : ''}.`;
+    const body = (content || '').trim();
+    const styleKind = /definition|example|remark/.test(kind) ? 'plain' : 'italic';
+    return `\n\n<div class="mdp-mod-theorem mdp-th-${styleKind}" style="--th-color:${color};"><span class="mdp-th-head">${head}</span> <span class="mdp-th-body">\n\n${body}\n\n</span></div>\n\n`;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-theorem {
+      margin: 1rem 0; padding: 10px 14px; border-radius: 6px;
+      border-left: 4px solid var(--th-color);
+      background: color-mix(in srgb, var(--th-color) 7%, transparent);
+    }
+    .mdp-th-head { font-weight: 700; color: var(--th-color); margin-right: 4px; }
+    .mdp-th-italic .mdp-th-body { font-style: italic; }
+    .mdp-th-body > :first-child { margin-top: 0; display: inline; }
+    .mdp-th-body > :last-child { margin-bottom: 0; }
+  ]]></style>
+</module>

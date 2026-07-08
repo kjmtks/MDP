@@ -2,6 +2,7 @@
   <name>graph</name>
   <type>block</type>
   <description>A graph / plot image with optional labels on any side (top / bottom / left / right) and an optional caption (a second body section) — each independent and optional, rendered with Markdown + KaTeX. Image, label and caption sizes are configurable.</description>
+  <tags>media, plots</tags>
   <aiSpec><![CDATA[
 Wrap a graph / plot / figure IMAGE with optional labels around it and a caption.
 Block module. The FIRST body section is the image (ordinary markdown, e.g.

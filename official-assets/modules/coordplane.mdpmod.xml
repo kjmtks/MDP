@@ -1,0 +1,100 @@
+<module>
+  <name>coordplane</name>
+  <type>block</type>
+  <description>A 2-D coordinate plane (SVG) with a grid and axes, on which you plot points and vectors from the origin. Body = one item per section.</description>
+  <tags>plots, geometry</tags>
+  <aiSpec><![CDATA[
+A 2-D COORDINATE PLANE with axes and a grid, for illustrating points, vectors and
+quadrants. Block module body: one item per section split by `<!-- @ -->`:
+  • a point:  `x, y label`      e.g. `2, 3 A`
+  • a vector: `-> x, y label`    (an arrow from the origin to (x,y))
+Coordinates are numbers; the trailing label is optional. Use @chartjs for real data
+plots — this is a schematic axis diagram, not a data chart.
+
+Parameters:
+  • range (number 1..50, default 5) — the axes span ±range.
+  • grid (boolean, default true) — show the background grid lines.
+  • color (color, default var(--accent-color)) — color of the plotted points/vectors.
+  • size (select: sm | md | lg, default md) — max width of the plane (260 / 360 / 460 px).
+  • xlabel (text, default empty) — label drawn at the +x axis end.
+  • ylabel (text, default empty) — label drawn at the +y axis end.
+
+Example:
+<!-- @coordplane range: 5, xlabel: x, ylabel: y -->
+2, 3 A
+<!-- @ -->
+-> -3, 1 v
+<!-- @end -->
+]]></aiSpec>
+  <parameters>
+    <param name="range" type="number" default="5" label="Axis range (±)" desc="The axes span from -range to +range" min="1" max="50" step="1" integer="true" />
+    <param name="grid" type="boolean" default="true" label="Show grid" desc="Show the background grid lines" />
+    <param name="color" type="color" default="var(--accent-color)" label="Mark color" desc="Color of the plotted points and vectors" />
+    <param name="size" type="select" default="md" label="Size" options="sm:Small,md:Medium,lg:Large" desc="Max width of the plane" />
+    <param name="xlabel" type="text" default="" label="X-axis label" desc="Label drawn at the +x axis end" />
+    <param name="ylabel" type="text" default="" label="Y-axis label" desc="Label drawn at the +y axis end" />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Math</category>
+      <label>Coordinate plane (points/vectors)</label>
+      <text><![CDATA[<!-- @coordplane range: 5 -->
+2, 3 (2,3)
+<!-- @ -->
+-> -3, 1 v
+<!-- @end -->]]></text>
+      <description>Plot points ("x, y label") and vectors ("-> x, y label") on x-y axes.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const range = Math.abs(parseFloat(args.range)) || 5;
+    const grid = String(args.grid) !== 'false';
+    const color = args.color || 'var(--accent-color)';
+    const sizes = { sm: '260px', md: '360px', lg: '460px' };
+    const width = sizes[String(args.size || 'md').toLowerCase()] || '360px';
+    const xlabel = String(args.xlabel || '').trim();
+    const ylabel = String(args.ylabel || '').trim();
+    const S = 100, C = 50, K = 44 / range; // map units→% (44% each side)
+    const px = (x) => (C + x * K).toFixed(2);
+    const py = (y) => (C - y * K).toFixed(2);
+    let g = '';
+    if (grid) {
+      for (let i = -range; i <= range; i++) {
+        if (i === 0) continue;
+        g += `<line x1="${px(i)}" y1="0" x2="${px(i)}" y2="${S}" class="mdp-cp-grid"/>`;
+        g += `<line x1="0" y1="${py(i)}" x2="${S}" y2="${py(i)}" class="mdp-cp-grid"/>`;
+      }
+    }
+    const axes = `<line x1="0" y1="${C}" x2="${S}" y2="${C}" class="mdp-cp-axis"/><line x1="${C}" y1="0" x2="${C}" y2="${S}" class="mdp-cp-axis"/>`;
+    let alabels = '';
+    if (xlabel) alabels += `<text x="${px(range)}" y="${C}" dx="-2" dy="4" class="mdp-cp-lbl" text-anchor="end">${esc(xlabel)}</text>`;
+    if (ylabel) alabels += `<text x="${C}" y="${py(range)}" dx="3" dy="4" class="mdp-cp-lbl">${esc(ylabel)}</text>`;
+    let items = '';
+    sections.map((s) => (s || '').trim()).filter(Boolean).forEach((s) => {
+      const vm = s.match(/^->\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*([\s\S]*)$/);
+      const pm = s.match(/^(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*([\s\S]*)$/);
+      if (vm) {
+        const x = parseFloat(vm[1]), y = parseFloat(vm[2]);
+        items += `<line x1="${px(0)}" y1="${py(0)}" x2="${px(x)}" y2="${py(y)}" class="mdp-cp-vec" marker-end="url(#mdp-cp-arrow)"/>`;
+        if (vm[3].trim()) items += `<text x="${px(x)}" y="${py(y)}" dx="4" dy="-4" class="mdp-cp-lbl">${esc(vm[3].trim())}</text>`;
+      } else if (pm) {
+        const x = parseFloat(pm[1]), y = parseFloat(pm[2]);
+        items += `<circle cx="${px(x)}" cy="${py(y)}" r="1.6" class="mdp-cp-pt"/>`;
+        if (pm[3].trim()) items += `<text x="${px(x)}" y="${py(y)}" dx="3" dy="-3" class="mdp-cp-lbl">${esc(pm[3].trim())}</text>`;
+      }
+    });
+    return `\n\n<div class="mdp-mod-coordplane" style="--cp-color:${color}; width: min(100%, ${width});"><svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">` +
+      `<defs><marker id="mdp-cp-arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="${color}"/></marker></defs>` +
+      `${g}${axes}${alabels}${items}</svg></div>\n\n`;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-coordplane { width: min(100%, 360px); margin: 1rem auto; }
+    .mdp-mod-coordplane svg { width: 100%; height: auto; overflow: visible; }
+    .mdp-cp-grid { stroke: color-mix(in srgb, currentColor 15%, transparent); stroke-width: 0.3; }
+    .mdp-cp-axis { stroke: currentColor; stroke-width: 0.6; }
+    .mdp-cp-vec { stroke: var(--cp-color); stroke-width: 1; }
+    .mdp-cp-pt { fill: var(--cp-color); }
+    .mdp-cp-lbl { fill: currentColor; font-size: 4px; font-weight: 600; }
+  ]]></style>
+</module>

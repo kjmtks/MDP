@@ -1,0 +1,71 @@
+<module>
+  <name>tierlist</name>
+  <type>block</type>
+  <description>A tier list (S/A/B/… rows) with coloured tier labels and items on each row. One tier per section: first line = tier name, the rest = its items (Markdown).</description>
+  <tags>comparison, grouping, list</tags>
+  <aiSpec><![CDATA[
+A TIER LIST — ranked rows (S, A, B, C …) each with a coloured label box and a set of
+items. Block module: split the body with `<!-- @ -->`, one tier per section. The FIRST
+line of a section is the tier name; everything after is the tier's items (Markdown —
+write a `- ` list, or comma / newline separated items). Tiers are coloured top→bottom
+(S = red/gold, down to blue/grey). Params: `color` — one colour for ALL tier labels
+instead of the per-rank palette (default empty = auto palette). Good for rankings,
+prioritisation, quick verdicts. For a simple comparison grid use a Markdown table.
+
+<!-- @tierlist -->
+S
+- Rust
+- Go
+<!-- @ -->
+A
+- Python
+- TypeScript
+<!-- @end -->
+]]></aiSpec>
+  <parameters>
+    <param name="color" type="color" default="" label="Override label color (optional)" desc="Single colour for every tier label; empty = automatic per-rank palette (red, orange, yellow, ...)." />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Layout</category>
+      <label>Tier list (S/A/B)</label>
+      <text><![CDATA[<!-- @tierlist -->
+S
+Must-have, high impact
+<!-- @ -->
+A
+Important
+<!-- @ -->
+B
+Nice to have
+<!-- @end -->]]></text>
+      <description>Ranked tiers; each section = tier name then its items.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const palette = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#8b5cf6', '#6b7280'];
+    const tiers = sections.map((s) => (s || '').trim()).filter(Boolean).map((s) => {
+      const nl = s.indexOf('\n');
+      return { name: nl >= 0 ? s.slice(0, nl).trim() : s.trim(), body: nl >= 0 ? s.slice(nl + 1).trim() : '' };
+    });
+    let html = `\n\n<div class="mdp-mod-tierlist">`;
+    tiers.forEach((t, i) => {
+      const c = args.color || palette[Math.min(i, palette.length - 1)];
+      html += `<div class="mdp-tl-row"><div class="mdp-tl-label" style="--tl-c:${c};">${esc(t.name)}</div>` +
+        `<div class="mdp-tl-items">\n\n${t.body}\n\n</div></div>`;
+    });
+    html += `</div>\n\n`;
+    return html;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-tierlist { margin: 1rem 0; border: 1px solid color-mix(in srgb, currentColor 15%, transparent); border-radius: 8px; overflow: hidden; }
+    .mdp-tl-row { display: grid; grid-template-columns: 64px 1fr; align-items: stretch; border-bottom: 1px solid color-mix(in srgb, currentColor 12%, transparent); }
+    .mdp-tl-row:last-child { border-bottom: none; }
+    .mdp-tl-label { background: var(--tl-c); color: #fff; font-weight: 800; font-size: 1.4em; display: flex; align-items: center; justify-content: center; text-shadow: 0 1px 2px rgba(0,0,0,.3); }
+    .mdp-tl-items { padding: 8px 14px; display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; }
+    .mdp-tl-items > :first-child { margin-top: 0; }
+    .mdp-tl-items > :last-child { margin-bottom: 0; }
+    .mdp-tl-items ul { margin: 0; display: flex; flex-wrap: wrap; gap: 4px 16px; list-style: none; padding: 0; }
+  ]]></style>
+</module>

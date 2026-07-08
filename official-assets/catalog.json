@@ -72,10 +72,16 @@
       "path": "modules/addstyle.mdpmod.xml"
     },
     {
+      "path": "modules/agenda.mdpmod.xml"
+    },
+    {
       "path": "modules/alert.mdpmod.xml"
     },
     {
       "path": "modules/arrow.mdpmod.xml"
+    },
+    {
+      "path": "modules/avatarrow.mdpmod.xml"
     },
     {
       "path": "modules/badge.mdpmod.xml"
@@ -84,7 +90,19 @@
       "path": "modules/balloon.mdpmod.xml"
     },
     {
+      "path": "modules/barchart.mdpmod.xml"
+    },
+    {
       "path": "modules/bignumber.mdpmod.xml"
+    },
+    {
+      "path": "modules/bigo.mdpmod.xml"
+    },
+    {
+      "path": "modules/boxplot.mdpmod.xml"
+    },
+    {
+      "path": "modules/browser.mdpmod.xml"
     },
     {
       "path": "modules/bubble.mdpmod.xml"
@@ -99,6 +117,9 @@
       "path": "modules/card.mdpmod.xml"
     },
     {
+      "path": "modules/cases.mdpmod.xml"
+    },
+    {
       "path": "modules/checklist.mdpmod.xml"
     },
     {
@@ -111,25 +132,85 @@
       "path": "modules/compare.mdpmod.xml"
     },
     {
+      "path": "modules/comparetable.mdpmod.xml"
+    },
+    {
+      "path": "modules/confusionmatrix.mdpmod.xml"
+    },
+    {
+      "path": "modules/coordplane.mdpmod.xml"
+    },
+    {
+      "path": "modules/cycle.mdpmod.xml"
+    },
+    {
       "path": "modules/definition.mdpmod.xml"
+    },
+    {
+      "path": "modules/derivation.mdpmod.xml"
+    },
+    {
+      "path": "modules/distribution.mdpmod.xml"
+    },
+    {
+      "path": "modules/equation.mdpmod.xml"
     },
     {
       "path": "modules/faq.mdpmod.xml"
     },
     {
+      "path": "modules/fishbone.mdpmod.xml"
+    },
+    {
+      "path": "modules/flow.mdpmod.xml"
+    },
+    {
+      "path": "modules/formula.mdpmod.xml"
+    },
+    {
+      "path": "modules/fracbar.mdpmod.xml"
+    },
+    {
       "path": "modules/freebox.mdpmod.xml"
+    },
+    {
+      "path": "modules/funcplot.mdpmod.xml"
+    },
+    {
+      "path": "modules/funnel.mdpmod.xml"
     },
     {
       "path": "modules/gallery.mdpmod.xml"
     },
     {
+      "path": "modules/gantt.mdpmod.xml"
+    },
+    {
+      "path": "modules/gauge.mdpmod.xml"
+    },
+    {
+      "path": "modules/graph.mdpmod.xml"
+    },
+    {
       "path": "modules/grid.mdpmod.xml"
+    },
+    {
+      "path": "modules/heatmap.mdpmod.xml"
+    },
+    {
+      "path": "modules/histogram.mdpmod.xml"
     },
     {
       "path": "modules/iarrow.mdpmod.xml"
     },
     {
+      "path": "modules/iconlist.mdpmod.xml"
+    },
+    {
       "path": "modules/infobox.mdpmod.xml"
+    },
+    {
+      "path": "modules/kanban.mdpmod.xml"
     },
     {
       "path": "modules/kbd.mdpmod.xml"
@@ -138,13 +219,46 @@
       "path": "modules/label.mdpmod.xml"
     },
     {
+      "path": "modules/legend.mdpmod.xml"
+    },
+    {
+      "path": "modules/line.mdpmod.xml"
+    },
+    {
       "path": "modules/mark.mdpmod.xml"
+    },
+    {
+      "path": "modules/matmul.mdpmod.xml"
+    },
+    {
+      "path": "modules/matrix.mdpmod.xml"
     },
     {
       "path": "modules/metrics.mdpmod.xml"
     },
     {
+      "path": "modules/mindmap.mdpmod.xml"
+    },
+    {
       "path": "modules/multicolumn.mdpmod.xml"
+    },
+    {
+      "path": "modules/netgraph.mdpmod.xml"
+    },
+    {
+      "path": "modules/numberline.mdpmod.xml"
+    },
+    {
+      "path": "modules/phone.mdpmod.xml"
+    },
+    {
+      "path": "modules/polarplot.mdpmod.xml"
+    },
+    {
+      "path": "modules/pricing.mdpmod.xml"
+    },
+    {
+      "path": "modules/probtree.mdpmod.xml"
     },
     {
       "path": "modules/process.mdpmod.xml"
@@ -153,13 +267,40 @@
       "path": "modules/progress.mdpmod.xml"
     },
     {
+      "path": "modules/proof.mdpmod.xml"
+    },
+    {
+      "path": "modules/pyramid.mdpmod.xml"
+    },
+    {
       "path": "modules/qr.mdpmod.xml"
+    },
+    {
+      "path": "modules/quantity.mdpmod.xml"
     },
     {
       "path": "modules/quote.mdpmod.xml"
     },
     {
+      "path": "modules/radar.mdpmod.xml"
+    },
+    {
+      "path": "modules/rating.mdpmod.xml"
+    },
+    {
       "path": "modules/references.mdpmod.xml"
+    },
+    {
+      "path": "modules/roadmap.mdpmod.xml"
+    },
+    {
+      "path": "modules/scatter.mdpmod.xml"
+    },
+    {
+      "path": "modules/sequence.mdpmod.xml"
+    },
+    {
+      "path": "modules/setops.mdpmod.xml"
     },
     {
       "path": "modules/shape.mdpmod.xml"
@@ -168,10 +309,40 @@
       "path": "modules/shortcut.mdpmod.xml"
     },
     {
+      "path": "modules/spectrum.mdpmod.xml"
+    },
+    {
+      "path": "modules/stackedbar.mdpmod.xml"
+    },
+    {
       "path": "modules/stamp.mdpmod.xml"
     },
     {
+      "path": "modules/statdelta.mdpmod.xml"
+    },
+    {
+      "path": "modules/statement.mdpmod.xml"
+    },
+    {
+      "path": "modules/steps.mdpmod.xml"
+    },
+    {
       "path": "modules/sticky.mdpmod.xml"
+    },
+    {
+      "path": "modules/swot.mdpmod.xml"
+    },
+    {
+      "path": "modules/target.mdpmod.xml"
+    },
+    {
+      "path": "modules/terminal.mdpmod.xml"
+    },
+    {
+      "path": "modules/theorem.mdpmod.xml"
+    },
+    {
+      "path": "modules/tierlist.mdpmod.xml"
     },
     {
       "path": "modules/timeline.mdpmod.xml"
@@ -181,9 +352,32 @@
     },
     {
       "path": "modules/tree.mdpmod.xml"
+    },
+    {
+      "path": "modules/triangle.mdpmod.xml"
+    },
+    {
+      "path": "modules/truthtable.mdpmod.xml"
+    },
+    {
+      "path": "modules/unitcircle.mdpmod.xml"
+    },
+    {
+      "path": "modules/venn.mdpmod.xml"
+    },
+    {
+      "path": "modules/waterfall.mdpmod.xml"
+    },
+    {
+      "path": "modules/wordcloud.mdpmod.xml"
     }
   ],
   "snippets": [],
+  "taxonomy": [
+    {
+      "path": "taxonomy/taxonomy.json"
+    }
+  ],
   "templates": [
     {
       "path": "templates/poster.slide.md"

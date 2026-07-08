@@ -1,0 +1,118 @@
+<module>
+  <name>polarplot</name>
+  <type>block</type>
+  <description>A polar plot r = f(t) (SVG): one expression in t (the angle) per section, e.g. "1 + cos(t)" for a cardioid. Auto-scaled, with polar grid.</description>
+  <tags>plots, equations</tags>
+  <aiSpec><![CDATA[
+A POLAR PLOT — curves r = f(t) where t is the angle in radians. Use this for polar curves
+(cardioids, roses, spirals); for a normal y = f(x) graph use @plot and for a 1-D axis use
+@numberline.
+Block module: split the body with <!-- @ -->, one curve per section written
+"expression | label" (label optional). Expressions use t and standard math
+(sin cos tan exp log sqrt abs PI E, ^ for power): cardioid "1 + cos(t)", rose "cos(3*t)",
+spiral "t/6". Negative r is drawn through the origin (standard convention).
+Parameters:
+  • tmin / tmax — angle range in radians (default 0 to 6.283185 ≈ 2π).
+  • grid — draw the polar grid of rings and spokes (true/false, default true).
+  • samples — number of points sampled per curve, higher = smoother (30-2000, default 360).
+  • thickness — curve stroke width in SVG units (0.5-5, default 1.2).
+  • legend — show the label legend under the plot (true/false, default true).
+  • fill — fill the area enclosed by each curve with a translucent tint (true/false, default false).
+
+<!-- @polarplot tmax: 6.283185, fill: true -->
+1 + cos(t) | cardioid
+<!-- @ -->
+cos(3*t) | rose
+<!-- @end -->
+]]></aiSpec>
+  <parameters>
+    <param name="tmin" type="number" default="0" label="t min (rad)" desc="Start angle in radians (any real; blank/invalid = 0)." step="0.1" />
+    <param name="tmax" type="number" default="6.283185" label="t max (rad)" desc="End angle in radians (any real; default ≈ 2π for a full turn)." step="0.1" />
+    <param name="grid" type="boolean" default="true" label="Show polar grid" desc="Draw the background rings and angular spokes." />
+    <param name="samples" type="number" default="360" label="Samples per curve" desc="Points sampled along each curve; higher is smoother but heavier." min="30" max="2000" step="10" integer="true" />
+    <param name="thickness" type="number" default="1.2" label="Curve thickness" desc="Stroke width of the curves in SVG units." min="0.5" max="5" step="0.1" />
+    <param name="legend" type="boolean" default="true" label="Show legend" desc="Show the color/label legend under the plot." />
+    <param name="fill" type="boolean" default="false" label="Fill curves" desc="Fill the area enclosed by each curve with a translucent tint." />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Math</category>
+      <label>Polar plot r = f(t)</label>
+      <text><![CDATA[<!-- @polarplot -->
+1 + cos(t) | cardioid
+<!-- @end -->]]></text>
+      <description>Polar curves from expressions in t; cardioids, roses, spirals.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const tmin = Number.isFinite(parseFloat(args.tmin)) ? parseFloat(args.tmin) : 0;
+    const tmax = Number.isFinite(parseFloat(args.tmax)) ? parseFloat(args.tmax) : Math.PI * 2;
+    const palette = ['#2563eb', '#dc2626', '#16a34a', '#9333ea', '#ea580c'];
+    const funcs = [];
+    sections.map((s) => (s || '').trim()).filter(Boolean).forEach((s) => {
+      const i = s.indexOf('|');
+      const expr = (i >= 0 ? s.slice(0, i) : s).trim();
+      const label = i >= 0 ? s.slice(i + 1).trim() : '';
+      if (!/^[\w+\-*/().,^\s]*$/.test(expr)) return;
+      let fn = null;
+      try { fn = new Function('t', 'with(Math){return (' + expr.replace(/\^/g, '**') + ');}'); fn(0); } catch (e) { fn = null; }
+      if (fn) funcs.push({ fn, label: label || expr });
+    });
+    if (!funcs.length) return `<div>(polarplot: one "expression | label" per section, e.g. 1 + cos(t))</div>`;
+    const sN = parseInt(args.samples, 10);
+    const N = Number.isFinite(sN) ? Math.max(30, Math.min(2000, sN)) : 360;
+    const fillOn = String(args.fill) === 'true';
+    const series = funcs.map((f) => {
+      const pts = [];
+      for (let i = 0; i <= N; i++) {
+        const t = tmin + (tmax - tmin) * i / N;
+        let r; try { r = f.fn(t); } catch (e) { r = NaN; }
+        pts.push([t, typeof r === 'number' && Number.isFinite(r) ? r : NaN]);
+      }
+      return pts;
+    });
+    const rmax = Math.max(...series.flat().map((p) => Math.abs(p[1])).filter(Number.isFinite)) || 1;
+    const C = 70, R = 62;
+    const gx = (t, r) => C + (r / rmax) * R * Math.cos(t);
+    const gy = (t, r) => C - (r / rmax) * R * Math.sin(t);
+    let svg = '';
+    if (String(args.grid) !== 'false') {
+      [0.25, 0.5, 0.75, 1].forEach((k) => { svg += `<circle cx="${C}" cy="${C}" r="${(R * k).toFixed(1)}" class="mdp-pp-ring"/>`; });
+      for (let a = 0; a < 12; a++) {
+        const th = (Math.PI * a) / 6;
+        svg += `<line x1="${C}" y1="${C}" x2="${(C + R * Math.cos(th)).toFixed(1)}" y2="${(C - R * Math.sin(th)).toFixed(1)}" class="mdp-pp-spoke"/>`;
+      }
+      svg += `<text x="${C + R + 3}" y="${C}" class="mdp-pp-rlbl" dominant-baseline="middle">${(+rmax.toFixed(3))}</text>`;
+    }
+    series.forEach((pts, si) => {
+      const c = palette[si % palette.length];
+      let d = '', pen = false;
+      pts.forEach((p) => {
+        if (!Number.isFinite(p[1])) { pen = false; return; }
+        d += (pen ? ' L' : ' M') + gx(p[0], p[1]).toFixed(1) + ',' + gy(p[0], p[1]).toFixed(1);
+        pen = true;
+      });
+      if (d) svg += `<path d="${d.trim()}" class="mdp-pp-curve" style="stroke:${c};${fillOn ? ` fill:${c}; fill-opacity:0.12;` : ''}"/>`;
+    });
+    let legend = '';
+    const showLegend = String(args.legend) !== 'false';
+    if (showLegend && (funcs.length > 1 || funcs[0].label)) {
+      legend = `<div class="mdp-pp-legend">` + funcs.map((f, i) =>
+        `<span><i style="background:${palette[i % palette.length]};"></i>${esc(f.label)}</span>`).join('') + `</div>`;
+    }
+    const sw = parseFloat(args.thickness);
+    const swv = Number.isFinite(sw) ? Math.max(0.5, Math.min(5, sw)) : 1.2;
+    return `\n\n<div class="mdp-mod-polarplot" style="--pp-sw:${swv};"><svg viewBox="0 0 140 140" preserveAspectRatio="xMidYMid meet">${svg}</svg>${legend}</div>\n\n`;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-polarplot { width: min(100%, 360px); margin: 1rem auto; text-align: center; }
+    .mdp-mod-polarplot svg { width: 100%; height: auto; overflow: visible; }
+    .mdp-pp-ring { fill: none; stroke: color-mix(in srgb, currentColor 15%, transparent); stroke-width: 0.4; }
+    .mdp-pp-spoke { stroke: color-mix(in srgb, currentColor 12%, transparent); stroke-width: 0.4; }
+    .mdp-pp-rlbl { fill: var(--app-text-muted, #888); font-size: 4.5px; }
+    .mdp-pp-curve { fill: none; stroke-width: var(--pp-sw, 1.2); stroke-linejoin: round; }
+    .mdp-pp-legend { display: flex; flex-wrap: wrap; gap: 4px 16px; justify-content: center; margin-top: 4px; font-size: 0.85em; }
+    .mdp-pp-legend i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+  ]]></style>
+</module>

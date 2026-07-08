@@ -1,29 +1,50 @@
 <module>
   <name>callout</name>
   <type>block</type>
-  <description>A highlighted box for emphasising a slide's key content — introductions, conclusions, takeaways or notes. Configurable visual style (outline / left-bar / filled / solid), optional title with an icon, and colour, border, radius, alignment and shadow controls. Replaces the old introduction / conclusion modules.</description>
+  <description>A highlighted box for emphasising a slide's key content — introductions, conclusions, takeaways or notes — with a configurable style (outline / bar / filled / solid), optional icon+title, and color/border/alignment controls; the body is the box content.</description>
+  <tags>callout, note</tags>
   <aiSpec><![CDATA[
-A highlighted box to emphasise key content — introductions, conclusions,
-takeaways, or notes. Block module: the body is the box content (ordinary
-markdown). Optional `title` (with an `icon`) shows a heading above the body;
-`variant` picks the look (outline/bar/filled/solid). Prefer this over a plain
-paragraph when content should stand out. Example:
-`<!-- @callout variant: outline, title: Key Point, icon: 💡 -->` then the text.
+A highlighted box to emphasise key content — introductions, conclusions, takeaways,
+warnings, or notes. Prefer it over a plain paragraph when one chunk of content must
+stand out. NOT for titled content cards (use @card), two-option contrasts (@compare)
+or term definitions (@definition).
+
+Block module: the body is the box content (ordinary Markdown; KaTeX \( \) works).
+
+Parameters:
+- variant: visual style — `outline` (bordered box, default) | `bar` (left color bar)
+  | `filled` (tinted background) | `solid` (solid accent background, white text).
+- title: optional heading shown above the body (Markdown; default empty = none).
+- icon: optional emoji/character before the title, e.g. 💡 ✅ 📌 ⚠️ (default empty).
+- color: accent color for border/bar/background (CSS color; default var(--accent-color)).
+- align: body text alignment — left (default) | center | right.
+- borderwidth: border/bar thickness in px, 0–20 (integer, default 3).
+- radius: corner radius in px, 0–40 (integer, default 8).
+- textcolor: optional body text color (defaults to the theme text color; white for solid).
+- background: optional background color override for the box.
+- shadow: true (default) | false — drop shadow under the box.
+
+Example:
+<!-- @callout variant: bar, title: Key Point, icon: 💡, color: #0ea5e9 -->
+The one takeaway of this slide, in a sentence or two.
+<!-- @end -->
 ]]></aiSpec>
 
   <parameters>
     <param name="variant" type="select" default="outline" label="Style"
-      options="outline:Outline (bordered),bar:Left bar,filled:Filled (tint),solid:Solid (accent)" />
+      options="outline:Outline (bordered),bar:Left bar,filled:Filled (tint),solid:Solid (accent)"
+      desc="Visual style of the box: bordered, left color bar, tinted fill, or solid accent." />
     <param name="title" type="text" default="" label="Title" desc="Optional heading shown above the body. Leave blank for none." />
     <param name="icon" type="text" default="" label="Icon" desc="Optional emoji/character before the title, e.g. 💡 ✅ 📌 ⚠️." />
     <param name="color" type="color" default="var(--accent-color)" label="Accent color"
-      options="var(--accent-color):Accent,#3b82f6:Blue,#10b981:Green,#f59e0b:Amber,#ef4444:Red,#8b5cf6:Purple,#0ea5e9:Sky,#64748b:Slate" />
-    <param name="align" type="select" default="left" label="Body alignment" options="left,center,right" />
-    <param name="borderwidth" type="number" default="3" label="Border / bar width (px)" min="0" max="20" integer="true" />
-    <param name="radius" type="number" default="8" label="Corner radius (px)" min="0" max="40" integer="true" />
+      options="var(--accent-color):Accent,#3b82f6:Blue,#10b981:Green,#f59e0b:Amber,#ef4444:Red,#8b5cf6:Purple,#0ea5e9:Sky,#64748b:Slate"
+      desc="Accent color used for the border, bar, tint or solid background." />
+    <param name="align" type="select" default="left" label="Body alignment" options="left,center,right" desc="Horizontal text alignment of the body content." />
+    <param name="borderwidth" type="number" default="3" label="Border / bar width (px)" min="0" max="20" integer="true" desc="Thickness of the border (Outline) or the left bar (Left bar) in pixels." />
+    <param name="radius" type="number" default="8" label="Corner radius (px)" min="0" max="40" integer="true" desc="Corner rounding of the box in pixels (0 = square corners)." />
     <param name="textcolor" type="color" label="Body text color" desc="Optional. Defaults to the theme text color (white for the Solid style)." />
     <param name="background" type="color" label="Background" desc="Optional. Overrides the style's default background." />
-    <param name="shadow" type="boolean" default="true" label="Drop shadow" />
+    <param name="shadow" type="boolean" default="true" label="Drop shadow" desc="Draw a soft drop shadow under the box." />
   </parameters>
 
   <snippets>

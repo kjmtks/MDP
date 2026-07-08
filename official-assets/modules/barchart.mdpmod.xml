@@ -1,0 +1,106 @@
+<module>
+  <name>barchart</name>
+  <type>block</type>
+  <description>Simple horizontal bar chart from label:value pairs (pure CSS). For comparing a handful of values without a full chart library.</description>
+  <tags>bars, charts, comparison</tags>
+  <aiSpec><![CDATA[
+A lightweight horizontal BAR CHART for comparing values (survey results, scores,
+shares). Block module: split the body with `<!-- @ -->`, one bar per section, each
+written `Label: value` (or `Label | value`). Bars auto-scale to the largest value
+unless you set `max`. Use @chartjs for full-featured charts and @histogram for a
+frequency distribution; this is for a quick, on-theme comparison of a few bars.
+
+Body: one `Label: value` (or `Label | value`) per `<!-- @ -->` section. Value may be negative or decimal.
+
+Parameters:
+- max (number, default 0 = auto): fixes the 100% scale end; 0/blank auto-scales to the largest absolute value.
+- unit (text, default empty): suffix appended to each printed value, e.g. % or ms.
+- color (color, default var(--accent-color)): bar (and value-text) color.
+- showvalues (boolean, default true): show the numeric value at the end of each row.
+- sort (select: none | desc | asc, default none): none keeps written order; desc/asc sort by value.
+- barheight (number em, default 1.4): thickness of each bar track (0.6–4).
+- radius (number px, default 5): bar/track corner radius (0–40).
+
+Usage:
+<!-- @barchart unit: %, sort: desc, showvalues: true -->
+Chrome: 65
+<!-- @ -->
+Safari: 19
+<!-- @ -->
+Edge: 5
+<!-- @end -->
+]]></aiSpec>
+  <parameters>
+    <param name="max" type="number" default="0" label="Max value" desc="Scale end; 0 = auto (largest value)." />
+    <param name="unit" type="text" default="" label="Value suffix" desc="Appended to each value, e.g. %, ms." />
+    <param name="color" type="color" default="var(--accent-color)" label="Bar color" desc="Fill color of the bars and value labels." />
+    <param name="showvalues" type="boolean" default="true" label="Show values" desc="Show the numeric value at the end of each row." />
+    <param name="sort" type="select" default="none" label="Sort" options="none:As written,desc:High to low,asc:Low to high" desc="Row ordering by value." />
+    <param name="barheight" type="number" default="1.4" label="Bar height (em)" desc="Thickness of each bar track." min="0.6" max="4" step="0.1" />
+    <param name="radius" type="number" default="5" label="Corner radius (px)" desc="Bar and track corner rounding." min="0" max="40" integer="true" />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Diagrams</category>
+      <label>Bar chart</label>
+      <text><![CDATA[<!-- @barchart unit: % -->
+Frontend: 80
+<!-- @ -->
+Backend: 65
+<!-- @ -->
+Infra: 40
+<!-- @end -->]]></text>
+      <description>Horizontal bars from "Label: value" sections; auto-scaled.</description>
+    </snippet>
+    <snippet>
+      <category>Diagrams</category>
+      <label>Bar chart (sorted)</label>
+      <text><![CDATA[<!-- @barchart unit: %, sort: desc -->
+Chrome: 65
+<!-- @ -->
+Safari: 19
+<!-- @ -->
+Edge: 5
+<!-- @end -->]]></text>
+      <description>Bars sorted high-to-low by value.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const color = args.color || 'var(--accent-color)';
+    const unit = args.unit || '';
+    const showValues = !(args.showvalues === false || args.showvalues === 'false');
+    const sort = (args.sort || 'none').toLowerCase();
+    const barH = (() => { const n = parseFloat(args.barheight); return Number.isFinite(n) && n > 0 ? n : 1.4; })();
+    const radius = (() => { const n = parseFloat(args.radius); return Number.isFinite(n) && n >= 0 ? n : 5; })();
+    const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const rows = [];
+    sections.forEach((s) => {
+      const m = String(s || '').trim().match(/^([\s\S]*?)[:|]\s*(-?[\d.]+)\s*$/);
+      if (!m) return;
+      rows.push({ label: m[1].trim(), value: parseFloat(m[2]) });
+    });
+    if (!rows.length) return `<div class="mdp-mod-barchart">(each section must be "Label: value")</div>`;
+    if (sort === 'desc') rows.sort((a, b) => b.value - a.value);
+    else if (sort === 'asc') rows.sort((a, b) => a.value - b.value);
+    let max = parseFloat(args.max) || 0;
+    if (!max) max = Math.max(...rows.map((r) => Math.abs(r.value)), 1);
+    let html = `\n\n<div class="mdp-mod-barchart" style="--bc-color:${color}; --bc-h:${barH}em; --bc-r:${radius}px;">`;
+    rows.forEach((r) => {
+      const w = Math.max(0, Math.min(100, (r.value / max) * 100));
+      html += `<div class="mdp-bc-row"><span class="mdp-bc-label">${esc(r.label)}</span>` +
+        `<span class="mdp-bc-track"><span class="mdp-bc-bar" style="width:${w.toFixed(1)}%;"></span></span>` +
+        (showValues ? `<span class="mdp-bc-val">${esc(String(r.value))}${esc(unit)}</span>` : '') +
+        `</div>`;
+    });
+    html += `</div>\n\n`;
+    return html;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-barchart { margin: 1rem 0; display: flex; flex-direction: column; gap: 8px; }
+    .mdp-bc-row { display: grid; grid-template-columns: minmax(4em, auto) 1fr auto; align-items: center; gap: 10px; }
+    .mdp-bc-label { text-align: right; font-weight: 600; }
+    .mdp-bc-track { background: color-mix(in srgb, var(--bc-color) 12%, transparent); border-radius: var(--bc-r, 5px); height: var(--bc-h, 1.4em); overflow: hidden; }
+    .mdp-bc-bar { display: block; height: 100%; background: var(--bc-color); border-radius: var(--bc-r, 5px); min-width: 2px; }
+    .mdp-bc-val { font-variant-numeric: tabular-nums; color: var(--bc-color); font-weight: 700; }
+  ]]></style>
+</module>

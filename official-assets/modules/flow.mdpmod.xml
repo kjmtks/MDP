@@ -1,0 +1,99 @@
+<module>
+  <name>flow</name>
+  <type>block</type>
+  <description>A vertical flowchart of steps and decisions connected by arrows. Body = one node per section; a section ending in "?" becomes a diamond decision.</description>
+  <tags>flow, process</tags>
+  <aiSpec><![CDATA[
+A simple VERTICAL FLOWCHART — a top-to-bottom sequence of boxes joined by down
+arrows, where a step phrased as a question (ending in "?") is drawn as a DECISION
+diamond.
+
+Body: split the sections with `<!-- @ -->`, one node per section (Markdown allowed).
+  - A section whose text ends in "?" renders as a decision diamond.
+  - To label an edge (a decision branch), start the NEXT section with a bracketed
+    label, e.g. `[Yes] Deploy` — "Yes" labels the arrow, "Deploy" is the node text.
+Keep it to one main path; use @mermaid for graphs with real branching/merging.
+
+Parameters:
+  - `color`    : node border, arrow and edge-label accent. Default var(--accent-color).
+  - `align`    : left | center | right — horizontal placement of the column. Default center.
+  - `shape`    : rounded | square — corner style of the step boxes. Default rounded.
+  - `numbered` : true/false — auto-number the step boxes (decisions are not numbered).
+                 Default false.
+  - `maxwidth` : max node width as a percent of the column. Default 80. Range 20–100.
+
+<!-- @flow color: #2e86de, numbered: true -->
+Receive request
+<!-- @ -->
+Valid?
+<!-- @ -->
+[Yes] Process it
+<!-- @ -->
+Send response
+<!-- @end -->
+]]></aiSpec>
+  <parameters>
+    <param name="color" type="color" default="var(--accent-color)" label="Accent color" desc="Node border, arrow and edge-label accent color." />
+    <param name="align" type="select" default="center" options="left,center,right" label="Alignment" desc="Horizontal placement of the flow column." />
+    <param name="shape" type="select" default="rounded" options="rounded,square" label="Box shape" desc="Corner style of the step boxes." />
+    <param name="numbered" type="boolean" default="false" label="Numbered steps" desc="Auto-number the step boxes (decisions excluded)." />
+    <param name="maxwidth" type="number" default="80" min="20" max="100" step="5" label="Max node width (%)" desc="Maximum node width as a percent of the column." />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Diagrams</category>
+      <label>Flowchart (vertical)</label>
+      <text><![CDATA[<!-- @flow -->
+Start
+<!-- @ -->
+Input valid?
+<!-- @ -->
+[Yes] Process
+<!-- @ -->
+Done
+<!-- @end -->]]></text>
+      <description>Top-down steps joined by arrows; a "?" section becomes a decision diamond; [Yes]/[No] labels an edge.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const color = args.color || 'var(--accent-color)';
+    const align = String(args.align || 'center').toLowerCase();
+    const alignItems = align === 'left' ? 'flex-start' : align === 'right' ? 'flex-end' : 'center';
+    const numbered = String(args.numbered) === 'true';
+    const radius = String(args.shape || 'rounded').toLowerCase() === 'square' ? '0px' : '8px';
+    const nodeW = Math.max(20, Math.min(100, parseFloat(args.maxwidth) || 80));
+    const nodes = sections.map((s) => (s || '').trim()).filter(Boolean);
+    let html = `\n\n<div class="mdp-mod-flow${numbered ? ' mdp-fl-numbered' : ''}" style="--fl-color:${color}; --fl-radius:${radius}; --fl-nodew:${nodeW}%; align-items:${alignItems};">`;
+    nodes.forEach((raw, i) => {
+      let text = raw, edge = '';
+      const em = raw.match(/^\[([^\]]+)\]\s*([\s\S]*)$/);
+      if (em) { edge = em[1].trim(); text = em[2].trim(); }
+      if (i > 0) html += `<div class="mdp-fl-arrow">${edge ? `<span class="mdp-fl-edge">${esc(edge)}</span>` : ''}↓</div>`;
+      const decision = /\?\s*$/.test(text);
+      html += `<div class="mdp-fl-node ${decision ? 'mdp-fl-decision' : 'mdp-fl-step'}"><div class="mdp-fl-inner">\n\n${text}\n\n</div></div>`;
+    });
+    html += `</div>\n\n`;
+    return html;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-flow { margin: 1rem 0; display: flex; flex-direction: column; align-items: center; }
+    .mdp-fl-node { max-width: var(--fl-nodew, 80%); }
+    .mdp-fl-step .mdp-fl-inner {
+      border: 2px solid var(--fl-color); border-radius: var(--fl-radius, 8px); padding: 8px 16px;
+      background: color-mix(in srgb, var(--fl-color) 8%, transparent); text-align: center;
+    }
+    .mdp-fl-decision .mdp-fl-inner {
+      border: 2px solid var(--fl-color); padding: 14px 24px; text-align: center;
+      background: color-mix(in srgb, var(--fl-color) 12%, transparent);
+      transform: rotate(45deg); border-radius: var(--fl-radius, 8px); margin: 12px;
+    }
+    .mdp-fl-decision .mdp-fl-inner > * { transform: rotate(-45deg); margin: 0; }
+    .mdp-fl-step .mdp-fl-inner > * { margin: 0; }
+    .mdp-fl-arrow { position: relative; font-size: 1.4em; line-height: 1; color: var(--fl-color); padding: 4px 0; }
+    .mdp-fl-edge { position: absolute; left: 100%; top: 50%; transform: translateY(-50%); margin-left: 6px; font-size: 0.6em; font-weight: 700; white-space: nowrap; color: var(--fl-color); }
+    .mdp-fl-numbered { counter-reset: mdpflow; }
+    .mdp-fl-numbered .mdp-fl-step .mdp-fl-inner { counter-increment: mdpflow; }
+    .mdp-fl-numbered .mdp-fl-step .mdp-fl-inner > :first-child::before { content: counter(mdpflow) ". "; font-weight: 700; color: var(--fl-color); }
+  ]]></style>
+</module>

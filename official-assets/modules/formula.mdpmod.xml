@@ -1,0 +1,83 @@
+<module>
+  <name>formula</name>
+  <type>block</type>
+  <description>A named formula card — title, the big centered formula, and an optional "where" legend of the variables. Body: LaTeX, then optionally `---` and the legend.</description>
+  <tags>equations</tags>
+  <aiSpec><![CDATA[
+A named FORMULA CARD — a titled box holding the formula shown large, with an optional
+legend that explains each symbol.
+
+Body: the LaTeX of the formula (no \[ \] — the module adds them). To add a legend,
+put a line containing only `---` after the formula, then a Markdown list of entries
+like `\(symbol\) — meaning`.
+
+When NOT to use: for a bare numbered equation use @equation; for inline math write
+\( ... \) directly.
+
+Parameters:
+  - `name`    : the card title shown in the header bar. Default blank (no header).
+  - `color`   : accent for the header, border and legend tint. Default var(--accent-color).
+  - `align`   : left | center | right — alignment of the formula. Default center.
+  - `size`    : small | normal | large — size of the displayed formula. Default normal.
+  - `variant` : filled | outline — filled = solid colored header (default); outline =
+                transparent header with colored title text.
+  - `radius`  : card corner radius in px. Default 10. Range 0–40.
+
+<!-- @formula name: Quadratic formula, variant: outline -->
+x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}
+---
+- \(a, b, c\) — coefficients (\(a \ne 0\))
+- \(x\) — the roots
+<!-- @end -->
+]]></aiSpec>
+  <parameters>
+    <param name="name" type="text" default="" label="Formula name" desc="Card title shown in the header bar; blank = no header." />
+    <param name="color" type="color" default="var(--accent-color)" label="Accent color" desc="Header, border and legend tint color." />
+    <param name="align" type="select" default="center" options="left,center,right" label="Alignment" desc="Alignment of the displayed formula." />
+    <param name="size" type="select" default="normal" options="small,normal,large" label="Size" desc="Size of the displayed formula." />
+    <param name="variant" type="select" default="filled" options="filled,outline" label="Header style" desc="filled = solid colored header; outline = transparent with colored title." />
+    <param name="radius" type="number" default="10" min="0" max="40" step="1" label="Corner radius (px)" desc="Corner radius of the card." />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Math</category>
+      <label>Formula card</label>
+      <text><![CDATA[<!-- @formula name: Quadratic formula -->
+x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}
+---
+- \(a, b, c\) — coefficients (\(a \ne 0\))
+- \(x\) — the two roots
+<!-- @end -->]]></text>
+      <description>Titled formula card with an optional "where" legend after ---.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const name = (args.name || '').trim();
+    const color = args.color || 'var(--accent-color)';
+    const align = String(args.align || 'center').toLowerCase();
+    const size = String(args.size || 'normal').toLowerCase();
+    const scale = size === 'small' ? '0.85em' : size === 'large' ? '1.3em' : '1em';
+    const variant = String(args.variant || 'filled').toLowerCase();
+    const radius = Math.max(0, Math.min(40, Number.isFinite(parseFloat(args.radius)) ? parseFloat(args.radius) : 10));
+    const raw = (content || '').trim();
+    const parts = raw.split(/\n\s*---\s*\n/);
+    const formula = (parts[0] || '').trim();
+    const legend = (parts[1] || '').trim();
+    return `\n\n<div class="mdp-mod-formula${variant === 'outline' ? ' mdp-fm-outline' : ''}" style="--fm-color:${color}; --fm-radius:${radius}px;">` +
+      (name ? `<div class="mdp-fm-name">${esc(name)}</div>` : '') +
+      `<div class="mdp-fm-body" style="text-align:${align}; font-size:${scale};">\n\n\\[ ${formula} \\]\n\n</div>` +
+      (legend ? `<div class="mdp-fm-legend">\n\n${legend}\n\n</div>` : '') +
+      `</div>\n\n`;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-formula { margin: 1rem 0; border: 2px solid color-mix(in srgb, var(--fm-color) 40%, transparent); border-radius: var(--fm-radius, 10px); overflow: hidden; }
+    .mdp-fm-name { background: var(--fm-color); color: #fff; font-weight: 700; padding: 6px 14px; }
+    .mdp-fm-outline .mdp-fm-name { background: transparent; color: var(--fm-color); border-bottom: 1px solid color-mix(in srgb, var(--fm-color) 25%, transparent); }
+    .mdp-fm-body { padding: 10px 14px; text-align: center; overflow-x: auto; }
+    .mdp-fm-body > :first-child { margin: 0; }
+    .mdp-fm-legend { padding: 8px 14px; border-top: 1px solid color-mix(in srgb, var(--fm-color) 25%, transparent); font-size: 0.9em; background: color-mix(in srgb, var(--fm-color) 5%, transparent); }
+    .mdp-fm-legend ul { margin: 0; padding-left: 1.2em; }
+    .mdp-fm-legend > :first-child { margin-top: 0; } .mdp-fm-legend > :last-child { margin-bottom: 0; }
+  ]]></style>
+</module>

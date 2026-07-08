@@ -1,0 +1,97 @@
+<module>
+  <name>cycle</name>
+  <type>block</type>
+  <description>Circular / looping process — stages arranged around a ring (unlike @process, which is a straight line). Body = one section per stage.</description>
+  <tags>cycle, process</tags>
+  <aiSpec><![CDATA[
+A CIRCULAR / LOOPING process — stages arranged around a ring for cycles that repeat
+(PDCA, build-measure-learn, a lifecycle). Use @process for a one-way pipeline instead.
+Block module: split the body with `<!-- @ -->`, one section per stage (Markdown),
+placed clockwise from the top. Best with 3–6 short stages.
+
+Parameters:
+  • center (text, default empty) — label placed in the middle of the ring (Markdown).
+  • color (color, default var(--accent-color)) — accent for the ring and node borders.
+  • size (select: sm | md | lg, default md) — diameter of the diagram (340 / 440 / 560 px).
+  • direction (select: clockwise | counter, default clockwise) — order stages run around the ring.
+  • numbered (boolean, default false) — show a step number badge on each stage.
+
+Example:
+<!-- @cycle center: **PDCA**, numbered: true -->
+Plan
+<!-- @ -->
+Do
+<!-- @ -->
+Check
+<!-- @ -->
+Act
+<!-- @end -->
+]]></aiSpec>
+  <parameters>
+    <param name="center" type="text" default="" label="Center label" desc="Label placed in the middle of the ring (Markdown)" />
+    <param name="color" type="color" default="var(--accent-color)" label="Accent color" desc="Accent for the ring and node borders" />
+    <param name="size" type="select" default="md" label="Size" options="sm:Small,md:Medium,lg:Large" desc="Diameter of the diagram" />
+    <param name="direction" type="select" default="clockwise" label="Direction" options="clockwise:Clockwise,counter:Counter-clockwise" desc="Order stages run around the ring" />
+    <param name="numbered" type="boolean" default="false" label="Numbered" desc="Show a step number badge on each stage" />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Diagrams</category>
+      <label>Cycle (loop)</label>
+      <text><![CDATA[<!-- @cycle center: **PDCA** -->
+Plan
+<!-- @ -->
+Do
+<!-- @ -->
+Check
+<!-- @ -->
+Act
+<!-- @end -->]]></text>
+      <description>Stages arranged clockwise around a ring; optional center label.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const color = args.color || 'var(--accent-color)';
+    const sizes = { sm: '340px', md: '440px', lg: '560px' };
+    const width = sizes[String(args.size || 'md').toLowerCase()] || '440px';
+    const dir = String(args.direction || 'clockwise').toLowerCase() === 'counter' ? -1 : 1;
+    const numbered = String(args.numbered) === 'true';
+    const secs = sections.map((s) => (s || '').trim()).filter(Boolean);
+    const n = secs.length || 1;
+    const R = 41; // ring radius as % of the square container
+    let nodes = '';
+    secs.forEach((s, i) => {
+      const ang = (-90 + dir * i * 360 / n) * Math.PI / 180; // clockwise (or counter) from top
+      const x = (50 + R * Math.cos(ang)).toFixed(2);
+      const y = (50 + R * Math.sin(ang)).toFixed(2);
+      const num = numbered ? `<div class="mdp-cy-num">${i + 1}</div>` : '';
+      nodes += `<div class="mdp-cy-node" style="left:${x}%; top:${y}%;">${num}<div class="mdp-cy-inner">\n\n${s}\n\n</div></div>`;
+    });
+    const center = (args.center || '').trim() ? `<div class="mdp-cy-center">\n\n${args.center.trim()}\n\n</div>` : '';
+    return `\n\n<div class="mdp-mod-cycle" style="--cy-color:${color}; width: min(100%, ${width});"><div class="mdp-cy-ring"></div>${center}${nodes}</div>\n\n`;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-cycle { position: relative; width: min(100%, 440px); aspect-ratio: 1 / 1; margin: 1rem auto; }
+    .mdp-cy-ring { position: absolute; inset: 16%; border: 2px dashed var(--cy-color); border-radius: 50%; opacity: 0.5; }
+    .mdp-cy-node { position: absolute; transform: translate(-50%, -50%); }
+    .mdp-cy-inner {
+      border: 2px solid var(--cy-color); border-radius: 8px; padding: 6px 10px;
+      background: color-mix(in srgb, var(--cy-color) 8%, var(--panel-bg, #fff));
+      text-align: center; max-width: 9em; font-size: 0.9em;
+    }
+    .mdp-cy-inner > :first-child { margin-top: 0; }
+    .mdp-cy-inner > :last-child { margin-bottom: 0; }
+    .mdp-cy-num {
+      position: absolute; top: -0.6em; left: -0.6em; z-index: 2;
+      width: 1.5em; height: 1.5em; line-height: 1.5em; text-align: center;
+      border-radius: 50%; font-size: 0.8em; font-weight: 700;
+      color: #fff; background: var(--cy-color);
+    }
+    .mdp-cy-center {
+      position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+      text-align: center; font-weight: bold; color: var(--cy-color); max-width: 8em;
+    }
+    .mdp-cy-center > :first-child { margin-top: 0; }
+    .mdp-cy-center > :last-child { margin-bottom: 0; }
+  ]]></style>
+</module>

@@ -1,15 +1,31 @@
 <module>
   <name>kbd</name>
   <type>block</type>
-  <description>A keyboard key. The key label is the block body. Renders inline.</description>
+  <description>Renders its body text as a physical keyboard key; block module that renders inline.</description>
+  <tags>inline, badge</tags>
   <aiSpec><![CDATA[
 Render text as a physical keyboard key (e.g. Enter, Ctrl, Esc). The body
-(between the directive and @end) is the key label. Although it's a block
+(between the directive and `<!-- @end -->`) is the key label. Although it's a block
 module it renders inline, so it sits within a sentence. Use one per key; for a
 combo, place several side by side (e.g. Ctrl + C).
+
+Parameters:
+  - `size` (small|medium|large, default medium): key size (font size).
+  - `variant` (default|dark, default default): default = light key on the theme
+    surface; dark = a dark key cap.
+  - `pressed` (true|false, default false): flat "pressed-in" look (no raised bottom edge).
+
+Example:
+<!-- @kbd size: large, variant: dark -->
+Enter
+<!-- @end -->
 ]]></aiSpec>
 
-  <parameters></parameters>
+  <parameters>
+    <param name="size" type="select" default="medium" label="Size" desc="Key size (font size)." options="small:Small,medium:Medium,large:Large" />
+    <param name="variant" type="select" default="default" label="Variant" desc="Light key (default) or a dark key cap." options="default:Default,dark:Dark" />
+    <param name="pressed" type="boolean" default="false" label="Pressed" desc="Flat pressed-in look with no raised bottom edge." />
+  </parameters>
 
   <snippets>
     <snippet>
@@ -25,7 +41,11 @@ Enter
   <render inline="true"><![CDATA[
     const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const body = sections[0] ? sections[0].trim() : '';
-    return '<kbd class="mdp-mod-kbd">' + esc(body) + '</kbd>';
+    const fs = { small: '0.75em', medium: '0.85em', large: '1em' }[String(args.size || 'medium').toLowerCase()] || '0.85em';
+    const variant = String(args.variant || 'default').toLowerCase();
+    const pressed = String(args.pressed) === 'true';
+    const cls = 'mdp-mod-kbd' + (variant === 'dark' ? ' mdp-kbd-dark' : '') + (pressed ? ' mdp-kbd-pressed' : '');
+    return '<kbd class="' + cls + '" style="font-size:' + fs + ';">' + esc(body) + '</kbd>';
   ]]></render>
 
   <style><![CDATA[
@@ -43,6 +63,16 @@ Enter
       box-shadow: var(--shadow-sm, 0 1px 0 rgba(0,0,0,0.15));
       white-space: nowrap;
       vertical-align: middle;
+    }
+    .mdp-mod-kbd.mdp-kbd-dark {
+      color: #f3f4f6;
+      background-color: #374151;
+      border-color: #1f2937;
+    }
+    .mdp-mod-kbd.mdp-kbd-pressed {
+      border-bottom-width: 1px;
+      box-shadow: none;
+      transform: translateY(1px);
     }
   ]]></style>
 

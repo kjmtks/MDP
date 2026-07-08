@@ -1,0 +1,81 @@
+<module>
+  <name>agenda</name>
+  <type>block</type>
+  <description>Talk agenda / outline with an optional "you are here" highlight. Body = one section per agenda item. Great as a recurring section divider.</description>
+  <tags>list, note</tags>
+  <aiSpec><![CDATA[
+An AGENDA / outline list — the talk's sections, optionally with the CURRENT one
+highlighted ("you are here"). Reuse the same @agenda on each section-divider slide,
+changing only `current`. Block module: split the body with `<!-- @ -->`, one section
+per item (Markdown). Parameters: `current` (number, default 0) is the 1-based index
+of the item to highlight — it dims the rest; 0 highlights nothing. `numbered`
+(boolean, default true) shows/hides the circled item numbers. `color` (default
+var(--accent-color)) sets the highlight and number accent color.
+
+Example:
+<!-- @agenda current: 2 -->
+Background
+<!-- @ -->
+Method
+<!-- @ -->
+Results
+<!-- @ -->
+Conclusion
+<!-- @end -->
+]]></aiSpec>
+  <parameters>
+    <param name="current" type="number" default="0" label="Current item (1-based)" desc="1-based index of the item you are on; 0 = none highlighted" min="0" max="99" integer="true" />
+    <param name="numbered" type="boolean" default="true" label="Show numbers" desc="Show a circled number before each item" />
+    <param name="color" type="color" default="var(--accent-color)" label="Accent color" desc="Color of the highlight and item numbers" />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Presentation UI</category>
+      <label>Agenda (with current)</label>
+      <text><![CDATA[<!-- @agenda current: 1 -->
+**Background** and motivation
+<!-- @ -->
+Proposed method
+<!-- @ -->
+Experiments
+<!-- @ -->
+Conclusion
+<!-- @end -->]]></text>
+      <description>Outline list; `current: n` highlights the section you're on (dims the rest).</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const color = args.color || 'var(--accent-color)';
+    const current = parseInt(args.current, 10) || 0;
+    const numbered = String(args.numbered) !== 'false';
+    let html = `\n\n<div class="mdp-mod-agenda${current ? ' has-current' : ''}" style="--ag-color:${color};">`;
+    let i = 0;
+    sections.forEach((s) => {
+      const c = (s || '').trim();
+      if (!c) return;
+      i += 1;
+      const on = i === current;
+      html += `<div class="mdp-ag-item${on ? ' is-current' : ''}">` +
+        (numbered ? `<span class="mdp-ag-num">${i}</span>` : '') +
+        `<div class="mdp-ag-text">\n\n${c}\n\n</div></div>`;
+    });
+    html += `</div>\n\n`;
+    return html;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-agenda { margin: 1rem 0; display: flex; flex-direction: column; gap: 6px; }
+    .mdp-ag-item { display: flex; align-items: center; gap: 12px; padding: 8px 12px; border-radius: 8px; }
+    /* Only dim the others when a current item is set. */
+    .mdp-mod-agenda.has-current .mdp-ag-item { opacity: 0.5; }
+    .mdp-mod-agenda.has-current .mdp-ag-item.is-current { opacity: 1; background: color-mix(in srgb, var(--ag-color) 12%, transparent); border-left: 4px solid var(--ag-color); }
+    .mdp-ag-num {
+      flex: 0 0 auto; width: 28px; height: 28px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: bold; font-size: 0.85em; border: 2px solid var(--ag-color); color: var(--ag-color);
+    }
+    .mdp-ag-item.is-current .mdp-ag-num { background: var(--ag-color); color: #fff; }
+    .mdp-ag-text { min-width: 0; }
+    .mdp-ag-text > :first-child { margin-top: 0; }
+    .mdp-ag-text > :last-child { margin-bottom: 0; }
+  ]]></style>
+</module>

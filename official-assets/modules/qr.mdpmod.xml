@@ -2,25 +2,45 @@
   <name>qr</name>
   <type>block</type>
   <description>Generates a QR code (offline, no internet) from the BODY text — the content between the directive and @end. Using the body means URLs with commas, "=", "&amp;" or quotes are encoded verbatim (they would otherwise break the comma-separated argument syntax). Choose error-correction level, pixel size, quiet-zone margin, colors and an optional caption. Emitted as inline SVG, so it shows in thumbnails, PDF export and presenter too.</description>
+  <tags>media, reference</tags>
   <aiSpec><![CDATA[
-Generate a scannable QR code offline, e.g. to link a slide to a URL. Block
-module: put the data to encode (URL or text) in the body, between the directive
-and @end — this lets URLs with commas, "=", "&" or quotes encode verbatim
-without breaking the comma-separated arg syntax. Set `caption` for a label below.
+Generate a scannable QR code fully offline (e.g. to link a slide to a URL). Block
+module: put the data to encode (URL or text) in the body, between the directive and
+@end — this lets URLs with commas, "=", "&" or quotes encode verbatim without
+breaking the comma-separated arg syntax.
+Parameters:
+  `caption` (text) — optional label shown below the code.
+  `ec` (select L|M|Q|H, default M) — error-correction level; higher = more robust but denser.
+  `size` (number px 48-800, default 180) — rendered width/height.
+  `margin` (number 0-16, default 4) — quiet-zone margin, in QR modules.
+  `dark` (color, default #000000) — module (foreground) color.
+  `light` (color, default #ffffff) — background; use "transparent" for none.
+  `align` (select left|center|right, default center) — horizontal alignment.
+  `text` (text) — fallback data used only when the body is empty.
+  `border` (boolean, default false) — draw a bordered, padded frame around the code.
+  `radius` (number px 0-48, default 0) — round the code's corners.
+  `captionsize` (select small|normal|large, default normal) — caption font size.
+
+<!-- @qr ec: M, size: 200, caption: Scan to open, border: true -->
+https://github.com/kjmtks
+<!-- @end -->
 ]]></aiSpec>
 
   <parameters>
     <param name="caption" type="text" label="Caption" desc="Optional label shown below the QR code." />
-    <param name="ec" type="select" default="M" label="Error correction"
+    <param name="ec" type="select" default="M" label="Error correction" desc="Error-correction level; higher survives more damage but packs denser."
       options="L:L — 7% (smallest),M:M — 15%,Q:Q — 25%,H:H — 30% (most robust)" />
-    <param name="size" type="number" default="180" label="Size (px)" min="48" max="800" integer="true" />
-    <param name="margin" type="number" default="4" label="Quiet-zone margin (modules)" min="0" max="16" integer="true" />
-    <param name="dark" type="color" default="#000000" label="Module color"
+    <param name="size" type="number" default="180" label="Size (px)" desc="Rendered width and height of the code in pixels." min="48" max="800" integer="true" />
+    <param name="margin" type="number" default="4" label="Quiet-zone margin (modules)" desc="Blank border around the code, measured in QR modules." min="0" max="16" integer="true" />
+    <param name="dark" type="color" default="#000000" label="Module color" desc="Foreground (module) color of the code."
       options="#000000:Black,var(--text-color):Theme text,var(--accent-color):Accent,#1e3a8a:Navy,#7c3aed:Purple" />
-    <param name="light" type="color" default="#ffffff" label="Background"
+    <param name="light" type="color" default="#ffffff" label="Background" desc="Background color; use Transparent for none."
       options="#ffffff:White,transparent:Transparent,#f8fafc:Off-white" />
-    <param name="align" type="select" default="center" label="Alignment" options="left,center,right" />
+    <param name="align" type="select" default="center" label="Alignment" desc="Horizontal alignment of the code within the slide." options="left,center,right" />
     <param name="text" type="text" label="Text (fallback)" desc="Used only when the body is empty. Prefer the body for anything with commas or special characters." />
+    <param name="border" type="boolean" default="false" label="Border" desc="Draw a bordered, padded frame around the code." />
+    <param name="radius" type="number" default="0" label="Corner radius (px)" desc="Round the code's corners; keep small so it stays scannable." min="0" max="48" integer="true" />
+    <param name="captionsize" type="select" default="normal" label="Caption size" desc="Font size of the caption line." options="small,normal,large" />
   </parameters>
 
   <snippets>
@@ -57,6 +77,10 @@ https://github.com/kjmtks
     const light = (args.light && String(args.light).trim()) || '#ffffff';
     const alignRaw = String(args.align || 'center').toLowerCase();
     const align = (['left', 'center', 'right'].indexOf(alignRaw) >= 0) ? alignRaw : 'center';
+    const border = String(args.border) === 'true';
+    let radN = parseInt(args.radius, 10); const radius = isNaN(radN) ? 0 : Math.max(0, Math.min(48, radN));
+    const capSizeRaw = String(args.captionsize || 'normal').toLowerCase();
+    const capSize = (['small', 'normal', 'large'].indexOf(capSizeRaw) >= 0) ? capSizeRaw : 'normal';
 
     const gen = (typeof window !== 'undefined') ? window.mdpCreateQR : undefined;
     if (typeof gen !== 'function') {
@@ -76,19 +100,22 @@ https://github.com/kjmtks
     }
 
     const bg = (light === 'transparent') ? '' : '<rect width="' + total + '" height="' + total + '" fill="' + light + '"/>';
+    const svgStyle = radius > 0 ? ' style="border-radius:' + radius + 'px"' : '';
     const svg = '<svg class="mdp-qr-svg" viewBox="0 0 ' + total + ' ' + total + '"'
-      + ' width="' + px + '" height="' + px + '" shape-rendering="crispEdges" role="img"'
+      + ' width="' + px + '" height="' + px + '" shape-rendering="crispEdges" role="img"' + svgStyle
       + ' aria-label="' + esc(text) + '" xmlns="http://www.w3.org/2000/svg">'
       + bg + '<path d="' + d + '" fill="' + dark + '"/></svg>';
 
-    const cap = caption ? '<div class="mdp-qr-caption">' + esc(caption) + '</div>' : '';
+    const cap = caption ? '<div class="mdp-qr-caption mdp-qr-cap-' + capSize + '">' + esc(caption) + '</div>' : '';
+    const frameCls = 'mdp-qr-frame' + (border ? ' mdp-qr-bordered' : '');
     return '\n\n<div class="mdp-mod-qr" style="text-align:' + align + ';">'
-      + '<div class="mdp-qr-frame" style="width:' + px + 'px;">' + svg + cap + '</div></div>\n\n';
+      + '<div class="' + frameCls + '" style="width:' + px + 'px;">' + svg + cap + '</div></div>\n\n';
   ]]></render>
 
   <style><![CDATA[
     .mdp-mod-qr { margin: 1rem 0; }
     .mdp-qr-frame { display: inline-block; text-align: center; }
+    .mdp-qr-bordered { border: 1px solid color-mix(in srgb, currentColor 25%, transparent); padding: 8px; border-radius: 8px; box-sizing: content-box; }
     .mdp-qr-svg { display: block; max-width: 100%; height: auto; }
     .mdp-qr-caption {
       margin-top: 0.5em;
@@ -97,6 +124,8 @@ https://github.com/kjmtks
       color: var(--text-color);
       word-break: break-word;
     }
+    .mdp-qr-cap-small { font-size: 0.8em; }
+    .mdp-qr-cap-large { font-size: 1.15em; }
     .mdp-qr-caption > *:first-child { margin-top: 0; }
     .mdp-qr-caption > *:last-child { margin-bottom: 0; }
   ]]></style>

@@ -1,0 +1,69 @@
+<module>
+  <name>target</name>
+  <type>block</type>
+  <description>Concentric-circle (onion / target) diagram: rings from the core outward, each labeled — for scopes, priorities, ecosystem layers. One ring per section, innermost first.</description>
+  <tags>hierarchy, grouping</tags>
+  <aiSpec><![CDATA[
+A CONCENTRIC-CIRCLE diagram (onion / target): a core with rings around it, each ring
+labeled — for scope levels (core → extended), priorities, ecosystems, zones of
+control. Block module: split the body with `<!-- @ -->`, one ring per section,
+INNERMOST FIRST; each section is the ring's label (Markdown). Params: `color`
+(base hue, default var(--accent-color); rings fade outward). Keep to 3–5 rings.
+Not for overlapping sets — use `venn` for those; not for nested hierarchies with
+children — use `tree`.
+
+<!-- @target -->
+Core
+<!-- @ -->
+Team
+<!-- @ -->
+Company
+<!-- @ -->
+Market
+<!-- @end -->
+]]></aiSpec>
+  <parameters>
+    <param name="color" type="color" default="var(--accent-color)" label="Base color" desc="Base hue of the rings; each ring is a lighter mix of it, fading outward." />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Diagram</category>
+      <label>Target / onion rings</label>
+      <text><![CDATA[<!-- @target -->
+Core
+<!-- @ -->
+Team
+<!-- @ -->
+Company
+<!-- @ -->
+Market
+<!-- @end -->]]></text>
+      <description>Concentric labeled rings, innermost first.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const color = args.color || 'var(--accent-color)';
+    const rings = sections.map((s) => (s || '').trim()).filter(Boolean);
+    if (!rings.length) return `<div>(target: one ring per section, innermost first)</div>`;
+    const n = rings.length;
+    // outermost ring first in DOM (stacked), label pinned to the top area of its ring band
+    let html = `\n\n<div class="mdp-mod-target" style="--tg-c:${color};"><div class="mdp-tg-stack" style="--tg-n:${n};">`;
+    for (let i = n - 1; i >= 0; i--) {
+      const k = i + 1; // 1..n from center
+      const pct = (k / n) * 100;
+      const opacity = (0.10 + 0.5 * (1 - i / n)).toFixed(2);
+      html += `<div class="mdp-tg-ring" style="width:${pct}%; height:${pct}%; background: color-mix(in srgb, var(--tg-c) ${(opacity * 100).toFixed(0)}%, transparent); z-index:${n - i};">` +
+        `<div class="mdp-tg-label${i === 0 ? ' mdp-tg-core' : ''}">\n\n${rings[i]}\n\n</div></div>`;
+    }
+    html += `</div></div>\n\n`;
+    return html;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-target { display: flex; justify-content: center; margin: 1.2rem 0; }
+    .mdp-tg-stack { position: relative; width: min(90vw, 380px); aspect-ratio: 1; }
+    .mdp-tg-ring { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); border-radius: 50%; border: 1.5px solid color-mix(in srgb, var(--tg-c) 50%, transparent); }
+    .mdp-tg-label { position: absolute; top: 4%; left: 50%; transform: translateX(-50%); font-weight: 700; font-size: 0.9em; white-space: nowrap; text-align: center; }
+    .mdp-tg-label > :first-child { margin: 0; }
+    .mdp-tg-core { top: 50%; transform: translate(-50%, -50%); }
+  ]]></style>
+</module>
