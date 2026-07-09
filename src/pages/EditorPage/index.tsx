@@ -8,7 +8,7 @@ import { MainHeader } from '../../components/layout/MainHeader';
 import { MODULES_DIR, EFFECTS_DIR, IMAGES_DIR, SNIPPETS_DIR, TEMPLATES_DIR, THEMES_DIR } from '../../features/workspace/specialFolders';
 import { scopeConfigDirs, collectScopedAssetPaths } from '../../features/workspace/mdpScope';
 import { type MdpContent, parseContent, effectiveDisabledModules, effectiveAiNotes, effectiveStyleProfile, contentPath } from '../../features/workspace/mdpContent';
-import { McpBridge } from '../../features/mcp/McpBridge';
+import { McpBridge, validateDeckText } from '../../features/mcp/McpBridge';
 import { useAppSettings } from '../../features/settings/AppSettingsContext';
 import { matchAction } from '../../features/settings/shortcuts/matcher';
 import { ACTIONS_BY_SCOPE } from '../../features/settings/shortcuts/registry';
@@ -1122,6 +1122,37 @@ export default function EditorPage() {
     setSuggestText(text);
     setSuggestOpen(true);
   }, [editorRef, mdSlides, currentSlideIndex]);
+
+  // User-facing deck "Check": run the SAME deterministic validation the MCP lint uses
+  // (unknown/disabled modules, unknown themes/effects, missing params, and unbalanced
+  // `<!-- @end -->` regions — the mistakes that otherwise break a slide silently) and
+  // surface the findings as a notification. Editor-only; nothing is changed.
+  const runDeckCheck = useCallback(() => {
+    const text = editorRef.current?.view?.state.doc.toString() ?? previewMarkdown ?? '';
+    const { errors, warnings } = validateDeckText(text, themes);
+    if (!errors.length && !warnings.length) {
+      notify('No problems found in this deck.', { title: 'Deck check', severity: 'success' });
+      return;
+    }
+    const detail = [...errors.map((e) => `❌ ${e}`), ...warnings.map((w) => `⚠️ ${w}`)].join('\n\n');
+    reportError(
+      `${errors.length} error${errors.length === 1 ? '' : 's'}, ${warnings.length} warning${warnings.length === 1 ? '' : 's'}.`,
+      { title: 'Deck check', severity: errors.length ? 'error' : 'warning', detail },
+    );
+  }, [editorRef, previewMarkdown, themes]);
+
+  // The editor-panel toolbar triggers these via window events (keeps that panel
+  // decoupled from EditorPage's callbacks).
+  useEffect(() => {
+    const onSuggest = () => openSuggestModule();
+    const onCheck = () => runDeckCheck();
+    window.addEventListener('mdp-suggest-module', onSuggest);
+    window.addEventListener('mdp-check-deck', onCheck);
+    return () => {
+      window.removeEventListener('mdp-suggest-module', onSuggest);
+      window.removeEventListener('mdp-check-deck', onCheck);
+    };
+  }, [openSuggestModule, runDeckCheck]);
 
   const handleSwitchToRemote = useCallback(() => {
     const baseUrl = window.location.href.split('#')[0];

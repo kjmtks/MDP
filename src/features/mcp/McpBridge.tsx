@@ -68,7 +68,8 @@ const loadImage = (src: string) => new Promise<HTMLImageElement>((resolve, rejec
 // Deterministic deck lint against the LIVE registries (scope-aware): unknown
 // module/theme/effect names, disabled modules, bad/missing module params, and
 // unbalanced block/@end structure. Cheap to run before any visual check.
-function validateDeckText(text: string, themes: ThemeOption[]) {
+// Exported so the editor's "Check" action can surface the SAME findings to the user.
+export function validateDeckText(text: string, themes: ThemeOption[]) {
   const blocks = splitMarkdownToBlocks(text);
   const errors: string[] = [];
   const warnings: string[] = [];

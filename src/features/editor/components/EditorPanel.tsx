@@ -4,6 +4,8 @@ import UndoIcon from '@mui/icons-material/Undo';
 import RedoIcon from '@mui/icons-material/Redo';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
+import TipsAndUpdatesIcon from '@mui/icons-material/TipsAndUpdates';
+import FactCheckIcon from '@mui/icons-material/FactCheck';
 import BookmarkBorderIcon from '@mui/icons-material/BookmarkBorder';
 import { Box, Typography, Divider, IconButton, Tooltip, Popover, Button } from '@mui/material';
 import type { Bookmark } from '../../../pages/EditorPage/hooks/useBookmarks';
@@ -280,6 +282,14 @@ const EditorPanelImpl: React.FC<EditorPanelProps> = ({
                   </Tooltip>
                   <Tooltip title="Next Slide">
                     <IconButton size="small" onClick={handleNextSlide} sx={{ color: 'var(--app-text-muted)', '&:hover': { color: 'var(--app-text-strong)' } }}><ArrowDownwardIcon fontSize="small" /></IconButton>
+                  </Tooltip>
+
+                  <Divider orientation="vertical" flexItem sx={{ mx: 1, my: 0.5, borderColor: 'var(--app-border-strong)' }} />
+                  <Tooltip title="Suggest a module for the selection / current slide">
+                    <IconButton size="small" onClick={() => window.dispatchEvent(new CustomEvent('mdp-suggest-module'))} sx={{ color: 'var(--app-text-muted)', '&:hover': { color: 'var(--app-text-strong)' } }}><TipsAndUpdatesIcon fontSize="small" /></IconButton>
+                  </Tooltip>
+                  <Tooltip title="Check this deck for problems (unknown modules/effects, unclosed regions, bad params…)">
+                    <IconButton size="small" onClick={() => window.dispatchEvent(new CustomEvent('mdp-check-deck'))} sx={{ color: 'var(--app-text-muted)', '&:hover': { color: 'var(--app-text-strong)' } }}><FactCheckIcon fontSize="small" /></IconButton>
                   </Tooltip>
                 </>
               )}
