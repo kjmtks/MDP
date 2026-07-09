@@ -1,0 +1,137 @@
+<module>
+  <name>avatar</name>
+  <type>block</type>
+  <selfClosing>true</selfClosing>
+  <description>A circle-cropped avatar image (like a chat face icon) with a configurable border and an optional name / role caption below it. Falls back to a coloured initial when no image is given. Self-contained: no body and no @end.</description>
+  <tags>list, mockup</tags>
+  <aiSpec><![CDATA[
+A single CIRCLE-CROPPED AVATAR — a round face icon (like @balloon's speaker icon) with
+an optional NAME and ROLE caption underneath. Use for a person, a persona, a team lead,
+a speaker headshot. For a ROW of several avatars use @avatarrow; for a speech balloon use
+@balloon.
+
+Self-contained directive — takes NO body and NO `<!-- @end -->` (all data is in the
+parameters). Give the image via the `image` param (URL / workspace path / @alias /
+data-URI). If `image` is empty a coloured circle with the name's first letter is shown.
+
+Parameters:
+  • image (image, default empty) — the picture to circle-crop (object-fit: cover).
+  • name (text, default empty) — bold caption under the icon (Markdown / \( \) math OK).
+  • role (text, default empty) — smaller secondary line under the name.
+  • size (number px, default 96) — diameter of the icon.
+  • border (number px, default 3) — border thickness (0 = no border).
+  • bordercolor (color, default var(--accent-color)) — border colour (also the initial's text colour).
+  • align (left | center | right, default center) — placement on the slide.
+
+<!-- @avatar image: @kojima, name: 兒島 雄志, role: 情報コース, size: 120, border: 4, bordercolor: #2563eb -->
+
+Multiple side by side — put several in a @grid or @columns:
+<!-- @columns count: 3 -->
+<!-- @avatar image: @a, name: Alice -->
+<!-- @ -->
+<!-- @avatar image: @b, name: Bob -->
+<!-- @ -->
+<!-- @avatar image: @c, name: Carol -->
+<!-- @end -->
+]]></aiSpec>
+
+  <parameters>
+    <param name="image" type="image" default="" label="Image" desc="Avatar picture: URL / path / @alias / data-URI. Empty = coloured initial." />
+    <param name="name" type="text" default="" label="Name" desc="Bold caption under the icon (Markdown/math allowed)." />
+    <param name="role" type="text" default="" label="Role / subtitle" desc="Smaller secondary line under the name." />
+    <param name="size" type="number" default="96" label="Icon size (px)" desc="Diameter of the circular icon." min="24" max="480" step="1" />
+    <param name="border" type="number" default="3" label="Border width (px)" desc="Thickness of the ring around the icon (0 = none)." min="0" max="40" step="1" />
+    <param name="bordercolor" type="color" default="var(--accent-color)" label="Border color" desc="Colour of the ring (and the initial's text)." />
+    <param name="align" type="select" default="center" label="Align" options="left:Left,center:Center,right:Right" desc="Placement of the avatar on the slide." />
+  </parameters>
+
+  <snippets>
+    <snippet>
+      <category>Presentation UI</category>
+      <label>Avatar (image + name)</label>
+      <text><![CDATA[<!-- @avatar image: https://via.placeholder.com/150, name: 兒島 雄志, role: 情報コース, size: 120, border: 4 -->]]></text>
+      <description>Circle-cropped avatar with a name and role underneath.</description>
+    </snippet>
+    <snippet>
+      <category>Presentation UI</category>
+      <label>Avatar row (3 people)</label>
+      <text><![CDATA[<!-- @columns count: 3 -->
+<!-- @avatar image: https://via.placeholder.com/150, name: Alice, role: PI -->
+<!-- @ -->
+<!-- @avatar image: https://via.placeholder.com/150, name: Bob, role: D2 -->
+<!-- @ -->
+<!-- @avatar image: https://via.placeholder.com/150, name: Carol, role: M1 -->
+<!-- @end -->]]></text>
+      <description>Several avatars side by side inside @columns.</description>
+    </snippet>
+  </snippets>
+
+  <render><![CDATA[
+    const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    const md = (t) => (t && String(t).trim() !== '') ? ('\n\n' + t + '\n\n') : '';
+    const image = (args.image || '').trim();
+    const name = (args.name || '').trim();
+    const role = (args.role || '').trim();
+    let size = parseFloat(args.size); if (!Number.isFinite(size) || size <= 0) size = 96;
+    let border = parseFloat(args.border); if (!Number.isFinite(border) || border < 0) border = 3;
+    const bordercolor = (args.bordercolor && String(args.bordercolor).trim()) || 'var(--accent-color)';
+    const alignKey = String(args.align || 'center').toLowerCase();
+    const margin = alignKey === 'left' ? '1rem auto 1rem 0' : alignKey === 'right' ? '1rem 0 1rem auto' : '1rem auto';
+
+    const ring = 'width:' + size + 'px; height:' + size + 'px; border:' + border + 'px solid ' + bordercolor + ';';
+    const avatar = image
+      ? '<img class="mdp-av-img" src="' + esc(image) + '" alt="' + esc(name) + '" style="' + ring + '"/>'
+      : '<div class="mdp-av-initial" style="' + ring + ' color:' + bordercolor + '; font-size:' + Math.round(size * 0.42) + 'px;">' + (name ? esc(name.charAt(0).toUpperCase()) : '?') + '</div>';
+
+    return '\n\n<div class="mdp-mod-avatar" style="margin:' + margin + ';">' +
+      avatar +
+      (name ? '<div class="mdp-av-name">' + md(name) + '</div>' : '') +
+      (role ? '<div class="mdp-av-role">' + md(role) + '</div>' : '') +
+      '</div>\n\n';
+  ]]></render>
+
+  <style><![CDATA[
+    .mdp-mod-avatar {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      width: max-content;
+      max-width: 100%;
+    }
+    .mdp-mod-avatar .mdp-av-img {
+      border-radius: 50%;
+      object-fit: cover;
+      box-sizing: border-box;
+      display: block;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    }
+    .mdp-mod-avatar .mdp-av-initial {
+      border-radius: 50%;
+      box-sizing: border-box;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--panel-bg, #eef2f7);
+      font-weight: 800;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    }
+    .mdp-mod-avatar .mdp-av-name {
+      font-weight: 700;
+      font-size: 1.05em;
+      text-align: center;
+      line-height: 1.2;
+    }
+    .mdp-mod-avatar .mdp-av-role {
+      font-size: 0.85em;
+      color: var(--muted-color, #666);
+      text-align: center;
+      line-height: 1.2;
+      margin-top: -2px;
+    }
+    .mdp-mod-avatar .mdp-av-name > *,
+    .mdp-mod-avatar .mdp-av-role > * { margin: 0; display: inline; }
+  ]]></style>
+
+  <script><![CDATA[]]></script>
+</module>
