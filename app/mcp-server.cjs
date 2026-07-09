@@ -262,13 +262,18 @@ const TOOLS = [
   },
   {
     name: 'get_asset_templates',
-    description: 'Reference templates for AUTHORING new assets: a module (.mdpmod.xml), an animation effect (.mdpfx.xml) and a theme CSS. Read these before write_asset to learn each format.',
-    inputSchema: S({}),
+    description: 'How to AUTHOR a workspace asset. Call with a `kind` (module | effect | theme | snippet) to get: its reference TEMPLATE, a detailed authoring GUIDE (schema, the render/CSS/script contract and pitfalls, the design tokens / file format), and the list of ones that ALREADY EXIST in the workspace (so you imitate conventions and avoid duplicates). Omit `kind` for a guide overview of all four. Read this before write_asset.',
+    inputSchema: S({ kind: { type: 'string', enum: ['module', 'effect', 'theme', 'snippet'], description: 'Asset kind to get the template + guide + existing list for. Omit for an overview of all kinds.' } }),
+  },
+  {
+    name: 'list_snippets',
+    description: 'List the insertable text snippets available for a deck (built-ins + the deck\'s .mdp chain), grouped by category with each item\'s label. Use it to see what exists before adding more with write_asset (kind: "snippet").',
+    inputSchema: S({ deck: str('Deck path whose .mdp scope to use (default: the active deck)') }),
   },
   {
     name: 'write_asset',
-    description: 'CREATE or update a workspace asset: kind "module" (.mdpmod.xml — reusable slide component with render template/CSS/script; self-describe it for AI via <aiSpec>), "effect" (.mdpfx.xml — transition/build animation) or "theme" (.css). Saved under the workspace .mdp and registered live. The user should review scripts you write. Study get_asset_templates and an existing asset (read_module / read_theme) first.',
-    inputSchema: S({ kind: { type: 'string', enum: ['module', 'effect', 'theme'], description: 'Asset kind' }, name: str('Asset name (letters/digits/-/_)'), content: str('Full file content'), dir: str('Folder whose .mdp to write into (default: workspace root)') }, ['kind', 'name', 'content']),
+    description: 'CREATE or update a workspace asset: kind "module" (.mdpmod.xml — reusable slide component; self-describe it for AIs via <aiSpec>), "effect" (.mdpfx.xml — transition/build animation), "theme" (.css — slide design-token overrides) or "snippet" (.json — insertable text snippets grouped by category). Saved under the workspace .mdp and registered live. The user should review scripts you write. Study get_asset_templates (with this kind) and an existing asset first (get_slide_spec / get_module_spec / read_module / read_theme / list_snippets).',
+    inputSchema: S({ kind: { type: 'string', enum: ['module', 'effect', 'theme', 'snippet'], description: 'Asset kind' }, name: str('Asset name (letters/digits/-/_)'), content: str('Full file content (XML for module/effect, CSS for theme, a JSON array of {category,items} for snippet)'), dir: str('Folder whose .mdp to write into (default: workspace root)') }, ['kind', 'name', 'content']),
   },
 ];
 

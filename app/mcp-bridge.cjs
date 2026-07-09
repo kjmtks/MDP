@@ -781,6 +781,34 @@ async function callToolInner(method, p, baseDir) {
       return { scope: chain, themes: themes.map((t) => t.name) };
     }
 
+    case 'list_snippets': {
+      const deckPath = p.deck ? requireDeckPath(p.deck) : await activeDeckPath();
+      const chain = await mdpChainDirs(baseDir, deckPath);
+      const cats = new Map(); // category -> [labels]
+      const addFile = (raw) => {
+        let arr; try { arr = JSON.parse(raw); } catch { return; }
+        if (!Array.isArray(arr)) return;
+        for (const c of arr) {
+          if (!c || !Array.isArray(c.items)) continue;
+          const key = String(c.category || 'Snippets');
+          if (!cats.has(key)) cats.set(key, []);
+          for (const it of c.items) if (it && it.label) cats.get(key).push(String(it.label));
+        }
+      };
+      // Built-in defaults, then the deck's `.mdp` chain (root→nearest) — same merge as the app.
+      try { addFile(fs.readFileSync(path.join(ctx.getAssetPath(''), 'default-snippets.json'), 'utf-8')); } catch { /* none bundled */ }
+      for (const cdir of chain) {
+        try {
+          for (const e of await mdplink.vfsList(mdplink.resolve(baseDir, `${cdir}/snippets`))) {
+            if (e.isDir || !e.name.toLowerCase().endsWith('.json')) continue;
+            try { addFile(await mdplink.vfsReadText(mdplink.resolve(baseDir, `${cdir}/snippets/${e.name}`))); } catch { /* skip bad file */ }
+          }
+        } catch { /* no snippets dir in this `.mdp` */ }
+      }
+      const categories = [...cats.entries()].map(([category, items]) => ({ category, items }));
+      return { scope: chain, categories, note: 'Insertable text snippets grouped by category (built-ins + workspace .mdp). Create or extend with write_asset (kind: "snippet"); see get_asset_templates (kind: "snippet") for the file format.' };
+    }
+
     case 'read_module': {
       const mp = String(p.path || '');
       if (mp.startsWith('builtin:')) {
@@ -922,11 +950,32 @@ async function callToolInner(method, p, baseDir) {
 
     case 'get_asset_templates': {
       const read = (rel) => { try { return fs.readFileSync(path.join(ctx.getAssetPath(''), rel), 'utf-8'); } catch { return ''; } };
+      const SNIPPET_TEMPLATE = JSON.stringify(
+        [{ category: 'My Snippets', items: [{ label: 'Example', text: 'Hello, MDP!\n', description: 'Inserted at the cursor' }] }],
+        null, 2,
+      );
+      const templateFor = (k) => k === 'module' ? read('default-module.mdpmod.xml')
+        : k === 'effect' ? read('default-effect.mdpfx.xml')
+        : k === 'theme' ? read('themes/default.css')
+        : k === 'snippet' ? SNIPPET_TEMPLATE : '';
+      const kind = p.kind ? String(p.kind) : null;
+      // One kind → its template + authoring guide + what already exists (to imitate /
+      // avoid duplicating). No kind → all four, guides only (call again with a kind
+      // for a template + the existing list).
+      if (kind) {
+        if (!ASSET_GUIDES[kind]) throw new Error('"kind" must be module | effect | theme | snippet.');
+        return {
+          kind,
+          template: templateFor(kind),
+          guide: ASSET_GUIDES[kind],
+          existing: await listWorkspaceAssets(baseDir, kind),
+          note: 'Write with write_asset (kind, name, content). The `existing` list is this workspace\'s .mdp only — for the full merged set (incl. built-ins) use the FIND tool named at the end of the guide.',
+        };
+      }
       return {
-        module: read('default-module.mdpmod.xml'),
-        effect: read('default-effect.mdpfx.xml'),
-        theme: read('themes/default.css'),
-        note: 'Module: <name>/<description>/<params>/<render>/<styles>/<script>; add <aiSpec> so the module explains itself to AIs. Effect: <enter>/<emphasis>/<leave> phases with <css>/<cssActive>. Theme: CSS overriding the slide design tokens (--bg-color, --text-color, --accent-color, --base-font-size, …).',
+        kinds: ['module', 'effect', 'theme', 'snippet'],
+        guides: ASSET_GUIDES,
+        note: 'Call again with a `kind` to get that asset\'s TEMPLATE plus the list of ones that already exist, then create it with write_asset.',
       };
     }
 
@@ -940,9 +989,19 @@ async function callToolInner(method, p, baseDir) {
         module: { sub: 'modules', ext: '.mdpmod.xml', check: /<module[\s>][\s\S]*<name>/ },
         effect: { sub: 'effects', ext: '.mdpfx.xml', check: /<effect[\s>][\s\S]*<name>/ },
         theme: { sub: 'themes', ext: '.css', check: /./ },
+        snippet: { sub: 'snippets', ext: '.json', check: null },
       }[kind];
-      if (!spec) throw new Error('"kind" must be module | effect | theme.');
-      if (!spec.check.test(content)) throw new Error(`Content does not look like a valid ${kind} file — see get_asset_templates.`);
+      if (!spec) throw new Error('"kind" must be module | effect | theme | snippet.');
+      if (kind === 'snippet') {
+        let parsed;
+        try { parsed = JSON.parse(content); }
+        catch { throw new Error('Snippet content must be valid JSON — see get_asset_templates (kind: "snippet").'); }
+        if (!Array.isArray(parsed) || !parsed.every((c) => c && typeof c === 'object' && Array.isArray(c.items))) {
+          throw new Error('Snippet content must be a JSON array of { category, items:[{ label, text }] } — see get_asset_templates (kind: "snippet").');
+        }
+      } else if (spec.check && !spec.check.test(content)) {
+        throw new Error(`Content does not look like a valid ${kind} file — see get_asset_templates.`);
+      }
       const dir = p.dir ? requireDeckPath(p.dir) : '';
       const rel = `${dir ? dir + '/' : ''}.mdp/${spec.sub}/${name}${spec.ext}`;
       const hasScript = /<script[\s>]/i.test(content);
