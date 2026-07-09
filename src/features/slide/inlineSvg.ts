@@ -126,7 +126,9 @@ function processSvg(raw: string, key: string): string {
 
 /** Load (or return cached) a processed inline SVG for a workspace file path. */
 export function loadSvg(path: string): Promise<string> {
-  fallback.set(path, (isElectron() ? 'mdp-file://' : '/files/') + path.split('/').map(encodeURIComponent).join('/'));
+  // Empty-authority (`mdp-file:///…`) so a managed `.mdp/images/…` SVG isn't parsed
+  // as an invalid dot-leading hostname.
+  fallback.set(path, (isElectron() ? 'mdp-file:///' : '/files/') + path.split('/').map(encodeURIComponent).join('/'));
   const cached = cache.get(path);
   if (cached !== undefined) return Promise.resolve(cached);
   const existing = inflight.get(path);
@@ -145,7 +147,7 @@ export function loadSvg(path: string): Promise<string> {
 export async function prewarmSvgs(htmls: string[], basePath: string): Promise<void> {
   const toWsPath = (src: string): string => {
     let s = src.split('?')[0];
-    if (s.startsWith('mdp-file://')) s = s.slice('mdp-file://'.length);
+    if (s.startsWith('mdp-file://')) s = s.replace(/^mdp-file:\/\/+/, '');
     else if (s.startsWith('/files/')) s = s.slice('/files/'.length);
     else if (s.startsWith('/')) s = s.slice(1);
     else s = basePath ? `${basePath}/${s}` : s;

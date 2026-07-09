@@ -277,7 +277,9 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
       try { targetPath = decodeURIComponent(targetPath); } catch { /* ignore */ }
 
       const cleanUrl = targetPath.split('/').map(encodeURIComponent).join('/');
-      const prefix = isElectron() ? 'mdp-file://' : '/files/';
+      // Empty-authority form so a managed `.mdp/…` path isn't parsed as an invalid
+      // dot-leading hostname (→ broken image).
+      const prefix = isElectron() ? 'mdp-file:///' : '/files/';
       return `${prefix}${cleanUrl}${queryPart ? '?' + queryPart : ''}`;
     };
 
@@ -285,7 +287,7 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
     // file API for inlining. Strips any already-applied URL prefix.
     const toWorkspacePath = (src: string): string => {
       let s = src.split('?')[0];
-      if (s.startsWith('mdp-file://')) s = s.slice('mdp-file://'.length);
+      if (s.startsWith('mdp-file://')) s = s.replace(/^mdp-file:\/\/+/, '');
       else if (s.startsWith('/files/')) s = s.slice('/files/'.length);
       else if (s.startsWith('/')) s = s.slice(1);
       else s = basePath ? `${basePath}/${s}` : s;

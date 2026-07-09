@@ -100,7 +100,12 @@ app.whenReady().then(async () => {
 
   protocol.handle('mdp-file', async (request) => {
     try {
-      const urlStr = request.url.replace(/^mdp-file:\/\//, '');
+      // Strip the scheme AND any leading slashes: URLs are built with an EMPTY
+      // authority (`mdp-file:///<path>`) so a leading dot-folder segment (e.g. the
+      // managed `.mdp/images/…` store, or a custom `.mdp/themes/…` theme) is NOT
+      // parsed as an invalid empty-label hostname — which fails to load. Legacy
+      // host-form URLs (`mdp-file://sub/f`) still resolve (2 slashes stripped too).
+      const urlStr = request.url.replace(/^mdp-file:\/\/+/, '');
       const cleanPath = decodeURIComponent(urlStr.split('?')[0]);
 
       // Route through the VFS so files behind a `.mdplink` (local or remote) serve too.

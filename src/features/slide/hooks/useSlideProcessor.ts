@@ -112,7 +112,9 @@ export const useSlideProcessor = (
       const theme = themes.find(t => t.name === globalContext.themeName || t.fileName === globalContext.themeName);
       if (theme) {
         if (isElectron()) {
-          targetCssUrl = theme.isCustom ? `mdp-file://${theme.path}` : `app-asset://${theme.path}`;
+          // Empty-authority form for a custom theme under `.mdp/themes/…` — otherwise
+          // the leading `.mdp` is parsed as an invalid hostname and the CSS 404s.
+          targetCssUrl = theme.isCustom ? `mdp-file:///${theme.path}` : `app-asset://${theme.path}`;
         } else {
           targetCssUrl = theme.isCustom ? `/files/${theme.path}` : `/${theme.path}`;
         }

@@ -10,10 +10,14 @@ import SubtitlesOffIcon from '@mui/icons-material/SubtitlesOff';
 import FullscreenIcon from '@mui/icons-material/Fullscreen';
 import FullscreenExitIcon from '@mui/icons-material/FullscreenExit';
 import CloseIcon from '@mui/icons-material/Close';
+import SmartDisplayIcon from '@mui/icons-material/SmartDisplay';
 import { SlideView } from '../slide/components/SlideView';
 import { useAppSettings } from '../settings/AppSettingsContext';
 import renderMathInElement from 'katex/contrib/auto-render';
-import { synthesize, type Clip, type Utterance } from '../tts/ttsService';
+import {
+  synthesize, type Clip, type Utterance,
+  webSpeechAvailable, loadWebSpeechVoices, listVoicevoxSpeakers, type VoicevoxStyle,
+} from '../tts/ttsService';
 import { scriptSegments, captionChunks, slideDwellMs, captionText, speechText, hasScriptMath } from './autoplay';
 
 // One playable step of the narration: which slide + build step to show, the text to
@@ -97,6 +101,12 @@ export const AutoPlayView: React.FC<{
   const [caption, setCaption] = useState('');       // the segment currently being spoken
   const [showCaptions, setShowCaptions] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  // Pre-flight setup gate: while false, show the "configure & start" screen instead
+  // of the player, so the voice/engine/speed are chosen BEFORE going fullscreen.
+  const [started, setStarted] = useState(false);
+  const [webVoices, setWebVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [vvSpeakers, setVvSpeakers] = useState<VoicevoxStyle[]>([]);
+  const [vvStatus, setVvStatus] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle');
   const rootRef = useRef<HTMLDivElement>(null);
   const captionRef = useRef<HTMLDivElement>(null);
 
@@ -149,10 +159,37 @@ export const AutoPlayView: React.FC<{
 
   // Reset when (re)opened.
   useEffect(() => {
-    if (open) { setSlideIdx(0); setBuildStep(0); setFinished(false); setError(''); setCaption(''); itemIdxRef.current = 0; }
+    if (open) { setStarted(false); setSlideIdx(0); setBuildStep(0); setFinished(false); setError(''); setCaption(''); itemIdxRef.current = 0; }
     else { stopAll(); setPlaying(false); }
   }, [open]);
   useEffect(() => () => stopAll(), []);
+
+  // On the setup screen, populate the Web Speech voice list (loads asynchronously).
+  useEffect(() => {
+    if (!open || started) return;
+    let alive = true;
+    void loadWebSpeechVoices().then((v) => { if (alive) setWebVoices(v); });
+    return () => { alive = false; };
+  }, [open, started]);
+
+  // Fetch the running VOICEVOX engine's speakers (on demand — needs the local engine).
+  const refreshVvSpeakers = async () => {
+    setVvStatus('loading');
+    try {
+      const list = await listVoicevoxSpeakers(settings.tts.voicevoxUrl);
+      setVvSpeakers(list);
+      setVvStatus('ok');
+      // Default to the first speaker if the saved one isn't offered by this engine.
+      if (list.length && !list.some((s) => s.id === settings.tts.voicevoxSpeaker)) {
+        patchTts({ voicevoxSpeaker: list[0].id });
+      }
+    } catch { setVvSpeakers([]); setVvStatus('error'); }
+  };
+  // When VOICEVOX is selected on the setup screen, try to load its speakers once.
+  useEffect(() => {
+    if (open && !started && settings.tts.engine === 'voicevox' && vvStatus === 'idle') void refreshVvSpeakers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, started, settings.tts.engine]);
 
   // Wait `ms`, but resolve early if stopAll() is called (so Pause/Next interrupt a dwell).
   const sleep = (ms: number) => new Promise<void>((res) => {
@@ -200,6 +237,13 @@ export const AutoPlayView: React.FC<{
   };
 
   const play = () => { if (finished) { itemIdxRef.current = 0; setSlideIdx(0); run(0); } else run(itemIdxRef.current); };
+  // Leave the setup screen: go TRUE fullscreen (ignored if the browser refuses) and
+  // start the narrated show from the first slide.
+  const startShow = () => {
+    setStarted(true);
+    if (rootRef.current && !document.fullscreenElement) void rootRef.current.requestFullscreen().catch(() => {});
+    run(0);
+  };
   const pause = () => { stopAll(); setPlaying(false); };
   const restart = () => { stopAll(); setFinished(false); setSlideIdx(0); setBuildStep(0); itemIdxRef.current = 0; run(0); };
   const jump = (delta: number) => {
@@ -215,8 +259,119 @@ export const AutoPlayView: React.FC<{
   if (!open) return null;
   const slide = slides[slideIdx];
 
+  const engine = settings.tts.engine;
+  const jaFirstVoices = [...webVoices].sort((a, b) => (a.lang.startsWith('ja') ? 0 : 1) - (b.lang.startsWith('ja') ? 0 : 1));
+  const selectStyle: React.CSSProperties = {
+    width: '100%', padding: '8px 10px', borderRadius: 6, fontSize: 14,
+    background: '#1b1d22', color: '#eee', border: '1px solid #3a3d44',
+  };
+  const scriptedCount = slides.filter((s) => scriptSegments(s.raw).length > 0).length;
+
   return (
     <div ref={rootRef} style={{ position: 'fixed', inset: 0, zIndex: 3000, background: '#000', display: 'flex', flexDirection: 'column' }}>
+      {!started && (
+        <div style={{
+          position: 'absolute', inset: 0, zIndex: 10, display: 'flex', alignItems: 'center',
+          justifyContent: 'center', padding: 20, background: 'radial-gradient(circle at 50% 35%, #23262e, #0c0d10)',
+          overflow: 'auto',
+        }}>
+          <div style={{
+            width: 'min(560px, 94vw)', background: '#16181d', color: '#e8e8ea', borderRadius: 14,
+            border: '1px solid #2c2f37', boxShadow: '0 20px 60px rgba(0,0,0,.5)', padding: '22px 24px',
+            font: '14px/1.55 system-ui, sans-serif',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+              <SmartDisplayIcon style={{ color: '#8ab4f8' }} />
+              <div style={{ fontSize: 19, fontWeight: 800 }}>Auto-narration slideshow</div>
+              <div style={{ flex: 1 }} />
+              <Tooltip title="Close"><IconButton size="small" onClick={closeAll} sx={{ color: '#aab' }}><CloseIcon fontSize="small" /></IconButton></Tooltip>
+            </div>
+            <div style={{ color: '#9aa0aa', fontSize: 12.5, marginBottom: 18 }}>
+              Reads each slide’s <code style={{ color: '#c7d2fe' }}>@script</code> aloud and auto-advances, in full screen.
+              {' '}{slides.length} slides · {scriptedCount} with a script.
+            </div>
+
+            {/* Engine */}
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontWeight: 700, marginBottom: 7 }}>Voice engine</div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {([['webspeech', 'Web Speech', 'Built-in OS voices · no setup'], ['voicevox', 'VOICEVOX', 'Local engine · natural JP voices']] as const).map(([id, label, sub]) => {
+                  const sel = engine === id;
+                  const avail = id === 'webspeech' ? webSpeechAvailable() : true;
+                  return (
+                    <button key={id} type="button" disabled={!avail}
+                      onClick={() => { patchTts({ engine: id }); if (id === 'voicevox') setVvStatus('idle'); }}
+                      style={{
+                        flex: 1, textAlign: 'left', padding: '10px 12px', borderRadius: 9, cursor: avail ? 'pointer' : 'not-allowed',
+                        border: `1.5px solid ${sel ? '#4f8cf7' : '#33363e'}`, background: sel ? 'rgba(79,140,247,.14)' : '#1b1d22',
+                        color: '#e8e8ea', opacity: avail ? 1 : 0.5,
+                      }}>
+                      <div style={{ fontWeight: 700 }}>{label}</div>
+                      <div style={{ fontSize: 11.5, color: '#9aa0aa', marginTop: 2 }}>{sub}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Voice / speaker */}
+            {engine === 'webspeech' ? (
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontWeight: 700, marginBottom: 7 }}>Voice</div>
+                <select style={selectStyle} value={settings.tts.webspeechVoiceURI}
+                  onChange={(e) => patchTts({ webspeechVoiceURI: e.target.value })}>
+                  <option value="">System default</option>
+                  {jaFirstVoices.map((v) => <option key={v.voiceURI} value={v.voiceURI}>{v.name} ({v.lang})</option>)}
+                </select>
+                {!jaFirstVoices.length && <div style={{ fontSize: 12, color: '#9aa0aa', marginTop: 6 }}>Loading voices… (uses the system default if none appear)</div>}
+              </div>
+            ) : (
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontWeight: 700, marginBottom: 7 }}>VOICEVOX engine</div>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                  <input style={{ ...selectStyle, flex: 1 }} value={settings.tts.voicevoxUrl}
+                    onChange={(e) => patchTts({ voicevoxUrl: e.target.value })} placeholder="http://127.0.0.1:50021" />
+                  <button type="button" onClick={() => void refreshVvSpeakers()} style={{
+                    padding: '0 14px', borderRadius: 6, cursor: 'pointer', border: '1px solid #3a3d44',
+                    background: '#242730', color: '#e8e8ea', whiteSpace: 'nowrap',
+                  }}>{vvStatus === 'loading' ? '…' : 'Connect'}</button>
+                </div>
+                {vvStatus === 'error' && <div style={{ fontSize: 12, color: '#f87171', marginBottom: 8 }}>Couldn’t reach the engine. Start the VOICEVOX app, then Connect.</div>}
+                <select style={selectStyle} value={settings.tts.voicevoxSpeaker} disabled={!vvSpeakers.length}
+                  onChange={(e) => patchTts({ voicevoxSpeaker: Number(e.target.value) })}>
+                  {vvSpeakers.length
+                    ? vvSpeakers.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)
+                    : <option value={settings.tts.voicevoxSpeaker}>Connect to list speakers…</option>}
+                </select>
+              </div>
+            )}
+
+            {/* Speed + captions */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 18, marginBottom: 22, flexWrap: 'wrap' }}>
+              <div style={{ flex: 1, minWidth: 200 }}>
+                <div style={{ fontWeight: 700, marginBottom: 2 }}>Speed <span style={{ color: '#9aa0aa', fontWeight: 400 }}>{settings.tts.rate.toFixed(1)}×</span></div>
+                <Slider size="small" min={0.5} max={2} step={0.1} value={settings.tts.rate}
+                  onChange={(_, v) => patchTts({ rate: v as number })} sx={{ color: '#8ab4f8' }} />
+              </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none' }}>
+                <input type="checkbox" checked={showCaptions} onChange={(e) => setShowCaptions(e.target.checked)} />
+                Subtitles
+              </label>
+            </div>
+
+            <button type="button" onClick={startShow} style={{
+              width: '100%', padding: '13px 0', borderRadius: 10, cursor: 'pointer', border: 'none',
+              background: 'linear-gradient(90deg,#4f8cf7,#6aa1ff)', color: '#fff', fontSize: 16, fontWeight: 800,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+            }}>
+              <PlayArrowIcon /> Start in full screen
+            </button>
+            <div style={{ textAlign: 'center', color: '#787e88', fontSize: 11.5, marginTop: 10 }}>
+              Esc exits full screen · Space/▶ pause · these settings are saved
+            </div>
+          </div>
+        </div>
+      )}
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', position: 'relative' }}>
         {slide && (
           <div style={{ width: slideSize.width, height: slideSize.height, transform: `scale(${scale})`, transformOrigin: 'center' }}>

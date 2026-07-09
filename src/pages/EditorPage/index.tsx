@@ -640,7 +640,10 @@ export default function EditorPage() {
       // `![alt](@alias)` references to real urls/data. Done before everything else
       // so modules, builds, marked, print and the remote rasterizer are all
       // alias-aware, and resolved data URIs get the data:→blob: optimization below.
-      const imgPrefix = isElectron() ? 'mdp-file://' : '/files/';
+      // Empty-authority form (`mdp-file:///…`) so a managed `.mdp/images/…` path
+      // isn't parsed as an invalid dot-leading hostname (→ broken image). See the
+      // mdp-file protocol handler.
+      const imgPrefix = isElectron() ? 'mdp-file:///' : '/files/';
       let md = resolveImages(previewMarkdown, imageLibrary, (p) => `${imgPrefix}${p.replace(/^\//, '')}`).markdown;
       md = applyModulesToMarkdown(md);
       md = md.replace(/([，．、。])\$/g, '$1 $');
@@ -670,7 +673,7 @@ export default function EditorPage() {
 
   const imageSlides = useMemo(() => {
     if (previewFileType !== 'image' || !previewFileName) return null;
-    const src = `${isElectron() ? 'mdp-file://' : '/files/'}${previewFileName.split('/').map(encodeURIComponent).join('/')}?t=${lastUpdated}`;
+    const src = `${isElectron() ? 'mdp-file:///' : '/files/'}${previewFileName.split('/').map(encodeURIComponent).join('/')}?t=${lastUpdated}`;
     const html = `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#ffffff;"><img src="${src}" style="max-width:100%;max-height:100%;object-fit:contain;" /></div>`;
     return [{ html, raw: '', isHidden: false, isCover: false, pageNumber: 1, className: '', header: '', footer: '' }];
   }, [previewFileType, previewFileName, lastUpdated]);
@@ -1674,8 +1677,15 @@ export default function EditorPage() {
     const view = () => editorRef.current?.view;
     const resolveThumb = (value: string) => {
       if (/^(data:|https?:|blob:)/.test(value)) return value;
-      const prefix = isElectron() ? 'mdp-file://' : '/files/';
-      return value.startsWith('/') ? `${prefix}${value.slice(1)}` : `${baseUrl}${value}`;
+      // Empty-authority form so a managed `.mdp/images/…` path isn't parsed as an
+      // invalid dot-leading hostname (→ broken thumbnail). Managed/leading-slash
+      // values are anchored at the workspace ROOT; other values are relative to the
+      // deck's own folder (so a deck in a subfolder still resolves its own images).
+      const prefix = isElectron() ? 'mdp-file:///' : '/files/';
+      const deckDir = baseUrl.replace(/^(mdp-file:\/\/+|\/files\/)/, '');
+      const rootAnchored = value.startsWith('/') || /(^|\/)\.mdp\//.test(value);
+      const rel = (rootAnchored ? value : `${deckDir}${value}`).replace(/^\//, '');
+      return `${prefix}${rel}`;
     };
 
     return {

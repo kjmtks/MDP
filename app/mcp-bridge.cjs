@@ -19,6 +19,86 @@ let port = 0;
 
 const handshakeFile = () => path.join(os.homedir(), '.mdp', 'mcp-bridge.json');
 
+// ---- asset authoring: how to write each kind + how to find existing ones -----
+const ASSET_KINDS = {
+  module:  { sub: 'modules',  ext: '.mdpmod.xml' },
+  effect:  { sub: 'effects',  ext: '.mdpfx.xml'  },
+  theme:   { sub: 'themes',   ext: '.css'        },
+  snippet: { sub: 'snippets', ext: '.json'       },
+};
+
+// Detailed authoring contract per asset kind — what get_asset_templates teaches so an
+// AI can WRITE a valid, self-describing asset (beyond the bare template).
+const ASSET_GUIDES = {
+  module: [
+    'MODULE (.mdpmod.xml) — a reusable slide component. Root <module> with:',
+    '• <name> — unique id, used in a deck as `<!-- @name arg: val -->`.',
+    '• <type> — block | inline (default block). BLOCK wraps a body and is closed with `<!-- @end -->`; INLINE flows within text (no @end).',
+    '• <description> — one line. <tags> — comma-separated (drives search/taxonomy).',
+    '• <aiSpec> — CDATA: HOW an AI should USE the module (its params, body format, 1–2 examples). ALWAYS write this — it is exactly what get_module_spec serves; without it, AIs must guess.',
+    '• <parameters> — <param name type default label desc … />. type = text | number | boolean | select | color. select carries options="a,b" or "a:Label,b:Label". number takes min/max/step/integer. A list param uses type="[number]" / "[text]".',
+    '• <snippets> — optional insert examples: <snippet><category/><label/><text><![CDATA[…]]></text><description/></snippet>.',
+    '• <render> — CDATA JS, compiled as new Function("args","sections","content", body); RETURN an HTML string.',
+    '    · args = param values (strings; declared arrays arrive typed). sections = the body split on `<!-- @ -->`. content = sections[0] trimmed.',
+    '    · BLOCK-with-body: return `\\n\\n<div class="mdp-mod-x">\\n\\n${content}\\n\\n</div>\\n\\n`. The BLANK LINES let the slide\'s Markdown+KaTeX pass render Markdown INSIDE the div; without them the body stays literal text.',
+    '    · PITFALL: a <span> must NOT wrap a blank-line body — Markdown emits a <p>, which is invalid inside <span> and gets reparented (broken layout). Use <div style="display:inline"> instead.',
+    '    · SELF-CLOSING: a block module whose render never references `sections`/`content` is auto self-closing — params-only, rendered in place, NO `<!-- @end -->`. Force with <selfClosing>true|false</selfClosing>.',
+    '    · Escape user args (& < >). LaTeX in params works, but prefer the body for math.',
+    '• <style> — CDATA CSS; scope every rule under a module class (e.g. .mdp-mod-x). Injected ONCE per module name (CSS-only edits need an app restart to re-show in a running app).',
+    '• <script> — CDATA JS: `{ init(el, ctx) { … }, destroy() {} }`. ctx = {id, root, presenting, getShared(), setShared(patch), onShared(cb), sendAction(a), onAction(cb), onCleanup(cb)}. Add class `mdp-interactive` to an element to suppress slide nav. If you inject raw $…$ / \\(…\\) HTML, call window.renderMathInElement(el) — the Markdown KaTeX pass skips injected HTML.',
+    'FIND existing: get_slide_spec (module index) then get_module_spec(names) for full specs; read_module(path) for raw source.',
+  ].join('\n'),
+  effect: [
+    'EFFECT (.mdpfx.xml) — a transition / in-slide build animation. Root <effect> with:',
+    '• <name> — used as `<!-- @transition NAME duration=800 easing=ease-out direction=back -->` (whole slide) or `<!-- @build NAME -->` (one build step).',
+    '• Phases: <enter> (appearing), <emphasis> (attention), <leave> (disappearing) — each with <css> (initial state) and <cssActive> (animated-to state). Most effects only need <enter>.',
+    '• Drive animation with the engine vars: var(--mdp-fx-duration, 300ms), var(--mdp-fx-easing, ease), var(--mdp-fx-direction).',
+    '• Phase-class hook (CSS or JS fallback): `.mdp-effect.NAME[data-mdp-phase="enter-active"]`.',
+    'Example <enter>: <css>opacity:0; transform:translateY(12px); transition:all var(--mdp-fx-duration,300ms) var(--mdp-fx-easing,ease);</css><cssActive>opacity:1; transform:none;</cssActive>',
+    'FIND existing: get_slide_spec (effect index) then get_effect_spec(names).',
+  ].join('\n'),
+  theme: [
+    'THEME (.css) — overrides the slide DESIGN TOKENS (distinct from the app-chrome --app-* vars). Set overrides on :root; change only what you need — unset tokens inherit the base theme.',
+    'Color tokens: --bg-color, --text-color, --accent-color, --muted-color, --border-color, --danger-color, --success-color, --warning-color, --info-color, --panel-bg, --panel-text, --panel-border, --panel-header-bg, --table-bg, --code-bg, --code-text, --inline-code-bg, --inline-code-text, --code-highlight-bg, --code-filename-bg/-text.',
+    'Sizing tokens: --base-font-size, --section-title-size, --cover-title-size, --cover-subtitle-size, --code-font-size, --code-line-height, --radius-sm, --table-width, --table-radius, --cover-accent-width.',
+    'FIND existing: list_themes; read_theme("default") to copy the exact token set before editing.',
+  ].join('\n'),
+  snippet: [
+    'SNIPPET file (.json in .mdp/snippets/) — insertable text snippets grouped by category. Content = a JSON ARRAY of categories:',
+    '[ { "category": "My Group", "items": [ { "label": "Callout", "text": "<!-- @callout -->\\n…\\n<!-- @end -->\\n", "description": "optional" } ] } ]',
+    'Each item: label (menu text), text (inserted verbatim at the cursor — use \\n for newlines), description (optional). A category whose name matches a built-in group MERGES into it.',
+    'FIND existing: list_snippets.',
+  ].join('\n'),
+};
+
+// List the assets of one kind that already exist in the workspace-root `.mdp`
+// (name + a short description) so the AI can see what's there before creating more.
+async function listWorkspaceAssets(baseDir, kind) {
+  const spec = ASSET_KINDS[kind];
+  if (!spec || !baseDir) return [];
+  const out = [];
+  let entries;
+  try { entries = await mdplink.vfsList(mdplink.resolve(baseDir, `.mdp/${spec.sub}`)); }
+  catch { return []; }
+  for (const e of entries) {
+    if (e.isDir || !e.name.toLowerCase().endsWith(spec.ext)) continue;
+    const name = e.name.slice(0, -spec.ext.length);
+    let description = '';
+    try {
+      const raw = await mdplink.vfsReadText(mdplink.resolve(baseDir, `.mdp/${spec.sub}/${e.name}`));
+      if (kind === 'module' || kind === 'effect') {
+        const m = raw.match(/<description>([\s\S]*?)<\/description>/i);
+        description = m ? m[1].trim() : '';
+      } else if (kind === 'snippet') {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr)) description = arr.map((c) => c && c.category).filter(Boolean).join(', ');
+      }
+    } catch { /* unreadable/invalid — list the name anyway */ }
+    out.push(description ? { name, description } : { name });
+  }
+  return out;
+}
+
 // ---- renderer relay ----------------------------------------------------------
 const pending = new Map();
 let seq = 0;
