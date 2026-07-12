@@ -122,8 +122,8 @@ const TOOLS = [
   },
   {
     name: 'write_deck',
-    description: 'Create or fully replace a deck. If the deck is open in the editor the change is applied there as an UNSAVED edit (the user reviews and saves); otherwise the file is written directly. Content must follow get_slide_spec (meta page, then `---`-separated slides).',
-    inputSchema: S({ path: str('Workspace-relative deck path (must end in .slide.md)'), content: str('Full deck markdown') }, ['path', 'content']),
+    description: 'Create or fully replace a deck. If the deck is open in the editor the change is applied there as an UNSAVED edit (the user reviews and saves); otherwise the file is written directly. Content must follow get_slide_spec (meta page, then `---`-separated slides). ROUND-TRIP SAVER: pass verify:true to get validate+lint+measure results in the SAME response (instead of 3 follow-up calls).',
+    inputSchema: S({ path: str('Workspace-relative deck path (must end in .slide.md)'), content: str('Full deck markdown'), verify: { type: 'boolean', description: 'Also run check_deck (validate+lint+measure) and include `verification` in the response' } }, ['path', 'content']),
   },
   {
     name: 'append_slide',
@@ -142,7 +142,7 @@ const TOOLS = [
   },
   {
     name: 'set_script',
-    description: 'Write the READ-ALOUD SCRIPT (the manuscript the presenter will speak, verbatim) for one slide, WITHOUT touching its visible content. Shown prominently in the presenter view; its length drives the slide\'s talk-time estimate at the user\'s reading speed. Ideal for generating a full talk manuscript: set_script per slide (mode="append" to build up). script="" clears. Markdown, multi-line OK (must not contain "-->").',
+    description: 'Write the READ-ALOUD SCRIPT (the manuscript the presenter will speak, verbatim) for one slide, WITHOUT touching its visible content. Shown prominently in the presenter view; its length drives the slide\'s talk-time estimate; the narrated auto-play speaks it with subtitles. IN-SCRIPT MARKERS: put one `[[step]]` where each in-slide @build should advance (exactly one per @build step, in order — lint flags mismatches); write maths as KaTeX `\\(…\\)` (rendered in the subtitle) followed by its spoken reading `[[say: よみ]]` (a formula without [[say]] is shown, not spoken) — do NOT spell maths out phonetically in plain text. script="" clears. Markdown, multi-line OK (must not contain "-->").',
     inputSchema: S({ path: str('Deck path'), slide: num('Slide number (1-based)'), script: str('Read-aloud Markdown ("" clears)'), mode: { type: 'string', enum: ['replace', 'append'], description: 'replace (default) or append' } }, ['path', 'slide', 'script']),
   },
   {
@@ -152,8 +152,8 @@ const TOOLS = [
   },
   {
     name: 'batch_set_slides',
-    description: 'TOKEN-SAVER: set @note / @script / @time on MANY slides in ONE call (one write), instead of calling set_notes/set_script/set_time per slide. Ideal for generating a whole talk manuscript or distributing @time across a deck. `edits` = [{slide, note?, script?, time?, mode?}] (only the fields you pass are changed; "" clears one; mode="append" for note/script). Atomic: any invalid edit aborts the whole batch.',
-    inputSchema: S({ path: str('Deck path'), edits: { type: 'array', description: 'Per-slide edits', items: { type: 'object', properties: { slide: num('1-based'), note: str('@note ("" clears)'), script: str('@script ("" clears)'), time: str('@time ("" clears)'), mode: { type: 'string', enum: ['replace', 'append'] } }, required: ['slide'] } } }, ['path', 'edits']),
+    description: 'TOKEN-SAVER: set @note / @script / @time on MANY slides in ONE call (one write), instead of calling set_notes/set_script/set_time per slide. Ideal for generating a whole talk manuscript or distributing @time across a deck. `edits` = [{slide, note?, script?, time?, mode?}] (only the fields you pass are changed; "" clears one; mode="append" for note/script). Scripts support the narration markers — `[[step]]` per @build step, KaTeX `\\(…\\)` + `[[say: よみ]]` for maths (see set_script). Atomic: any invalid edit aborts the whole batch.',
+    inputSchema: S({ path: str('Deck path'), edits: { type: 'array', description: 'Per-slide edits', items: { type: 'object', properties: { slide: num('1-based'), note: str('@note ("" clears)'), script: str('@script ("" clears)'), time: str('@time ("" clears)'), mode: { type: 'string', enum: ['replace', 'append'] } }, required: ['slide'] } }, verify: { type: 'boolean', description: 'Also run check_deck (validate+lint+measure) and include `verification` in the response' } }, ['path', 'edits']),
   },
   {
     name: 'list_modules',
@@ -172,8 +172,8 @@ const TOOLS = [
   },
   {
     name: 'get_active_deck',
-    description: 'The deck currently open in the MDP editor: path, live (possibly unsaved) content, slide count and the slide shown in the preview.',
-    inputSchema: S({}),
+    description: 'Which deck is open in the MDP editor: path, slide count, current preview slide. LOW-TOKEN by default (no content). Pass includeContent:true only if you need the live (possibly unsaved) text — embedded base64 comes back elided; for reading source prefer read_deck (per-slide selection).',
+    inputSchema: S({ includeContent: { type: 'boolean', description: 'Include the live deck text (base64 elided). Default false.' } }),
   },
   {
     name: 'open_deck',
@@ -192,13 +192,18 @@ const TOOLS = [
   },
   {
     name: 'measure_slides',
-    description: 'LOW-TOKEN layout check of the ACTIVE deck. Per slide: overflowX/overflowY (px of content CLIPPED beyond the slide box — anything > 0 must be fixed by splitting/shortening), fillX/fillY (how far content extends across the width/height, 0..1; fillY < ~0.5 leaves the lower half unused), and coverage (painted-area fraction; much lower than the deck\'s typical = looks empty). TOKEN-SAVER: pass `slides:[n,…]` (1-based) to measure ONLY the slides you just changed. Run after writing, fix, re-run.',
-    inputSchema: S({ slides: { type: 'array', items: { type: 'number' }, description: 'Measure only these 1-based slides. Omit for all.' } }),
+    description: 'LOW-TOKEN layout check. Returns ONLY problem slides by default (`issues`: overflow/empty rows + each slide\'s metrics; healthy rows are omitted — pass all:true for every row) with the deck path echoed. Metrics: overflowX/overflowY (px CLIPPED beyond the slide box — anything > 0 must be fixed), fillX/fillY (0..1), coverage (painted-area fraction), stepCount (in-slide build steps, when > 0). PASS `path` to target a specific deck (it is opened+waited for); omitting it measures whatever deck is active, which goes wrong when the user switches tabs. `slides:[n,…]` measures a subset.',
+    inputSchema: S({ path: str('Deck path to measure (recommended; default: the active deck)'), slides: { type: 'array', items: { type: 'number' }, description: 'Measure only these 1-based slides. Omit for all.' }, all: { type: 'boolean', description: 'Return every measured row, not just issues (default false)' } }),
   },
   {
     name: 'render_slide_image',
-    description: 'Render one slide of the ACTIVE deck to an image (WebP), exactly as MDP displays it — use to visually judge layout/design when measure_slides is not enough. Higher token cost; prefer small widths.',
-    inputSchema: S({ slide: num('Slide number, 1-based'), width: num('Image width in px (default 512, max 1280)') }, ['slide']),
+    description: 'Render ONE slide to an image (WebP), exactly as MDP displays it. PASS `path` to target a deck explicitly (opened+waited for; response echoes `deck`). For checking SEVERAL slides use render_slides (one composite image, one call) instead of repeating this. Higher token cost; prefer small widths.',
+    inputSchema: S({ path: str('Deck path (recommended; default: the active deck)'), slide: num('Slide number, 1-based'), width: num('Image width in px (default 512, max 1280)') }, ['slide']),
+  },
+  {
+    name: 'render_slides',
+    description: 'Render SEVERAL chosen slides in ONE call as a single numbered composite image (WebP) — the middle ground between per-slide render_slide_image (1 round trip each) and the too-small render_deck_overview thumbnails. Up to 12 slides; `width` is the per-slide width. PASS `path` to target a deck explicitly (response echoes `deck`).',
+    inputSchema: S({ slides: { type: 'array', items: { type: 'number' }, description: '1-based slide numbers to render (max 12)' }, width: num('Per-slide width in px (default 480, max 1200)'), path: str('Deck path (recommended; default: the active deck)') }, ['slides']),
   },
   {
     name: 'get_deck_outline',
@@ -212,8 +217,8 @@ const TOOLS = [
   },
   {
     name: 'patch_deck',
-    description: 'Token-efficient partial edit: replace an exact text fragment in a deck. old_str must match EXACTLY ONCE (or pass all=true to replace every occurrence). Prefer this over write_deck for small changes.',
-    inputSchema: S({ path: str('Deck path'), old_str: str('Exact existing text'), new_str: str('Replacement text'), all: { type: 'boolean', description: 'Replace all occurrences (default false)' } }, ['path', 'old_str', 'new_str']),
+    description: 'Token-efficient partial edit: replace exact text fragments in a deck. ROUND-TRIP SAVER: pass `edits` = [{old_str, new_str, all?}, …] to apply MANY independent fixes in ONE call (atomic — any non-matching old_str aborts the whole batch before anything is written). Each old_str must match exactly once (or all:true). The single old_str/new_str form still works. verify:true adds validate+lint+measure to the response. Prefer this over write_deck for small changes.',
+    inputSchema: S({ path: str('Deck path'), edits: { type: 'array', description: 'Batch of fixes applied atomically in order', items: { type: 'object', properties: { old_str: { type: 'string', description: 'Exact existing text' }, new_str: { type: 'string', description: 'Replacement text' }, all: { type: 'boolean', description: 'Replace all occurrences of this old_str' } }, required: ['old_str', 'new_str'] } }, old_str: str('Exact existing text (single-edit form)'), new_str: str('Replacement text (single-edit form)'), all: { type: 'boolean', description: 'Replace all occurrences (single-edit form)' }, verify: { type: 'boolean', description: 'Also run check_deck (validate+lint+measure) and include `verification` in the response' } }, ['path']),
   },
   {
     name: 'edit_slides',
@@ -232,8 +237,8 @@ const TOOLS = [
   },
   {
     name: 'validate_deck',
-    description: 'FAST deterministic lint of a deck (default: the active one) BEFORE visual checks: unknown module/directive names, disabled modules, unknown @theme / transition / build effect names, unknown or missing-required module parameters, and unbalanced <!-- @end --> per slide. Fix errors, then run measure_slides.',
-    inputSchema: S({ path: str('Deck path (default: the active deck)') }),
+    description: 'FAST deterministic lint BEFORE visual checks: unknown module/directive names, disabled modules, unknown @theme / transition / build effect names, unknown or missing-required module parameters, and unbalanced <!-- @end --> per slide. Pass `text` to validate candidate content WITHOUT writing it (dry run). For the full one-shot inspection (this + lint + measure) use check_deck.',
+    inputSchema: S({ path: str('Deck path (default: the active deck)'), text: str('Candidate deck markdown to validate WITHOUT writing (dry run)') }),
   },
   {
     name: 'lint_deck',
@@ -257,8 +262,18 @@ const TOOLS = [
   },
   {
     name: 'render_deck_overview',
-    description: 'One contact-sheet image of ALL slides of the ACTIVE deck (grid of small thumbnails, numbered) — judge overall balance, consistency and pacing in a single image. Moderate token cost.',
-    inputSchema: S({ thumbWidth: num('Thumbnail width in px (default 260, max 400)') }),
+    description: 'One contact-sheet image of ALL slides (grid of small thumbnails, numbered) — judge overall balance, consistency and pacing in a single image. Thumbnails are too small to read text — for readable checks of specific slides use render_slides. PASS `path` to target a deck explicitly (response echoes `deck`). Moderate token cost.',
+    inputSchema: S({ path: str('Deck path (recommended; default: the active deck)'), thumbWidth: num('Thumbnail width in px (default 260, max 400)') }),
+  },
+  {
+    name: 'check_deck',
+    description: 'ONE-SHOT full inspection — validate (syntax/unknown modules/params/unbalanced @end) + lint (design advisories incl. script-step-mismatch and math-in-plain-field) + measure (overflow, issues only) in a single response, replacing 3 separate calls. DRY RUN: pass `text` instead of `path` to check candidate content BEFORE writing it (validate+lint only; nothing touches the editor or disk).',
+    inputSchema: S({ path: str('Deck path to inspect (default: the active deck)'), text: str('Candidate deck markdown to check WITHOUT writing (dry run; validate+lint only)') }),
+  },
+  {
+    name: 'bootstrap',
+    description: 'START HERE: one call returning everything an authoring session needs — the full slide spec (format + module/effect indexes + themes + cached style profile) plus the workspace\'s deck list, templates and image aliases. Replaces the get_slide_spec + list_decks + list_templates + list_images opening sequence. Then: get_module_spec for the modules you pick; write with verify:true; check visually with render_slides.',
+    inputSchema: S({ deck: str('Deck path whose .mdp scope to use for templates/images (default: the active deck)') }),
   },
   {
     name: 'get_asset_templates',

@@ -67,6 +67,9 @@ export interface ModuleConfig {
   // the render never references `sections`/`content` (override with `<selfClosing>`).
   // Its output is still block-level (a div), unlike a true inline module.
   selfClosing?: boolean;
+  // The render consumes `sections` — the body is split on `<!-- @ -->` separators
+  // (machine-readable body-format metadata for AI clients).
+  sectioned?: boolean;
   // Present when the module opted into on-preview manipulation (block modules).
   manipulate?: ManipulateConfig;
 }
@@ -198,6 +201,10 @@ export const parseMdmodXml = (content: string): ModuleData | null => {
   const selfClosing = scExplicit === 'true' ? true
     : scExplicit === 'false' ? false
     : (type === 'block' && !inlineRender && !usesBody);
+  // SECTIONED: the render consumes `sections`, i.e. the body is split on `<!-- @ -->`
+  // separators. Machine-readable so AIs can know a module's body format (and its
+  // separator behaviour when nested) without reading the render source.
+  const sectioned = /\bsections\b/.test(renderStr);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const snippets: any[] = [];
@@ -212,7 +219,7 @@ export const parseMdmodXml = (content: string): ModuleData | null => {
   });
 
   return {
-    config: { name, type, description, aiSpec, parameters, snippets, tags, interactive, manipulate, inlineRender, selfClosing },
+    config: { name, type, description, aiSpec, parameters, snippets, tags, interactive, manipulate, inlineRender, selfClosing, sectioned },
     render: renderStr,
     style: root.querySelector("style")?.textContent?.trim() || "",
     script: root.querySelector("script")?.textContent?.trim() || ""

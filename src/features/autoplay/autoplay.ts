@@ -66,6 +66,45 @@ export function stripScriptMarkers(s: string): string {
   return String(s || '').replace(SAY_MARKER, ' ').replace(STEP_MARKER, ' ').replace(/[ \t]+/g, ' ').trim();
 }
 
+// One subtitle-sized unit of a narration segment: what to SHOW (caption — may carry
+// `\(…\)` KaTeX to render) and what to SPEAK (reading; '' = show-only, e.g. a formula
+// without a `[[say:…]]`).
+export interface ScriptUnit { caption: string; speech: string }
+
+// Atomic-token markers (Unicode private-use — never appears in author text).
+const ATOM = (i: number) => `\uE000${i}\uE001`;
+const ATOM_RE = /\uE000(\d+)\uE001/g;
+
+// Split a narration segment into subtitle units WITHOUT ever cutting inside a
+// formula: each math span (with its optional trailing `[[say: 読み]]` reading) is
+// masked to one atomic token, the text is chunked at the usual sentence/clause
+// boundaries (captionChunks), then each chunk is restored twice — caption keeps the
+// math, speech substitutes the reading (or silence). A long paragraph that merely
+// CONTAINS a small inline formula is therefore still split normally (the old
+// keep-the-whole-segment behaviour made such paragraphs one giant caption).
+export function scriptUnits(seg: string, maxLen = 42): ScriptUnit[] {
+  const atoms: { math: string; say: string }[] = [];
+  const masked = String(seg || '')
+    .replace(STEP_MARKER, ' ')
+    // math span + optional attached reading → one indivisible token
+    .replace(/(\\\([\s\S]*?\\\)|\\\[[\s\S]*?\\\])\s*(?:\[\[\s*say\s*:\s*([\s\S]*?)\]\])?/g, (_m, math: string, say?: string) => {
+      atoms.push({ math, say: (say || '').trim() });
+      return ATOM(atoms.length - 1);
+    })
+    // a stray reading with no preceding formula: speak it, show nothing
+    .replace(/\[\[\s*say\s*:\s*([\s\S]*?)\]\]/gi, (_m, say: string) => {
+      atoms.push({ math: '', say: say.trim() });
+      return ATOM(atoms.length - 1);
+    });
+  const units: ScriptUnit[] = [];
+  for (const chunk of captionChunks(masked, maxLen)) {
+    const caption = chunk.replace(ATOM_RE, (_m, i) => atoms[+i].math).replace(/[ \t]+/g, ' ').trim();
+    const speech = chunk.replace(ATOM_RE, (_m, i) => (atoms[+i].say ? ` ${atoms[+i].say} ` : ' ')).replace(/\s+/g, ' ').trim();
+    if (caption || speech) units.push({ caption, speech });
+  }
+  return units;
+}
+
 // How long the auto-play should DWELL on a slide that has no @script — proportional
 // to the slide's CONTENT, so a sparse slide isn't held as long as a dense one. Based
 // on the visible text length at the reading speed (time to read it once) plus a small

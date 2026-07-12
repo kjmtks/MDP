@@ -1,7 +1,12 @@
 {
   "permissions": {
     "allow": [
-      "Bash(node -e ' *)"
+      "Bash(node -e ' *)",
+      "Bash(node --check app/mcp-bridge.cjs)",
+      "Bash(node --check app/mcp-server.cjs)",
+      "Bash(npx tsc *)",
+      "Bash(node \"C:/Users/tatke/AppData/Local/Temp/claude/c--Users-tatke-Desktop-mdp-MDP/00d90847-106b-477e-864f-d00985589fac/scratchpad/test_mcp_logic.cjs\")",
+      "Bash(node \"C:/Users/tatke/AppData/Local/Temp/claude/c--Users-tatke-Desktop-mdp-MDP/00d90847-106b-477e-864f-d00985589fac/scratchpad/fix_pua.cjs\")"
     ]
   }
 }

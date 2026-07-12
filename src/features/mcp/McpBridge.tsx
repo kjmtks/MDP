@@ -54,9 +54,11 @@ const BUILTIN_DIRECTIVES = new Set([
   'title', 'subtitle', 'date', 'presenter', 'affiliation', 'contact', 'tags',
   'aspect', 'theme', 'css', 'transition', 'build', 'header', 'footer', 'end',
   'note', 'script', 'time', 'pageclass', 'id', 'caption', 'cover', 'hide', 'draw', 'drawing', 'addstyle',
+  'image', 'description',
 ]);
 // Builtin directives that OPEN a `<!-- @end -->`-closed block (for balance checks).
-const BLOCK_OPENER_BUILTINS = new Set(['header', 'footer', 'addstyle']);
+// `image` is the in-file image DEFINITION (`<!-- @image alias -->…data…<!-- @end -->`).
+const BLOCK_OPENER_BUILTINS = new Set(['header', 'footer', 'addstyle', 'image']);
 
 const loadImage = (src: string) => new Promise<HTMLImageElement>((resolve, reject) => {
   const img = new Image();
@@ -267,6 +269,65 @@ export const McpBridge: React.FC<{ ctx: McpCtx }> = ({ ctx }) => {
       };
     };
 
+    // Open `path` (if given and not already active) and WAIT until the parse
+    // pipeline has actually produced that deck's slides. This is what lets the
+    // measure/render tools take an explicit `path` instead of silently operating on
+    // whatever tab happens to be active (the "wrong deck" token sink: the user
+    // switches tabs between MCP calls and every subsequent measurement/render
+    // targets the wrong deck). Throws — never falls back to another deck.
+    const ensureDeck = async (path?: string) => {
+      if (!path) return activeDeck();
+      const want = String(path);
+      if (ctxRef.current.currentFileName !== want) {
+        await ctxRef.current.loadFile(want);
+        const deadline = Date.now() + 5000;
+        while (Date.now() < deadline) {
+          const cur = ctxRef.current;
+          if (cur.currentFileName === want && cur.slides.length > 0) break;
+          await new Promise((r) => setTimeout(r, 150));
+        }
+      }
+      if (ctxRef.current.currentFileName !== want) {
+        throw new Error(`Could not open "${want}" in the editor — the active deck is "${ctxRef.current.currentFileName || 'none'}". Check the path (list_decks).`);
+      }
+      return activeDeck();
+    };
+
+    // Rasterize the given 0-based slide indices of the ACTIVE deck and tile them
+    // into one numbered grid image (webp base64). Shared by renderDeckOverview
+    // (all slides, small thumbs) and renderSlides (chosen slides, readable size).
+    const compositeSlides = async (indices: number[], thumbW: number): Promise<{ base64: string }> => {
+      const cc = ctxRef.current;
+      const thumbH = Math.round(thumbW * (cc.slideSize.height / cc.slideSize.width));
+      const cols = Math.ceil(Math.sqrt(indices.length));
+      const rows = Math.ceil(indices.length / cols);
+      const pad = 6;
+      const label = 16;
+      const canvas = document.createElement('canvas');
+      canvas.width = cols * (thumbW + pad) + pad;
+      canvas.height = rows * (thumbH + label + pad) + pad;
+      const g = canvas.getContext('2d')!;
+      g.fillStyle = '#202225';
+      g.fillRect(0, 0, canvas.width, canvas.height);
+      for (let k = 0; k < indices.length; k++) {
+        const i = indices[k];
+        const { dataUrl } = await rasterizeRef.current(cc.slides[i], {
+          width: cc.slideSize.width, height: cc.slideSize.height,
+          scale: thumbW / cc.slideSize.width,
+          basePath: cc.basePath, themeCssUrl: cc.themeCssUrl,
+        });
+        const img = await loadImage(dataUrl);
+        const x = pad + (k % cols) * (thumbW + pad);
+        const y = pad + Math.floor(k / cols) * (thumbH + label + pad);
+        g.drawImage(img, x, y, thumbW, thumbH);
+        g.fillStyle = '#9aa0a6';
+        g.font = '11px sans-serif';
+        g.fillText(String(i + 1), x + 2, y + thumbH + 12);
+      }
+      const out = canvas.toDataURL('image/webp', 0.8);
+      return { base64: out.slice(out.indexOf(',') + 1) };
+    };
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const handle = async (method: string, params: any): Promise<any> => {
       const c = ctxRef.current;
@@ -407,20 +468,23 @@ Match the user's style throughout (cached profile if present, else get_style_sam
           const effects = Object.values(loadedEffects).map((e) => e.config);
           return suggestEffects(effects, String(params.text || ''), { limit: Number(params.limit) || undefined });
         }
-        case 'activeDeck': return activeDeck();
+        case 'activeDeck': {
+          // Content only on request — "which deck is open?" must not cost a whole
+          // deck of tokens (incl. embedded base64). The bridge elides binaries when
+          // includeContent is true.
+          const d = activeDeck();
+          if (!params?.includeContent) return { path: d.path, currentSlide: d.currentSlide, slideCount: d.slideCount };
+          return d;
+        }
         case 'openDeck': {
-          await c.loadFile(params.path);
-          // Wait for the debounced parse pipeline to settle so a follow-up
-          // measure_slides / get_active_deck sees THIS deck's slides, not the
-          // previous tab's (bounded — an empty deck simply times the wait out).
-          const isDeck = /\.slide\.md$/i.test(params.path);
-          const deadline = Date.now() + 5000;
-          while (Date.now() < deadline) {
-            const cur = ctxRef.current;
-            if (cur.currentFileName === params.path && (!isDeck || cur.slides.length > 0)) break;
-            await new Promise((r) => setTimeout(r, 150));
+          // Non-deck files (themes, images…) still open with a plain loadFile; decks
+          // go through ensureDeck (which also waits out the parse pipeline).
+          if (!/\.slide\.md$/i.test(params.path)) {
+            await c.loadFile(params.path);
+            return { opened: params.path };
           }
-          return { opened: params.path, slideCount: ctxRef.current.slides.length };
+          const d = await ensureDeck(String(params.path));
+          return { opened: d.path, slideCount: d.slideCount };
         }
         case 'gotoSlide': {
           const d = activeDeck();
@@ -472,10 +536,13 @@ Match the user's style throughout (cached profile if present, else get_style_sam
           return { approved };
         }
         case 'validateDeck': {
+          const themes = await apiClient.getThemes(c.scopeDirs).catch(() => []);
+          // Dry-run: validate CANDIDATE text without writing it anywhere (check_deck
+          // with `text`) — the iteration stays inside the AI, the editor stays clean.
+          if (typeof params.text === 'string') return { dryRun: true, ...validateDeckText(params.text, themes) };
           const target = params.path || activeDeck().path;
           const tab = c.tabs.find((t) => t.path === target);
           const text = tab ? tab.content : await apiClient.readFileText(target);
-          const themes = await apiClient.getThemes(c.scopeDirs).catch(() => []);
           return { path: target, ...validateDeckText(text, themes) };
         }
         case 'readImage': {
@@ -497,46 +564,38 @@ Match the user's style throughout (cached profile if present, else get_style_sam
           return { __image: out.slice(out.indexOf(',') + 1), mimeType: 'image/webp' };
         }
         case 'renderDeckOverview': {
-          const d = activeDeck();
-          if (!d.slideCount) throw new Error('The active deck has no slides yet.');
+          const d = await ensureDeck(params.path);
+          if (!d.slideCount) throw new Error('The deck has no slides yet.');
           const n = Math.min(d.slideCount, 40);
           const thumbW = Math.min(Math.max(Number(params.thumbWidth) || 260, 120), 400);
-          const thumbH = Math.round(thumbW * (c.slideSize.height / c.slideSize.width));
-          const cols = Math.ceil(Math.sqrt(n));
-          const rows = Math.ceil(n / cols);
-          const pad = 6;
-          const label = 16;
-          const canvas = document.createElement('canvas');
-          canvas.width = cols * (thumbW + pad) + pad;
-          canvas.height = rows * (thumbH + label + pad) + pad;
-          const g = canvas.getContext('2d')!;
-          g.fillStyle = '#202225';
-          g.fillRect(0, 0, canvas.width, canvas.height);
-          for (let i = 0; i < n; i++) {
-            const { dataUrl } = await rasterizeRef.current(c.slides[i], {
-              width: c.slideSize.width, height: c.slideSize.height,
-              scale: thumbW / c.slideSize.width,
-              basePath: c.basePath, themeCssUrl: c.themeCssUrl,
-            });
-            const img = await loadImage(dataUrl);
-            const x = pad + (i % cols) * (thumbW + pad);
-            const y = pad + Math.floor(i / cols) * (thumbH + label + pad);
-            g.drawImage(img, x, y, thumbW, thumbH);
-            g.fillStyle = '#9aa0a6';
-            g.font = '11px sans-serif';
-            g.fillText(String(i + 1), x + 2, y + thumbH + 12);
-          }
-          const out = canvas.toDataURL('image/webp', 0.8);
-          return { __image: out.slice(out.indexOf(',') + 1), mimeType: 'image/webp', slides: n, ...(d.slideCount > n ? { truncated: `showing 1–${n} of ${d.slideCount}` } : {}) };
+          const indices = Array.from({ length: n }, (_, i) => i);
+          const { base64 } = await compositeSlides(indices, thumbW);
+          return { __image: base64, mimeType: 'image/webp', deck: d.path, slides: n, ...(d.slideCount > n ? { truncated: `showing 1–${n} of ${d.slideCount}` } : {}) };
+        }
+        case 'renderSlides': {
+          // The middle ground between one render_slide_image per slide (13 round
+          // trips in a real session) and the too-small overview: N CHOSEN slides,
+          // readable size, ONE composite image.
+          const d = await ensureDeck(params.path);
+          if (!d.slideCount) throw new Error('The deck has no slides yet.');
+          const wanted: number[] = Array.isArray(params.slides)
+            ? [...new Set(params.slides.map(Number))].filter((n: number) => Number.isInteger(n) && n >= 1 && n <= d.slideCount)
+            : [];
+          if (!wanted.length) throw new Error(`"slides" must be an array of 1…${d.slideCount}.`);
+          if (wanted.length > 12) throw new Error('Max 12 slides per call — split the request (or use render_deck_overview for a full contact sheet).');
+          const thumbW = Math.min(Math.max(Number(params.width) || 480, 240), 1200);
+          const { base64 } = await compositeSlides(wanted.map((n) => n - 1), thumbW);
+          return { __image: base64, mimeType: 'image/webp', deck: d.path, slides: wanted };
         }
         case 'measureSlides': {
-          const d = activeDeck();
-          if (!d.slideCount) throw new Error('The active deck has no slides yet.');
+          const d = await ensureDeck(params.path);
+          if (!d.slideCount) throw new Error('The deck has no slides yet.');
+          const cc = ctxRef.current; // ensureDeck may have switched tabs — re-read
           // Optional 1-based `slides` filter — measure ONLY those (token/DOM saver).
           const wanted: number[] | undefined = Array.isArray(params.slides) && params.slides.length
             ? [...new Set(params.slides.map(Number))].filter((n) => Number.isInteger(n) && n >= 1 && n <= d.slideCount)
             : undefined;
-          const items = c.slides
+          const items = cc.slides
             .map((slide: Slide, i: number) => ({ n: i + 1, slide }))
             .filter((it: { n: number }) => !wanted || wanted.includes(it.n));
           if (!items.length) throw new Error('No matching slides to measure.');
@@ -545,27 +604,47 @@ Match the user's style throughout (cached profile if present, else get_style_sam
           // its bridge request to dangle until the relay timeout.
           if (measureBusyRef.current) throw new Error('measure_slides is already running — wait for it to finish.');
           measureBusyRef.current = true;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          let rows: any[];
           try {
-            return await new Promise((resolve, reject) => setMeasureJob({ items, resolve, reject }));
+            rows = await new Promise((resolve, reject) => setMeasureJob({ items, resolve, reject }));
           } finally {
             measureBusyRef.current = false;
           }
+          // Attach each row's build-step count (a slide with builds may look sparse
+          // in its final state yet fine per step — the count is the caller's cue).
+          rows = rows.map((r) => {
+            const sc = (cc.slides[r.slide - 1] as { stepCount?: number })?.stepCount || 0;
+            return sc ? { ...r, stepCount: sc } : r;
+          });
+          // Issues-only by default: a healthy slide row (`overflow: 0` ×62) carries
+          // zero information. `all: true` returns every measured row.
+          const isIssue = (r: { overflowX?: number; overflowY?: number; empty?: boolean }) =>
+            (r.overflowX || 0) > 0 || (r.overflowY || 0) > 0 || !!r.empty;
+          const issues = rows.filter(isIssue);
+          if (params.all) return { deck: d.path, totalSlides: d.slideCount, measured: rows.length, rows };
+          return {
+            deck: d.path, totalSlides: d.slideCount, measured: rows.length,
+            issues,
+            ...(issues.length ? {} : { ok: `no overflow/empty among the ${rows.length} measured slide(s)` }),
+          };
         }
         case 'renderSlideImage': {
-          const d = activeDeck();
+          const d = await ensureDeck(params.path);
+          const cc = ctxRef.current;
           const n = Number(params.slide);
           if (!Number.isInteger(n) || n < 1 || n > d.slideCount) throw new Error(`"slide" must be 1…${d.slideCount}.`);
           const width = Math.min(Math.max(Number(params.width) || 512, 160), 1280);
-          const scale = Math.min(1.5, width / c.slideSize.width);
-          const { dataUrl } = await rasterizeRef.current(c.slides[n - 1], {
-            width: c.slideSize.width,
-            height: c.slideSize.height,
+          const scale = Math.min(1.5, width / cc.slideSize.width);
+          const { dataUrl } = await rasterizeRef.current(cc.slides[n - 1], {
+            width: cc.slideSize.width,
+            height: cc.slideSize.height,
             scale,
-            basePath: c.basePath,
-            themeCssUrl: c.themeCssUrl,
+            basePath: cc.basePath,
+            themeCssUrl: cc.themeCssUrl,
           });
           const base64 = dataUrl.slice(dataUrl.indexOf(',') + 1);
-          return { __image: base64, mimeType: 'image/webp' };
+          return { __image: base64, mimeType: 'image/webp', deck: d.path, slide: n };
         }
         default:
           throw new Error(`Unknown editor method: ${method}`);

@@ -43,6 +43,8 @@ const ASSET_GUIDES = {
     '    · BLOCK-with-body: return `\\n\\n<div class="mdp-mod-x">\\n\\n${content}\\n\\n</div>\\n\\n`. The BLANK LINES let the slide\'s Markdown+KaTeX pass render Markdown INSIDE the div; without them the body stays literal text.',
     '    · PITFALL: a <span> must NOT wrap a blank-line body — Markdown emits a <p>, which is invalid inside <span> and gets reparented (broken layout). Use <div style="display:inline"> instead.',
     '    · SELF-CLOSING: a block module whose render never references `sections`/`content` is auto self-closing — params-only, rendered in place, NO `<!-- @end -->`. Force with <selfClosing>true|false</selfClosing>.',
+    '    · SECTIONED: a render that uses `sections` gets the body split on `<!-- @ -->` (exposed as `sectioned` metadata). Nesting works: separators/@end bind to the INNERMOST open block, so a sectioned module can live inside another\'s section.',
+    '    · Fields you render with esc() are PLAIN TEXT — \\(math\\) will show literally there. Route math-bearing content through a blank-line-wrapped element instead, and say which fields are plain in the <aiSpec>.',
     '    · Escape user args (& < >). LaTeX in params works, but prefer the body for math.',
     '• <style> — CDATA CSS; scope every rule under a module class (e.g. .mdp-mod-x). Injected ONCE per module name (CSS-only edits need an app restart to re-show in a running app).',
     '• <script> — CDATA JS: `{ init(el, ctx) { … }, destroy() {} }`. ctx = {id, root, presenting, getShared(), setShared(patch), onShared(cb), sendAction(a), onAction(cb), onCleanup(cb)}. Add class `mdp-interactive` to an element to suppress slide nav. If you inject raw $…$ / \\(…\\) HTML, call window.renderMathInElement(el) — the Markdown KaTeX pass skips injected HTML.',
@@ -267,6 +269,7 @@ const BUILTIN_DIRECTIVES = new Set([
   'title', 'subtitle', 'date', 'presenter', 'affiliation', 'contact', 'tags',
   'aspect', 'theme', 'css', 'transition', 'build', 'header', 'footer', 'end',
   'note', 'script', 'time', 'pageclass', 'id', 'caption', 'cover', 'hide', 'draw', 'drawing', 'addstyle',
+  'image', 'description',
 ]);
 
 // Lazy up to the closing `-->` (not `[^>]`, which truncates values containing '>').
@@ -436,6 +439,36 @@ function lintDeck(text) {
     if (noComments.split('\n').some((l) => l.trim().length > 220 && !l.trim().startsWith('|'))) {
       add(n, 'info', 'long-line', 'A very long line/paragraph \u2014 consider breaking it up.');
     }
+
+    // @script [[step]] markers vs @build steps: the narrated auto-play advances ONE
+    // build per [[step]], so a mismatch silently desyncs narration from reveals \u2014
+    // and today the author has to count both by hand.
+    const scriptText = [...raw.matchAll(/<!--\s*@script:\s*([\s\S]*?)-->/g)].map((m) => m[1]).join('\n');
+    if (scriptText) {
+      const stepMarks = (scriptText.match(/\[\[\s*step\s*\]\]/gi) || []).length;
+      // Top-level @build openers on the slide (the meta page's @build is a deck-wide
+      // default, but this loop only covers content slides). Nested/parameterized
+      // steps make this an approximation \u2014 report as warn, not error.
+      const buildSteps = (raw.match(/<!--\s*@build[\s>]/gi) || []).length;
+      if (stepMarks !== buildSteps && (stepMarks > 0 || buildSteps > 0)) {
+        add(n, 'warn', 'script-step-mismatch', `@script has ${stepMarks} [[step]] marker(s) but the slide has ${buildSteps} @build step(s) \u2014 auto-play narration will desync from the reveals (one [[step]] per @build, in order).`);
+      }
+    }
+
+    // KaTeX in a plain-text module field: some module fields are rendered as PLAIN
+    // TEXT (escaped), so \(...\) shows up literally on the slide. Known fields:
+    // @derivation's reason (right of the last |) \u2014 the expr side IS math-capable.
+    for (const m of raw.matchAll(/<!--\s*@derivation[\s>][\s\S]*?-->([\s\S]*?)<!--\s*@end\s*-->/g)) {
+      const body = m[1];
+      const badReason = body.split('\n').some((line) => {
+        const bar = line.lastIndexOf('|');
+        return bar >= 0 && /\\\(|\\\[/.test(line.slice(bar + 1));
+      });
+      if (badReason) {
+        add(n, 'warn', 'math-in-plain-field', '@derivation: the reason (right of "|") is rendered as plain text \u2014 \\(...\\) will show literally. Keep the reason in words; put maths in the expression (left) side.');
+        break;
+      }
+    }
   });
 
   const uniqLevels = [...new Set(headingLevels)];
@@ -544,6 +577,22 @@ async function callTool(method, params) {
   return callToolInner(method, p, baseDir);
 }
 
+// One-shot deck inspection: syntax/param validation (renderer, live registries) +
+// design lint (local) + overflow measurement (renderer, issues only) in parallel.
+// Used by check_deck and by the write tools' `verify: true`.
+async function verifyDeck(baseDir, deckPath) {
+  const { text } = await currentDeckText(baseDir, deckPath);
+  const [validate, lint, measure] = await Promise.all([
+    relay('validateDeck', { path: deckPath }, 30000).catch((e) => ({ error: String((e && e.message) || e) })),
+    Promise.resolve(lintDeck(text)),
+    relay('measureSlides', { path: deckPath }, 120000).catch((e) => ({ error: String((e && e.message) || e) })),
+  ]);
+  return {
+    path: deckPath, validate, lint, measure,
+    note: 'validate = syntax/unknown modules/params/structure (errors block rendering); lint = design advisories (use judgment); measure = overflow/empty issues only (all clear when `issues` is empty). severity: warn = likely issue, info = style nudge.',
+  };
+}
+
 async function callToolInner(method, p, baseDir) {
 
   switch (method) {
@@ -647,7 +696,11 @@ async function callToolInner(method, p, baseDir) {
       const cur = await currentDeckText(baseDir, deckPath);
       assertUtf8Writable(cur, deckPath);
       const res = await writeDeckBack(baseDir, deckPath, p.content, cur.open, cur);
-      return { path: deckPath, slideCount: Math.max(0, splitBlocks(p.content).length - 1), ...res };
+      const out = { path: deckPath, slideCount: Math.max(0, splitBlocks(p.content).length - 1), ...res };
+      // verify: true → validate+lint+measure in the SAME response (write → inspect
+      // was 4 round trips; now it's 1). Text checks only — images stay explicit.
+      if (p.verify) out.verification = await verifyDeck(baseDir, deckPath);
+      return out;
     }
 
     case 'append_slide': {
@@ -763,7 +816,9 @@ async function callToolInner(method, p, baseDir) {
         edited.push(n);
       }
       const res = await writeDeckBack(baseDir, deckPath, joinBlocks(blocks), cur.open, cur);
-      return { path: deckPath, edited, ...res };
+      const out = { path: deckPath, edited, ...res };
+      if (p.verify) out.verification = await verifyDeck(baseDir, deckPath);
+      return out;
     }
 
     case 'list_modules': {
@@ -871,17 +926,31 @@ async function callToolInner(method, p, baseDir) {
 
     case 'patch_deck': {
       const deckPath = requireDeckPath(p.path);
-      const oldStr = String(p.old_str ?? '');
-      if (!oldStr) throw new Error('"old_str" is required.');
+      // BATCH form: `edits: [{old_str, new_str, all?}, ...]` — N independent fixes in
+      // ONE call+write (was 1 round trip per fix). The legacy single old_str/new_str
+      // form is normalized into a 1-item batch. ALL edits are validated against the
+      // running text BEFORE anything is written (atomic: one bad edit fails the call).
+      const edits = Array.isArray(p.edits) && p.edits.length
+        ? p.edits
+        : [{ old_str: p.old_str, new_str: p.new_str, all: p.all }];
       const cur = await currentDeckText(baseDir, deckPath);
       assertUtf8Writable(cur, deckPath);
-      const text = cur.text;
-      const count = text.split(oldStr).length - 1;
-      if (count === 0) throw new Error('old_str not found in the deck (it must match exactly, including whitespace).');
-      if (count > 1 && !p.all) throw new Error(`old_str matches ${count} times — make it more specific, or pass all=true.`);
-      const next = p.all ? text.split(oldStr).join(String(p.new_str ?? '')) : text.replace(oldStr, String(p.new_str ?? ''));
-      const res = await writeDeckBack(baseDir, deckPath, next, cur.open, cur);
-      return { path: deckPath, replaced: p.all ? count : 1, ...res };
+      let text = cur.text;
+      const replaced = [];
+      edits.forEach((ed, i) => {
+        const oldStr = String(ed.old_str ?? '');
+        const where = edits.length > 1 ? `edits[${i}]: ` : '';
+        if (!oldStr) throw new Error(`${where}"old_str" is required.`);
+        const count = text.split(oldStr).length - 1;
+        if (count === 0) throw new Error(`${where}old_str not found in the deck (it must match exactly, including whitespace). Nothing was written.`);
+        if (count > 1 && !ed.all) throw new Error(`${where}old_str matches ${count} times — make it more specific, or pass all=true. Nothing was written.`);
+        text = ed.all ? text.split(oldStr).join(String(ed.new_str ?? '')) : text.replace(oldStr, String(ed.new_str ?? ''));
+        replaced.push(ed.all ? count : 1);
+      });
+      const res = await writeDeckBack(baseDir, deckPath, text, cur.open, cur);
+      const out = { path: deckPath, applied: edits.length, replaced: replaced.reduce((a, b) => a + b, 0), ...res };
+      if (p.verify) out.verification = await verifyDeck(baseDir, deckPath);
+      return out;
     }
 
     case 'edit_slides': {
@@ -1017,7 +1086,7 @@ async function callToolInner(method, p, baseDir) {
     }
 
     // Live tools → renderer.
-    case 'validate_deck': return await relay('validateDeck', { path: p.path ? requireDeckPath(p.path) : undefined }, 30000);
+    case 'validate_deck': return await relay('validateDeck', { path: p.path ? requireDeckPath(p.path) : undefined, text: typeof p.text === 'string' ? p.text : undefined }, 30000);
     case 'read_image': {
       const maxWidth = p.maxWidth ? Number(p.maxWidth) : undefined;
       if (p.alias) {
@@ -1033,7 +1102,47 @@ async function callToolInner(method, p, baseDir) {
       if (p.path) return await relay('readImage', { path: requireDeckPath(p.path), maxWidth }, 30000);
       throw new Error('Provide "path" or "alias".');
     }
-    case 'render_deck_overview': return await relay('renderDeckOverview', { thumbWidth: p.thumbWidth ? Number(p.thumbWidth) : undefined }, 170000);
+    case 'render_deck_overview': return await relay('renderDeckOverview', { path: p.path ? requireDeckPath(p.path) : undefined, thumbWidth: p.thumbWidth ? Number(p.thumbWidth) : undefined }, 170000);
+    case 'render_slides': {
+      const slides = Array.isArray(p.slides) ? p.slides.map(Number).filter((n) => Number.isInteger(n)) : [];
+      if (!slides.length) throw new Error('Provide "slides": an array of 1-based slide numbers (max 12).');
+      return await relay('renderSlides', { path: p.path ? requireDeckPath(p.path) : undefined, slides, width: p.width ? Number(p.width) : undefined }, 170000);
+    }
+    case 'check_deck': {
+      // One-shot inspection: validate (syntax/params/structure) + lint (design
+      // advisories) + measure (overflow — issues only), one response. With `text`
+      // it's a DRY RUN: the candidate content is checked without writing anything
+      // (no measure — rendering needs a real, open deck).
+      if (typeof p.text === 'string' && p.text.trim()) {
+        const [validate, lint] = await Promise.all([
+          relay('validateDeck', { text: String(p.text) }, 30000),
+          Promise.resolve(lintDeck(String(p.text))),
+        ]);
+        return { dryRun: true, validate, lint, note: 'Dry run on the given text — nothing was written. measure/overflow needs the deck written + open (call check_deck with `path`, or write with verify: true).' };
+      }
+      const deckPath = p.path ? requireDeckPath(p.path) : await activeDeckPath();
+      return await verifyDeck(baseDir, deckPath);
+    }
+    case 'bootstrap': {
+      // Everything an authoring session needs, ONE response: the full slide spec
+      // (format + module/effect indexes + themes + cached style profile), plus the
+      // workspace's decks, templates and image aliases. Replaces ~6 opening calls.
+      const deckPath = p.deck ? requireDeckPath(p.deck) : await activeDeckPath().catch(() => null);
+      const [spec, decksR, templatesR, imagesR] = await Promise.all([
+        relay('spec', {}, 30000),
+        callToolInner('list_decks', {}, baseDir),
+        callToolInner('list_templates', deckPath ? { deck: deckPath } : {}, baseDir).catch(() => ({ templates: [] })),
+        callToolInner('list_images', deckPath ? { deck: deckPath } : {}, baseDir).catch(() => ({ images: [] })),
+      ]);
+      return {
+        spec,
+        decks: decksR.decks || [],
+        templates: templatesR.templates || [],
+        images: imagesR.images || [],
+        activeDeck: deckPath || null,
+        note: 'One-shot environment: spec (authoring format + module/effect indexes + themes + style profile) + decks + templates + image aliases. Next: get_module_spec for the modules you pick; check_deck / verify:true after writing.',
+      };
+    }
     case 'get_slide_spec': return await relay('spec', {}, 30000);
     case 'get_module_spec': {
       const names = Array.isArray(p.names) ? p.names.map((n) => String(n)) : (p.name ? [String(p.name)] : []);
@@ -1061,12 +1170,22 @@ async function callToolInner(method, p, baseDir) {
       if (!text.trim()) throw new Error('Provide "text": the mood/intent to recommend effects for (e.g. "subtle", "energetic").');
       return await relay('suggestEffects', { text, limit: p.limit != null ? Number(p.limit) : undefined }, 20000);
     }
-    case 'get_active_deck': return await relay('activeDeck', {}, 10000);
+    case 'get_active_deck': {
+      const r = await relay('activeDeck', { includeContent: !!p.includeContent }, 10000);
+      // Even on request, embedded base64 goes out elided (like read_deck) — a
+      // "which deck is open?" probe must never cost a deck of image tokens.
+      if (r && typeof r.content === 'string') {
+        const { text, elided } = elideBinary(r.content);
+        r.content = text;
+        if (elided) r.binaryElided = elided;
+      }
+      return r;
+    }
     case 'open_deck': return await relay('openDeck', { path: requireDeckPath(p.path) }, 20000);
     case 'goto_slide': return await relay('gotoSlide', { slide: Number(p.slide) }, 10000);
     case 'insert_at_cursor': return await relay('insertAtCursor', { text: String(p.text ?? '') }, 10000);
-    case 'measure_slides': return await relay('measureSlides', { slides: Array.isArray(p.slides) ? p.slides.map(Number).filter((n) => Number.isInteger(n)) : undefined }, 120000);
-    case 'render_slide_image': return await relay('renderSlideImage', { slide: Number(p.slide), width: p.width ? Number(p.width) : undefined }, 120000);
+    case 'measure_slides': return await relay('measureSlides', { path: p.path ? requireDeckPath(p.path) : undefined, slides: Array.isArray(p.slides) ? p.slides.map(Number).filter((n) => Number.isInteger(n)) : undefined, all: !!p.all }, 120000);
+    case 'render_slide_image': return await relay('renderSlideImage', { path: p.path ? requireDeckPath(p.path) : undefined, slide: Number(p.slide), width: p.width ? Number(p.width) : undefined }, 120000);
 
     default:
       throw new Error(`Unknown tool: ${method}`);

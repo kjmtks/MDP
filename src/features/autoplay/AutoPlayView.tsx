@@ -18,7 +18,7 @@ import {
   synthesize, type Clip, type Utterance,
   webSpeechAvailable, loadWebSpeechVoices, listVoicevoxSpeakers, type VoicevoxStyle,
 } from '../tts/ttsService';
-import { scriptSegments, captionChunks, slideDwellMs, captionText, speechText, hasScriptMath } from './autoplay';
+import { scriptSegments, slideDwellMs, scriptUnits } from './autoplay';
 
 // One playable step of the narration: which slide + build step to show, the text to
 // SPEAK (`text`; null = a silent dwell), and the CAPTION to show (`caption`; may carry
@@ -67,23 +67,22 @@ export const AutoPlayView: React.FC<{
         out.push({ slideIdx: si, buildStep: steps, text: null, caption: '', dwellMs: slideDwellMs(s.html, cpm) });
         return;
       }
-      // Caption and speech are derived SEPARATELY from each segment: the caption keeps
-      // `\(…\)` KaTeX (rendered on screen), the speech swaps in each `[[say:…]]` reading
-      // and drops the math. For prose (no math) they're identical and we split into
-      // caption chunks (the SAME chunk is synthesized AND shown → zero drift). All
-      // chunks of a segment share its build step; builds advance only at [[step]].
+      // Each segment is split into subtitle UNITS (scriptUnits): normal sentence /
+      // clause chunking, but a `\(…\)` formula (with its `[[say:…]]` reading) is an
+      // ATOMIC token — never cut mid-math, while a long paragraph that merely
+      // contains a small formula still splits normally. Per unit: the caption keeps
+      // the math (KaTeX-rendered on screen), the speech substitutes the reading (or
+      // silence — a show-only formula dwells long enough to read). All units of a
+      // segment share its build step; builds advance only at [[step]].
       segs.forEach((seg, k) => {
         const bs = Math.min(k, steps);
-        const cap = captionText(seg);
-        const spk = speechText(seg);
-        if (hasScriptMath(seg)) {
-          // Keep a formula-bearing segment WHOLE (never split mid-`\(…\)`). If no
-          // `[[say:…]]` reading was given, the formula is shown but not spoken — dwell
-          // long enough for the audience to read it.
-          const readMs = Math.round(Math.max(1800, Math.min(7000, (cap.replace(/\\[()[\]]/g, '').length / (cpm / 60)) * 1000)));
-          out.push({ slideIdx: si, buildStep: bs, text: spk || null, caption: cap, dwellMs: spk ? 90 : readMs });
-        } else {
-          for (const chunk of captionChunks(spk)) out.push({ slideIdx: si, buildStep: bs, text: chunk, caption: chunk, dwellMs: 90 });
+        for (const u of scriptUnits(seg)) {
+          if (u.speech) {
+            out.push({ slideIdx: si, buildStep: bs, text: u.speech, caption: u.caption, dwellMs: 90 });
+          } else {
+            const readMs = Math.round(Math.max(1800, Math.min(7000, (u.caption.replace(/\\[()[\]]/g, '').length / (cpm / 60)) * 1000)));
+            out.push({ slideIdx: si, buildStep: bs, text: null, caption: u.caption, dwellMs: readMs });
+          }
         }
       });
       if (steps > segs.length - 1) out.push({ slideIdx: si, buildStep: steps, text: null, caption: '', dwellMs: 500 });
@@ -101,6 +100,19 @@ export const AutoPlayView: React.FC<{
   const [caption, setCaption] = useState('');       // the segment currently being spoken
   const [showCaptions, setShowCaptions] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  // Control-bar visibility, chosen on the setup screen. `false` = a CLEAN frame for
+  // video recording (OBS/screen capture): the bar unmounts (the slide gets the full
+  // height), and can still be PEEKED by moving the mouse (auto-hides again) — plus
+  // Space always toggles play/pause, so the recording never needs the bar at all.
+  const [showBar, setShowBar] = useState(true);
+  const [barPeek, setBarPeek] = useState(false);
+  const peekTimer = useRef<number | null>(null);
+  const peekBar = () => {
+    if (showBar || !started) return;
+    setBarPeek(true);
+    if (peekTimer.current) window.clearTimeout(peekTimer.current);
+    peekTimer.current = window.setTimeout(() => setBarPeek(false), 2500);
+  };
   // Pre-flight setup gate: while false, show the "configure & start" screen instead
   // of the player, so the voice/engine/speed are chosen BEFORE going fullscreen.
   const [started, setStarted] = useState(false);
@@ -256,6 +268,21 @@ export const AutoPlayView: React.FC<{
     if (wasPlaying) run(it); else setPlaying(false);
   };
 
+  // Keyboard transport (works with the control bar hidden — essential for clean
+  // recording): Space = play/pause, ←/→ = previous/next slide. Active only during
+  // playback (not on the setup screen, where inputs need their keys).
+  useEffect(() => {
+    if (!open || !started) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code === 'Space') { e.preventDefault(); if (playing) pause(); else play(); }
+      else if (e.key === 'ArrowRight') { e.preventDefault(); jump(1); }
+      else if (e.key === 'ArrowLeft') { e.preventDefault(); jump(-1); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, started, playing, finished, slideIdx]);
+
   if (!open) return null;
   const slide = slides[slideIdx];
 
@@ -268,7 +295,7 @@ export const AutoPlayView: React.FC<{
   const scriptedCount = slides.filter((s) => scriptSegments(s.raw).length > 0).length;
 
   return (
-    <div ref={rootRef} style={{ position: 'fixed', inset: 0, zIndex: 3000, background: '#000', display: 'flex', flexDirection: 'column' }}>
+    <div ref={rootRef} onMouseMove={peekBar} style={{ position: 'fixed', inset: 0, zIndex: 3000, background: '#000', display: 'flex', flexDirection: 'column' }}>
       {!started && (
         <div style={{
           position: 'absolute', inset: 0, zIndex: 10, display: 'flex', alignItems: 'center',
@@ -357,7 +384,16 @@ export const AutoPlayView: React.FC<{
                 <input type="checkbox" checked={showCaptions} onChange={(e) => setShowCaptions(e.target.checked)} />
                 Subtitles
               </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none' }} title="Uncheck for a clean frame when recording the show as a video (OBS / screen capture). Move the mouse to peek at the controls; Space pauses.">
+                <input type="checkbox" checked={showBar} onChange={(e) => setShowBar(e.target.checked)} />
+                Control bar
+              </label>
             </div>
+            {!showBar && (
+              <div style={{ margin: '-14px 0 18px', fontSize: 12, color: '#9aa0aa' }}>
+                🎬 Clean-recording mode: no control bar in the frame. Space = pause/resume, ←/→ = slides, mouse move = peek controls, Esc = exit fullscreen.
+              </div>
+            )}
 
             <button type="button" onClick={startShow} style={{
               width: '100%', padding: '13px 0', borderRadius: 10, cursor: 'pointer', border: 'none',
@@ -402,7 +438,14 @@ export const AutoPlayView: React.FC<{
         )}
       </div>
 
-      <div style={{ height: 60, display: 'flex', alignItems: 'center', gap: 6, padding: '0 14px', background: 'rgba(20,20,22,.92)', color: '#eee' }}>
+      {/* Control bar. Hidden in clean-recording mode while PLAYING (the slide gets
+          the full height); pausing, finishing, or moving the mouse (peek) brings it
+          back — as a bottom OVERLAY so the recorded layout doesn't reflow. */}
+      {(showBar || barPeek || !playing) && (
+      <div style={{
+        height: 60, display: 'flex', alignItems: 'center', gap: 6, padding: '0 14px', background: 'rgba(20,20,22,.92)', color: '#eee',
+        ...(showBar ? {} : { position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 5 }),
+      }}>
         <Tooltip title="Previous slide"><span><IconButton size="small" onClick={() => jump(-1)} sx={{ color: '#ddd' }} disabled={slideIdx <= 0}><SkipPreviousIcon /></IconButton></span></Tooltip>
         {playing
           ? <Tooltip title="Pause"><IconButton onClick={pause} sx={{ color: '#fff' }}><PauseIcon /></IconButton></Tooltip>
@@ -435,6 +478,7 @@ export const AutoPlayView: React.FC<{
         <Tooltip title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}><IconButton size="small" onClick={toggleFullscreen} sx={{ color: '#ddd' }}>{isFullscreen ? <FullscreenExitIcon /> : <FullscreenIcon />}</IconButton></Tooltip>
         <Tooltip title="Close"><IconButton onClick={closeAll} sx={{ color: '#ddd' }}><CloseIcon /></IconButton></Tooltip>
       </div>
+      )}
     </div>
   );
 };

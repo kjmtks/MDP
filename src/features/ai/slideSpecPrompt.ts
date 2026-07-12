@@ -291,6 +291,11 @@ Module sections (the #1 cause of broken layouts)
   exactly 2 sections; \`@bignumber\` up to 3; \`@columns\` / \`@multicolumn\` / \`@gallery\`
   / \`@grid\` / \`@process\` / \`@timeline\` take ONE section per item. A missing
   separator collapses the body into a single section and breaks the layout.
+- **Nesting sectioned modules:** a block module CAN sit inside another block
+  module's section (e.g. \`@derivation\` inside a \`@grid\` cell). Separators and
+  \`<!-- @end -->\` always belong to the INNERMOST open block — close the inner
+  module before writing the outer's next \`<!-- @ -->\`. In the index, \`(block,
+  sectioned)\` = body uses separators; \`(block, no @end)\` = params-only.
 
 Arguments vs. body
 - Arguments are a \`key: value\` list separated by commas. If a value would contain
@@ -382,7 +387,7 @@ const describeParam = (p: ModuleParam): string => {
 /** One module's self-description for the AI prompt — its own \`<aiSpec>\` if it
  *  provides one, otherwise synthesized from description + parameters + snippets. */
 export function describeModuleForAI(c: ModuleConfig): string {
-  const kind = c.type === 'inline' ? 'inline' : c.inlineRender ? 'block (renders inline)' : c.selfClosing ? 'block (self-closing, NO body)' : 'block';
+  const kind = c.type === 'inline' ? 'inline' : c.inlineRender ? 'block (renders inline)' : c.selfClosing ? 'block (self-closing, NO body)' : c.sectioned ? 'block (sectioned body: `<!-- @ -->` separators)' : 'block (single body)';
   const out: string[] = [`### \`@${c.name}\` — ${kind} module`];
   if (c.description) out.push(c.description);
 
@@ -400,7 +405,9 @@ export function describeModuleForAI(c: ModuleConfig): string {
       ? `Syntax: \`<!-- @${c.name} key: value, … -->\` (self-contained).`
       : c.selfClosing
         ? `Syntax: \`<!-- @${c.name} key: value, … -->\` — self-contained, takes NO body and NO \`<!-- @end -->\` (all data is in the parameters).`
-        : `Syntax: \`<!-- @${c.name} key: value, … -->\` … \`<!-- @end -->\` (body is the content; \`<!-- @ -->\` separates sections).`,
+        : c.sectioned
+          ? `Syntax: \`<!-- @${c.name} key: value, … -->\` … \`<!-- @end -->\` — the body is split into SECTIONS by \`<!-- @ -->\`. Nesting: a nested block module's separators belong to the INNERMOST open block, so this module can sit inside another sectioned module's section.`
+          : `Syntax: \`<!-- @${c.name} key: value, … -->\` … \`<!-- @end -->\` (the whole body is one content region).`,
   );
 
   if (c.manipulate) {
@@ -471,7 +478,7 @@ function shortDescription(desc: string): string {
 
 /** One compact line describing a module for the index. */
 function moduleIndexLine(c: ModuleConfig): string {
-  const kind = c.type === 'inline' ? 'inline' : c.inlineRender ? 'block→inline' : c.selfClosing ? 'block, no @end' : 'block';
+  const kind = c.type === 'inline' ? 'inline' : c.inlineRender ? 'block→inline' : c.selfClosing ? 'block, no @end' : c.sectioned ? 'block, sectioned' : 'block';
   const secondary = (c.tags || []).slice(1);
   const tagStr = secondary.length ? ` [${secondary.join(', ')}]` : '';
   const desc = shortDescription(c.description);
@@ -552,7 +559,7 @@ export function findModules(
   return matches
     .sort((a, b) => a.name.localeCompare(b.name))
     .map((c) => {
-      const kind = c.type === 'inline' ? 'inline' : c.inlineRender ? 'block→inline' : 'block';
+      const kind = c.type === 'inline' ? 'inline' : c.inlineRender ? 'block→inline' : c.selfClosing ? 'block, no @end' : c.sectioned ? 'block, sectioned' : 'block';
       const tagStr = (c.tags || []).length ? ` [${(c.tags || []).join(', ')}]` : '';
       const desc = shortDescription(c.description);
       return `- \`@${c.name}\` (${kind})${tagStr}${desc ? ` — ${desc}` : ''}`;
@@ -625,6 +632,8 @@ export function suggestModules(
   return scored.slice(0, limit).map(({ c }) => ({
     name: c.name,
     type: c.type === 'inline' ? 'inline' : c.inlineRender ? 'block→inline' : 'block',
+    ...(c.selfClosing ? { selfClosing: true } : {}),
+    ...(c.sectioned ? { sectioned: true } : {}),
     tags: c.tags || [],
     reason: [...(reasons.get(c.name) || [])].join('; '),
     description: shortDescription(c.description),
