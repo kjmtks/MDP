@@ -69,6 +69,8 @@ Multiple side by side — put several in a @grid or @columns:
   <render><![CDATA[
     const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     const md = (t) => (t && String(t).trim() !== '') ? ('\n\n' + t + '\n\n') : '';
+    // Fall back to identity if an older app build doesn't pass resolve().
+    const R = (typeof resolve === 'function') ? resolve : (p) => p;
     const image = (args.image || '').trim();
     const name = (args.name || '').trim();
     const role = (args.role || '').trim();
@@ -80,7 +82,7 @@ Multiple side by side — put several in a @grid or @columns:
 
     const ring = 'width:' + size + 'px; height:' + size + 'px; border:' + border + 'px solid ' + bordercolor + ';';
     const avatar = image
-      ? '<img class="mdp-av-img" src="' + esc(image) + '" alt="' + esc(name) + '" style="' + ring + '"/>'
+      ? '<img class="mdp-av-img" src="' + esc(R(image)) + '" alt="' + esc(name) + '" style="' + ring + '"/>'
       : '<div class="mdp-av-initial" style="' + ring + ' color:' + bordercolor + '; font-size:' + Math.round(size * 0.42) + 'px;">' + (name ? esc(name.charAt(0).toUpperCase()) : '?') + '</div>';
 
     return '\n\n<div class="mdp-mod-avatar" style="margin:' + margin + ';">' +

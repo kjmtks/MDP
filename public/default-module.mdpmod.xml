@@ -25,6 +25,12 @@ Describe information, here
 
   <render>
   <![CDATA[
+    // The render body receives: `args` (parsed parameters), `sections` (body split by
+    // <!-- @ -->), `content` (sections[0] trimmed), and `resolve(path)` — which turns a
+    // deck-relative asset path / URL into a served URL (use it for <video>/<audio>/<img>
+    // src so local files load, e.g. `src="${resolve(args.src)}"`).
+    // NOTE: a block module whose render never references `sections`/`content` is treated
+    // as self-closing (used like `<!-- @name … -->` with NO <!-- @end -->).
     const color = args.color || 'var(--accent-color)';
     const titleStr = sections[0] ? sections[0].trim() : '';
     const contentStr = sections[1] ? sections[1].trim() : '';

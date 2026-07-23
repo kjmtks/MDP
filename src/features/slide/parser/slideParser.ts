@@ -266,7 +266,7 @@ export const renderSlideHTML = (block: RawBlock, globalContext: SlideContext, pa
   Object.assign(renderer, customRenderer);
   // Modules first (they consume their own @end), THEN in-slide builds — so a
   // @build wrapping a block module isn't terminated by that module's @end.
-  const moduleProcessed = applyModulesToMarkdown(slideMarkdown);
+  const moduleProcessed = applyModulesToMarkdown(slideMarkdown, baseUrl);
   const built = applyBuildsToMarkdown(moduleProcessed, globalContext.build?.args || {});
   const processedMarkdown = built.markdown;
   const slideHtml = marked.parse(processedMarkdown, {
@@ -291,7 +291,7 @@ export const renderSlideHTML = (block: RawBlock, globalContext: SlideContext, pa
   // was already module-expanded upstream (directives are consumed on first pass).
   const renderChrome = (content: string): string => {
     if (!content) return '';
-    const chromeMd = applyModulesToMarkdown(content);
+    const chromeMd = applyModulesToMarkdown(content, baseUrl);
     return marked.parse(chromeMd, { renderer, breaks: true, gfm: true, async: false }) as string;
   };
   const finalHeaderRaw = localHeader !== undefined ? localHeader : globalContext.header;

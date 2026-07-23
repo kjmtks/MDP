@@ -135,7 +135,7 @@ function wrapManipulable(
   return `\n\n<div ${attrs} style="${styles.join('; ')}">\n\n${inner}\n\n</div>\n\n`;
 }
 
-function renderModuleTemplate(mod: ModuleData, sections: string[], argsStr: string, ord?: number): string {
+function renderModuleTemplate(mod: ModuleData, sections: string[], argsStr: string, ord?: number, baseUrl: string = ''): string {
   const { parameters } = mod.config;
   const userArgs = parseArguments(argsStr || '');
   const finalArgs = { ...userArgs };
@@ -210,8 +210,19 @@ function renderModuleTemplate(mod: ModuleData, sections: string[], argsStr: stri
   }
 
   try {
-    const renderFn = new Function('args', 'sections', 'content', mod.render);
-    const generatedHtml = renderFn(renderArgs, sections, (sections[0] || '').trim());
+    // `resolve(path)` maps a deck-relative asset path (or an already-resolved @alias
+    // value) to a served URL — the SAME resolution the Markdown image renderer applies
+    // (see markedExtensions `image()`) — so a module can reference a local file (video,
+    // audio, image) directly instead of round-tripping through a hidden Markdown image.
+    // Absolute paths / URLs / data:/blob:/mdp-file:/app-asset: are returned unchanged.
+    const resolve = (p: string): string => {
+      const s = (p == null ? '' : String(p)).trim();
+      if (!s) return s;
+      if (/^(https?:|\/|data:|blob:|mdp-file:|app-asset:)/.test(s)) return s;
+      return baseUrl ? `${baseUrl}${s}` : s;
+    };
+    const renderFn = new Function('args', 'sections', 'content', 'resolve', mod.render);
+    const generatedHtml = renderFn(renderArgs, sections, (sections[0] || '').trim(), resolve);
     // Wrap EVERY module: manipulable ones get a real positioning wrapper; the
     // rest get a layout-neutral select-only wrapper (display:contents) so they
     // can still be framed + given a context menu in Edit layout.
@@ -246,7 +257,7 @@ interface StackContext {
   ord?: number;
 }
 
-export const applyModulesToMarkdown = (markdown: string): string => {
+export const applyModulesToMarkdown = (markdown: string, baseUrl: string = ''): string => {
   if (!markdown) return '';
   const codeBlocks: string[] = [];
   const processed = markdown.replace(/```[\s\S]*?```|`[^`]+`/g, (match) => {
@@ -320,7 +331,7 @@ export const applyModulesToMarkdown = (markdown: string): string => {
         // (else it would swallow the rest of the slide). It still emits block-level
         // output (renderModuleTemplate wraps a non-inline module in a <div>).
         const ord = manipOrd++;
-        let html = renderModuleTemplate(mod, [], token.argsStr, ord);
+        let html = renderModuleTemplate(mod, [], token.argsStr, ord, baseUrl);
         if (token.indent) html = html.replace(/\n/g, '\n' + token.indent);
         html = token.indent + html;
         if (stack.length > 0) stack[stack.length - 1].currentSectionStr += html;
@@ -351,7 +362,7 @@ export const applyModulesToMarkdown = (markdown: string): string => {
         currentMod.sections.push(currentMod.currentSectionStr);
 
         const mod = loadedModules[currentMod.name];
-        let html = renderModuleTemplate(mod, currentMod.sections, currentMod.argsStr, currentMod.ord);
+        let html = renderModuleTemplate(mod, currentMod.sections, currentMod.argsStr, currentMod.ord, baseUrl);
 
         if (currentMod.indent) {
           html = html.replace(/\n/g, '\n' + currentMod.indent);

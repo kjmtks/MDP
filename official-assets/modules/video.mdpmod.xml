@@ -1,0 +1,222 @@
+<module>
+  <name>video</name>
+  <type>block</type>
+  <selfClosing>true</selfClosing>
+  <interactive>true</interactive>
+  <description>A video player: plays a local video FILE (deck-relative path / @alias / URL / data-URI) or a YouTube URL. Autoplay-on-show or play-on-click, optional loop and mute, click to pause/resume. Movable, resizable and rotatable on the preview. Self-contained (no @end).</description>
+  <tags>media, mockup</tags>
+  <aiSpec><![CDATA[
+A VIDEO PLAYER. Self-contained directive (NO body, NO `<!-- @end -->`) — all options are
+parameters. Plays EITHER a local/served video file OR a YouTube video:
+  • a video FILE: `src` = a path RELATIVE TO THE DECK, an @alias, a URL, or a data-URI
+    (e.g. ./movie/clip.mp4). Rendered as an HTML5 <video>; the deck-relative path is
+    resolved to a served URL automatically.
+  • a YOUTUBE video: `src` = any youtube.com/watch?v=… , youtu.be/… or /embed/… URL.
+    Rendered as an embedded player (needs internet; the app is otherwise offline-first).
+
+Playback:
+  • trigger: `click` (default) = play when the module is clicked; `auto` = start playing
+    when the slide is shown. (Autoplay WITH sound is blocked by browsers, so `auto`
+    falls back to MUTED autoplay; the viewer can unmute via the controls.)
+  • Clicking the player toggles PAUSE / RESUME (file video with controls off).
+  • loop: repeat when it ends. muted: start muted.
+  • controls (file video only): show the native scrubber/volume bar (default false; when
+    on, use the native controls instead of click-to-toggle).
+
+Size & placement: `width` sets the initial width in px (height follows 16:9). The player
+is MANIPULABLE — drag to move, resize from a corner, rotate — on the preview in Edit
+layout; the position/size/rotation are written back as x/y/w/h/rot args.
+
+<!-- @video src: ./movie/clip.mp4, trigger: auto, loop: true, muted: true, width: 640 -->
+<!-- @video src: https://youtu.be/dQw4w9WgXcQ, trigger: click, width: 560 -->
+]]></aiSpec>
+
+  <manipulate position="xy" size="xy" rotation="true" minW="10" maxW="100" minH="6" maxH="100" />
+
+  <parameters>
+    <param name="src" type="text" default="" label="Source" desc="Video file path (relative to the deck) / @alias / URL / data-URI, OR a YouTube URL." />
+    <param name="trigger" type="select" default="click" label="Play trigger" options="click:On click,auto:Auto on slide show" desc="Start on click, or automatically when the slide is shown (auto falls back to muted)." />
+    <param name="loop" type="boolean" default="false" label="Loop" desc="Repeat the video when it ends." />
+    <param name="muted" type="boolean" default="false" label="Muted" desc="Start muted." />
+    <param name="controls" type="boolean" default="false" label="Native controls" desc="Show the browser's scrubber/volume bar (file video). Off = click to play/pause." />
+    <param name="width" type="number" default="480" label="Width (px)" desc="Initial width; height follows a 16:9 ratio. Resize freely on the preview." min="80" max="1280" step="10" />
+  </parameters>
+
+  <snippets>
+    <snippet>
+      <category>Media</category>
+      <label>Video (file, autoplay muted loop)</label>
+      <text><![CDATA[<!-- @video src: ./movie/clip.mp4, trigger: auto, muted: true, loop: true, width: 640 -->]]></text>
+      <description>Local video file, autoplays muted and loops when the slide is shown.</description>
+    </snippet>
+    <snippet>
+      <category>Media</category>
+      <label>Video (file, click to play)</label>
+      <text><![CDATA[<!-- @video src: ./movie/clip.mp4, trigger: click, width: 560 -->]]></text>
+      <description>Local video file; click the player to play, click again to pause.</description>
+    </snippet>
+    <snippet>
+      <category>Media</category>
+      <label>Video (YouTube)</label>
+      <text><![CDATA[<!-- @video src: https://youtu.be/dQw4w9WgXcQ, trigger: click, width: 560 -->]]></text>
+      <description>Embedded YouTube player (requires internet).</description>
+    </snippet>
+  </snippets>
+
+  <render><![CDATA[
+    const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    // Fall back to identity if an older app build doesn't pass resolve().
+    const R = (typeof resolve === 'function') ? resolve : (p) => p;
+    const src = (args.src || '').trim();
+    const trigger = String(args.trigger || 'click').toLowerCase() === 'auto' ? 'auto' : 'click';
+    const loop = String(args.loop) === 'true';
+    const muted = String(args.muted) === 'true';
+    const controls = String(args.controls) === 'true';
+    let width = parseFloat(args.width); if (!Number.isFinite(width) || width <= 0) width = 480;
+
+    if (!src) return '\n\n<div class="mdp-mod-video mdp-video-empty">（@video: src に動画ファイルのパスか YouTube URL を指定）</div>\n\n';
+
+    const yt = src.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([A-Za-z0-9_-]{6,})/);
+    let inner, kind;
+    if (yt) {
+      kind = 'yt';
+      const id = yt[1];
+      const p = ['enablejsapi=1', 'playsinline=1', 'rel=0', 'modestbranding=1'];
+      if (trigger === 'auto') p.push('autoplay=1');
+      if (muted || trigger === 'auto') p.push('mute=1');
+      if (loop) p.push('loop=1', 'playlist=' + id);
+      p.push('controls=' + (controls ? '1' : '0'));
+      const url = 'https://www.youtube.com/embed/' + id + '?' + p.join('&');
+      inner = '<iframe class="mdp-video-frame" src="' + esc(url) + '" frameborder="0" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe>';
+    } else {
+      kind = 'file';
+      const attrs = ['class="mdp-video-el"', 'playsinline', 'preload="auto"'];
+      if (controls) attrs.push('controls');
+      if (loop) attrs.push('loop');
+      if (muted) attrs.push('muted');
+      // resolve() (provided by the app) maps a deck-relative path / @alias / URL to a
+      // served URL, so the <video> can load a local file directly.
+      inner = '<video ' + attrs.join(' ') + ' src="' + esc(R(src)) + '"></video>';
+    }
+    const overlay = (kind === 'yt' ? (trigger === 'click') : !controls)
+      ? '<div class="mdp-video-play" aria-hidden="true"><div class="mdp-video-play-btn">▶</div></div>'
+      : '';
+
+    return '\n\n<div class="mdp-mod-video mdp-interactive" data-kind="' + kind + '" data-trigger="' + trigger + '" data-controls="' + (controls ? '1' : '0') + '" style="--vid-w:' + width + 'px;">' + inner + overlay + '</div>\n\n';
+  ]]></render>
+
+  <style><![CDATA[
+    .mdp-mod-video {
+      position: relative;
+      width: var(--vid-w, 480px);
+      max-width: 100%;
+      aspect-ratio: 16 / 9;
+      margin: 1rem auto;
+      background: #000;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+      cursor: pointer;
+      display: block;
+    }
+    .mdp-mod-video .mdp-video-el,
+    .mdp-mod-video .mdp-video-frame {
+      width: 100%;
+      height: 100%;
+      display: block;
+      border: 0;
+    }
+    .mdp-mod-video .mdp-video-el { object-fit: contain; background: #000; }
+    .mdp-mod-video .mdp-video-play {
+      position: absolute;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0, 0, 0, 0.28);
+      transition: background 0.15s;
+    }
+    .mdp-mod-video .mdp-video-play:hover { background: rgba(0, 0, 0, 0.42); }
+    .mdp-mod-video .mdp-video-play-btn {
+      width: 20%;
+      min-width: 46px;
+      max-width: 84px;
+      aspect-ratio: 1;
+      border-radius: 50%;
+      background: rgba(0, 0, 0, 0.55);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.7em;
+      padding-left: 0.12em;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+    }
+    .mdp-mod-video.mdp-video-empty {
+      aspect-ratio: auto;
+      background: var(--panel-bg, #f1f5f9);
+      color: var(--muted-color, #64748b);
+      cursor: default;
+      padding: 1.2em;
+      box-shadow: none;
+      text-align: center;
+    }
+    /* When placed/resized in Edit layout, fill the dragged box. */
+    .mdp-manip[data-lifted="1"] .mdp-mod-video { width: 100%; height: 100%; aspect-ratio: auto; margin: 0; }
+  ]]></style>
+
+  <script><![CDATA[
+    export default {
+      init(el, ctx) {
+        const trigger = el.dataset.trigger === 'auto' ? 'auto' : 'click';
+        const controls = el.dataset.controls === '1';
+        const overlay = el.querySelector('.mdp-video-play');
+        const showOv = () => { if (overlay) overlay.style.display = 'flex'; };
+        const hideOv = () => { if (overlay) overlay.style.display = 'none'; };
+        const video = el.querySelector('video');
+
+        if (video) {
+          const tryPlay = () => {
+            const p = video.play();
+            if (p && typeof p.then === 'function') {
+              p.then(hideOv).catch(() => {
+                // Autoplay with sound blocked → retry muted.
+                video.muted = true;
+                const q = video.play();
+                if (q && typeof q.then === 'function') q.then(hideOv).catch(showOv);
+              });
+            } else { hideOv(); }
+          };
+          const toggle = (e) => {
+            if (e) e.stopPropagation();
+            if (video.paused) tryPlay(); else video.pause();
+          };
+          if (!controls) {
+            el.addEventListener('click', toggle);
+            video.addEventListener('play', hideOv);
+            video.addEventListener('pause', showOv);
+            video.addEventListener('ended', showOv);
+          }
+          if (trigger === 'auto') tryPlay();
+          else if (!controls) showOv();
+          ctx.onCleanup(() => {
+            if (!controls) el.removeEventListener('click', toggle);
+            try { video.pause(); video.currentTime = 0; } catch (e) {}
+          });
+        } else {
+          const iframe = el.querySelector('iframe');
+          const post = (func) => {
+            try { if (iframe && iframe.contentWindow) iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: func, args: [] }), '*'); } catch (e) {}
+          };
+          if (trigger === 'click' && overlay) {
+            showOv();
+            overlay.addEventListener('click', (e) => { e.stopPropagation(); hideOv(); post('playVideo'); });
+          } else {
+            hideOv();
+          }
+          ctx.onCleanup(() => { post('pauseVideo'); });
+        }
+      }
+    }
+  ]]></script>
+</module>
