@@ -322,7 +322,7 @@ const EditorPanelImpl: React.FC<EditorPanelProps> = ({
             ) : (
               <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', bgcolor: 'var(--app-bg-editor)', color: 'var(--app-text-disabled)', gap: 1 }}>
                 <Typography variant="h6">{currentFileType === 'limit-exceeded' ? "File Too Large" : "Editor Disabled"}</Typography>
-                <Typography variant="body2">{currentFileType === 'image' ? "Image file" : currentFileType === 'pdf' ? "PDF file — see the preview pane" : currentFileType === 'binary' ? "Binary file" : currentFileType === 'limit-exceeded' ? `Exceeds editor limit (${MAX_FILE_SIZE / 1024}KB)` : "Unknown file type"}</Typography>
+                <Typography variant="body2">{currentFileType === 'image' ? "Image file" : currentFileType === 'pdf' ? "PDF file — see the preview pane" : currentFileType === 'video' ? "Video file — see the preview pane" : currentFileType === 'binary' ? "Binary file" : currentFileType === 'limit-exceeded' ? `Exceeds editor limit (${MAX_FILE_SIZE / 1024}KB)` : "Unknown file type"}</Typography>
               </Box>
             )}
           </Box>

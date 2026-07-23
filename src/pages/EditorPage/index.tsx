@@ -535,6 +535,7 @@ export default function EditorPage() {
 
   const isImageFile = currentFileName?.match(/\.(png|jpe?g|gif|svg|webp)$/i);
   const isPdfFile = currentFileName?.toLowerCase().endsWith('.pdf');
+  const isVideoFile = currentFileName?.match(/\.(mp4|m4v|webm|ogv|mov)$/i);
   const isSlideFile = currentFileName?.endsWith('.slide.md');
 
   let effectiveFileType = currentFileType;
@@ -544,6 +545,8 @@ export default function EditorPage() {
     effectiveFileType = 'image';
   } else if (isPdfFile) {
     effectiveFileType = 'pdf';
+  } else if (isVideoFile) {
+    effectiveFileType = 'video';
   } else if (isSlideFile) {
     effectiveFileType = 'markdown';
   } else if (currentFileName?.match(/\.(md|markdown)$/i) || currentFileType === 'markdown') {
@@ -560,7 +563,7 @@ export default function EditorPage() {
   // real deck. The editor pane still follows the active tab; saving the
   // edited asset bumps `lastUpdated` / reloads modules (`moduleEpoch`), which
   // re-runs the live pipeline below against the pinned source.
-  const isPreviewableActive = effectiveFileType === 'image' || effectiveFileType === 'markdown' || effectiveFileType === 'doc' || effectiveFileType === 'pdf';
+  const isPreviewableActive = effectiveFileType === 'image' || effectiveFileType === 'markdown' || effectiveFileType === 'doc' || effectiveFileType === 'pdf' || effectiveFileType === 'video';
   const [previewSource, setPreviewSource] = useState<{ fileName: string | null; fileType: FileType; md: string }>(
     () => isPreviewableActive
       ? { fileName: currentFileName, fileType: effectiveFileType, md: debouncedMarkdown }
@@ -645,7 +648,14 @@ export default function EditorPage() {
       // mdp-file protocol handler.
       const imgPrefix = isElectron() ? 'mdp-file:///' : '/files/';
       let md = resolveImages(previewMarkdown, imageLibrary, (p) => `${imgPrefix}${p.replace(/^\//, '')}`).markdown;
-      md = applyModulesToMarkdown(md);
+      // baseUrl for a module's `resolve(path)` — the previewed deck's folder served via
+      // the platform scheme — so a module can turn a deck-relative asset (e.g. a
+      // <video> src) into a loadable URL. Mirrors useSlideProcessor's baseUrl. Modules
+      // are expanded HERE (upstream), so this is where resolve() must get the baseUrl.
+      const mediaPrefix = isElectron() ? 'mdp-file://' : '/files/';
+      const lastSlash = previewFileName ? previewFileName.lastIndexOf('/') : -1;
+      const moduleBaseUrl = (!previewFileName || lastSlash === -1) ? mediaPrefix : `${mediaPrefix}${previewFileName.substring(0, lastSlash)}/`;
+      md = applyModulesToMarkdown(md, moduleBaseUrl);
       md = md.replace(/([，．、。])\$/g, '$1 $');
       md = md.replace(/\$([^\x20-\x7E\s])/g, '$ $1');
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -665,7 +675,7 @@ export default function EditorPage() {
     // moduleEpoch: re-run `applyModulesToMarkdown` when a module/effect is
     // (re)registered — e.g. saving a `*.mdpmod.xml` — so the pinned deck reflects
     // the new module <render>/<script> output live, not just its <style>.
-  }, [previewMarkdown, imageLibrary, moduleEpoch]);
+  }, [previewMarkdown, imageLibrary, moduleEpoch, previewFileName]);
 
   const { baseUrl, globalContext, slides: mdSlides, docHtml, slideSize: mdSlideSize, slideStyleVariables, themeCssUrl } = useSlideProcessor(
     previewFileName, previewFileType, processedMarkdown, lastUpdated, themes, moduleEpoch
@@ -678,10 +688,17 @@ export default function EditorPage() {
     return [{ html, raw: '', isHidden: false, isCover: false, pageNumber: 1, className: '', header: '', footer: '' }];
   }, [previewFileType, previewFileName, lastUpdated]);
 
-  const slides = imageSlides ?? mdSlides;
+  const videoSlides = useMemo(() => {
+    if (previewFileType !== 'video' || !previewFileName) return null;
+    const src = `${isElectron() ? 'mdp-file:///' : '/files/'}${previewFileName.split('/').map(encodeURIComponent).join('/')}?t=${lastUpdated}`;
+    const html = `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#000;"><video src="${src}" controls playsinline preload="metadata" style="max-width:100%;max-height:100%;object-fit:contain;background:#000;"></video></div>`;
+    return [{ html, raw: '', isHidden: false, isCover: false, pageNumber: 1, className: '', header: '', footer: '' }];
+  }, [previewFileType, previewFileName, lastUpdated]);
+
+  const slides = imageSlides ?? videoSlides ?? mdSlides;
   const slideSize = useMemo(
-    () => (imageSlides ? { width: (BASE_HEIGHT * 16) / 9, height: BASE_HEIGHT } : mdSlideSize),
-    [imageSlides, mdSlideSize],
+    () => ((imageSlides || videoSlides) ? { width: (BASE_HEIGHT * 16) / 9, height: BASE_HEIGHT } : mdSlideSize),
+    [imageSlides, videoSlides, mdSlideSize],
   );
 
   if (slides.length !== prevSlidesLength) {

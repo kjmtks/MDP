@@ -253,7 +253,7 @@ export const useFileManager = ({ setCurrentSlideIndex, syncDrawings, onFileLoade
     isLoadingFile.current = true;
     const type = determineFileType(fileName, isBinaryFromServer);
 
-    if (type === 'image' || type === 'binary' || type === 'pdf') {
+    if (type === 'image' || type === 'binary' || type === 'pdf' || type === 'video') {
       const newTab: OpenTab = { id: createTabId(), path: fileName, type, content: "", initialContent: "", isModified: false, currentSlideIndex: 0, drawings: {}, editorRef: createRef() };
       setTabState(prev => {
         if (prev.tabs.some(t => t.path === fileName)) return prev;
@@ -411,7 +411,7 @@ export const useFileManager = ({ setCurrentSlideIndex, syncDrawings, onFileLoade
     if (!currentTab) return;
 
     const { path: saveFileName, type: saveFileType, content: saveMarkdown } = currentTab;
-    if (saveFileType === 'image' || saveFileType === 'binary' || saveFileType === 'limit-exceeded') return;
+    if (saveFileType === 'image' || saveFileType === 'binary' || saveFileType === 'video' || saveFileType === 'limit-exceeded') return;
 
     // External-change guard: the file may have been edited/replaced on disk by
     // another program since we loaded or last saved it. Compare disk text (ignoring

@@ -123,10 +123,49 @@ app.whenReady().then(async () => {
       else if (ext === '.js') mimeType = 'text/javascript';
       else if (ext === '.json') mimeType = 'application/json';
       else if (ext === '.md' || ext === '.txt') mimeType = 'text/plain';
+      // Video / audio: a <video>/<audio> element refuses to play without the correct
+      // MIME type AND byte-range (206) support handled just below.
+      else if (ext === '.mp4' || ext === '.m4v') mimeType = 'video/mp4';
+      else if (ext === '.webm') mimeType = 'video/webm';
+      else if (ext === '.ogv') mimeType = 'video/ogg';
+      else if (ext === '.mov') mimeType = 'video/quicktime';
+      else if (ext === '.mp3') mimeType = 'audio/mpeg';
+      else if (ext === '.m4a') mimeType = 'audio/mp4';
+      else if (ext === '.wav') mimeType = 'audio/wav';
+      else if (ext === '.oga' || ext === '.ogg') mimeType = 'audio/ogg';
+
+      // Media elements stream via HTTP Range requests (partial content). Without a
+      // 206 + Content-Range reply, Chromium often refuses to start or can't seek.
+      const total = data.length;
+      const rangeHeader = request.headers.get('range') || request.headers.get('Range');
+      if (rangeHeader) {
+        const m = /bytes=(\d*)-(\d*)/.exec(rangeHeader);
+        let start = m && m[1] !== '' ? parseInt(m[1], 10) : 0;
+        let end = m && m[2] !== '' ? parseInt(m[2], 10) : total - 1;
+        if (!Number.isFinite(start) || start < 0) start = 0;
+        if (!Number.isFinite(end) || end >= total) end = total - 1;
+        if (start > end || start >= total) {
+          return new Response(null, { status: 416, headers: { 'Content-Range': `bytes */${total}`, 'Access-Control-Allow-Origin': '*' } });
+        }
+        const chunk = data.subarray(start, end + 1);
+        return new Response(chunk, {
+          status: 206,
+          headers: {
+            'Content-Type': mimeType,
+            'Content-Range': `bytes ${start}-${end}/${total}`,
+            'Accept-Ranges': 'bytes',
+            'Content-Length': String(chunk.length),
+            'Access-Control-Allow-Origin': '*',
+            'Cache-Control': 'no-store'
+          }
+        });
+      }
 
       return new Response(data, {
         headers: {
           'Content-Type': mimeType,
+          'Accept-Ranges': 'bytes',
+          'Content-Length': String(total),
           'Access-Control-Allow-Origin': '*',
           'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0'
         }
@@ -165,6 +204,21 @@ app.whenReady().then(async () => {
       return new Response('File not found', { status: 404 });
     }
   });
+
+  // YouTube embeds load from a file:// page (null origin); some videos then error
+  // ("Video unavailable" / playback error) because YouTube can't verify the embedding
+  // origin. Present a youtube.com Referer for youtube requests so the embedded player
+  // behaves as if hosted on the web. (Requires internet — the app is otherwise
+  // offline-first, so local video files are the primary path.)
+  try {
+    session.defaultSession.webRequest.onBeforeSendHeaders(
+      { urls: ['*://*.youtube.com/*', '*://*.youtube-nocookie.com/*', '*://*.googlevideo.com/*', '*://*.ytimg.com/*', '*://*.ggpht.com/*'] },
+      (details, callback) => {
+        details.requestHeaders['Referer'] = 'https://www.youtube.com/';
+        callback({ requestHeaders: details.requestHeaders });
+      }
+    );
+  } catch (e) { /* non-fatal */ }
 
   Menu.setApplicationMenu(null);
   createWindow();

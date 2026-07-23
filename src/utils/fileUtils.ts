@@ -26,6 +26,8 @@ export const determineFileType = (filename: string, isBinaryFromServer?: boolean
   if (/\.(md|markdown)$/.test(lower)) return 'markdown';
   if (/\.(png|jpe?g|gif|svg|webp|bmp|ico)$/.test(lower)) return 'image';
   if (/\.pdf$/.test(lower)) return 'pdf';
+  // Playable video files preview in the Preview pane instead of loading as text.
+  if (/\.(mp4|m4v|webm|ogv|mov)$/.test(lower)) return 'video';
   if (isBinaryFromServer === true) {
     return 'binary';
   }
