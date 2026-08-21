@@ -234,8 +234,8 @@ Hmm…
   <style><![CDATA[
     .mdp-mod-bubble {
       position: relative;
-      width: 240px;
-      height: 140px;
+      width: calc(240 * var(--mdp-px, 1px));
+      height: calc(140 * var(--mdp-px, 1px));
       box-sizing: border-box;
     }
     .mdp-manip[data-lifted="1"] .mdp-mod-bubble { width: 100%; height: 100%; }
@@ -247,7 +247,7 @@ Hmm…
       display: block;
       overflow: visible;
     }
-    .mdp-bubble-shadow .mdp-bubble-svg { filter: drop-shadow(0 4px 8px rgba(0,0,0,0.25)); }
+    .mdp-bubble-shadow .mdp-bubble-svg { filter: drop-shadow(0 calc(4 * var(--mdp-px, 1px)) calc(8 * var(--mdp-px, 1px)) rgba(0,0,0,0.25)); }
     .mdp-bubble-text {
       position: absolute;
       inset: 0;

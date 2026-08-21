@@ -89,13 +89,13 @@ ${rightContent}
       display: flex;
       flex-direction: row;
       position: relative;
-      margin: 1rem 0;
+      margin: calc(1 * var(--mdp-u, 1rem)) 0;
       gap: 1em;
     }
     .mdp-compare-col {
       flex: 1;
-      border: 2px solid var(--comp-color);
-      border-radius: var(--comp-radius, 8px);
+      border: calc(2 * var(--mdp-px, 1px)) solid var(--comp-color);
+      border-radius: var(--comp-radius, calc(8 * var(--mdp-px, 1px)));
       background: var(--bg-color);
       overflow: hidden;
       display: flex;
@@ -104,13 +104,13 @@ ${rightContent}
     .mdp-compare-header {
       background: var(--comp-color);
       color: #fff;
-      padding: 0.8rem 1rem;
+      padding: calc(0.8 * var(--mdp-u, 1rem)) calc(1 * var(--mdp-u, 1rem));
       text-align: center;
       font-weight: bold;
       font-size: 1.1em;
     }
     .mdp-compare-body {
-      padding: 1.5rem;
+      padding: calc(1.5 * var(--mdp-u, 1rem));
       flex: 1;
     }
     .mdp-compare-body > *:first-child { margin-top: 0; }
@@ -122,15 +122,15 @@ ${rightContent}
       transform: translate(-50%, -50%);
       background: #333;
       color: #fff;
-      width: 60px;
-      height: 60px;
+      width: calc(60 * var(--mdp-px, 1px));
+      height: calc(60 * var(--mdp-px, 1px));
       border-radius: 50%;
       display: flex;
       align-items: center;
       justify-content: center;
       font-weight: 900;
-      border: 3px solid #fff;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      border: calc(3 * var(--mdp-px, 1px)) solid #fff;
+      box-shadow: 0 calc(2 * var(--mdp-px, 1px)) calc(8 * var(--mdp-px, 1px)) rgba(0,0,0,0.2);
       z-index: 10;
     }
   ]]></style>

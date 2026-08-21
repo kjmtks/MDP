@@ -89,11 +89,11 @@ Paid | 480
     return html;
   ]]></render>
   <style><![CDATA[
-    .mdp-mod-funnel { display: flex; flex-direction: column; align-items: center; gap: 6px; margin: 1rem 0; }
-    .mdp-fu-stagewrap { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 2px; }
-    .mdp-fu-stage { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 18px; border-radius: var(--fu-radius, 8px); color: #fff; clip-path: polygon(0 0, 100% 0, 96% 100%, 4% 100%); }
-    .mdp-fu-label { font-weight: 700; text-shadow: 0 1px 2px rgba(0,0,0,.35); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .mdp-fu-val { font-weight: 800; font-variant-numeric: tabular-nums; text-shadow: 0 1px 2px rgba(0,0,0,.35); }
+    .mdp-mod-funnel { display: flex; flex-direction: column; align-items: center; gap: calc(6 * var(--mdp-px, 1px)); margin: calc(1 * var(--mdp-u, 1rem)) 0; }
+    .mdp-fu-stagewrap { width: 100%; display: flex; flex-direction: column; align-items: center; gap: calc(2 * var(--mdp-px, 1px)); }
+    .mdp-fu-stage { display: flex; align-items: center; justify-content: space-between; gap: calc(12 * var(--mdp-px, 1px)); padding: calc(10 * var(--mdp-px, 1px)) calc(18 * var(--mdp-px, 1px)); border-radius: var(--fu-radius, calc(8 * var(--mdp-px, 1px))); color: #fff; clip-path: polygon(0 0, 100% 0, 96% 100%, 4% 100%); }
+    .mdp-fu-label { font-weight: 700; text-shadow: 0 calc(1 * var(--mdp-px, 1px)) calc(2 * var(--mdp-px, 1px)) rgba(0,0,0,.35); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .mdp-fu-val { font-weight: 800; font-variant-numeric: tabular-nums; text-shadow: 0 calc(1 * var(--mdp-px, 1px)) calc(2 * var(--mdp-px, 1px)) rgba(0,0,0,.35); }
     .mdp-fu-pct { font-size: 0.78em; font-weight: 700; color: var(--app-text-muted, #888); }
     .mdp-fu-pct::before { content: '↓ '; }
   ]]></style>

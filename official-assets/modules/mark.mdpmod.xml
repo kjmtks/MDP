@@ -62,7 +62,7 @@ the key result
   <style><![CDATA[
     .mdp-mod-mark {
       padding: 0.1em 0.3em;
-      border-radius: 3px;
+      border-radius: calc(3 * var(--mdp-px, 1px));
       color: var(--text-color, #1f2937);
       box-decoration-break: clone;
       -webkit-box-decoration-break: clone;

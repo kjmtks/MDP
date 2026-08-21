@@ -123,11 +123,11 @@ A leaf node with **Markdown**
       display: inline-flex;
       flex-direction: column;
       align-items: center;
-      gap: 8px;
-      margin: 1rem 0;
-      padding: 8px 10px;
-      border: 2px solid var(--tree-color, #3b82f6);
-      border-radius: var(--tree-radius, 8px);
+      gap: calc(8 * var(--mdp-px, 1px));
+      margin: calc(1 * var(--mdp-u, 1rem)) 0;
+      padding: calc(8 * var(--mdp-px, 1px)) calc(10 * var(--mdp-px, 1px));
+      border: calc(2 * var(--mdp-px, 1px)) solid var(--tree-color, #3b82f6);
+      border-radius: var(--tree-radius, calc(8 * var(--mdp-px, 1px)));
       background: color-mix(in srgb, var(--tree-color, #3b82f6) 8%, transparent);
       vertical-align: top;
       box-sizing: border-box;
@@ -151,7 +151,7 @@ A leaf node with **Markdown**
 
     .mdp-tree-kids {
       display: flex;
-      gap: var(--tree-gap, 10px);
+      gap: var(--tree-gap, calc(10 * var(--mdp-px, 1px)));
       align-items: flex-start;
       justify-content: center;
       flex-wrap: wrap;
@@ -180,35 +180,35 @@ A leaf node with **Markdown**
     .mdp-tree-lines { border: 0; background: none; padding: 0; gap: 0; align-items: center; }
     .mdp-tree-lines > .mdp-tree-label {
       display: inline-block;
-      border: 2px solid var(--tree-color, #3b82f6);
-      border-radius: 6px;
-      padding: 4px 10px;
+      border: calc(2 * var(--mdp-px, 1px)) solid var(--tree-color, #3b82f6);
+      border-radius: calc(6 * var(--mdp-px, 1px));
+      padding: calc(4 * var(--mdp-px, 1px)) calc(10 * var(--mdp-px, 1px));
       background: color-mix(in srgb, var(--tree-color, #3b82f6) 8%, transparent);
     }
     .mdp-tree-lines > .mdp-tree-kids {
       display: flex; justify-content: center; align-items: flex-start;
-      position: relative; padding-top: 20px; gap: 0; flex-wrap: nowrap;
+      position: relative; padding-top: calc(20 * var(--mdp-px, 1px)); gap: 0; flex-wrap: nowrap;
     }
     /* stem from the parent label down to the children bar */
     .mdp-tree-lines > .mdp-tree-kids::before {
       content: ''; position: absolute; top: 0; left: 50%;
-      width: 0; height: 20px; border-left: 2px solid var(--tree-color, #3b82f6);
+      width: 0; height: calc(20 * var(--mdp-px, 1px)); border-left: calc(2 * var(--mdp-px, 1px)) solid var(--tree-color, #3b82f6);
     }
     .mdp-tree-lines > .mdp-tree-kids > .mdp-tree-slot {
       display: flex; flex-direction: column; align-items: center;
-      position: relative; padding: 20px 8px 0;
+      position: relative; padding: calc(20 * var(--mdp-px, 1px)) calc(8 * var(--mdp-px, 1px)) 0;
     }
     /* horizontal bar halves (::before = left, ::after = right) + the ::after's
        border-left is the vertical stem down into each child. */
     /* horizontal connector bar across the top of each child slot */
     .mdp-tree-lines > .mdp-tree-kids > .mdp-tree-slot::before {
-      content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 20px;
-      border-top: 2px solid var(--tree-color, #3b82f6);
+      content: ''; position: absolute; top: 0; left: 0; width: 100%; height: calc(20 * var(--mdp-px, 1px));
+      border-top: calc(2 * var(--mdp-px, 1px)) solid var(--tree-color, #3b82f6);
     }
     /* one vertical stem from the bar straight down into the child */
     .mdp-tree-lines > .mdp-tree-kids > .mdp-tree-slot::after {
-      content: ''; position: absolute; top: 0; left: 50%; height: 20px;
-      border-left: 2px solid var(--tree-color, #3b82f6);
+      content: ''; position: absolute; top: 0; left: 50%; height: calc(20 * var(--mdp-px, 1px));
+      border-left: calc(2 * var(--mdp-px, 1px)) solid var(--tree-color, #3b82f6);
     }
     /* trim the outer half of the bar on the end children; a lone child has no bar */
     .mdp-tree-lines > .mdp-tree-kids > .mdp-tree-slot:first-child::before { left: 50%; width: 50%; }

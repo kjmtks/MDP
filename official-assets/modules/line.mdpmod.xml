@@ -136,7 +136,7 @@ Example:
     .mdp-mod-line {
       display: block;
       box-sizing: border-box;
-      margin: 0.5rem 0;
+      margin: calc(0.5 * var(--mdp-u, 1rem)) 0;
       /* `currentColor` (the default line/marker colour) resolves to the theme text. */
       color: var(--text-color);
       line-height: 0;

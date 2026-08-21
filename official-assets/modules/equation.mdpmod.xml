@@ -58,7 +58,7 @@ E = mc^2
     return `\n\n<div class="mdp-mod-equation" style="font-size:${scale}; --eq-tagcolor:${tagColor};">${inner}</div>\n\n`;
   ]]></render>
   <style><![CDATA[
-    .mdp-mod-equation { display: flex; align-items: center; margin: 1rem 0; gap: 8px; }
+    .mdp-mod-equation { display: flex; align-items: center; margin: calc(1 * var(--mdp-u, 1rem)) 0; gap: calc(8 * var(--mdp-px, 1px)); }
     .mdp-eq-body { flex: 1; text-align: center; min-width: 0; overflow-x: auto; }
     .mdp-eq-body > :first-child { margin: 0; }
     .mdp-eq-body .katex-display { margin: 0; }

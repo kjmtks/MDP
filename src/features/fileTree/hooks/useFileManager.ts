@@ -404,6 +404,27 @@ export const useFileManager = ({ setCurrentSlideIndex, syncDrawings, onFileLoade
     setLastUpdated(Date.now());
   }, [syncDrawings]);
 
+  // Discard the in-editor edits of the ACTIVE tab and re-read its file from disk.
+  // Used by the MCP reload_deck tool and by any "the file changed outside" flow.
+  // Active-only: reloadTabFromDisk also refreshes markdownRef/drawings, which
+  // describe the active tab — running it on a background tab would corrupt those.
+  const reloadFileFromDisk = useCallback(async (filePath: string) => {
+    const { tabs: openTabs, activeIndex } = stateRef.current;
+    const tab = openTabs.find(t => t.path === filePath);
+    if (!tab) throw new Error(`"${filePath}" is not open in the editor.`);
+    if (openTabs[activeIndex]?.id !== tab.id) throw new Error(`"${filePath}" is not the active tab — activate it before reloading.`);
+    const text = await apiClient.readFileText(filePath);
+    reloadTabFromDisk(text, tab.id);
+    // Drop any persisted draft too, so hot-exit restore can't resurrect the
+    // edits we just discarded.
+    const drafts = readDrafts();
+    if (drafts[filePath] !== undefined) {
+      delete drafts[filePath];
+      writeDrafts(drafts);
+    }
+    return text;
+  }, [reloadTabFromDisk]);
+
   const handleSave = useCallback(async () => {
     const activeIdx = stateRef.current.activeIndex;
     if (activeIdx === -1) return;
@@ -660,7 +681,7 @@ const updateTabContent = useCallback((path: string, newContent: string) => {
     lastUpdated, currentFileName, currentFileType,
     templateContent, setTemplateContent,
     markdownRef, isLoadingFile,
-    loadFile, handleSave,
+    loadFile, handleSave, reloadFileFromDisk,
     handleOpenFolder,
     isModified,
     tabs, setTabs: () => {}, activeTabIndex, switchTab, closeTab, updateTabContent,

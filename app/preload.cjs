@@ -41,6 +41,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   clearCache: () => ipcRenderer.invoke('clearCache'),
   prefetchDeck: (relPath) => ipcRenderer.invoke('prefetchDeck', relPath),
   pickFile: (options) => ipcRenderer.invoke('pickFile', options),
+  writeBinaryToPath: (args) => ipcRenderer.invoke('writeBinaryToPath', args),
   getSnipets: (dirs) => ipcRenderer.invoke('getSnipets', dirs),
   getTemplates: (dirs) => ipcRenderer.invoke('getTemplates', dirs),
   getTemplateContent: (path) => ipcRenderer.invoke('getTemplateContent', path),

@@ -72,26 +72,26 @@ Learn more
   <style><![CDATA[
     .mdp-mod-button {
       display: inline-block;
-      padding: 8px 18px;
+      padding: calc(8 * var(--mdp-px, 1px)) calc(18 * var(--mdp-px, 1px));
       color: #ffffff !important;
       font-weight: 600;
       font-size: 0.95em;
       line-height: 1.2;
       text-decoration: none !important;
-      border-radius: var(--btn-r, var(--radius-sm, 6px));
-      box-shadow: var(--shadow-sm, 0 2px 6px rgba(0,0,0,0.18));
+      border-radius: var(--btn-r, var(--radius-sm, calc(6 * var(--mdp-px, 1px))));
+      box-shadow: var(--shadow-sm, 0 calc(2 * var(--mdp-px, 1px)) calc(6 * var(--mdp-px, 1px)) rgba(0,0,0,0.18));
       vertical-align: middle;
     }
     .mdp-mod-button:hover {
       filter: brightness(0.92);
     }
-    .mdp-btn-sm { padding: 5px 12px; font-size: 0.82em; }
-    .mdp-btn-md { padding: 8px 18px; font-size: 0.95em; }
-    .mdp-btn-lg { padding: 11px 24px; font-size: 1.1em; }
+    .mdp-btn-sm { padding: calc(5 * var(--mdp-px, 1px)) calc(12 * var(--mdp-px, 1px)); font-size: 0.82em; }
+    .mdp-btn-md { padding: calc(8 * var(--mdp-px, 1px)) calc(18 * var(--mdp-px, 1px)); font-size: 0.95em; }
+    .mdp-btn-lg { padding: calc(11 * var(--mdp-px, 1px)) calc(24 * var(--mdp-px, 1px)); font-size: 1.1em; }
     .mdp-mod-button.mdp-btn-outline {
       background-color: transparent !important;
       color: var(--btn-c) !important;
-      border: 2px solid var(--btn-c);
+      border: calc(2 * var(--mdp-px, 1px)) solid var(--btn-c);
       box-shadow: none;
     }
   ]]></style>

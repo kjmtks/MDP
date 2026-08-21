@@ -71,11 +71,11 @@ Act
     return `\n\n<div class="mdp-mod-cycle" style="--cy-color:${color}; width: min(100%, ${width});"><div class="mdp-cy-ring"></div>${center}${nodes}</div>\n\n`;
   ]]></render>
   <style><![CDATA[
-    .mdp-mod-cycle { position: relative; width: min(100%, 440px); aspect-ratio: 1 / 1; margin: 1rem auto; }
-    .mdp-cy-ring { position: absolute; inset: 16%; border: 2px dashed var(--cy-color); border-radius: 50%; opacity: 0.5; }
+    .mdp-mod-cycle { position: relative; width: min(100%, calc(440 * var(--mdp-px, 1px))); aspect-ratio: 1 / 1; margin: calc(1 * var(--mdp-u, 1rem)) auto; }
+    .mdp-cy-ring { position: absolute; inset: 16%; border: calc(2 * var(--mdp-px, 1px)) dashed var(--cy-color); border-radius: 50%; opacity: 0.5; }
     .mdp-cy-node { position: absolute; transform: translate(-50%, -50%); }
     .mdp-cy-inner {
-      border: 2px solid var(--cy-color); border-radius: 8px; padding: 6px 10px;
+      border: calc(2 * var(--mdp-px, 1px)) solid var(--cy-color); border-radius: calc(8 * var(--mdp-px, 1px)); padding: calc(6 * var(--mdp-px, 1px)) calc(10 * var(--mdp-px, 1px));
       background: color-mix(in srgb, var(--cy-color) 8%, var(--panel-bg, #fff));
       text-align: center; max-width: 9em; font-size: 0.9em;
     }

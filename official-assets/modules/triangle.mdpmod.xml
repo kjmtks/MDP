@@ -86,12 +86,12 @@ Params:
     return `\n\n<div class="${cls}" style="--tr-c:${color}; --tr-sw:${strokeW}; --tr-mw:${maxW};"><svg viewBox="-6 -6 112 112" preserveAspectRatio="xMidYMid meet">${svg}</svg></div>\n\n`;
   ]]></render>
   <style><![CDATA[
-    .mdp-mod-triangle { width: min(100%, var(--tr-mw, 340px)); margin: 1rem auto; }
+    .mdp-mod-triangle { width: min(100%, var(--tr-mw, calc(340 * var(--mdp-px, 1px)))); margin: calc(1 * var(--mdp-u, 1rem)) auto; }
     .mdp-mod-triangle svg { width: 100%; height: auto; overflow: visible; }
     .mdp-tr-shape { fill: color-mix(in srgb, var(--tr-c) 10%, transparent); stroke: var(--tr-c); stroke-width: var(--tr-sw, 1.2); stroke-linejoin: round; }
     .mdp-tr-nofill .mdp-tr-shape { fill: none; }
-    .mdp-tr-vertex { fill: currentColor; font-size: 6px; font-weight: 700; }
-    .mdp-tr-side { fill: currentColor; font-size: 5.5px; }
+    .mdp-tr-vertex { fill: currentColor; font-size: calc(6 * var(--mdp-px, 1px)); font-weight: 700; }
+    .mdp-tr-side { fill: currentColor; font-size: calc(5.5 * var(--mdp-px, 1px)); }
     .mdp-tr-right, .mdp-tr-arc { fill: none; stroke: currentColor; stroke-width: 0.8; }
   ]]></style>
 </module>

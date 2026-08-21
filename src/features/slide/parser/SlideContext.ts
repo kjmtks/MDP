@@ -20,6 +20,8 @@ export interface MotionSpec {
 export interface SlideContext {
   numberOfPages: number;
   aspectRatio: [number, number];
+  /** Explicit canvas size in CSS px from @resolution (width optional -> derived from the aspect). */
+  resolution?: { width?: number; height: number };
   meta: SlideContextMeta;
   themeName?: string;
   cssPath?: string;

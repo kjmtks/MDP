@@ -96,11 +96,11 @@ Edge: 5
     return html;
   ]]></render>
   <style><![CDATA[
-    .mdp-mod-barchart { margin: 1rem 0; display: flex; flex-direction: column; gap: 8px; }
-    .mdp-bc-row { display: grid; grid-template-columns: minmax(4em, auto) 1fr auto; align-items: center; gap: 10px; }
+    .mdp-mod-barchart { margin: calc(1 * var(--mdp-u, 1rem)) 0; display: flex; flex-direction: column; gap: calc(8 * var(--mdp-px, 1px)); }
+    .mdp-bc-row { display: grid; grid-template-columns: minmax(4em, auto) 1fr auto; align-items: center; gap: calc(10 * var(--mdp-px, 1px)); }
     .mdp-bc-label { text-align: right; font-weight: 600; }
-    .mdp-bc-track { background: color-mix(in srgb, var(--bc-color) 12%, transparent); border-radius: var(--bc-r, 5px); height: var(--bc-h, 1.4em); overflow: hidden; }
-    .mdp-bc-bar { display: block; height: 100%; background: var(--bc-color); border-radius: var(--bc-r, 5px); min-width: 2px; }
+    .mdp-bc-track { background: color-mix(in srgb, var(--bc-color) 12%, transparent); border-radius: var(--bc-r, calc(5 * var(--mdp-px, 1px))); height: var(--bc-h, 1.4em); overflow: hidden; }
+    .mdp-bc-bar { display: block; height: 100%; background: var(--bc-color); border-radius: var(--bc-r, calc(5 * var(--mdp-px, 1px))); min-width: calc(2 * var(--mdp-px, 1px)); }
     .mdp-bc-val { font-variant-numeric: tabular-nums; color: var(--bc-color); font-weight: 700; }
   ]]></style>
 </module>

@@ -86,10 +86,10 @@ C | 0.2 | 0.5 | 1
     return html;
   ]]></render>
   <style><![CDATA[
-    .mdp-mod-heatmap { display: inline-grid; gap: 3px; margin: 1rem 0; }
-    .mdp-hm-cell { min-width: 44px; padding: 8px 10px; text-align: center; border-radius: 4px; font-variant-numeric: tabular-nums; font-weight: 600; }
+    .mdp-mod-heatmap { display: inline-grid; gap: calc(3 * var(--mdp-px, 1px)); margin: calc(1 * var(--mdp-u, 1rem)) 0; }
+    .mdp-hm-cell { min-width: calc(44 * var(--mdp-px, 1px)); padding: calc(8 * var(--mdp-px, 1px)) calc(10 * var(--mdp-px, 1px)); text-align: center; border-radius: calc(4 * var(--mdp-px, 1px)); font-variant-numeric: tabular-nums; font-weight: 600; }
     .mdp-hm-empty { background: transparent; color: var(--app-text-muted, #888); }
-    .mdp-hm-head, .mdp-hm-rowlabel { display: flex; align-items: center; justify-content: center; font-weight: 700; color: var(--app-text-muted, #888); padding: 4px 8px; }
+    .mdp-hm-head, .mdp-hm-rowlabel { display: flex; align-items: center; justify-content: center; font-weight: 700; color: var(--app-text-muted, #888); padding: calc(4 * var(--mdp-px, 1px)) calc(8 * var(--mdp-px, 1px)); }
     .mdp-hm-corner { background: transparent; }
   ]]></style>
 </module>

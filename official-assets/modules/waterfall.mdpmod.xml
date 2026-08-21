@@ -89,16 +89,16 @@ Tax | -8
     return html;
   ]]></render>
   <style><![CDATA[
-    .mdp-mod-waterfall { margin: 1rem 0; }
-    .mdp-wf-plot { display: flex; gap: 10px; height: var(--wf-h, 210px); align-items: stretch; border-bottom: 2px solid currentColor; padding-bottom: 0; }
+    .mdp-mod-waterfall { margin: calc(1 * var(--mdp-u, 1rem)) 0; }
+    .mdp-wf-plot { display: flex; gap: calc(10 * var(--mdp-px, 1px)); height: var(--wf-h, calc(210 * var(--mdp-px, 1px))); align-items: stretch; border-bottom: calc(2 * var(--mdp-px, 1px)) solid currentColor; padding-bottom: 0; }
     .mdp-wf-col { flex: 1; position: relative; }
-    .mdp-wf-bar { position: absolute; left: 8%; right: 8%; border-radius: 4px; }
-    .mdp-wf-base { background: color-mix(in srgb, var(--accent-color) 60%, transparent); border: 1px solid var(--accent-color); }
-    .mdp-wf-up { background: color-mix(in srgb, var(--wf-up, #22c55e) 55%, transparent); border: 1px solid var(--wf-up-b, #16a34a); }
-    .mdp-wf-down { background: color-mix(in srgb, var(--wf-down, #ef4444) 50%, transparent); border: 1px solid var(--wf-down-b, #dc2626); }
+    .mdp-wf-bar { position: absolute; left: 8%; right: 8%; border-radius: calc(4 * var(--mdp-px, 1px)); }
+    .mdp-wf-base { background: color-mix(in srgb, var(--accent-color) 60%, transparent); border: calc(1 * var(--mdp-px, 1px)) solid var(--accent-color); }
+    .mdp-wf-up { background: color-mix(in srgb, var(--wf-up, #22c55e) 55%, transparent); border: calc(1 * var(--mdp-px, 1px)) solid var(--wf-up-b, #16a34a); }
+    .mdp-wf-down { background: color-mix(in srgb, var(--wf-down, #ef4444) 50%, transparent); border: calc(1 * var(--mdp-px, 1px)) solid var(--wf-down-b, #dc2626); }
     .mdp-wf-novalues .mdp-wf-val { display: none; }
     .mdp-wf-val { position: absolute; top: -20px; left: 50%; transform: translateX(-50%); font-size: 0.78em; font-weight: 700; white-space: nowrap; }
     .mdp-wf-lbl { position: absolute; bottom: -24px; left: 50%; transform: translateX(-50%); font-size: 0.8em; color: var(--app-text-muted, #888); white-space: nowrap; }
-    .mdp-mod-waterfall::after { content: ''; display: block; height: 28px; }
+    .mdp-mod-waterfall::after { content: ''; display: block; height: calc(28 * var(--mdp-px, 1px)); }
   ]]></style>
 </module>

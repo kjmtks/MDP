@@ -80,19 +80,19 @@ CONFIDENTIAL
       font-weight: 900;
       letter-spacing: 0.1em;
       line-height: 1.2;
-      padding: 2px 12px;
-      border-radius: 4px;
+      padding: calc(2 * var(--mdp-px, 1px)) calc(12 * var(--mdp-px, 1px));
+      border-radius: calc(4 * var(--mdp-px, 1px));
       vertical-align: middle;
     }
-    .mdp-mod-stamp.st-sm { font-size: 0.8em; padding: 1px 8px; letter-spacing: 0.08em; }
-    .mdp-mod-stamp.st-lg { font-size: 1.25em; padding: 3px 16px; }
+    .mdp-mod-stamp.st-sm { font-size: 0.8em; padding: calc(1 * var(--mdp-px, 1px)) calc(8 * var(--mdp-px, 1px)); letter-spacing: 0.08em; }
+    .mdp-mod-stamp.st-lg { font-size: 1.25em; padding: calc(3 * var(--mdp-px, 1px)) calc(16 * var(--mdp-px, 1px)); }
     .mdp-mod-stamp.is-upper { text-transform: uppercase; }
     /* Classic double-bordered badge (the former built-in header look). */
     .mdp-stamp--double {
       color: var(--stamp-color);
-      border: 4px double var(--stamp-color);
+      border: calc(4 * var(--mdp-px, 1px)) double var(--stamp-color);
       background-color: var(--bg-color);
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      box-shadow: 0 calc(2 * var(--mdp-px, 1px)) calc(4 * var(--mdp-px, 1px)) rgba(0, 0, 0, 0.1);
     }
     .mdp-stamp--solid {
       color: #ffffff;
@@ -100,7 +100,7 @@ CONFIDENTIAL
     }
     .mdp-stamp--outline {
       color: var(--stamp-color);
-      border: 2px solid var(--stamp-color);
+      border: calc(2 * var(--mdp-px, 1px)) solid var(--stamp-color);
     }
     .mdp-stamp--plain {
       color: var(--stamp-color);

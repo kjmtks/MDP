@@ -206,6 +206,14 @@ export const slideRenderer = (context: SlideContext, baseUrl: string = "", lastU
     const internal = /^#/.test(url) || /\.slide\.md(#[^\s)]+)?$/i.test(url);
     if (internal) {
       const target = url.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+      // EMPTY link text = a page REFERENCE: `[](#intro)` prints the page number
+      // shown bottom-right on the slide carrying `<!-- @id intro -->`. The number
+      // is not known yet (it depends on which slides are hidden/cover, i.e. on the
+      // whole deck), so emit a placeholder that useSlideProcessor fills in once
+      // every slide has been numbered.
+      if (!text.trim()) {
+        return `<a href="#" class="mdp-slide-link mdp-interactive mdp-pageref" data-mdp-target="${target}"${titleAttr}>?</a>`;
+      }
       return `<a href="#" class="mdp-slide-link mdp-interactive" data-mdp-target="${target}"${titleAttr}>${text}</a>`;
     }
     return `<a href="${url.replace(/"/g, '&quot;')}" target="_blank" rel="noopener noreferrer"${titleAttr}>${text}</a>`;

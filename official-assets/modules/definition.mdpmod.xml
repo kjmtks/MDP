@@ -59,12 +59,12 @@ A lightweight markup language for creating formatted text using a plain-text edi
 
   <style><![CDATA[
     .mdp-mod-definition {
-      margin: 1rem 0;
+      margin: calc(1 * var(--mdp-u, 1rem)) 0;
     }
     .mdp-mod-definition.mdp-def-boxed {
-      padding: 0.8rem 1rem;
+      padding: calc(0.8 * var(--mdp-u, 1rem)) calc(1 * var(--mdp-u, 1rem));
       background: color-mix(in srgb, var(--def-color, var(--accent-color)) 6%, transparent);
-      border-radius: 8px;
+      border-radius: calc(8 * var(--mdp-px, 1px));
     }
     .mdp-mod-definition .definition-term {
       font-weight: 700;
@@ -73,9 +73,9 @@ A lightweight markup language for creating formatted text using a plain-text edi
     .mdp-mod-definition .definition-term > :first-child { margin-top: 0; }
     .mdp-mod-definition .definition-term > :last-child { margin-bottom: 0; }
     .mdp-mod-definition .definition-body {
-      margin-top: 0.35rem;
-      padding-left: 1rem;
-      border-left: 3px solid;
+      margin-top: calc(0.35 * var(--mdp-u, 1rem));
+      padding-left: calc(1 * var(--mdp-u, 1rem));
+      border-left: calc(3 * var(--mdp-px, 1px)) solid;
       color: var(--text-color, #374151);
       font-size: 0.95em;
     }

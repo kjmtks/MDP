@@ -61,7 +61,7 @@ Example:
 
   <style><![CDATA[
     .mdp-mod-checklist {
-      margin: 1rem 0;
+      margin: calc(1 * var(--mdp-u, 1rem)) 0;
     }
     .mdp-mod-checklist ul {
       list-style: none;
@@ -86,7 +86,7 @@ Example:
       font-weight: 700;
       color: #ffffff;
       background-color: var(--checklist-mark, var(--accent-color, #3b82f6));
-      border-radius: var(--checklist-radius, 4px);
+      border-radius: var(--checklist-radius, calc(4 * var(--mdp-px, 1px)));
       font-size: 0.85em;
     }
   ]]></style>

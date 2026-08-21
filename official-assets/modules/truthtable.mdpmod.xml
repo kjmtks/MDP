@@ -77,9 +77,9 @@ F | F | T
     return html;
   ]]></render>
   <style><![CDATA[
-    .mdp-mod-truthtable { display: inline-grid; gap: 0; margin: 1rem 0; border: 1px solid color-mix(in srgb, var(--tt-color) 30%, transparent); border-radius: 6px; overflow: hidden; }
-    .mdp-tt-cell { padding: 6px 16px; text-align: var(--tt-align, center); border-right: 1px solid color-mix(in srgb, var(--tt-color) 15%, transparent); border-bottom: 1px solid color-mix(in srgb, var(--tt-color) 15%, transparent); }
-    .mdp-tt-compact .mdp-tt-cell { padding: 3px 8px; }
+    .mdp-mod-truthtable { display: inline-grid; gap: 0; margin: calc(1 * var(--mdp-u, 1rem)) 0; border: calc(1 * var(--mdp-px, 1px)) solid color-mix(in srgb, var(--tt-color) 30%, transparent); border-radius: calc(6 * var(--mdp-px, 1px)); overflow: hidden; }
+    .mdp-tt-cell { padding: calc(6 * var(--mdp-px, 1px)) calc(16 * var(--mdp-px, 1px)); text-align: var(--tt-align, center); border-right: calc(1 * var(--mdp-px, 1px)) solid color-mix(in srgb, var(--tt-color) 15%, transparent); border-bottom: calc(1 * var(--mdp-px, 1px)) solid color-mix(in srgb, var(--tt-color) 15%, transparent); }
+    .mdp-tt-compact .mdp-tt-cell { padding: calc(3 * var(--mdp-px, 1px)) calc(8 * var(--mdp-px, 1px)); }
     .mdp-tt-cell > :first-child { margin: 0; }
     .mdp-tt-head { background: var(--tt-color); color: #fff; font-weight: 700; }
     .mdp-tt-t { color: var(--tt-true, #16a34a); font-weight: 700; background: color-mix(in srgb, #22c55e 10%, transparent); }

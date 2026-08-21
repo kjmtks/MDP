@@ -74,17 +74,17 @@ Example:
     return html;
   ]]></render>
   <style><![CDATA[
-    .mdp-mod-confusionmatrix { display: inline-block; margin: 1rem 0; }
-    .mdp-cm-title { font-weight: 700; text-align: center; margin-bottom: 8px; }
-    .mdp-cm-grid { display: grid; grid-template-columns: auto auto auto auto; gap: 4px; align-items: stretch; grid-template-areas: "corner corner axisx axisx" "corner corner colp coln" "axisy rowp tp fn" "axisy rown fp tn"; }
+    .mdp-mod-confusionmatrix { display: inline-block; margin: calc(1 * var(--mdp-u, 1rem)) 0; }
+    .mdp-cm-title { font-weight: 700; text-align: center; margin-bottom: calc(8 * var(--mdp-px, 1px)); }
+    .mdp-cm-grid { display: grid; grid-template-columns: auto auto auto auto; gap: calc(4 * var(--mdp-px, 1px)); align-items: stretch; grid-template-areas: "corner corner axisx axisx" "corner corner colp coln" "axisy rowp tp fn" "axisy rown fp tn"; }
     .mdp-cm-axis { text-align: center; font-weight: 700; color: var(--app-text-muted, #888); font-size: 0.85em; letter-spacing: 0.04em; }
     .mdp-cm-axis-y { display: flex; align-items: center; justify-content: center; }
     .mdp-cm-axis-y span { writing-mode: vertical-rl; transform: rotate(180deg); }
-    .mdp-cm-col, .mdp-cm-row { display: flex; align-items: center; justify-content: center; font-weight: 600; padding: 4px 8px; }
-    .mdp-cm-cell { min-width: 72px; min-height: 56px; display: flex; align-items: center; justify-content: center; font-size: 1.4em; font-weight: 800; border-radius: 8px; }
-    .mdp-cm-cell.ok { background: color-mix(in srgb, var(--cm-ok, #22c55e) 18%, transparent); color: #16a34a; border: 1px solid color-mix(in srgb, var(--cm-ok, #22c55e) 40%, transparent); }
-    .mdp-cm-cell.err { background: color-mix(in srgb, var(--cm-err, #ef4444) 15%, transparent); color: #dc2626; border: 1px solid color-mix(in srgb, var(--cm-err, #ef4444) 35%, transparent); }
-    .mdp-cm-metrics { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 10px; font-size: 0.9em; }
-    .mdp-cm-metrics b { color: var(--app-text-muted, #888); font-weight: 600; margin-right: 4px; }
+    .mdp-cm-col, .mdp-cm-row { display: flex; align-items: center; justify-content: center; font-weight: 600; padding: calc(4 * var(--mdp-px, 1px)) calc(8 * var(--mdp-px, 1px)); }
+    .mdp-cm-cell { min-width: calc(72 * var(--mdp-px, 1px)); min-height: calc(56 * var(--mdp-px, 1px)); display: flex; align-items: center; justify-content: center; font-size: 1.4em; font-weight: 800; border-radius: calc(8 * var(--mdp-px, 1px)); }
+    .mdp-cm-cell.ok { background: color-mix(in srgb, var(--cm-ok, #22c55e) 18%, transparent); color: #16a34a; border: calc(1 * var(--mdp-px, 1px)) solid color-mix(in srgb, var(--cm-ok, #22c55e) 40%, transparent); }
+    .mdp-cm-cell.err { background: color-mix(in srgb, var(--cm-err, #ef4444) 15%, transparent); color: #dc2626; border: calc(1 * var(--mdp-px, 1px)) solid color-mix(in srgb, var(--cm-err, #ef4444) 35%, transparent); }
+    .mdp-cm-metrics { display: flex; flex-wrap: wrap; gap: calc(6 * var(--mdp-px, 1px)) calc(18 * var(--mdp-px, 1px)); margin-top: calc(10 * var(--mdp-px, 1px)); font-size: 0.9em; }
+    .mdp-cm-metrics b { color: var(--app-text-muted, #888); font-weight: 600; margin-right: calc(4 * var(--mdp-px, 1px)); }
   ]]></style>
 </module>

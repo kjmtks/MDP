@@ -60,7 +60,7 @@ Example:
     return html;
   ]]></render>
   <style><![CDATA[
-    .mdp-mod-derivation { margin: 1rem 0; display: grid; grid-template-columns: 1fr auto; gap: 6px 22px; align-items: baseline; }
+    .mdp-mod-derivation { margin: calc(1 * var(--mdp-u, 1rem)) 0; display: grid; grid-template-columns: 1fr auto; gap: calc(6 * var(--mdp-px, 1px)) calc(22 * var(--mdp-px, 1px)); align-items: baseline; }
     .mdp-dv-row { display: contents; }
     .mdp-dv-expr { }
     .mdp-dv-expr > :first-child { margin: 0; display: inline; }

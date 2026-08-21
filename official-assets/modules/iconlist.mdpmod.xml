@@ -72,8 +72,8 @@ No CDN required.
     return html;
   ]]></render>
   <style><![CDATA[
-    .mdp-mod-iconlist { display: grid; gap: 14px 20px; margin: 1rem 0; }
-    .mdp-il-item { display: flex; gap: 12px; align-items: var(--il-valign, flex-start); }
+    .mdp-mod-iconlist { display: grid; gap: calc(14 * var(--mdp-px, 1px)) calc(20 * var(--mdp-px, 1px)); margin: calc(1 * var(--mdp-u, 1rem)) 0; }
+    .mdp-il-item { display: flex; gap: calc(12 * var(--mdp-px, 1px)); align-items: var(--il-valign, flex-start); }
     .mdp-il-icon { font-size: var(--il-icon-size, 1.6em); line-height: 1.2; flex: 0 0 auto; }
     .mdp-il-text { min-width: 0; }
     .mdp-il-text > :first-child { margin-top: 0; color: var(--il-color); }

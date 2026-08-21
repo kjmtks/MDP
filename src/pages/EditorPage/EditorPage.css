@@ -184,9 +184,11 @@
     position: absolute; top: 0; left: 0; width: 100%; height: auto;
     background-color: white; z-index: 9999;
   }
-  .print-slide-content {
-    width: 100% !important;
-    height: auto !important;
-  }
-  @page { size: landscape; margin: 0; }
+  /* The page size and the slide box are emitted PER DECK by PrintContainer,
+   * which is the only place that knows the deck's @aspect. Nothing here may
+   * restate them: a hard-coded `@page { size: landscape }` overrides the deck's
+   * real page size (fatal for a portrait poster), and `height: auto` on
+   * .print-slide-content fights PrintContainer's `height: 100%` — both resolve
+   * only by document order, which is why the exported PDF came out slightly
+   * the wrong height. */
 }

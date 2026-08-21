@@ -64,6 +64,7 @@ import { useBookmarks } from './hooks/useBookmarks';
 import { useCatalogSync } from '../../features/catalog/hooks/useCatalogSync';
 import { syncOfficialCatalog } from '../../features/catalog/syncService';
 import { useSlideRasterizer } from '../../features/remote/capture/useSlideRasterizer';
+import { useImageExport } from '../../features/export/useImageExport';
 import { usePptxExport, type PptxMode } from '../../features/export/usePptxExport';
 import { DockProvider } from './dock/DockProvider';
 import type { SidebarSharedProps, PreviewSharedProps, SnippetsShared, ImagesShared, HeaderActions, EditorSharedProps } from './dock/DockContext';
@@ -125,7 +126,7 @@ export default function EditorPage() {
     fileTree, fetchFileTree, handleManualRefresh, loadLinkChildren, reloadSlides,
     lastUpdated, currentFileName, currentFileType,
     setTemplateContent, markdownRef, isLoadingFile,
-    loadFile, handleSave, handleOpenFolder, isModified,
+    loadFile, handleSave, reloadFileFromDisk, handleOpenFolder, isModified,
     tabs, activeTabIndex, closeTab, switchTab, updateTabContent,
     renameTab, closeTabsByPaths, reorderTabs, closeOtherTabs, closeAllTabs,
     persistDrafts, clearDrafts
@@ -987,6 +988,10 @@ export default function EditorPage() {
     slides, slideSize, basePath, themeCssUrl, title: pptxTitle, rasterize, onSaved: () => fetchFileTree(),
   });
 
+  const { exportImages, exporting: imageExporting } = useImageExport({
+    slides, slideSize, basePath, themeCssUrl, deckPath: currentFileName, rasterize, onSaved: () => fetchFileTree(),
+  });
+
   const [remoteActive, setRemoteActive] = useState(false);
   const [remotePort, setRemotePort] = useState<number | null>(null);
   const [remoteIps, setRemoteIps] = useState<{ name: string; address: string }[]>([]);
@@ -1838,12 +1843,15 @@ export default function EditorPage() {
     onToggleSlideshow: toggleSlideshow,
     onPrint: handlePrint,
     onExportPptx: (mode: PptxMode) => { void exportPptx(mode); },
+    onExportImages: () => { void exportImages(); },
+    imagesBusy: !!imageExporting,
     pptxBusy: !!pptxExporting,
     onToggleOverview: toggleSlideOverview,
     isSlideOverview,
     canPresent: slides.length > 0,
   }), [handleOpenFolderWithFlag, handleManualSync, handleSwitchToRemote, openConnectDialog,
-    openPresenterTool, openSuggestModule, toggleSlideshow, handlePrint, exportPptx, pptxExporting, toggleSlideOverview, isSlideOverview, slides.length]);
+    openPresenterTool, openSuggestModule, toggleSlideshow, handlePrint, exportPptx, pptxExporting,
+    exportImages, imageExporting, toggleSlideOverview, isSlideOverview, slides.length]);
 
   const editorSlice: EditorSharedProps = {
     tabs, activeTabIndex, currentFileName, effectiveFileType, markdown, lastUpdated,
@@ -1987,6 +1995,7 @@ export default function EditorPage() {
           slides, slideSize, basePath, themeCssUrl, scopeDirs, aiNotes: scopeAiNotes, styleProfile: scopeStyleProfile,
           assetWritePolicy: appSettings.mcpAssetWrite,
           loadFile, handleInsertText, tabs, updateTabContent,
+          saveActiveFile: handleSave, reloadFileFromDisk,
           onRefreshTree: handleManualRefresh,
         }} />
       )}

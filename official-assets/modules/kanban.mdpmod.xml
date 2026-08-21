@@ -72,17 +72,17 @@ Done
     return html;
   ]]></render>
   <style><![CDATA[
-    .mdp-mod-kanban { margin: 1rem 0; display: flex; gap: 12px; align-items: flex-start; overflow-x: auto; }
-    .mdp-kb-col { flex: 1 1 0; min-width: 8em; background: color-mix(in srgb, var(--kb-color) 6%, transparent); border-radius: 8px; padding: 8px; }
-    .mdp-kb-title { font-weight: 700; color: var(--kb-color); text-align: var(--kb-align, center); padding: 4px; border-bottom: 2px solid var(--kb-color); margin-bottom: 8px; }
-    .mdp-kb-cards ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+    .mdp-mod-kanban { margin: calc(1 * var(--mdp-u, 1rem)) 0; display: flex; gap: calc(12 * var(--mdp-px, 1px)); align-items: flex-start; overflow-x: auto; }
+    .mdp-kb-col { flex: 1 1 0; min-width: 8em; background: color-mix(in srgb, var(--kb-color) 6%, transparent); border-radius: calc(8 * var(--mdp-px, 1px)); padding: calc(8 * var(--mdp-px, 1px)); }
+    .mdp-kb-title { font-weight: 700; color: var(--kb-color); text-align: var(--kb-align, center); padding: calc(4 * var(--mdp-px, 1px)); border-bottom: calc(2 * var(--mdp-px, 1px)) solid var(--kb-color); margin-bottom: calc(8 * var(--mdp-px, 1px)); }
+    .mdp-kb-cards ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: calc(6 * var(--mdp-px, 1px)); }
     .mdp-kb-cards li {
-      background: var(--panel-bg, rgba(255,255,255,0.9)); border: 1px solid color-mix(in srgb, var(--kb-color) 25%, transparent);
-      border-radius: 6px; padding: 6px 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.12); font-size: 0.9em;
+      background: var(--panel-bg, rgba(255,255,255,0.9)); border: calc(1 * var(--mdp-px, 1px)) solid color-mix(in srgb, var(--kb-color) 25%, transparent);
+      border-radius: calc(6 * var(--mdp-px, 1px)); padding: calc(6 * var(--mdp-px, 1px)) calc(8 * var(--mdp-px, 1px)); box-shadow: 0 calc(1 * var(--mdp-px, 1px)) calc(3 * var(--mdp-px, 1px)) rgba(0,0,0,0.12); font-size: 0.9em;
     }
     .mdp-kb-cards > :first-child { margin-top: 0; } .mdp-kb-cards > :last-child { margin-bottom: 0; }
-    .mdp-mod-kanban.mdp-kb-compact .mdp-kb-col { padding: 5px; min-width: 6.5em; }
-    .mdp-mod-kanban.mdp-kb-compact .mdp-kb-cards li { padding: 4px 6px; font-size: 0.8em; }
-    .mdp-mod-kanban.mdp-kb-compact .mdp-kb-cards ul { gap: 4px; }
+    .mdp-mod-kanban.mdp-kb-compact .mdp-kb-col { padding: calc(5 * var(--mdp-px, 1px)); min-width: 6.5em; }
+    .mdp-mod-kanban.mdp-kb-compact .mdp-kb-cards li { padding: calc(4 * var(--mdp-px, 1px)) calc(6 * var(--mdp-px, 1px)); font-size: 0.8em; }
+    .mdp-mod-kanban.mdp-kb-compact .mdp-kb-cards ul { gap: calc(4 * var(--mdp-px, 1px)); }
   ]]></style>
 </module>

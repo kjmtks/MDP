@@ -77,24 +77,24 @@ Example:
     return html;
   ]]></render>
   <style><![CDATA[
-    .mdp-mod-steps { margin: 1rem 0; }
-    .mdp-step { display: flex; gap: 14px; position: relative; padding-bottom: 16px; }
+    .mdp-mod-steps { margin: calc(1 * var(--mdp-u, 1rem)) 0; }
+    .mdp-step { display: flex; gap: calc(14 * var(--mdp-px, 1px)); position: relative; padding-bottom: calc(16 * var(--mdp-px, 1px)); }
     .mdp-step::before {
-      content: ''; position: absolute; left: calc(var(--st-num, 34px) / 2 - 1px); top: var(--st-num, 34px); bottom: -2px;
-      width: 2px; background: var(--st-color); opacity: 0.4;
+      content: ''; position: absolute; left: calc(var(--st-num, calc(34 * var(--mdp-px, 1px))) / 2 - calc(1 * var(--mdp-px, 1px))); top: var(--st-num, calc(34 * var(--mdp-px, 1px))); bottom: -2px;
+      width: calc(2 * var(--mdp-px, 1px)); background: var(--st-color); opacity: 0.4;
     }
     .mdp-step:last-child::before { display: none; }
     .mdp-mod-steps.no-line .mdp-step::before { display: none; }
     .mdp-step-num {
-      flex: 0 0 auto; width: var(--st-num, 34px); height: var(--st-num, 34px); border-radius: 50%;
+      flex: 0 0 auto; width: var(--st-num, calc(34 * var(--mdp-px, 1px))); height: var(--st-num, calc(34 * var(--mdp-px, 1px))); border-radius: 50%;
       display: flex; align-items: center; justify-content: center;
-      font-weight: bold; border: 2px solid var(--st-color); color: var(--st-color);
+      font-weight: bold; border: calc(2 * var(--mdp-px, 1px)) solid var(--st-color); color: var(--st-color);
       background: var(--panel-bg, rgba(255,255,255,0.9)); z-index: 1;
     }
     .mdp-step.is-active .mdp-step-num { background: var(--st-color); color: #fff; }
-    .mdp-step-body { padding-top: 4px; min-width: 0; text-align: var(--st-body-align, left); }
+    .mdp-step-body { padding-top: calc(4 * var(--mdp-px, 1px)); min-width: 0; text-align: var(--st-body-align, left); }
     .mdp-step-body > :first-child { margin-top: 0; }
     .mdp-step-body > :last-child { margin-bottom: 0; }
-    .mdp-mod-steps.is-compact .mdp-step { padding-bottom: 8px; gap: 10px; }
+    .mdp-mod-steps.is-compact .mdp-step { padding-bottom: calc(8 * var(--mdp-px, 1px)); gap: calc(10 * var(--mdp-px, 1px)); }
   ]]></style>
 </module>

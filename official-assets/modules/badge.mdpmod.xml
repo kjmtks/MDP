@@ -68,15 +68,15 @@ Beta
 
   <style><![CDATA[
     .mdp-mod-badge {
-      padding: 2px 8px;
-      border-radius: 9999px;
+      padding: calc(2 * var(--mdp-px, 1px)) calc(8 * var(--mdp-px, 1px));
+      border-radius: calc(9999 * var(--mdp-px, 1px));
       font-weight: 600;
       display: inline-block;
       line-height: 1.2;
     }
-    .mdp-badge-sm { font-size: 0.72em; padding: 1px 7px; }
+    .mdp-badge-sm { font-size: 0.72em; padding: calc(1 * var(--mdp-px, 1px)) calc(7 * var(--mdp-px, 1px)); }
     .mdp-badge-md { font-size: 0.85em; }
-    .mdp-badge-lg { font-size: 1em; padding: 3px 11px; }
+    .mdp-badge-lg { font-size: 1em; padding: calc(3 * var(--mdp-px, 1px)) calc(11 * var(--mdp-px, 1px)); }
   ]]></style>
 
   <script></script>

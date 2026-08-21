@@ -66,17 +66,17 @@ ${source ? `<div class="mdp-quote-source">${esc(source)}</div>` : ''}
   <style><![CDATA[
     .mdp-mod-quote {
       position: relative;
-      margin: 1rem 2rem;
+      margin: calc(1 * var(--mdp-u, 1rem)) calc(2 * var(--mdp-u, 1rem));
       padding: 1.5em 2em;
       background: var(--quote-bg, #f4f6f7);
-      border-left: 4px solid var(--quote-accent, var(--accent-color));
-      border-radius: 4px 8px 8px 4px;
+      border-left: calc(4 * var(--mdp-px, 1px)) solid var(--quote-accent, var(--accent-color));
+      border-radius: calc(4 * var(--mdp-px, 1px)) calc(8 * var(--mdp-px, 1px)) calc(8 * var(--mdp-px, 1px)) calc(4 * var(--mdp-px, 1px));
       font-style: italic;
     }
     .mdp-quote-icon {
       position: absolute;
       top: -10px;
-      left: 10px;
+      left: calc(10 * var(--mdp-px, 1px));
       font-size: 6em;
       color: rgba(0,0,0,0.05);
       line-height: 1;

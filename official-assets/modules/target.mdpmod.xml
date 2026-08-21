@@ -59,9 +59,9 @@ Market
     return html;
   ]]></render>
   <style><![CDATA[
-    .mdp-mod-target { display: flex; justify-content: center; margin: 1.2rem 0; }
-    .mdp-tg-stack { position: relative; width: min(90vw, 380px); aspect-ratio: 1; }
-    .mdp-tg-ring { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); border-radius: 50%; border: 1.5px solid color-mix(in srgb, var(--tg-c) 50%, transparent); }
+    .mdp-mod-target { display: flex; justify-content: center; margin: calc(1.2 * var(--mdp-u, 1rem)) 0; }
+    .mdp-tg-stack { position: relative; width: min(90vw, calc(380 * var(--mdp-px, 1px))); aspect-ratio: 1; }
+    .mdp-tg-ring { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); border-radius: 50%; border: calc(1.5 * var(--mdp-px, 1px)) solid color-mix(in srgb, var(--tg-c) 50%, transparent); }
     .mdp-tg-label { position: absolute; top: 4%; left: 50%; transform: translateX(-50%); font-weight: 700; font-size: 0.9em; white-space: nowrap; text-align: center; }
     .mdp-tg-label > :first-child { margin: 0; }
     .mdp-tg-core { top: 50%; transform: translate(-50%, -50%); }

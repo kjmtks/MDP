@@ -64,6 +64,15 @@ Each is an HTML comment on its own line:
 - \`<!-- @tags TAG1, TAG2; TAG3 -->\` — deck tags for search/organization, separated
   by commas or semicolons (quote a tag that itself contains one, e.g. \`"a, b"\`). Not shown on slides.
 - \`<!-- @aspect W:H -->\` — slide aspect ratio, e.g. \`<!-- @aspect 16:9 -->\`.
+- \`<!-- @resolution H -->\` or \`<!-- @resolution WxH -->\` — how many CSS pixels the
+  canvas is laid out in (default: 720 tall, width from \`@aspect\`). The shape and
+  the design are unchanged — themes, modules and the base stylesheet all scale
+  with it — only the pixel grid gets finer. Raise it for very dense pages such as
+  A0 posters, where the default leaves body type near 6px and a hairline cannot
+  render thinner than 1px (~1.6mm once printed at A0) — e.g.
+  \`<!-- @resolution 2880 -->\` alongside \`<!-- @aspect 841:1189 -->\` gives a 4x finer
+  grid and takes the KaTeX fraction rule down to ~0.4mm. Custom CSS in a deck
+  should multiply its lengths by \`var(--mdp-px)\` to follow suit.
 - \`<!-- @theme NAME -->\` — apply a slide theme (NAME is one of the installed themes
   listed under "Themes" below). \`<!-- @css PATH -->\` — load extra CSS.
 - \`<!-- @transition NAME key: value, … -->\` — sets the default transition applied
@@ -92,8 +101,11 @@ block on a single slide OVERRIDES the global one for that slide; an EMPTY block
 
 - \`<!-- @cover -->\` — render this slide as the title/cover page (uses the meta fields).
 - \`<!-- @pageclass NAME -->\` — add a CSS class to the slide (theme-specific styling).
-- \`<!-- @id NAME -->\` — give this slide a stable anchor a hyperlink can target
-  (\`[text](#NAME)\`). NAME is unique within the deck (letters/digits/-/_).
+- \`<!-- @id NAME -->\` — LABEL this slide: a stable anchor a hyperlink can
+  jump to (\`[text](#NAME)\`) and a page reference can print (\`[](#NAME)\`).
+  NAME is unique within the deck (letters/digits/-/_). Label any slide you mean
+  to refer to later and refer to it BY ITS LABEL — never by a hard-coded number,
+  which goes stale the moment a slide is inserted.
 - \`<!-- @caption TEXT -->\` — placed immediately BEFORE an image or table to caption it.
 - \`<!-- @transition NAME key: value -->\` — override the transition for this slide.
 - \`<!-- @note: TEXT -->\` — speaker note: a SUPPLEMENTARY reminder (hidden on the
@@ -173,6 +185,14 @@ Argument syntax (the \`key: value\` list):
   jump history): \`[text](#5)\` → page 5 of THIS deck; \`[text](#NAME)\` → the slide with
   \`<!-- @id NAME -->\`; \`[text](other.slide.md)\` / \`other.slide.md#5\` / \`other.slide.md#NAME\`
   → another deck (path relative to this deck's folder). Other URLs open externally.
+- PAGE REFERENCES — leave the link text EMPTY and the printed page number is
+  substituted: \`[](#NAME)\` renders the number shown bottom-right on the slide
+  tagged \`<!-- @id NAME -->\`, and stays correct when slides move. Write the
+  surrounding wording yourself, e.g. \`詳細は p.[](#method) を参照\` or
+  \`see page [](#results)\`. Resolution is deck-wide, so it accounts for covers
+  and hidden slides (which carry no page number). An unresolvable target — another
+  deck, a hidden/cover slide, an unknown NAME — renders \`?\`, your cue that the
+  label is wrong.
 
 ## Diagrams & charts
 

@@ -255,7 +255,7 @@ export const McpSection: React.FC = () => {
         <div className="settings-field-hint">
           get_slide_spec (format + module/effect indexes) · get_module_spec / get_effect_spec (full spec for chosen ones) · find_modules · suggest_modules / suggest_effects (recommend by content/mood) · list_decks / read_deck (also for style imitation) ·
           write_deck / append_slide / replace_slide (edits open decks live, unsaved) · list_modules / read_module ·
-          list_themes · get_active_deck / open_deck / goto_slide / insert_at_cursor ·
+          list_themes · get_active_deck / open_deck / save_deck (commit editor changes to disk) / reload_deck (re-read from disk) / goto_slide / insert_at_cursor ·
           measure_slides (overflow &amp; fill check, low token) · lint_deck (design/consistency advisories) · render_slide_image (visual check, higher token).
         </div>
       </div>

@@ -73,14 +73,14 @@ This action is destructive and cannot be undone.
     .mdp-mod-alert {
       display: flex;
       align-items: flex-start;
-      gap: 12px;
+      gap: calc(12 * var(--mdp-px, 1px));
       background-color: var(--panel-bg, #f8fafc);
-      border: 1px solid var(--panel-border, #e5e7eb);
-      border-left: 6px solid;
-      border-radius: var(--radius-sm, 8px);
-      box-shadow: var(--shadow-sm, 0 1px 4px rgba(0,0,0,0.08));
-      margin: 1rem 0;
-      padding: 12px 16px;
+      border: calc(1 * var(--mdp-px, 1px)) solid var(--panel-border, #e5e7eb);
+      border-left: calc(6 * var(--mdp-px, 1px)) solid;
+      border-radius: var(--radius-sm, calc(8 * var(--mdp-px, 1px)));
+      box-shadow: var(--shadow-sm, 0 calc(1 * var(--mdp-px, 1px)) calc(4 * var(--mdp-px, 1px)) rgba(0,0,0,0.08));
+      margin: calc(1 * var(--mdp-u, 1rem)) 0;
+      padding: calc(12 * var(--mdp-px, 1px)) calc(16 * var(--mdp-px, 1px));
     }
     .mdp-mod-alert .alert-glyph {
       font-size: 1.3em;

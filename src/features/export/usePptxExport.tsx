@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { SlideView } from '../slide/components/SlideView';
 import { apiClient } from '../../api/apiClient';
 import { waitForRenderReady } from '../remote/capture/captureReady';
-import type { RasterizeOptions } from '../remote/capture/captureTypes';
+import type { RasterizeOptions, RasterizeResult } from '../remote/capture/captureTypes';
 import { createPptx, pptxToBase64, addImageSlide, addEditableSlide, toPngDataUrl } from './pptxExport';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -16,7 +16,7 @@ interface Opts {
   themeCssUrl?: string;
   title: string;
   // Reused image rasterizer (Electron capturePage / web html-to-image).
-  rasterize: (slide: Slide, opts: RasterizeOptions) => Promise<string>;
+  rasterize: (slide: Slide, opts: RasterizeOptions) => Promise<RasterizeResult>;
   // Called after a successful save (e.g. to refresh the file tree so the .pptx shows).
   onSaved?: (fileName: string) => void;
 }
@@ -66,7 +66,7 @@ export function usePptxExport({ slides, slideSize, basePath, themeCssUrl, title,
       if (mode === 'image') {
         for (let i = 0; i < slides.length; i++) {
           const shot = await rasterize(slides[i], { width: slideSize.width, height: slideSize.height, basePath, themeCssUrl });
-          addImageSlide(pptx, await toPngDataUrl(shot), slideSize);
+          addImageSlide(pptx, await toPngDataUrl(shot.dataUrl), slideSize);
           setExporting({ mode, done: i + 1, total: slides.length });
         }
       } else {

@@ -71,8 +71,8 @@ Priority support | no | yes
     return html;
   ]]></render>
   <style><![CDATA[
-    .mdp-mod-comparetable { border-collapse: collapse; margin: 1rem 0; width: 100%; }
-    .mdp-mod-comparetable th, .mdp-mod-comparetable td { padding: 8px 12px; border-bottom: 1px solid color-mix(in srgb, var(--ct-color) 20%, transparent); text-align: var(--ct-align, center); }
+    .mdp-mod-comparetable { border-collapse: collapse; margin: calc(1 * var(--mdp-u, 1rem)) 0; width: 100%; }
+    .mdp-mod-comparetable th, .mdp-mod-comparetable td { padding: calc(8 * var(--mdp-px, 1px)) calc(12 * var(--mdp-px, 1px)); border-bottom: calc(1 * var(--mdp-px, 1px)) solid color-mix(in srgb, var(--ct-color) 20%, transparent); text-align: var(--ct-align, center); }
     .mdp-mod-comparetable thead th { background: var(--ct-color); color: #fff; }
     .mdp-mod-comparetable thead th:first-child { background: none; color: inherit; }
     .mdp-mod-comparetable tbody th { text-align: left; font-weight: 600; }

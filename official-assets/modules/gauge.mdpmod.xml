@@ -79,13 +79,13 @@ Example:
       `</div>\n\n`;
   ]]></render>
   <style><![CDATA[
-    .mdp-mod-gauge { width: min(100%, var(--gg-w, 260px)); margin: 1rem auto; text-align: center; }
+    .mdp-mod-gauge { width: min(100%, var(--gg-w, calc(260 * var(--mdp-px, 1px)))); margin: calc(1 * var(--mdp-u, 1rem)) auto; text-align: center; }
     .mdp-mod-gauge svg { width: 100%; height: auto; overflow: visible; }
     .mdp-gg-track { fill: none; stroke: color-mix(in srgb, currentColor 12%, transparent); stroke-width: var(--gg-sw, 9); stroke-linecap: round; }
     .mdp-gg-arc { fill: none; stroke: var(--gg-c); stroke-width: var(--gg-sw, 9); stroke-linecap: round; }
     .mdp-gg-needle { stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
     .mdp-gg-hub { fill: currentColor; }
-    .mdp-gg-end { fill: var(--app-text-muted, #888); font-size: 6px; }
+    .mdp-gg-end { fill: var(--app-text-muted, #888); font-size: calc(6 * var(--mdp-px, 1px)); }
     .mdp-gg-value { font-size: 2em; font-weight: 800; margin-top: -0.4em; color: var(--gg-c); font-variant-numeric: tabular-nums; }
     .mdp-gg-label { color: var(--app-text-muted, #888); font-weight: 600; }
   ]]></style>

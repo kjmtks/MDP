@@ -68,14 +68,14 @@ Permutations | O(n!)
     return html;
   ]]></render>
   <style><![CDATA[
-    .mdp-mod-bigo { margin: 1rem 0; display: flex; flex-direction: column; gap: 6px; }
-    .mdp-bo-row { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+    .mdp-mod-bigo { margin: calc(1 * var(--mdp-u, 1rem)) 0; display: flex; flex-direction: column; gap: calc(6 * var(--mdp-px, 1px)); }
+    .mdp-bo-row { display: flex; justify-content: space-between; align-items: center; gap: calc(16 * var(--mdp-px, 1px)); }
     .mdp-bo-name { font-weight: 600; }
     .mdp-bo-head .mdp-bo-val { font-weight: 700; color: var(--app-text-muted, #888); }
     .mdp-bo-pill {
       background: color-mix(in srgb, var(--bo-c) 15%, transparent); color: var(--bo-c);
-      border: 1px solid color-mix(in srgb, var(--bo-c) 45%, transparent);
-      border-radius: 999px; padding: 2px 12px; font-weight: 700; display: inline-flex; align-items: center;
+      border: calc(1 * var(--mdp-px, 1px)) solid color-mix(in srgb, var(--bo-c) 45%, transparent);
+      border-radius: calc(999 * var(--mdp-px, 1px)); padding: calc(2 * var(--mdp-px, 1px)) calc(12 * var(--mdp-px, 1px)); font-weight: 700; display: inline-flex; align-items: center;
     }
     .mdp-bo-pill > :first-child { margin: 0; }
   ]]></style>

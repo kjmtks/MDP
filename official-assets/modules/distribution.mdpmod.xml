@@ -93,12 +93,12 @@ Parameters:
       `${shade}<path d="${linePath}" class="mdp-ds-curve"/>${meanLine}${axis}${regionLabel}</svg></div>\n\n`;
   ]]></render>
   <style><![CDATA[
-    .mdp-mod-distribution { width: min(100%, 440px); margin: 1rem auto; }
+    .mdp-mod-distribution { width: min(100%, calc(440 * var(--mdp-px, 1px))); margin: calc(1 * var(--mdp-u, 1rem)) auto; }
     .mdp-mod-distribution svg { width: 100%; height: auto; overflow: visible; }
     .mdp-ds-curve { fill: none; stroke: var(--ds-color); stroke-width: 1.2; }
     .mdp-ds-fill { fill: color-mix(in srgb, var(--ds-color) var(--ds-fill, 30%), transparent); }
     .mdp-ds-axis { stroke: currentColor; stroke-width: 0.5; }
     .mdp-ds-mean { stroke: currentColor; stroke-width: 0.5; stroke-dasharray: 2 2; opacity: 0.5; }
-    .mdp-ds-lbl { fill: currentColor; font-size: 4px; font-weight: 700; }
+    .mdp-ds-lbl { fill: currentColor; font-size: calc(4 * var(--mdp-px, 1px)); font-weight: 700; }
   ]]></style>
 </module>

@@ -66,7 +66,7 @@ export const useSlideProcessor = (
     if (currentFileType === 'doc') return [];
     const offset = blocks.length - rawSlides.length;
     let logicalPageCount = 0;
-    return rawSlides.map((slide, index) => {
+    const numbered = rawSlides.map((slide, index) => {
       const rawContent = blocks[index + offset]?.rawContent || "";
       const isHidden = /<!--\s+@hide\s+-->/.test(rawContent);
       const isCover = /<!--\s+@cover\s+-->/i.test(rawContent);
@@ -80,12 +80,47 @@ export const useSlideProcessor = (
 
       return { ...slide, html, isHidden, isCover, pageNumber };
     });
+
+    // Resolve page REFERENCES: `[](#intro)` prints the number shown bottom-right
+    // on the slide tagged `<!-- @id intro -->`. This can only happen here — a page
+    // number depends on how many earlier slides are hidden or covers, so it is a
+    // whole-deck fact the per-slide markdown pass cannot know. Targets that cannot
+    // be resolved (another deck, a hidden/cover slide, an unknown id) keep their
+    // '?' placeholder rather than silently rendering a wrong number.
+    if (!numbered.some((s) => s.html.includes('mdp-pageref'))) return numbered;
+    const pageOfId = new Map<string, number>();
+    for (const s of numbered) if (s.id && s.pageNumber) pageOfId.set(s.id, s.pageNumber);
+    const REF_RE = /(<a\b[^>]*\bmdp-pageref\b[^>]*data-mdp-target="([^"]*)"[^>]*>)([^<]*)(<\/a>)/g;
+    return numbered.map((slide) => ({
+      ...slide,
+      html: slide.html.replace(REF_RE, (whole, open, target, _inner, close) => {
+        const raw = String(target || '').replace(/&amp;/g, '&');
+        if (!raw.startsWith('#')) return whole;   // cross-deck: numbering unknown here
+        const anchor = raw.slice(1);
+        const n = /^\d+$/.test(anchor) ? Number(anchor) : pageOfId.get(anchor);
+        return n ? open + n + close : whole;
+      }),
+    }));
   }, [rawSlides, blocks, currentFileType]);
 
+  // The canvas is BASE_HEIGHT tall by default — @aspect only sets its shape.
+  // @resolution asks for more CSS pixels of the SAME shape.
+  //
+  // It matters on dense pages: an A0 poster at the default 509x720 has to run its
+  // body type near 6px, and nothing can rasterise thinner than one pixel, so a
+  // hairline (the KaTeX fraction rule, a table border) prints at ~1.6mm — four
+  // times what its 0.04em asks for. More pixels shrink one pixel relative to the
+  // type; the design itself is untouched, because everything sized in the slide
+  // follows `--slide-scale` (themes via their own variables, modules and the base
+  // stylesheet via `--mdp-px` / `--mdp-u`).
   const slideSize = useMemo(() => {
     const [aspectW, aspectH] = globalContext.aspectRatio;
-    return { width: (BASE_HEIGHT * (aspectW || 16)) / (aspectH || 9), height: BASE_HEIGHT };
-  }, [globalContext.aspectRatio]);
+    const ratio = (aspectW || 16) / (aspectH || 9);
+    const res = globalContext.resolution;
+    const height = res?.height && res.height > 0 ? res.height : BASE_HEIGHT;
+    const width = res?.width && res.width > 0 ? res.width : height * ratio;
+    return { width, height };
+  }, [globalContext.aspectRatio, globalContext.resolution]);
 
   const slideStyleVariables = useMemo(() => ({
     '--slide-width': `${slideSize.width}px`,

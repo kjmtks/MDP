@@ -55,9 +55,9 @@ other languages.
     return html;
   ]]></render>
   <style><![CDATA[
-    .mdp-mod-swot { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 1rem 0; }
-    .mdp-swot-cell { border-radius: 8px; padding: 10px 12px; border: 2px solid; }
-    .mdp-swot-head { font-weight: 700; margin-bottom: 4px; }
+    .mdp-mod-swot { display: grid; grid-template-columns: 1fr 1fr; gap: calc(8 * var(--mdp-px, 1px)); margin: calc(1 * var(--mdp-u, 1rem)) 0; }
+    .mdp-swot-cell { border-radius: calc(8 * var(--mdp-px, 1px)); padding: calc(10 * var(--mdp-px, 1px)) calc(12 * var(--mdp-px, 1px)); border: calc(2 * var(--mdp-px, 1px)) solid; }
+    .mdp-swot-head { font-weight: 700; margin-bottom: calc(4 * var(--mdp-px, 1px)); }
     .mdp-swot-s { border-color: #22c55e; background: color-mix(in srgb, #22c55e 8%, transparent); }
     .mdp-swot-w { border-color: #ef4444; background: color-mix(in srgb, #ef4444 8%, transparent); }
     .mdp-swot-o { border-color: #3b82f6; background: color-mix(in srgb, #3b82f6 8%, transparent); }

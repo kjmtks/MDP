@@ -72,7 +72,7 @@ Right column content.
       display: flex;
       flex-wrap: wrap;
       width: 100%;
-      margin: 1rem 0;
+      margin: calc(1 * var(--mdp-u, 1rem)) 0;
     }
     .mdp-mod-columns-col {
       min-width: 0;
@@ -80,7 +80,7 @@ Right column content.
     .mdp-mod-columns-col > :first-child { margin-top: 0; }
     .mdp-mod-columns-col > :last-child { margin-bottom: 0; }
     .mdp-mod-columns.mdp-cols-divided .mdp-mod-columns-col + .mdp-mod-columns-col {
-      border-left: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+      border-left: calc(1 * var(--mdp-px, 1px)) solid color-mix(in srgb, currentColor 20%, transparent);
       padding-left: inherit;
     }
     @media (max-width: 700px) {

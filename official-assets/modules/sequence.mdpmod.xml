@@ -68,13 +68,13 @@ Block module: split the body with `<!-- @ -->`, one TERM per section (Markdown, 
     return html;
   ]]></render>
   <style><![CDATA[
-    .mdp-mod-sequence { margin: 1rem 0; text-align: center; }
-    .mdp-sq-strip { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px; }
-    .mdp-sq-term { min-width: 44px; padding: 8px 14px; border: 1.5px solid var(--sq-c); border-radius: 8px; background: color-mix(in srgb, var(--sq-c) 8%, transparent); font-weight: 700; }
+    .mdp-mod-sequence { margin: calc(1 * var(--mdp-u, 1rem)) 0; text-align: center; }
+    .mdp-sq-strip { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: calc(10 * var(--mdp-px, 1px)); }
+    .mdp-sq-term { min-width: calc(44 * var(--mdp-px, 1px)); padding: calc(8 * var(--mdp-px, 1px)) calc(14 * var(--mdp-px, 1px)); border: calc(1.5 * var(--mdp-px, 1px)) solid var(--sq-c); border-radius: calc(8 * var(--mdp-px, 1px)); background: color-mix(in srgb, var(--sq-c) 8%, transparent); font-weight: 700; }
     .mdp-sq-term > :first-child { margin: 0; }
     .mdp-sq-tail { border-style: dashed; color: var(--app-text-muted, #888); }
     .mdp-sq-sep { font-size: 1.2em; color: var(--app-text-muted, #888); }
-    .mdp-sq-rule { margin-top: 10px; color: var(--app-text-muted, #888); }
+    .mdp-sq-rule { margin-top: calc(10 * var(--mdp-px, 1px)); color: var(--app-text-muted, #888); }
     .mdp-sq-rule > :first-child { margin: 0; }
   ]]></style>
 </module>

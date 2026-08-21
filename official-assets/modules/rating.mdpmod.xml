@@ -57,7 +57,7 @@ Example: <!-- @rating value: 4.5, symbol: heart, showValue: true -->.
     return `<span class="mdp-mod-rating" style="${styleVars}" title="${value} / ${max}">${stars}${num}</span>`;
   ]]></render>
   <style><![CDATA[
-    .mdp-mod-rating { display: inline-flex; align-items: center; gap: var(--rt-gap, 1px); vertical-align: -0.1em; line-height: 1; }
+    .mdp-mod-rating { display: inline-flex; align-items: center; gap: var(--rt-gap, calc(1 * var(--mdp-px, 1px))); vertical-align: -0.1em; line-height: 1; }
     .mdp-rt-star { position: relative; display: inline-block; }
     .mdp-rt-empty { color: var(--rt-empty-c, color-mix(in srgb, var(--rt-color) 30%, transparent)); }
     .mdp-rt-fill { position: absolute; left: 0; top: 0; overflow: hidden; white-space: nowrap; color: var(--rt-color); }

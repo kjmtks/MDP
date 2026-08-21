@@ -77,23 +77,23 @@ Ship the beta by Friday.
   <style><![CDATA[
     .mdp-mod-card {
       background-color: var(--panel-bg, #ffffff);
-      border: 1px solid var(--panel-border, #e5e7eb);
-      border-radius: var(--card-r, var(--radius-sm, 8px));
-      box-shadow: var(--shadow-sm, 0 2px 8px rgba(0,0,0,0.12));
-      margin: 1rem 0;
+      border: calc(1 * var(--mdp-px, 1px)) solid var(--panel-border, #e5e7eb);
+      border-radius: var(--card-r, var(--radius-sm, calc(8 * var(--mdp-px, 1px))));
+      box-shadow: var(--shadow-sm, 0 calc(2 * var(--mdp-px, 1px)) calc(8 * var(--mdp-px, 1px)) rgba(0,0,0,0.12));
+      margin: calc(1 * var(--mdp-u, 1rem)) 0;
       overflow: hidden;
     }
     .mdp-mod-card.mdp-card-flat { box-shadow: none; }
     .mdp-mod-card .card-header {
       color: #ffffff;
-      padding: 10px 16px;
+      padding: calc(10 * var(--mdp-px, 1px)) calc(16 * var(--mdp-px, 1px));
       font-weight: 700;
       font-size: 1.1em;
     }
     .mdp-mod-card .card-header > :first-child { margin-top: 0; }
     .mdp-mod-card .card-header > :last-child { margin-bottom: 0; }
     .mdp-mod-card .card-body {
-      padding: 14px 16px;
+      padding: calc(14 * var(--mdp-px, 1px)) calc(16 * var(--mdp-px, 1px));
       color: var(--panel-text, var(--text-color, #1f2937));
       font-size: 0.95em;
     }

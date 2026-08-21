@@ -1,4 +1,5 @@
 import { isElectron } from '../../../api/apiClient';
+import { BASE_HEIGHT } from '../../../constants';
 import React, { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, useMemo } from 'react';
 import { DrawingOverlay, type Stroke } from '../../drawing/components/DrawingOverlay';
 import { ManipulationLayer, type ManipRuntime } from './ManipulationLayer';
@@ -551,6 +552,15 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
         ...({
           '--slide-width': `${slideSize.width}px`, '--slide-height': `${slideSize.height}px`,
           '--slide-aspect-ratio': `${slideSize.width}/${slideSize.height}`,
+          // How many CSS pixels the canvas got, relative to the BASE_HEIGHT
+          // default — i.e. what @resolution asked for. Everything sized inside a
+          // slide multiplies by this so the design is identical at any
+          // resolution. It lives HERE because every surface (preview, thumbnails,
+          // overview, remote, print) renders through SlideView, whereas only the
+          // print path is handed slideStyleVariables.
+          '--slide-scale': `${slideSize.height / BASE_HEIGHT}`,
+          '--mdp-px': `calc(1px * ${slideSize.height / BASE_HEIGHT})`,
+          '--mdp-u': `calc(1rem * ${slideSize.height / BASE_HEIGHT})`,
         } as React.CSSProperties)
       }}
     >

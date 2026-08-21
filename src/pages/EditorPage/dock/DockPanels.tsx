@@ -15,6 +15,7 @@ import RecordVoiceOverIcon from '@mui/icons-material/RecordVoiceOver';
 import SmartDisplayIcon from '@mui/icons-material/SmartDisplay';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import PrintIcon from '@mui/icons-material/Print';
+import ImageIcon from '@mui/icons-material/Image';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import SlideshowIcon from '@mui/icons-material/Slideshow';
 import GridViewIcon from '@mui/icons-material/GridView';
@@ -558,6 +559,12 @@ export const PreviewPanel: React.FC = () => {
           {h.onExportPptx && (
             <MenuItem onClick={() => { setExportAnchor(null); h.onExportPptx!('editable'); }} dense>
               <ListItemIcon><SlideshowIcon fontSize="small" /></ListItemIcon>PowerPoint — editable text (beta)
+            </MenuItem>
+          )}
+          {h.onExportImages && <Divider />}
+          {h.onExportImages && (
+            <MenuItem onClick={() => { setExportAnchor(null); h.onExportImages!(); }} dense disabled={!!h.imagesBusy}>
+              <ListItemIcon><ImageIcon fontSize="small" /></ListItemIcon>Images — one PNG per slide
             </MenuItem>
           )}
         </Menu>

@@ -324,6 +324,9 @@ const applyGlobalCommands = (text: string, context: SlideContext) => {
       if (command.type === 'ASPECT') {
         context.aspectRatio = command.params as [number, number];
       }
+      if (command.type === 'RESOLUTION') {
+        context.resolution = command.params as { width?: number; height: number };
+      }
       if (command.type === 'THEME') {
         context.themeName = command.params as string;
       }

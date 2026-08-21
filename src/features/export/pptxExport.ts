@@ -31,6 +31,10 @@ export async function pptxToBase64(pptx: PptxGenJS): Promise<string> {
 // PowerPoint version renders reliably.
 export function toPngDataUrl(src: string): Promise<string> {
   return new Promise((resolve, reject) => {
+    if (!src || !src.startsWith('data:image/')) {
+      reject(new Error(`PNG re-encode: nothing to decode (${(src || '').length} chars, starts "${(src || '').slice(0, 32)}")`));
+      return;
+    }
     const img = new Image();
     img.onload = () => {
       const c = document.createElement('canvas');
@@ -39,9 +43,14 @@ export function toPngDataUrl(src: string): Promise<string> {
       const ctx = c.getContext('2d');
       if (!ctx) { reject(new Error('2d context unavailable')); return; }
       ctx.drawImage(img, 0, 0);
-      resolve(c.toDataURL('image/png'));
+      const out = c.toDataURL('image/png');
+      if (!out.startsWith('data:image/')) {
+        reject(new Error(`PNG encode failed at ${c.width}x${c.height} (got "${out.slice(0, 24)}")`));
+        return;
+      }
+      resolve(out);
     };
-    img.onerror = () => reject(new Error('image decode failed'));
+    img.onerror = () => reject(new Error(`PNG re-encode: source failed to decode (${src.length} chars, starts "${src.slice(0, 32)}")`));
     img.src = src;
   });
 }

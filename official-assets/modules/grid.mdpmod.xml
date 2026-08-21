@@ -81,17 +81,17 @@ Content of the third card.
     .mdp-mod-grid {
       display: grid;
       width: 100%;
-      margin: 1rem 0;
+      margin: calc(1 * var(--mdp-u, 1rem)) 0;
     }
     @media (max-width: 700px) {
       .mdp-mod-grid { grid-template-columns: 1fr !important; }
     }
     .mdp-mod-grid-card {
       background-color: var(--panel-bg, #ffffff);
-      border: 1px solid var(--panel-border, var(--border-color, #e5e7eb));
-      border-radius: var(--grid-radius, var(--radius-sm, 8px));
-      box-shadow: var(--shadow-sm, 0 1px 4px rgba(0,0,0,0.08));
-      padding: var(--grid-pad, 14px 16px);
+      border: calc(1 * var(--mdp-px, 1px)) solid var(--panel-border, var(--border-color, #e5e7eb));
+      border-radius: var(--grid-radius, var(--radius-sm, calc(8 * var(--mdp-px, 1px))));
+      box-shadow: var(--shadow-sm, 0 calc(1 * var(--mdp-px, 1px)) calc(4 * var(--mdp-px, 1px)) rgba(0,0,0,0.08));
+      padding: var(--grid-pad, calc(14 * var(--mdp-px, 1px)) calc(16 * var(--mdp-px, 1px)));
       min-width: 0;
       color: var(--panel-text, var(--text-color, #1f2937));
       font-size: 0.95em;

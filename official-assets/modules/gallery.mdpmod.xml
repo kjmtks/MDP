@@ -60,14 +60,14 @@ ${contentStr}
     .mdp-mod-gallery {
       display: grid;
       gap: 1.5em;
-      margin: 1rem 0;
+      margin: calc(1 * var(--mdp-u, 1rem)) 0;
     }
     .mdp-gallery-item {
       background: #fff;
-      border: 1px solid #eaeaea;
-      border-radius: 8px;
-      padding: 10px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+      border: calc(1 * var(--mdp-px, 1px)) solid #eaeaea;
+      border-radius: calc(8 * var(--mdp-px, 1px));
+      padding: calc(10 * var(--mdp-px, 1px));
+      box-shadow: 0 calc(2 * var(--mdp-px, 1px)) calc(8 * var(--mdp-px, 1px)) rgba(0,0,0,0.05);
       text-align: center;
       display: flex;
       flex-direction: column;
@@ -76,8 +76,8 @@ ${contentStr}
     .mdp-gallery-item img {
       max-width: 100%;
       height: auto;
-      border-radius: 4px;
-      margin-bottom: 10px;
+      border-radius: calc(4 * var(--mdp-px, 1px));
+      margin-bottom: calc(10 * var(--mdp-px, 1px));
     }
     .mdp-gallery-item p {
       margin: 0;

@@ -724,7 +724,7 @@ Example:
       letter-spacing: 0.02em;
       margin-bottom: 0.5em;
       padding-bottom: 0.15em;
-      border-bottom: 2px solid var(--ref-accent);
+      border-bottom: calc(2 * var(--mdp-px, 1px)) solid var(--ref-accent);
     }
     .mdp-mod-references .mdp-ref-empty { color: var(--muted-color); font-style: italic; }
     .mdp-mod-references a.mdp-ref-link {
@@ -773,17 +773,17 @@ Example:
     /* ---- card layout ---- */
     .mdp-ref-cards {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(calc(260 * var(--mdp-px, 1px)), 1fr));
       gap: 0.7em;
     }
     .mdp-ref-card {
       position: relative;
       background: var(--panel-bg);
       color: var(--panel-text);
-      border: 1px solid var(--panel-border);
-      border-left: 4px solid var(--ref-accent);
-      border-radius: var(--radius-sm, 6px);
-      box-shadow: var(--shadow-sm, 0 2px 4px rgba(0,0,0,0.05));
+      border: calc(1 * var(--mdp-px, 1px)) solid var(--panel-border);
+      border-left: calc(4 * var(--mdp-px, 1px)) solid var(--ref-accent);
+      border-radius: var(--radius-sm, calc(6 * var(--mdp-px, 1px)));
+      box-shadow: var(--shadow-sm, 0 calc(2 * var(--mdp-px, 1px)) calc(4 * var(--mdp-px, 1px)) rgba(0,0,0,0.05));
       padding: 0.7em 0.9em;
       overflow: hidden;
     }

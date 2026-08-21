@@ -113,7 +113,7 @@ Figure 1: result
       align-items: center;
       gap: 0.5em;
       width: 100%;
-      margin: 1rem 0;
+      margin: calc(1 * var(--mdp-u, 1rem)) 0;
       color: var(--text-color);
       box-sizing: border-box;
     }

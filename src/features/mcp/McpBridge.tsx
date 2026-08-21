@@ -36,6 +36,10 @@ export interface McpCtx {
   handleInsertText: (text: string) => void;
   tabs: OpenTab[];
   updateTabContent: (path: string, content: string) => void;
+  // Save the ACTIVE tab to disk (same path as Ctrl+S, incl. its external-change guard).
+  saveActiveFile: () => Promise<void>;
+  // Discard the active tab's edits and re-read the file from disk.
+  reloadFileFromDisk: (path: string) => Promise<string>;
   onRefreshTree: () => void;
 }
 
@@ -261,9 +265,15 @@ export const McpBridge: React.FC<{ ctx: McpCtx }> = ({ ctx }) => {
       if (!c.currentFileName || !/\.slide\.md$/i.test(c.currentFileName)) {
         throw new Error('No slide deck is active in the editor — open one (open_deck) first.');
       }
+      const cur = c.slides[c.currentSlideIndex];
       return {
         path: c.currentFileName,
+        // `currentSlide` is the POSITION in the file; `currentPage` is the number
+        // printed bottom-right. They differ once a cover or a hidden slide exists,
+        // and the page number is the one a human means by "page N".
         currentSlide: c.currentSlideIndex + 1,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        currentPage: (cur as any)?.pageNumber ?? null,
         slideCount: c.slides.length,
         content: c.markdownRef.current,
       };
@@ -371,7 +381,9 @@ export const McpBridge: React.FC<{ ctx: McpCtx }> = ({ ctx }) => {
   then write_asset. Give a module an <aiSpec> so future AIs know how to use it, and
   tell the user to review any <script> you wrote.
 - Edits to an open deck appear in the editor as UNSAVED changes — tell the user to
-  review and save.
+  review and save, or commit them yourself with save_deck (ask first unless the user
+  already told you to save). If the file was changed OUTSIDE MDP, bring the editor
+  back in sync with reload_deck.
 - **Encoding.** Decks are UTF-8; read_deck strips any byte-order mark and edits
   preserve the file's original BOM and line endings, so you never need to manage
   encoding yourself. BUT if read_deck returns an \`encodingWarning\` (the file isn't
@@ -473,7 +485,7 @@ Match the user's style throughout (cached profile if present, else get_style_sam
           // deck of tokens (incl. embedded base64). The bridge elides binaries when
           // includeContent is true.
           const d = activeDeck();
-          if (!params?.includeContent) return { path: d.path, currentSlide: d.currentSlide, slideCount: d.slideCount };
+          if (!params?.includeContent) return { path: d.path, currentSlide: d.currentSlide, currentPage: d.currentPage, slideCount: d.slideCount };
           return d;
         }
         case 'openDeck': {
@@ -485,6 +497,51 @@ Match the user's style throughout (cached profile if present, else get_style_sam
           }
           const d = await ensureDeck(String(params.path));
           return { opened: d.path, slideCount: d.slideCount };
+        }
+        case 'saveDeck': {
+          // Persist the editor's UNSAVED edits (what write_deck / patch_deck applied
+          // to an open deck) to disk. Goes through the same path as Ctrl+S, so the
+          // external-change guard still runs: if the file changed on disk meanwhile,
+          // the user gets the overwrite/reload dialog and this call waits for them.
+          const d = await ensureDeck(params.path);
+          const tab = ctxRef.current.tabs.find((t) => t.path === d.path);
+          if (!tab) throw new Error(`"${d.path}" is not open in the editor.`);
+          if (!tab.isModified) return { path: d.path, saved: false, note: 'Nothing to save — this deck has no unsaved changes.' };
+          await ctxRef.current.saveActiveFile();
+          // handleSave surfaces its own errors and resolves either way, so the tab's
+          // modified flag is the ground truth for "did the bytes reach disk".
+          const deadline = Date.now() + 8000;
+          while (Date.now() < deadline) {
+            const t = ctxRef.current.tabs.find((x) => x.path === d.path);
+            if (t && !t.isModified) return { path: d.path, saved: true };
+            await new Promise((r) => setTimeout(r, 100));
+          }
+          throw new Error(`"${d.path}" was NOT saved — the editor reported an error, or the user declined to overwrite a file that had changed on disk.`);
+        }
+        case 'reloadDeck': {
+          // Re-read the deck from disk into the editor (the file was changed by
+          // something other than MDP). Destructive to in-editor edits, so unsaved
+          // changes block the reload unless the caller opts in explicitly.
+          const d = await ensureDeck(params.path);
+          const tab = ctxRef.current.tabs.find((t) => t.path === d.path);
+          if (!tab) throw new Error(`"${d.path}" is not open in the editor.`);
+          const wasModified = tab.isModified;
+          if (wasModified && !params.discardUnsaved) {
+            throw new Error(`"${d.path}" has UNSAVED changes in the editor — reloading would discard them. Save first (save_deck), or call again with discardUnsaved: true.`);
+          }
+          const text = await ctxRef.current.reloadFileFromDisk(d.path);
+          // Wait out the debounced re-parse so slideCount describes the RELOADED text.
+          const expected = Math.max(0, splitMarkdownToBlocks(text).length - 1);
+          const deadline = Date.now() + 5000;
+          while (Date.now() < deadline && ctxRef.current.slides.length !== expected) {
+            await new Promise((r) => setTimeout(r, 100));
+          }
+          return {
+            path: d.path,
+            reloaded: true,
+            slideCount: ctxRef.current.slides.length,
+            ...(wasModified ? { discardedUnsavedChanges: true } : {}),
+          };
         }
         case 'gotoSlide': {
           const d = activeDeck();

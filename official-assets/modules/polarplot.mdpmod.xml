@@ -106,13 +106,13 @@ cos(3*t) | rose
     return `\n\n<div class="mdp-mod-polarplot" style="--pp-sw:${swv};"><svg viewBox="0 0 140 140" preserveAspectRatio="xMidYMid meet">${svg}</svg>${legend}</div>\n\n`;
   ]]></render>
   <style><![CDATA[
-    .mdp-mod-polarplot { width: min(100%, 360px); margin: 1rem auto; text-align: center; }
+    .mdp-mod-polarplot { width: min(100%, calc(360 * var(--mdp-px, 1px))); margin: calc(1 * var(--mdp-u, 1rem)) auto; text-align: center; }
     .mdp-mod-polarplot svg { width: 100%; height: auto; overflow: visible; }
     .mdp-pp-ring { fill: none; stroke: color-mix(in srgb, currentColor 15%, transparent); stroke-width: 0.4; }
     .mdp-pp-spoke { stroke: color-mix(in srgb, currentColor 12%, transparent); stroke-width: 0.4; }
-    .mdp-pp-rlbl { fill: var(--app-text-muted, #888); font-size: 4.5px; }
+    .mdp-pp-rlbl { fill: var(--app-text-muted, #888); font-size: calc(4.5 * var(--mdp-px, 1px)); }
     .mdp-pp-curve { fill: none; stroke-width: var(--pp-sw, 1.2); stroke-linejoin: round; }
-    .mdp-pp-legend { display: flex; flex-wrap: wrap; gap: 4px 16px; justify-content: center; margin-top: 4px; font-size: 0.85em; }
-    .mdp-pp-legend i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+    .mdp-pp-legend { display: flex; flex-wrap: wrap; gap: calc(4 * var(--mdp-px, 1px)) calc(16 * var(--mdp-px, 1px)); justify-content: center; margin-top: calc(4 * var(--mdp-px, 1px)); font-size: 0.85em; }
+    .mdp-pp-legend i { display: inline-block; width: calc(14 * var(--mdp-px, 1px)); height: calc(3 * var(--mdp-px, 1px)); border-radius: calc(2 * var(--mdp-px, 1px)); margin-right: calc(6 * var(--mdp-px, 1px)); vertical-align: middle; }
   ]]></style>
 </module>

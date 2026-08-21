@@ -55,9 +55,9 @@ Suppose \(n\) is even. Then \(n = 2k\), so \(n^2 = 4k^2 = 2(2k^2)\) is even. \(\
     return `\n\n<div class="${cls}" style="--pf-accent:${accent}; --pf-size:${fontsize};"><span class="mdp-pf-lead">${label}.</span> <div class="mdp-pf-body">\n\n${body}\n\n</div>${qedSpan}</div>\n\n`;
   ]]></render>
   <style><![CDATA[
-    .mdp-mod-proof { margin: 1rem 0; position: relative; font-size: var(--pf-size, inherit); }
-    .mdp-pf-bordered { border-left: 3px solid var(--pf-accent, var(--accent-color)); padding-left: 0.9em; }
-    .mdp-pf-lead { font-style: italic; margin-right: 4px; color: var(--pf-accent, inherit); }
+    .mdp-mod-proof { margin: calc(1 * var(--mdp-u, 1rem)) 0; position: relative; font-size: var(--pf-size, inherit); }
+    .mdp-pf-bordered { border-left: calc(3 * var(--mdp-px, 1px)) solid var(--pf-accent, var(--accent-color)); padding-left: 0.9em; }
+    .mdp-pf-lead { font-style: italic; margin-right: calc(4 * var(--mdp-px, 1px)); color: var(--pf-accent, inherit); }
     .mdp-pf-body { display: inline; }
     .mdp-pf-body > :first-child { margin-top: 0; display: inline; }
     .mdp-pf-body > :last-child { margin-bottom: 0; }

@@ -51,13 +51,13 @@ Parameters:
   ]]></render>
   <style><![CDATA[
     .mdp-mod-phone {
-      position: relative; width: min(100%, var(--ph-width, 240px)); aspect-ratio: 9 / 19; margin: 1rem auto;
-      background: var(--ph-color, #111827); border-radius: 30px; padding: 10px;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+      position: relative; width: min(100%, var(--ph-width, calc(240 * var(--mdp-px, 1px)))); aspect-ratio: 9 / 19; margin: calc(1 * var(--mdp-u, 1rem)) auto;
+      background: var(--ph-color, #111827); border-radius: calc(30 * var(--mdp-px, 1px)); padding: calc(10 * var(--mdp-px, 1px));
+      box-shadow: 0 calc(10 * var(--mdp-px, 1px)) calc(30 * var(--mdp-px, 1px)) rgba(0,0,0,0.4);
     }
     .mdp-mod-phone.mdp-ph-noshadow { box-shadow: none; }
-    .mdp-ph-notch { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); width: 38%; height: 18px; background: var(--ph-color, #111827); border-radius: 0 0 12px 12px; z-index: 2; }
-    .mdp-ph-screen { width: 100%; height: 100%; background: var(--ph-screen, #fff); border-radius: 22px; overflow: hidden; line-height: 0; }
+    .mdp-ph-notch { position: absolute; top: calc(10 * var(--mdp-px, 1px)); left: 50%; transform: translateX(-50%); width: 38%; height: calc(18 * var(--mdp-px, 1px)); background: var(--ph-color, #111827); border-radius: 0 0 calc(12 * var(--mdp-px, 1px)) calc(12 * var(--mdp-px, 1px)); z-index: 2; }
+    .mdp-ph-screen { width: 100%; height: 100%; background: var(--ph-screen, #fff); border-radius: calc(22 * var(--mdp-px, 1px)); overflow: hidden; line-height: 0; }
     .mdp-ph-screen img { display: block; width: 100%; height: 100%; object-fit: cover; }
     .mdp-ph-screen > :first-child { margin-top: 0; } .mdp-ph-screen > :last-child { margin-bottom: 0; }
   ]]></style>

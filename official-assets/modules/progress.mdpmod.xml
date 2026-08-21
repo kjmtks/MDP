@@ -63,7 +63,7 @@ Parameters:
   ]]></render>
   <style><![CDATA[
     .mdp-mod-progress {
-      margin: 1rem 0;
+      margin: calc(1 * var(--mdp-u, 1rem)) 0;
       width: 100%;
     }
     .mdp-progress-info {
@@ -80,15 +80,15 @@ Parameters:
     }
     .mdp-progress-bar-bg {
       width: 100%;
-      height: var(--prog-h, 12px);
+      height: var(--prog-h, calc(12 * var(--mdp-px, 1px)));
       background-color: var(--prog-track, #eee);
-      border-radius: 6px;
+      border-radius: calc(6 * var(--mdp-px, 1px));
       overflow: hidden;
     }
     .mdp-progress-bar-fill {
       height: 100%;
       background-color: var(--prog-color);
-      border-radius: 6px;
+      border-radius: calc(6 * var(--mdp-px, 1px));
       transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);
     }
   ]]></style>

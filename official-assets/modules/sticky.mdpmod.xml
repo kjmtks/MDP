@@ -87,9 +87,9 @@ Please update these figures by the meeting next week!
     .mdp-mod-sticky {
       background: var(--sticky-color);
       padding: 1.5em;
-      width: var(--sticky-w, 250px);
+      width: var(--sticky-w, calc(250 * var(--mdp-px, 1px)));
       box-sizing: border-box;
-      box-shadow: 2px 4px 10px rgba(0,0,0,0.15);
+      box-shadow: calc(2 * var(--mdp-px, 1px)) calc(4 * var(--mdp-px, 1px)) calc(10 * var(--mdp-px, 1px)) rgba(0,0,0,0.15);
       color: var(--sticky-text, #333);
       position: relative;
       /* Column flex so valign (justify-content) and halign (text-align) apply. */
@@ -111,8 +111,8 @@ Please update these figures by the meeting next week!
       bottom: 0;
       right: 0;
       width: 100%;
-      height: 20px;
-      box-shadow: 0 10px 10px rgba(0,0,0,0.2);
+      height: calc(20 * var(--mdp-px, 1px));
+      box-shadow: 0 calc(10 * var(--mdp-px, 1px)) calc(10 * var(--mdp-px, 1px)) rgba(0,0,0,0.2);
       z-index: -1;
       transform: rotate(2deg);
     }

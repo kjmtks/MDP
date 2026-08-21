@@ -86,14 +86,14 @@ Example:
     return html;
   ]]></render>
   <style><![CDATA[
-    .mdp-mod-setops { width: min(100%, var(--so-w, 380px)); margin: 1rem auto; text-align: center; }
+    .mdp-mod-setops { width: min(100%, var(--so-w, calc(380 * var(--mdp-px, 1px)))); margin: calc(1 * var(--mdp-u, 1rem)) auto; text-align: center; }
     .mdp-mod-setops svg { width: 100%; height: auto; }
     .mdp-so-frame { fill: none; stroke: currentColor; stroke-width: 0.8; opacity: 0.5; }
     .mdp-so-circle { fill: none; stroke: currentColor; stroke-width: 1; }
     .mdp-so-fill { fill: color-mix(in srgb, var(--so-c) var(--so-fill, 40%), transparent); }
-    .mdp-so-u { fill: currentColor; font-size: 7px; font-weight: 700; opacity: 0.6; }
-    .mdp-so-lbl { fill: currentColor; font-size: 7px; font-weight: 700; }
-    .mdp-so-formula { margin-top: 4px; font-weight: 600; }
+    .mdp-so-u { fill: currentColor; font-size: calc(7 * var(--mdp-px, 1px)); font-weight: 700; opacity: 0.6; }
+    .mdp-so-lbl { fill: currentColor; font-size: calc(7 * var(--mdp-px, 1px)); font-weight: 700; }
+    .mdp-so-formula { margin-top: calc(4 * var(--mdp-px, 1px)); font-weight: 600; }
     .mdp-so-formula > :first-child { margin: 0; }
   ]]></style>
 </module>

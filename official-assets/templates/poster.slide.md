@@ -8,6 +8,7 @@
 <!-- @contact Your Address -->
 
 <!-- @aspect 841:1189 -->
+<!-- @resolution 2880 -->
 <!-- @theme poster -->
 ---
 <!-- @cover -->

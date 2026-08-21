@@ -265,6 +265,15 @@ export const apiClient = {
 
   // Save base64 binary content. Electron shows a native "Save As" dialog; the web
   // build triggers a browser download. Returns true if the file was written/started.
+  // Write bytes to an ABSOLUTE path (from pickFile({ directory: true })).
+  // Electron only — the web build has no filesystem access and must fall back to
+  // a download. Deliberately outside the workspace VFS: the user picked the spot.
+  writeBinaryToPath: async (filePath: string, base64: string): Promise<boolean> => {
+    if (!isElectron()) return false;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return !!(await (window as any).electronAPI.writeBinaryToPath({ filePath, content: base64 }));
+  },
+
   saveBinaryWithDialog: async (
     suggestedName: string,
     base64: string,

@@ -120,19 +120,19 @@ Write your note here
 
   <style><![CDATA[
     .mdp-mod-callout {
-      margin: 1rem 0;
+      margin: calc(1 * var(--mdp-u, 1rem)) 0;
       border-radius: var(--cl-radius);
       overflow: hidden;
       box-sizing: border-box;
       background-color: var(--cl-bg, var(--panel-bg, #ffffff));
     }
-    .mdp-mod-callout--shadow { box-shadow: 0 8px 15px rgba(0, 0, 0, 0.1); }
+    .mdp-mod-callout--shadow { box-shadow: 0 calc(8 * var(--mdp-px, 1px)) calc(15 * var(--mdp-px, 1px)) rgba(0, 0, 0, 0.1); }
 
     .mdp-mod-callout-title {
       display: flex;
       align-items: center;
       gap: 0.5em;
-      padding: 0.5rem 1.15rem 0;
+      padding: calc(0.5 * var(--mdp-u, 1rem)) calc(1.15 * var(--mdp-u, 1rem)) 0;
       font-weight: 700;
       font-size: 1.05em;
       color: var(--cl-color);
@@ -145,8 +145,8 @@ Write your note here
     .mdp-mod-callout-title .katex-display { margin: 0; }
 
     .mdp-mod-callout-body {
-      padding: 0.25rem 1rem;
-      margin: 0.5rem 1rem;
+      padding: calc(0.25 * var(--mdp-u, 1rem)) calc(1 * var(--mdp-u, 1rem));
+      margin: calc(0.5 * var(--mdp-u, 1rem)) calc(1 * var(--mdp-u, 1rem));
       font-size: 1.1em;
       line-height: 1.4;
       color: var(--cl-text, var(--text-color));
@@ -161,13 +161,13 @@ Write your note here
     .mdp-mod-callout--outline { border: var(--cl-bw) solid var(--cl-color); }
 
     .mdp-mod-callout--bar {
-      border-left: max(var(--cl-bw), 5px) solid var(--cl-color);
+      border-left: max(var(--cl-bw), calc(5 * var(--mdp-px, 1px))) solid var(--cl-color);
       border-radius: 0 var(--cl-radius) var(--cl-radius) 0;
     }
 
     .mdp-mod-callout--filled {
       background-color: var(--cl-bg, color-mix(in srgb, var(--cl-color) 12%, transparent));
-      border: 1px solid color-mix(in srgb, var(--cl-color) 35%, transparent);
+      border: calc(1 * var(--mdp-px, 1px)) solid color-mix(in srgb, var(--cl-color) 35%, transparent);
     }
 
     .mdp-mod-callout--solid { background-color: var(--cl-bg, var(--cl-color)); }

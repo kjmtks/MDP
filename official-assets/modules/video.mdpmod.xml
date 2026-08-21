@@ -108,14 +108,14 @@ layout; the position/size/rotation are written back as x/y/w/h/rot args.
   <style><![CDATA[
     .mdp-mod-video {
       position: relative;
-      width: var(--vid-w, 480px);
+      width: var(--vid-w, calc(480 * var(--mdp-px, 1px)));
       max-width: 100%;
       aspect-ratio: 16 / 9;
-      margin: 1rem auto;
+      margin: calc(1 * var(--mdp-u, 1rem)) auto;
       background: #000;
-      border-radius: 8px;
+      border-radius: calc(8 * var(--mdp-px, 1px));
       overflow: hidden;
-      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+      box-shadow: 0 calc(4 * var(--mdp-px, 1px)) calc(14 * var(--mdp-px, 1px)) rgba(0, 0, 0, 0.25);
       cursor: pointer;
       display: block;
     }
@@ -139,8 +139,8 @@ layout; the position/size/rotation are written back as x/y/w/h/rot args.
     .mdp-mod-video .mdp-video-play:hover { background: rgba(0, 0, 0, 0.42); }
     .mdp-mod-video .mdp-video-play-btn {
       width: 20%;
-      min-width: 46px;
-      max-width: 84px;
+      min-width: calc(46 * var(--mdp-px, 1px));
+      max-width: calc(84 * var(--mdp-px, 1px));
       aspect-ratio: 1;
       border-radius: 50%;
       background: rgba(0, 0, 0, 0.55);
@@ -150,7 +150,7 @@ layout; the position/size/rotation are written back as x/y/w/h/rot args.
       justify-content: center;
       font-size: 1.7em;
       padding-left: 0.12em;
-      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+      box-shadow: 0 calc(2 * var(--mdp-px, 1px)) calc(10 * var(--mdp-px, 1px)) rgba(0, 0, 0, 0.4);
     }
     .mdp-mod-video.mdp-video-empty {
       aspect-ratio: auto;

@@ -88,15 +88,15 @@ Use @funcplot for curves of formulas; @scatter is for data points.
     return html;
   ]]></render>
   <style><![CDATA[
-    .mdp-mod-scatter { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 1rem 0; }
-    .mdp-sc-plotwrap { width: min(100%, 460px); text-align: center; }
+    .mdp-mod-scatter { display: flex; align-items: center; justify-content: center; gap: calc(6 * var(--mdp-px, 1px)); margin: calc(1 * var(--mdp-u, 1rem)) 0; }
+    .mdp-sc-plotwrap { width: min(100%, calc(460 * var(--mdp-px, 1px))); text-align: center; }
     .mdp-mod-scatter svg { width: 100%; height: auto; }
     .mdp-sc-frame { fill: none; stroke: color-mix(in srgb, currentColor 20%, transparent); stroke-width: 0.6; rx: 3; }
     .mdp-sc-pt { fill: var(--sc-c); opacity: 0.85; }
-    .mdp-sc-lbl { fill: currentColor; font-size: 4.5px; }
+    .mdp-sc-lbl { fill: currentColor; font-size: calc(4.5 * var(--mdp-px, 1px)); }
     .mdp-sc-trend { stroke: #dc2626; stroke-width: 0.9; stroke-dasharray: 3 2; }
-    .mdp-sc-eq { font-size: 0.85em; color: var(--app-text-muted, #888); margin-top: 4px; font-variant-numeric: tabular-nums; }
-    .mdp-sc-xlabel { font-size: 0.85em; font-weight: 600; margin-top: 2px; }
+    .mdp-sc-eq { font-size: 0.85em; color: var(--app-text-muted, #888); margin-top: calc(4 * var(--mdp-px, 1px)); font-variant-numeric: tabular-nums; }
+    .mdp-sc-xlabel { font-size: 0.85em; font-weight: 600; margin-top: calc(2 * var(--mdp-px, 1px)); }
     .mdp-sc-ylabel { font-size: 0.85em; font-weight: 600; writing-mode: vertical-rl; transform: rotate(180deg); }
   ]]></style>
 </module>

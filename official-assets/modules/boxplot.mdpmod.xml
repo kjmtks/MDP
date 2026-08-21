@@ -86,14 +86,14 @@ Group B | 4 6 7 9 12
     return `\n\n<div class="mdp-mod-boxplot" style="--bp-c:${color}; --bp-h:${rowH}px; --bp-fill:${fillOp}%;">${rows}${scale}</div>\n\n`;
   ]]></render>
   <style><![CDATA[
-    .mdp-mod-boxplot { margin: 1rem 0; display: flex; flex-direction: column; gap: 10px; }
-    .mdp-bp-row { display: grid; grid-template-columns: minmax(60px, auto) 1fr; align-items: center; gap: 12px; }
+    .mdp-mod-boxplot { margin: calc(1 * var(--mdp-u, 1rem)) 0; display: flex; flex-direction: column; gap: calc(10 * var(--mdp-px, 1px)); }
+    .mdp-bp-row { display: grid; grid-template-columns: minmax(calc(60 * var(--mdp-px, 1px)), auto) 1fr; align-items: center; gap: calc(12 * var(--mdp-px, 1px)); }
     .mdp-bp-label { font-weight: 600; text-align: right; }
-    .mdp-bp-track { position: relative; height: var(--bp-h, 26px); }
-    .mdp-bp-whisker { position: absolute; top: 50%; height: 2px; background: currentColor; transform: translateY(-50%); opacity: 0.6; }
-    .mdp-bp-cap { position: absolute; top: 50%; width: 2px; height: 14px; background: currentColor; transform: translate(-50%, -50%); opacity: 0.6; }
-    .mdp-bp-box { position: absolute; top: 50%; height: 20px; background: color-mix(in srgb, var(--bp-c) var(--bp-fill, 22%), transparent); border: 1.5px solid var(--bp-c); border-radius: 4px; transform: translateY(-50%); }
-    .mdp-bp-median { position: absolute; top: 50%; width: 2.5px; height: 20px; background: var(--bp-c); transform: translate(-50%, -50%); }
-    .mdp-bp-scale { display: flex; justify-content: space-between; font-size: 0.75em; color: var(--app-text-muted, #888); margin-left: 72px; }
+    .mdp-bp-track { position: relative; height: var(--bp-h, calc(26 * var(--mdp-px, 1px))); }
+    .mdp-bp-whisker { position: absolute; top: 50%; height: calc(2 * var(--mdp-px, 1px)); background: currentColor; transform: translateY(-50%); opacity: 0.6; }
+    .mdp-bp-cap { position: absolute; top: 50%; width: calc(2 * var(--mdp-px, 1px)); height: calc(14 * var(--mdp-px, 1px)); background: currentColor; transform: translate(-50%, -50%); opacity: 0.6; }
+    .mdp-bp-box { position: absolute; top: 50%; height: calc(20 * var(--mdp-px, 1px)); background: color-mix(in srgb, var(--bp-c) var(--bp-fill, 22%), transparent); border: calc(1.5 * var(--mdp-px, 1px)) solid var(--bp-c); border-radius: calc(4 * var(--mdp-px, 1px)); transform: translateY(-50%); }
+    .mdp-bp-median { position: absolute; top: 50%; width: calc(2.5 * var(--mdp-px, 1px)); height: calc(20 * var(--mdp-px, 1px)); background: var(--bp-c); transform: translate(-50%, -50%); }
+    .mdp-bp-scale { display: flex; justify-content: space-between; font-size: 0.75em; color: var(--app-text-muted, #888); margin-left: calc(72 * var(--mdp-px, 1px)); }
   ]]></style>
 </module>

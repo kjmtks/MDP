@@ -95,7 +95,7 @@ Positioned box
          it edge-to-edge. */
       padding: 0;
       margin: 0;
-      border-radius: var(--radius-sm, 6px);
+      border-radius: var(--radius-sm, calc(6 * var(--mdp-px, 1px)));
       /* Content that exceeds the box is shown, not clipped. */
       overflow: visible;
     }

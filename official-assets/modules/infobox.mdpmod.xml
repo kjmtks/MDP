@@ -105,9 +105,9 @@ ${contentStr}
     <![CDATA[
       .mdp-mod-infobox {
         background-color: var(--panel-bg);
-        border-left: var(--ib-bw, 6px) solid;
+        border-left: var(--ib-bw, calc(6 * var(--mdp-px, 1px))) solid;
         border-radius: var(--ib-radius, var(--radius-sm));
-        margin: 1rem 0;
+        margin: calc(1 * var(--mdp-u, 1rem)) 0;
         box-shadow: var(--shadow-sm);
         overflow: hidden;
       }
@@ -115,26 +115,26 @@ ${contentStr}
         background-color: color-mix(in srgb, var(--ib-c) 8%, var(--panel-bg));
       }
       .mdp-mod-infobox .infobox-header {
-        padding: 0 16px;
+        padding: 0 calc(16 * var(--mdp-px, 1px));
         font-weight: 600;
         font-size: 1.1em;
         background-color: var(--panel-header-bg);
-        border-bottom: 1px solid var(--panel-border);
+        border-bottom: calc(1 * var(--mdp-px, 1px)) solid var(--panel-border);
       }
       .mdp-mod-infobox.mdp-ib-fill .infobox-header {
         background-color: color-mix(in srgb, var(--ib-c) 16%, var(--panel-header-bg));
       }
       .mdp-mod-infobox .infobox-body {
-        padding: 0 16px;
+        padding: 0 calc(16 * var(--mdp-px, 1px));
         font-size: 0.95em;
         color: var(--panel-text);
       }
       .mdp-mod-infobox .infobox-header p {
-        margin: 0 0 0 0.25rem;
-        padding: 0.25rem 0;
+        margin: 0 0 0 calc(0.25 * var(--mdp-u, 1rem));
+        padding: calc(0.25 * var(--mdp-u, 1rem)) 0;
       }
       .mdp-mod-infobox .infobox-body p {
-        margin: 0.5rem 0;
+        margin: calc(0.5 * var(--mdp-u, 1rem)) 0;
       }
     ]]>
   </style>

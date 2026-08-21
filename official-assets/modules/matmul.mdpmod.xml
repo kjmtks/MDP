@@ -88,11 +88,11 @@ Parameters:
     return html;
   ]]></render>
   <style><![CDATA[
-    .mdp-mod-matmul { display: flex; align-items: center; justify-content: center; gap: 14px; flex-wrap: wrap; margin: 1.2rem 0; }
-    .mdp-mx-matrix { display: inline-grid; gap: 3px; padding: 6px 10px; border-left: 2.5px solid currentColor; border-right: 2.5px solid currentColor; border-radius: 6px; }
-    .mdp-mx-cell { min-width: 34px; padding: 5px 8px; text-align: center; font-variant-numeric: tabular-nums; font-weight: 600; border-radius: 4px; }
-    .mdp-mx-cell.on { background: color-mix(in srgb, var(--mx-c) 25%, transparent); box-shadow: inset 0 0 0 1.5px var(--mx-c); }
+    .mdp-mod-matmul { display: flex; align-items: center; justify-content: center; gap: calc(14 * var(--mdp-px, 1px)); flex-wrap: wrap; margin: calc(1.2 * var(--mdp-u, 1rem)) 0; }
+    .mdp-mx-matrix { display: inline-grid; gap: calc(3 * var(--mdp-px, 1px)); padding: calc(6 * var(--mdp-px, 1px)) calc(10 * var(--mdp-px, 1px)); border-left: calc(2.5 * var(--mdp-px, 1px)) solid currentColor; border-right: calc(2.5 * var(--mdp-px, 1px)) solid currentColor; border-radius: calc(6 * var(--mdp-px, 1px)); }
+    .mdp-mx-cell { min-width: calc(34 * var(--mdp-px, 1px)); padding: calc(5 * var(--mdp-px, 1px)) calc(8 * var(--mdp-px, 1px)); text-align: center; font-variant-numeric: tabular-nums; font-weight: 600; border-radius: calc(4 * var(--mdp-px, 1px)); }
+    .mdp-mx-cell.on { background: color-mix(in srgb, var(--mx-c) 25%, transparent); box-shadow: inset 0 0 0 calc(1.5 * var(--mdp-px, 1px)) var(--mx-c); }
     .mdp-mx-op { font-size: 1.5em; font-weight: 700; color: var(--app-text-muted, #888); }
-    .mdp-mx-note { flex-basis: 100%; text-align: center; margin-top: 4px; font-size: 0.9em; color: var(--app-text-muted, #888); font-variant-numeric: tabular-nums; }
+    .mdp-mx-note { flex-basis: 100%; text-align: center; margin-top: calc(4 * var(--mdp-px, 1px)); font-size: 0.9em; color: var(--app-text-muted, #888); font-variant-numeric: tabular-nums; }
   ]]></style>
 </module>

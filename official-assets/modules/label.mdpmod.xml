@@ -55,13 +55,13 @@ New
   <style><![CDATA[
     .mdp-mod-label {
       display: inline-block;
-      padding: 1px 9px;
+      padding: calc(1 * var(--mdp-px, 1px)) calc(9 * var(--mdp-px, 1px));
       font-size: 0.8em;
       font-weight: 600;
       line-height: 1.4;
       background-color: transparent;
-      border: 1.5px solid;
-      border-radius: 9999px;
+      border: calc(1.5 * var(--mdp-px, 1px)) solid;
+      border-radius: calc(9999 * var(--mdp-px, 1px));
       vertical-align: middle;
     }
   ]]></style>

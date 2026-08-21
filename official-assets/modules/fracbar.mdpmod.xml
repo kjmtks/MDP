@@ -84,15 +84,15 @@ Parameters:
     return html;
   ]]></render>
   <style><![CDATA[
-    .mdp-mod-fracbar { display: flex; flex-wrap: wrap; gap: 20px 32px; margin: 1rem 0; align-items: flex-end; }
-    .mdp-fb-item { display: flex; flex-direction: column; gap: 8px; align-items: center; }
-    .mdp-fb-bar { display: flex; gap: 2px; width: var(--fb-bw, 180px); height: var(--fb-bh, 30px); }
-    .mdp-fb-seg { flex: 1; border: 1.5px solid var(--fb-c); border-radius: 3px; background: color-mix(in srgb, currentColor 5%, transparent); }
+    .mdp-mod-fracbar { display: flex; flex-wrap: wrap; gap: calc(20 * var(--mdp-px, 1px)) calc(32 * var(--mdp-px, 1px)); margin: calc(1 * var(--mdp-u, 1rem)) 0; align-items: flex-end; }
+    .mdp-fb-item { display: flex; flex-direction: column; gap: calc(8 * var(--mdp-px, 1px)); align-items: center; }
+    .mdp-fb-bar { display: flex; gap: calc(2 * var(--mdp-px, 1px)); width: var(--fb-bw, calc(180 * var(--mdp-px, 1px))); height: var(--fb-bh, calc(30 * var(--mdp-px, 1px))); }
+    .mdp-fb-seg { flex: 1; border: calc(1.5 * var(--mdp-px, 1px)) solid var(--fb-c); border-radius: calc(3 * var(--mdp-px, 1px)); background: color-mix(in srgb, currentColor 5%, transparent); }
     .mdp-fb-seg.on { background: color-mix(in srgb, var(--fb-c) 70%, transparent); }
-    .mdp-fb-pie { width: var(--fb-pie, 90px); height: var(--fb-pie, 90px); border-radius: 50%; border: 1.5px solid var(--fb-c); }
+    .mdp-fb-pie { width: var(--fb-pie, calc(90 * var(--mdp-px, 1px))); height: var(--fb-pie, calc(90 * var(--mdp-px, 1px))); border-radius: 50%; border: calc(1.5 * var(--mdp-px, 1px)) solid var(--fb-c); }
     .mdp-fb-caption { font-size: 1em; }
     .mdp-fb-frac { font-weight: 800; font-size: 1.15em; }
-    .mdp-fb-label { color: var(--app-text-muted, #888); margin-left: 4px; }
+    .mdp-fb-label { color: var(--app-text-muted, #888); margin-left: calc(4 * var(--mdp-px, 1px)); }
     .mdp-fb-pct { color: var(--app-text-muted, #888); font-weight: 700; }
   ]]></style>
 </module>

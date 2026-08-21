@@ -277,7 +277,13 @@ async function ensureCaptureWin() {
 
 ipcMain.handle('captureSlide', async (event, data) => {
   const win = await ensureCaptureWin();
-  win.setContentSize(Math.round(data.width), Math.round(data.height));
+  // A hidden window CAN be sized past the display (verified: 2038x2880 on a
+  // 2560x1392 work area captures fine), so no clamping workaround is needed —
+  // but an empty capture must not be passed on as a "data:," that only fails
+  // several layers later, in an image decoder.
+  const wantW = Math.round(data.width);
+  const wantH = Math.round(data.height);
+  win.setContentSize(wantW, wantH);
   win.webContents.send('capture-render', data);
   // Bounded wait: if the offscreen renderer errors/reloads and never reports
   // ready, resolve anyway — an un-timed listener would leak (one per capture)
@@ -290,6 +296,7 @@ ipcMain.handle('captureSlide', async (event, data) => {
     ipcMain.on('capture-ready', handler);
   });
   const img = await win.webContents.capturePage();
+  if (img.isEmpty()) throw new Error(`captureSlide produced an empty image (requested ${wantW}x${wantH}, window ${win.getContentSize().join('x')})`);
   return img.toDataURL();
 });
 
@@ -525,6 +532,14 @@ ipcMain.handle('pickFile', async (event, options) => {
   });
   if (result.canceled || !result.filePaths.length) return null;
   return result.filePaths[0];
+});
+
+// Write bytes to an ABSOLUTE path the user picked (image export). Unlike
+// 'saveFile' this deliberately bypasses the workspace VFS: the destination
+// comes from a native folder dialog and may sit anywhere on disk.
+ipcMain.handle('writeBinaryToPath', async (event, { filePath, content }) => {
+  await fs.writeFile(filePath, Buffer.from(content, 'base64'));
+  return true;
 });
 
 ipcMain.handle('getFileAsDataUrl', async (event, filePath) => {

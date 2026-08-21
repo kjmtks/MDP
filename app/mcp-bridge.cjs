@@ -350,6 +350,7 @@ function slideSecondsFromRaw(raw, cpm) {
 function outlineDeck(text, cpm) {
   const blocks = splitBlocks(text);
   const meta = blocks[0] || '';
+  let pageCount = 0;
   const slides = blocks.slice(1).map((raw, i) => {
     const noComments = raw.replace(/<!--[\s\S]*?-->/g, ' ');
     const heading = ((noComments.match(/^\s*#{1,3}\s+(.+)$/m) || [])[1] || '').trim();
@@ -361,8 +362,16 @@ function outlineDeck(text, cpm) {
     const scriptChars = [...raw.matchAll(/<!--\s*@script:\s*([\s\S]*?)-->/g)].map((m) => m[1]).join('').replace(/\s+/g, '').length;
     const explicitTime = (raw.match(/<!--\s*@time\s+([\s\S]*?)\s*-->/i) || [])[1];
     const hidden = /<!--\s*@hide\s*-->/i.test(raw);
+    const cover = /<!--\s*@cover\s*-->/i.test(raw);
+    const id = ((raw.match(/<!--\s*@id\s+([\w-]+)\s*-->/) || [])[1] || '').trim();
+    // The number PRINTED bottom-right on the slide. Hidden slides and covers carry
+    // no number and do NOT advance the count, so it drifts from the slide index —
+    // keep this identical to the app's numbering in useSlideProcessor.
+    const page = hidden || cover ? null : ++pageCount;
     return {
       slide: i + 1,
+      ...(page ? { page } : {}),
+      ...(id ? { id } : {}),
       heading: heading || undefined,
       bullets: bullets || undefined,
       modules: modules.length ? modules : undefined,
@@ -372,7 +381,7 @@ function outlineDeck(text, cpm) {
       // Per-slide speaking-time estimate (seconds); `explicitTime` set = from @time.
       seconds: hidden ? 0 : slideSecondsFromRaw(raw, cpm),
       ...(explicitTime ? { explicitTime: explicitTime.trim() } : {}),
-      ...(/<!--\s*@cover\s*-->/i.test(raw) ? { cover: true } : {}),
+      ...(cover ? { cover: true } : {}),
       ...(hidden ? { hidden: true } : {}),
     };
   });
@@ -561,7 +570,9 @@ function withDeckLock(key, fn) {
   deckLocks.set(key, run.then(() => {}, () => {}));
   return run;
 }
-const WRITE_METHODS = new Set(['write_deck', 'append_slide', 'replace_slide', 'patch_deck', 'edit_slides', 'set_notes', 'set_script', 'set_time', 'batch_set_slides']);
+// save_deck/reload_deck take the lock too: flushing (or discarding) a deck's editor
+// buffer must not interleave with an in-flight read-modify-write of that same deck.
+const WRITE_METHODS = new Set(['write_deck', 'append_slide', 'replace_slide', 'patch_deck', 'edit_slides', 'set_notes', 'set_script', 'set_time', 'batch_set_slides', 'save_deck', 'reload_deck']);
 
 // ---- tool implementations ------------------------------------------------------
 
@@ -877,7 +888,7 @@ async function callToolInner(method, p, baseDir) {
     case 'get_deck_outline': {
       const deckPath = p.path ? requireDeckPath(p.path) : await activeDeckPath();
       const { text } = await currentDeckText(baseDir, deckPath);
-      return { path: deckPath, ...outlineDeck(text, ctx.getReadingCpm ? ctx.getReadingCpm() : 320), note: 'Per-slide `seconds` and total `estimatedMinutes` are a rough talk-time estimate: a slide\'s `<!-- @time … -->` if set (explicitTime), else read time of its `<!-- @script: … -->` at the user\'s reading speed, else a complexity estimate (base + bullets + visuals). @note does NOT affect time (it\'s supplementary). Set @time or write an @script for accuracy. Hidden slides excluded.' };
+      return { path: deckPath, ...outlineDeck(text, ctx.getReadingCpm ? ctx.getReadingCpm() : 320), note: '`slide` is the 1-based POSITION in the file; `page` is the number PRINTED bottom-right on the slide — they differ because covers and hidden slides carry no number. Cite `page` to the user and to readers; pass `slide` to tools that take a slide number. `id` is the slide\'s `@id` anchor, which `[](#id)` renders as that page number. Per-slide `seconds` and total `estimatedMinutes` are a rough talk-time estimate: a slide\'s `<!-- @time … -->` if set (explicitTime), else read time of its `<!-- @script: … -->` at the user\'s reading speed, else a complexity estimate (base + bullets + visuals). @note does NOT affect time (it\'s supplementary). Set @time or write an @script for accuracy. Hidden slides excluded.' };
     }
 
     case 'lint_deck': {
@@ -1182,6 +1193,10 @@ async function callToolInner(method, p, baseDir) {
       return r;
     }
     case 'open_deck': return await relay('openDeck', { path: requireDeckPath(p.path) }, 20000);
+    // Long timeout: handleSave's external-change guard may put a dialog in front of
+    // the user (the file changed on disk since MDP loaded it) and we wait for them.
+    case 'save_deck': return await relay('saveDeck', { path: p.path ? requireDeckPath(p.path) : undefined }, 300000);
+    case 'reload_deck': return await relay('reloadDeck', { path: p.path ? requireDeckPath(p.path) : undefined, discardUnsaved: !!p.discardUnsaved }, 30000);
     case 'goto_slide': return await relay('gotoSlide', { slide: Number(p.slide) }, 10000);
     case 'insert_at_cursor': return await relay('insertAtCursor', { text: String(p.text ?? '') }, 10000);
     case 'measure_slides': return await relay('measureSlides', { path: p.path ? requireDeckPath(p.path) : undefined, slides: Array.isArray(p.slides) ? p.slides.map(Number).filter((n) => Number.isInteger(n)) : undefined, all: !!p.all }, 120000);

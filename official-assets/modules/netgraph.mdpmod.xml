@@ -80,12 +80,12 @@ C - A
     return `\n\n<div class="mdp-mod-netgraph" style="--ng-c:${color};"><svg viewBox="0 0 160 160" preserveAspectRatio="xMidYMid meet">${svg}</svg></div>\n\n`;
   ]]></render>
   <style><![CDATA[
-    .mdp-mod-netgraph { width: min(100%, 340px); margin: 1rem auto; }
+    .mdp-mod-netgraph { width: min(100%, calc(340 * var(--mdp-px, 1px))); margin: calc(1 * var(--mdp-u, 1rem)) auto; }
     .mdp-mod-netgraph svg { width: 100%; height: auto; overflow: visible; }
     .mdp-ng-edge { stroke: currentColor; stroke-width: 1; fill: none; opacity: 0.75; }
     .mdp-ng-node { fill: color-mix(in srgb, var(--ng-c) 18%, transparent); stroke: var(--ng-c); stroke-width: 1.2; }
-    .mdp-ng-nlbl { fill: currentColor; font-size: 6.5px; font-weight: 700; }
-    .mdp-ng-elbl { fill: currentColor; font-size: 8px; font-weight: 700; opacity: 1;
-      paint-order: stroke; stroke: var(--panel-bg, #fff); stroke-width: 2.5px; stroke-linejoin: round; }
+    .mdp-ng-nlbl { fill: currentColor; font-size: calc(6.5 * var(--mdp-px, 1px)); font-weight: 700; }
+    .mdp-ng-elbl { fill: currentColor; font-size: calc(8 * var(--mdp-px, 1px)); font-weight: 700; opacity: 1;
+      paint-order: stroke; stroke: var(--panel-bg, #fff); stroke-width: calc(2.5 * var(--mdp-px, 1px)); stroke-linejoin: round; }
   ]]></style>
 </module>

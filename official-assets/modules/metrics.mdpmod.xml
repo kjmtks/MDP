@@ -64,10 +64,10 @@ Achieved a dramatic performance improvement compared to the conventional system.
   <style><![CDATA[
     .mdp-mod-metrics {
       text-align: var(--met-align, center);
-      margin: 1rem 0;
+      margin: calc(1 * var(--mdp-u, 1rem)) 0;
       padding: 2em;
       background: var(--met-bg, #fafafa);
-      border-radius: 12px;
+      border-radius: calc(12 * var(--mdp-px, 1px));
     }
     .mdp-metrics-value {
       font-size: var(--met-size, 5em);
@@ -85,7 +85,7 @@ Achieved a dramatic performance improvement compared to the conventional system.
       font-weight: bold;
       color: #555;
       text-transform: uppercase;
-      letter-spacing: 2px;
+      letter-spacing: calc(2 * var(--mdp-px, 1px));
       margin-bottom: 1em;
     }
     .mdp-metrics-desc {

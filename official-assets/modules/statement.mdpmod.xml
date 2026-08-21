@@ -59,12 +59,12 @@ Simplicity is the ultimate **sophistication**.
     return html;
   ]]></render>
   <style><![CDATA[
-    .mdp-mod-statement { margin: 1.4rem 0; }
-    .mdp-st-body { font-size: var(--st-size, 2.6rem); font-weight: var(--st-weight, 800); line-height: 1.2; letter-spacing: -0.01em; }
+    .mdp-mod-statement { margin: calc(1.4 * var(--mdp-u, 1rem)) 0; }
+    .mdp-st-body { font-size: var(--st-size, calc(2.6 * var(--mdp-u, 1rem))); font-weight: var(--st-weight, 800); line-height: 1.2; letter-spacing: -0.01em; }
     .mdp-st-body > :first-child { margin-top: 0; }
     .mdp-st-body > :last-child { margin-bottom: 0; }
     .mdp-st-body.is-quoted::before { content: '\201C'; margin-right: 0.05em; opacity: 0.45; }
     .mdp-st-body.is-quoted::after { content: '\201D'; margin-left: 0.05em; opacity: 0.45; }
-    .mdp-st-by { margin-top: 0.8rem; font-size: 1rem; font-weight: 500; color: var(--app-text-muted, #888); }
+    .mdp-st-by { margin-top: calc(0.8 * var(--mdp-u, 1rem)); font-size: calc(1 * var(--mdp-u, 1rem)); font-weight: 500; color: var(--app-text-muted, #888); }
   ]]></style>
 </module>

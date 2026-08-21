@@ -86,7 +86,7 @@ Edge 2
     return html;
   ]]></render>
   <style><![CDATA[
-    .mdp-mod-wordcloud { display: flex; flex-wrap: wrap; align-items: center; justify-content: var(--wc-justify, center); gap: var(--wc-gap, 6px 4px); margin: 1.2rem auto; max-width: var(--wc-mw, 620px); text-align: center; line-height: 1.15; }
+    .mdp-mod-wordcloud { display: flex; flex-wrap: wrap; align-items: center; justify-content: var(--wc-justify, center); gap: var(--wc-gap, calc(6 * var(--mdp-px, 1px)) calc(4 * var(--mdp-px, 1px))); margin: calc(1.2 * var(--mdp-u, 1rem)) auto; max-width: var(--wc-mw, calc(620 * var(--mdp-px, 1px))); text-align: center; line-height: 1.15; }
     .mdp-wc-word { font-weight: 700; white-space: nowrap; }
   ]]></style>
 </module>

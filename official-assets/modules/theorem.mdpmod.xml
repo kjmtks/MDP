@@ -48,11 +48,11 @@ For a right triangle with legs \(a, b\) and hypotenuse \(c\),
   ]]></render>
   <style><![CDATA[
     .mdp-mod-theorem {
-      margin: 1rem 0; padding: 10px 14px; border-radius: 6px;
-      border-left: 4px solid var(--th-color);
+      margin: calc(1 * var(--mdp-u, 1rem)) 0; padding: calc(10 * var(--mdp-px, 1px)) calc(14 * var(--mdp-px, 1px)); border-radius: calc(6 * var(--mdp-px, 1px));
+      border-left: calc(4 * var(--mdp-px, 1px)) solid var(--th-color);
       background: color-mix(in srgb, var(--th-color) 7%, transparent);
     }
-    .mdp-th-head { font-weight: 700; color: var(--th-color); margin-right: 4px; }
+    .mdp-th-head { font-weight: 700; color: var(--th-color); margin-right: calc(4 * var(--mdp-px, 1px)); }
     .mdp-th-body { display: inline; }
     .mdp-th-italic .mdp-th-body { font-style: italic; }
     .mdp-th-body > :first-child { margin-top: 0; display: inline; }

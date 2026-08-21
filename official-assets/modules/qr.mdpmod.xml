@@ -113,9 +113,9 @@ https://github.com/kjmtks
   ]]></render>
 
   <style><![CDATA[
-    .mdp-mod-qr { margin: 1rem 0; }
+    .mdp-mod-qr { margin: calc(1 * var(--mdp-u, 1rem)) 0; }
     .mdp-qr-frame { display: inline-block; text-align: center; }
-    .mdp-qr-bordered { border: 1px solid color-mix(in srgb, currentColor 25%, transparent); padding: 8px; border-radius: 8px; box-sizing: content-box; }
+    .mdp-qr-bordered { border: calc(1 * var(--mdp-px, 1px)) solid color-mix(in srgb, currentColor 25%, transparent); padding: calc(8 * var(--mdp-px, 1px)); border-radius: calc(8 * var(--mdp-px, 1px)); box-sizing: content-box; }
     .mdp-qr-svg { display: block; max-width: 100%; height: auto; }
     .mdp-qr-caption {
       margin-top: 0.5em;

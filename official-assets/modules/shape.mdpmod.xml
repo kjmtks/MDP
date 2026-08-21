@@ -129,8 +129,8 @@ Example:
   <style><![CDATA[
     .mdp-mod-shape {
       position: relative;
-      width: 250px;
-      height: 150px;
+      width: calc(250 * var(--mdp-px, 1px));
+      height: calc(150 * var(--mdp-px, 1px));
       box-sizing: border-box;
     }
     /* When placed/sized in Edit layout, fill the manip box. */
@@ -144,7 +144,7 @@ Example:
       overflow: visible;
     }
     .mdp-mod-shape.has-shadow .mdp-shape-svg {
-      filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.28));
+      filter: drop-shadow(0 calc(4 * var(--mdp-px, 1px)) calc(8 * var(--mdp-px, 1px)) rgba(0, 0, 0, 0.28));
     }
     .mdp-shape-text {
       position: absolute;

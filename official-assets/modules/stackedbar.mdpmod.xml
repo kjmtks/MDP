@@ -82,13 +82,13 @@ Example:
     return html;
   ]]></render>
   <style><![CDATA[
-    .mdp-mod-stackedbar { margin: 1rem 0; display: flex; flex-direction: column; gap: 10px; }
-    .mdp-sb-row { display: grid; grid-template-columns: minmax(56px, auto) 1fr; align-items: center; gap: 12px; }
+    .mdp-mod-stackedbar { margin: calc(1 * var(--mdp-u, 1rem)) 0; display: flex; flex-direction: column; gap: calc(10 * var(--mdp-px, 1px)); }
+    .mdp-sb-row { display: grid; grid-template-columns: minmax(calc(56 * var(--mdp-px, 1px)), auto) 1fr; align-items: center; gap: calc(12 * var(--mdp-px, 1px)); }
     .mdp-sb-label { font-weight: 600; text-align: right; }
-    .mdp-sb-bar { display: flex; height: var(--sb-h, 30px); border-radius: 6px; overflow: hidden; background: color-mix(in srgb, currentColor 6%, transparent); }
-    .mdp-sb-seg { display: flex; align-items: center; justify-content: center; color: #fff; font-size: 0.78em; font-weight: 700; text-shadow: 0 1px 2px rgba(0,0,0,.35); min-width: 0; }
+    .mdp-sb-bar { display: flex; height: var(--sb-h, calc(30 * var(--mdp-px, 1px))); border-radius: calc(6 * var(--mdp-px, 1px)); overflow: hidden; background: color-mix(in srgb, currentColor 6%, transparent); }
+    .mdp-sb-seg { display: flex; align-items: center; justify-content: center; color: #fff; font-size: 0.78em; font-weight: 700; text-shadow: 0 calc(1 * var(--mdp-px, 1px)) calc(2 * var(--mdp-px, 1px)) rgba(0,0,0,.35); min-width: 0; }
     .mdp-sb-seg span { overflow: hidden; white-space: nowrap; }
-    .mdp-sb-legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 0.85em; margin-top: 2px; }
-    .mdp-sb-legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: -2px; }
+    .mdp-sb-legend { display: flex; flex-wrap: wrap; gap: calc(6 * var(--mdp-px, 1px)) calc(18 * var(--mdp-px, 1px)); font-size: 0.85em; margin-top: calc(2 * var(--mdp-px, 1px)); }
+    .mdp-sb-legend i { display: inline-block; width: calc(12 * var(--mdp-px, 1px)); height: calc(12 * var(--mdp-px, 1px)); border-radius: calc(3 * var(--mdp-px, 1px)); margin-right: calc(6 * var(--mdp-px, 1px)); vertical-align: -2px; }
   ]]></style>
 </module>

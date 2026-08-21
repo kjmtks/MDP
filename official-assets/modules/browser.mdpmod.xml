@@ -63,13 +63,13 @@ Usage:
     return `\n\n<div class="${cls}" style="${style}"><div class="mdp-br-bar"><span class="mdp-br-dot"></span><span class="mdp-br-dot"></span><span class="mdp-br-dot"></span><span class="mdp-br-url">${url}</span></div><div class="mdp-br-body">\n\n${body}\n\n</div></div>\n\n`;
   ]]></render>
   <style><![CDATA[
-    .mdp-mod-browser { margin: 1rem 0; border-radius: var(--br-r, 10px); overflow: hidden; box-shadow: 0 8px 26px rgba(0,0,0,0.3); border: 1px solid rgba(0,0,0,0.15); background: #fff; }
+    .mdp-mod-browser { margin: calc(1 * var(--mdp-u, 1rem)) 0; border-radius: var(--br-r, calc(10 * var(--mdp-px, 1px))); overflow: hidden; box-shadow: 0 calc(8 * var(--mdp-px, 1px)) calc(26 * var(--mdp-px, 1px)) rgba(0,0,0,0.3); border: calc(1 * var(--mdp-px, 1px)) solid rgba(0,0,0,0.15); background: #fff; }
     .mdp-mod-browser.mdp-br-noshadow { box-shadow: none; }
-    .mdp-br-bar { display: flex; align-items: center; gap: 7px; padding: 8px 12px; background: #e9ecef; }
-    .mdp-br-dot { width: 12px; height: 12px; border-radius: 50%; background: #ced4da; }
+    .mdp-br-bar { display: flex; align-items: center; gap: calc(7 * var(--mdp-px, 1px)); padding: calc(8 * var(--mdp-px, 1px)) calc(12 * var(--mdp-px, 1px)); background: #e9ecef; }
+    .mdp-br-dot { width: calc(12 * var(--mdp-px, 1px)); height: calc(12 * var(--mdp-px, 1px)); border-radius: 50%; background: #ced4da; }
     .mdp-br-dot:nth-child(1) { background: #ff5f57; } .mdp-br-dot:nth-child(2) { background: #febc2e; } .mdp-br-dot:nth-child(3) { background: #28c840; }
     .mdp-br-url {
-      flex: 1; margin-left: 8px; background: #fff; border-radius: 6px; padding: 3px 10px;
+      flex: 1; margin-left: calc(8 * var(--mdp-px, 1px)); background: #fff; border-radius: calc(6 * var(--mdp-px, 1px)); padding: calc(3 * var(--mdp-px, 1px)) calc(10 * var(--mdp-px, 1px));
       font-size: 0.8em; color: #495057; font-family: ui-monospace, monospace;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }

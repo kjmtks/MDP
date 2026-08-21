@@ -94,14 +94,14 @@ Launch | 6 6
     return `\n\n<div class="mdp-mod-gantt" style="--gt-color:${color}; --gt-radius:${br}px; --gt-barh:${bh}em; gap:${gap}px;">${head}${rows}</div>\n\n`;
   ]]></render>
   <style><![CDATA[
-    .mdp-mod-gantt { margin: 1rem 0; display: flex; flex-direction: column; gap: 6px; font-size: 0.9em; }
-    .mdp-gt-row { display: grid; grid-template-columns: minmax(5em, auto) 1fr; align-items: center; gap: 10px; }
+    .mdp-mod-gantt { margin: calc(1 * var(--mdp-u, 1rem)) 0; display: flex; flex-direction: column; gap: calc(6 * var(--mdp-px, 1px)); font-size: 0.9em; }
+    .mdp-gt-row { display: grid; grid-template-columns: minmax(5em, auto) 1fr; align-items: center; gap: calc(10 * var(--mdp-px, 1px)); }
     .mdp-gt-name { text-align: right; font-weight: 600; }
-    .mdp-gt-track { display: grid; gap: 0; background: color-mix(in srgb, var(--gt-color) 8%, transparent); border-radius: 4px; }
+    .mdp-gt-track { display: grid; gap: 0; background: color-mix(in srgb, var(--gt-color) 8%, transparent); border-radius: calc(4 * var(--mdp-px, 1px)); }
     .mdp-gt-head .mdp-gt-track { background: none; }
-    .mdp-gt-col { text-align: center; font-size: 0.8em; color: var(--gt-color); padding: 2px 0; border-left: 1px solid color-mix(in srgb, var(--gt-color) 20%, transparent); }
+    .mdp-gt-col { text-align: center; font-size: 0.8em; color: var(--gt-color); padding: calc(2 * var(--mdp-px, 1px)) 0; border-left: calc(1 * var(--mdp-px, 1px)) solid color-mix(in srgb, var(--gt-color) 20%, transparent); }
     .mdp-gt-bar {
-      background: var(--gt-color); color: #fff; border-radius: var(--gt-radius, 4px); height: var(--gt-barh, 1.5em);
+      background: var(--gt-color); color: #fff; border-radius: var(--gt-radius, calc(4 * var(--mdp-px, 1px))); height: var(--gt-barh, 1.5em);
       display: flex; align-items: center; justify-content: center; font-size: 0.8em; min-width: 0;
     }
   ]]></style>

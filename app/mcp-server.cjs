@@ -181,6 +181,16 @@ const TOOLS = [
     inputSchema: S({ path: str('Deck path') }, ['path']),
   },
   {
+    name: 'save_deck',
+    description: 'SAVE the deck to disk. Edits made to an OPEN deck (write_deck / patch_deck / replace_slide / set_notes …) land in the editor as UNSAVED changes for the user to review — call this to commit them to the file, the same as the user pressing Ctrl+S. The deck is activated first. Returns saved:false when there was nothing to save. If the file was ALSO changed on disk outside MDP, the user is asked to confirm the overwrite, so this call may wait for them. Ask the user before saving on their behalf unless they told you to.',
+    inputSchema: S({ path: str('Deck path to save (default: the active deck)') }),
+  },
+  {
+    name: 'reload_deck',
+    description: 'RELOAD the deck from disk into the editor, discarding whatever the editor holds — use after the file was changed outside MDP (another tool, an external editor, a git checkout) so the editor and preview show the real file. Refuses when the deck has unsaved editor changes unless discardUnsaved:true (save them first with save_deck if they matter). Returns the reloaded slide count.',
+    inputSchema: S({ path: str('Deck path to reload (default: the active deck)'), discardUnsaved: { type: 'boolean', description: 'Reload even though the editor has unsaved changes, throwing them away (default false)' } }),
+  },
+  {
     name: 'goto_slide',
     description: 'Show a slide in the MDP preview (1-based).',
     inputSchema: S({ slide: num('Slide number, 1-based') }, ['slide']),

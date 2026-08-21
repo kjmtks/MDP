@@ -41,12 +41,12 @@ $ npm run dev
     return `\n\n<div class="mdp-mod-terminal"><div class="mdp-tm-bar"><span class="mdp-tm-dot"></span><span class="mdp-tm-dot"></span><span class="mdp-tm-dot"></span><span class="mdp-tm-title">${title}</span></div><div class="mdp-tm-body">\n\n${body}\n\n</div></div>\n\n`;
   ]]></render>
   <style><![CDATA[
-    .mdp-mod-terminal { margin: 1rem 0; border-radius: 10px; overflow: hidden; box-shadow: 0 8px 26px rgba(0,0,0,0.35); background: #1e1e2e; }
-    .mdp-tm-bar { display: flex; align-items: center; gap: 7px; padding: 8px 12px; background: #313244; }
-    .mdp-tm-dot { width: 12px; height: 12px; border-radius: 50%; background: #6c7086; }
+    .mdp-mod-terminal { margin: calc(1 * var(--mdp-u, 1rem)) 0; border-radius: calc(10 * var(--mdp-px, 1px)); overflow: hidden; box-shadow: 0 calc(8 * var(--mdp-px, 1px)) calc(26 * var(--mdp-px, 1px)) rgba(0,0,0,0.35); background: #1e1e2e; }
+    .mdp-tm-bar { display: flex; align-items: center; gap: calc(7 * var(--mdp-px, 1px)); padding: calc(8 * var(--mdp-px, 1px)) calc(12 * var(--mdp-px, 1px)); background: #313244; }
+    .mdp-tm-dot { width: calc(12 * var(--mdp-px, 1px)); height: calc(12 * var(--mdp-px, 1px)); border-radius: 50%; background: #6c7086; }
     .mdp-tm-dot:nth-child(1) { background: #f38ba8; } .mdp-tm-dot:nth-child(2) { background: #f9e2af; } .mdp-tm-dot:nth-child(3) { background: #a6e3a1; }
-    .mdp-tm-title { margin-left: 8px; color: #cdd6f4; font-size: 0.85em; font-family: ui-monospace, monospace; }
-    .mdp-tm-body { padding: 12px 14px; color: #cdd6f4; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9em; overflow-x: auto; }
+    .mdp-tm-title { margin-left: calc(8 * var(--mdp-px, 1px)); color: #cdd6f4; font-size: 0.85em; font-family: ui-monospace, monospace; }
+    .mdp-tm-body { padding: calc(12 * var(--mdp-px, 1px)) calc(14 * var(--mdp-px, 1px)); color: #cdd6f4; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9em; overflow-x: auto; }
     .mdp-tm-body pre { margin: 0; background: none; padding: 0; }
     .mdp-tm-body code { background: none; color: inherit; }
     .mdp-tm-body > :first-child { margin-top: 0; } .mdp-tm-body > :last-child { margin-bottom: 0; }

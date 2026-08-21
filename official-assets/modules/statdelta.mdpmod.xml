@@ -64,11 +64,11 @@ Churn
     return html;
   ]]></render>
   <style><![CDATA[
-    .mdp-mod-statdelta { display: flex; gap: 14px; margin: 1rem 0; flex-wrap: wrap; }
-    .mdp-sd-item { flex: 1 1 0; min-width: 6em; text-align: center; padding: 10px; border-radius: 8px; background: color-mix(in srgb, var(--accent-color, #3b82f6) 5%, transparent); }
+    .mdp-mod-statdelta { display: flex; gap: calc(14 * var(--mdp-px, 1px)); margin: calc(1 * var(--mdp-u, 1rem)) 0; flex-wrap: wrap; }
+    .mdp-sd-item { flex: 1 1 0; min-width: 6em; text-align: center; padding: calc(10 * var(--mdp-px, 1px)); border-radius: calc(8 * var(--mdp-px, 1px)); background: color-mix(in srgb, var(--accent-color, #3b82f6) 5%, transparent); }
     .mdp-sd-value { font-size: 1.8em; font-weight: 800; line-height: 1.1; }
-    .mdp-sd-label { font-size: 0.85em; color: var(--app-text-muted, #888); margin-top: 2px; }
-    .mdp-sd-change { font-weight: 700; font-size: 0.9em; margin-top: 4px; }
+    .mdp-sd-label { font-size: 0.85em; color: var(--app-text-muted, #888); margin-top: calc(2 * var(--mdp-px, 1px)); }
+    .mdp-sd-change { font-weight: 700; font-size: 0.9em; margin-top: calc(4 * var(--mdp-px, 1px)); }
     .mdp-sd-change.is-good { color: #16a34a; }
     .mdp-sd-change.is-bad { color: #dc2626; }
   ]]></style>

@@ -64,13 +64,13 @@ Params:
       `<div class="mdp-hg-col mdp-hg-last"><div class="mdp-hg-edge">${fmt(hi)}</div></div></div></div>\n\n`;
   ]]></render>
   <style><![CDATA[
-    .mdp-mod-histogram { margin: 1rem 0; }
-    .mdp-hg-plot { display: flex; align-items: stretch; height: 180px; border-bottom: 2px solid currentColor; position: relative; padding-bottom: 0; }
+    .mdp-mod-histogram { margin: calc(1 * var(--mdp-u, 1rem)) 0; }
+    .mdp-hg-plot { display: flex; align-items: stretch; height: calc(180 * var(--mdp-px, 1px)); border-bottom: calc(2 * var(--mdp-px, 1px)) solid currentColor; position: relative; padding-bottom: 0; }
     .mdp-hg-col { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; position: relative; }
     .mdp-hg-last { flex: 0; }
-    .mdp-hg-bar { background: color-mix(in srgb, var(--hg-c) 65%, transparent); border: 1px solid var(--hg-c); border-bottom: none; border-radius: 3px 3px 0 0; margin: 0 1px; }
-    .mdp-hg-count { text-align: center; font-size: 0.75em; font-weight: 700; color: var(--app-text-muted, #888); padding-bottom: 2px; }
+    .mdp-hg-bar { background: color-mix(in srgb, var(--hg-c) 65%, transparent); border: calc(1 * var(--mdp-px, 1px)) solid var(--hg-c); border-bottom: none; border-radius: calc(3 * var(--mdp-px, 1px)) calc(3 * var(--mdp-px, 1px)) 0 0; margin: 0 calc(1 * var(--mdp-px, 1px)); }
+    .mdp-hg-count { text-align: center; font-size: 0.75em; font-weight: 700; color: var(--app-text-muted, #888); padding-bottom: calc(2 * var(--mdp-px, 1px)); }
     .mdp-hg-edge { position: absolute; bottom: -22px; left: 0; transform: translateX(-50%); font-size: 0.72em; color: var(--app-text-muted, #888); }
-    .mdp-mod-histogram::after { content: ''; display: block; height: 24px; }
+    .mdp-mod-histogram::after { content: ''; display: block; height: calc(24 * var(--mdp-px, 1px)); }
   ]]></style>
 </module>

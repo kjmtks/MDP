@@ -68,7 +68,7 @@ Ctrl+K
     .mdp-mod-shortcut {
       display: inline-flex;
       align-items: center;
-      gap: 4px;
+      gap: calc(4 * var(--mdp-px, 1px));
       vertical-align: middle;
     }
     .mdp-mod-shortcut .shortcut-key {
@@ -76,18 +76,18 @@ Ctrl+K
       font-family: ui-monospace, "Cascadia Code", "Segoe UI Mono", Menlo, Consolas, monospace;
       font-size: 0.85em;
       line-height: 1;
-      padding: 3px 7px;
+      padding: calc(3 * var(--mdp-px, 1px)) calc(7 * var(--mdp-px, 1px));
       color: var(--sc-accent, var(--inline-code-text, var(--text-color, #1f2937)));
       background-color: var(--inline-code-bg, #f3f4f6);
-      border: 1px solid var(--border-color, #d1d5db);
-      border-bottom-width: 2px;
+      border: calc(1 * var(--mdp-px, 1px)) solid var(--border-color, #d1d5db);
+      border-bottom-width: calc(2 * var(--mdp-px, 1px));
       border-bottom-color: var(--sc-lip, var(--border-color, #d1d5db));
-      border-radius: 5px;
-      box-shadow: var(--shadow-sm, 0 1px 0 rgba(0,0,0,0.15));
+      border-radius: calc(5 * var(--mdp-px, 1px));
+      box-shadow: var(--shadow-sm, 0 calc(1 * var(--mdp-px, 1px)) 0 rgba(0,0,0,0.15));
       white-space: nowrap;
     }
-    .mdp-mod-shortcut.sc-sm .shortcut-key { font-size: 0.72em; padding: 2px 5px; }
-    .mdp-mod-shortcut.sc-lg .shortcut-key { font-size: 1em; padding: 4px 9px; }
+    .mdp-mod-shortcut.sc-sm .shortcut-key { font-size: 0.72em; padding: calc(2 * var(--mdp-px, 1px)) calc(5 * var(--mdp-px, 1px)); }
+    .mdp-mod-shortcut.sc-lg .shortcut-key { font-size: 1em; padding: calc(4 * var(--mdp-px, 1px)) calc(9 * var(--mdp-px, 1px)); }
     .mdp-mod-shortcut .shortcut-plus {
       color: var(--muted-color, #6b7280);
       font-size: 0.85em;

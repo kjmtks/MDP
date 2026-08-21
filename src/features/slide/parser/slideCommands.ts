@@ -20,6 +20,18 @@ export const parseCommand = (input: string): CommandResult | null => {
   if (matchAspect) {
     return { type: 'ASPECT', scope: 'GLOBAL', params: matchAspect[1].split(':').map(Number) };
   }
+  // @resolution sets how many CSS pixels the slide canvas is laid out in — the
+  // aspect ratio is unchanged, only the pixel budget. `1440` sets the height and
+  // derives the width from @aspect; `2037x2880` gives both. More pixels means a
+  // device pixel is a smaller fraction of the type, which is what lets hairlines
+  // (the KaTeX fraction rule, thin borders) stay proportional instead of being
+  // clamped to 1px — see poster.css.
+  const matchResolution = text.match(/^@resolution\s+(\d+)(?:\s*[x×]\s*(\d+))?$/i);
+  if (matchResolution) {
+    const a = Number(matchResolution[1]);
+    const b = matchResolution[2] ? Number(matchResolution[2]) : undefined;
+    return { type: 'RESOLUTION', scope: 'GLOBAL', params: b === undefined ? { height: a } : { width: a, height: b } };
+  }
   const matchTheme = text.match(/^@theme\s+(.+)$/);
   if (matchTheme) {
     return { type: 'THEME', scope: 'GLOBAL', params: matchTheme[1].trim() };

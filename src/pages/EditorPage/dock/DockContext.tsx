@@ -180,6 +180,8 @@ export interface HeaderActions {
   onToggleSlideshow: () => void;
   onPrint: () => void;
   onExportPptx?: (mode: 'image' | 'editable') => void;
+  onExportImages?: () => void;
+  imagesBusy?: boolean;
   pptxBusy?: boolean;
   onToggleOverview: () => void;
   isSlideOverview: boolean;

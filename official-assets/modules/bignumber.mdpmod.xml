@@ -88,8 +88,8 @@ Year-over-year growth
   <style><![CDATA[
     .mdp-mod-bignumber {
       text-align: center;
-      margin: 1rem 0;
-      padding: 1rem;
+      margin: calc(1 * var(--mdp-u, 1rem)) 0;
+      padding: calc(1 * var(--mdp-u, 1rem));
     }
     .mdp-mod-bignumber .bignumber-value {
       font-size: 3.5em;
@@ -100,12 +100,12 @@ Year-over-year growth
       font-size: 1.1em;
       font-weight: 600;
       color: var(--bn-label, var(--text-color, #1f2937));
-      margin-top: 0.25rem;
+      margin-top: calc(0.25 * var(--mdp-u, 1rem));
     }
     .mdp-mod-bignumber .bignumber-caption {
       font-size: 0.85em;
       color: var(--muted-color, #6b7280);
-      margin-top: 0.25rem;
+      margin-top: calc(0.25 * var(--mdp-u, 1rem));
     }
   ]]></style>
 

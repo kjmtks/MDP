@@ -81,7 +81,7 @@ Set B
     return `\n\n<div class="mdp-mod-venn mdp-venn-${n}" style="--venn-op:${opacity}; --venn-mw:${maxW};">${circles}${center}${texts}</div>\n\n`;
   ]]></render>
   <style><![CDATA[
-    .mdp-mod-venn { position: relative; width: min(100%, var(--venn-mw, 400px)); aspect-ratio: 1 / 1; margin: 1rem auto; }
+    .mdp-mod-venn { position: relative; width: min(100%, var(--venn-mw, calc(400 * var(--mdp-px, 1px)))); aspect-ratio: 1 / 1; margin: calc(1 * var(--mdp-u, 1rem)) auto; }
     .mdp-venn-circle {
       position: absolute; width: 46%; height: 46%; border-radius: 50%;
       transform: translate(-50%, -50%); opacity: var(--venn-op, 0.45); mix-blend-mode: multiply;

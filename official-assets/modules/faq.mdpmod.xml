@@ -63,12 +63,12 @@ ${aStr}
   ]]></render>
   <style><![CDATA[
     .mdp-mod-faq {
-      margin: 1rem 0;
+      margin: calc(1 * var(--mdp-u, 1rem)) 0;
       background: #fdfdfd;
-      border: 1px solid #eaeaea;
-      border-radius: 8px;
+      border: calc(1 * var(--mdp-px, 1px)) solid #eaeaea;
+      border-radius: calc(8 * var(--mdp-px, 1px));
       overflow: hidden;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+      box-shadow: 0 calc(2 * var(--mdp-px, 1px)) calc(10 * var(--mdp-px, 1px)) rgba(0,0,0,0.05);
     }
     .mdp-faq-item {
       display: flex;
@@ -76,12 +76,12 @@ ${aStr}
     }
     .mdp-faq-q {
       background: #f8f9fa;
-      border-bottom: 1px dashed #ddd;
+      border-bottom: calc(1 * var(--mdp-px, 1px)) dashed #ddd;
     }
     .mdp-faq-icon {
       font-size: 1.5em;
       font-weight: 900;
-      margin-right: 15px;
+      margin-right: calc(15 * var(--mdp-px, 1px));
       line-height: 1;
     }
     .mdp-faq-q .mdp-faq-icon { color: var(--faq-color); }
