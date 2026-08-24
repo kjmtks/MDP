@@ -1,34 +1,54 @@
 <module>
   <name>legend</name>
   <type>block</type>
-  <description>A colour legend / key — swatches with labels, laid out in a row or column. Pairs with charts, maps and diagrams.</description>
+  <description>A colour legend / key — swatches with labels, laid out in a row or column. Swatches can mimic real plot handles (circle, square, triangle, star, diamond, and solid/dashed/dotted/dash-dot lines), so the key matches the chart beside it.</description>
   <tags>reference, grouping</tags>
   <aiSpec><![CDATA[
-A colour LEGEND / key — coloured swatches next to labels. Block module: split the
+A colour LEGEND / key — plot-style handles next to labels. Block module: split the
 body with `<!-- @ -->`, one entry per section written `#color: Label` (or
 `colorname | Label`), e.g. `#ef4444: Errors`. Use it to explain the colours in a
 chart, diagram or map on the same slide (it does not draw the chart itself).
 
-Parameters:
+PER-ENTRY HANDLES — put shape/line tokens after the colour, before the `:`:
+
+  #1f77b4 o-: Deep unfolding      circle marker on a solid line
+  #595959 s--: Best parameters    square marker on a dashed line
+  #d62728 -: MLEM (baseline)      solid line, no marker
+  #22c55e ^: Passing              triangle marker, no line
+
+  markers: `o` circle, `s` square, `^` triangle, `v` triangle-down,
+           `d` diamond, `*` star  (or the words circle/square/triangle/
+           triangle-down/diamond/star/none)
+  lines:   `-` solid, `--` dashed, `..` dotted, `-.` dash-dot
+           (or the words solid/dashed/dotted/dashdot; `..` not `:`, because
+           `:` separates the label)
+
+Tokens may be glued (`o--`) or spaced (`o --`). Match them to the real plot:
+if two series differ only by colour, give them the SAME handle.
+
+Parameters (defaults for entries that carry no tokens):
   - `direction` (row|column, default row): row wraps horizontally; column stacks.
-  - `shape` (square|circle|line, default square): swatch shape.
+  - `shape` (square|circle|triangle|triangle-down|diamond|star|line|none,
+    default square): marker shape. `line` = a plain solid line.
+  - `line` (none|solid|dashed|dotted|dashdot, default none): line through the marker.
   - `size` (small|medium|large, default medium): swatch size.
   - `gap`: CSS gap between entries (default 8px 18px).
   - `bold` (true|false, default false): bold the labels.
 
 Example:
-<!-- @legend direction: column, shape: circle, size: large -->
-#22c55e: Passing
+<!-- @legend direction: column, size: large -->
+#22c55e o-: Passing
 <!-- @ -->
-#f59e0b: Flaky
+#f59e0b s--: Flaky
 <!-- @ -->
-#ef4444: Failing
+#ef4444 ^..: Failing
 <!-- @end -->
 ]]></aiSpec>
   <parameters>
     <param name="direction" type="select" default="row" label="Direction" desc="Lay entries in a wrapping row or a vertical column." options="row:Row,column:Column" />
-    <param name="shape" type="select" default="square" label="Swatch shape" desc="Shape of each colour swatch." options="square:Square,circle:Circle,line:Line" />
-    <param name="size" type="select" default="medium" label="Swatch size" desc="Size of the colour swatches." options="small:Small,medium:Medium,large:Large" />
+    <param name="shape" type="select" default="square" label="Marker shape" desc="Default marker for entries that carry no token of their own." options="square:Square,circle:Circle,triangle:Triangle,triangle-down:Triangle (down),diamond:Diamond,star:Star,line:Line only,none:No marker" />
+    <param name="line" type="select" default="none" label="Line style" desc="Default line drawn through the marker, as in a plot legend." options="none:No line,solid:Solid,dashed:Dashed,dotted:Dotted,dashdot:Dash-dot" />
+    <param name="size" type="select" default="medium" label="Swatch size" desc="Size of the swatches." options="small:Small,medium:Medium,large:Large" />
     <param name="gap" type="text" default="8px 18px" label="Gap" desc="CSS gap between entries, e.g. 8px 18px." />
     <param name="bold" type="boolean" default="false" label="Bold labels" desc="Show the labels in bold." />
   </parameters>
@@ -45,23 +65,129 @@ Example:
 <!-- @end -->]]></text>
       <description>Colour swatches with labels. Each section: "#color: Label".</description>
     </snippet>
+    <snippet>
+      <category>Diagrams</category>
+      <label>Legend (plot handles)</label>
+      <text><![CDATA[<!-- @legend direction: row, size: small -->
+#d62728 -: Baseline
+<!-- @ -->
+#595959 s--: Best parameters
+<!-- @ -->
+#1f77b4 o-: Proposed
+<!-- @end -->]]></text>
+      <description>Marker + line handles matching a chart. Tokens: o s ^ v d * / - -- .. -.</description>
+    </snippet>
   </snippets>
   <render><![CDATA[
-    const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+    // ---- vocabularies -------------------------------------------------
+    // Short marker codes follow matplotlib. Line codes do too, except that
+    // dotted is `..` rather than `:` — `:` already separates colour from label.
+    const MARKS = { o:'circle', s:'square', '^':'triangle', v:'triangle-down', d:'diamond', D:'diamond', '*':'star' };
+    const MARK_WORDS = ['circle','square','triangle','triangle-down','diamond','star','none'];
+    const LINES = { '-':'solid', '--':'dashed', '..':'dotted', '-.':'dashdot' };
+    const LINE_WORDS = ['solid','dashed','dotted','dashdot','none'];
+    const DASH = { solid:'', dashed:'34 22', dotted:'1 20', dashdot:'34 18 1 18' };
+
+    /** Parse one token into {mark?, line?}; returns null if it is not a token. */
+    const parseToken = (raw) => {
+      const t = String(raw).trim();
+      if (!t) return null;
+      const low = t.toLowerCase();
+      if (MARK_WORDS.indexOf(low) >= 0) return { mark: low };
+      if (LINE_WORDS.indexOf(low) >= 0) return { line: low };
+      // glued or bare short form, e.g. "o--", "s", "-.", ".."
+      const m = t.match(/^([osdD^v*])?(--|-\.|\.\.|-)?$/);
+      if (!m || (!m[1] && !m[2])) return null;
+      const out = {};
+      if (m[1]) out.mark = MARKS[m[1]];
+      if (m[2]) out.line = LINES[m[2]];
+      return out;
+    };
+
+    /** Split "…colour… tok tok" into the colour and its tokens. Tokens are
+     *  peeled off the END so colours that contain spaces — rgb(255, 0, 0) —
+     *  survive untouched. */
+    const splitHead = (head) => {
+      const parts = String(head).trim().split(/\s+/);
+      const toks = [];
+      while (parts.length > 1) {
+        const t = parseToken(parts[parts.length - 1]);
+        if (!t) break;
+        toks.unshift(t); parts.pop();
+      }
+      return { color: parts.join(' '), toks };
+    };
+
+    // ---- SVG handles --------------------------------------------------
+    const starPoints = (cx, cy, r) => {
+      const p = [];
+      for (let k = 0; k < 10; k++) {
+        const a = (-90 + k * 36) * Math.PI / 180;
+        const rr = k % 2 === 0 ? r : r * 0.44;
+        p.push((cx + rr * Math.cos(a)).toFixed(1) + ',' + (cy + rr * Math.sin(a)).toFixed(1));
+      }
+      return p.join(' ');
+    };
+
+    const markSvg = (mark, cx, cy, r, c) => {
+      const f = ` fill="${c}"`;
+      switch (mark) {
+        case 'circle':   return `<circle cx="${cx}" cy="${cy}" r="${r}"${f}/>`;
+        case 'square':   return `<rect x="${cx - r}" y="${cy - r}" width="${2 * r}" height="${2 * r}" rx="${(r * 0.18).toFixed(1)}"${f}/>`;
+        case 'triangle': return `<polygon points="${cx},${cy - r} ${cx + r * 0.93},${cy + r * 0.72} ${cx - r * 0.93},${cy + r * 0.72}"${f}/>`;
+        case 'triangle-down': return `<polygon points="${cx},${cy + r} ${cx + r * 0.93},${cy - r * 0.72} ${cx - r * 0.93},${cy - r * 0.72}"${f}/>`;
+        case 'diamond':  return `<polygon points="${cx},${cy - r} ${cx + r * 0.84},${cy} ${cx},${cy + r} ${cx - r * 0.84},${cy}"${f}/>`;
+        case 'star':     return `<polygon points="${starPoints(cx, cy, r * 1.12)}"${f}/>`;
+        default:         return '';
+      }
+    };
+
+    /** One handle, drawn in a 100-tall viewBox (240 wide when a line shows). */
+    const handleSvg = (color, mark, line, px) => {
+      const hasLine = line && line !== 'none';
+      const w = hasLine ? 240 : 100;
+      const c = esc(color);
+      let body = '';
+      if (hasLine) {
+        const da = DASH[line] || '';
+        body += `<line x1="4" y1="50" x2="236" y2="50" stroke="${c}" stroke-width="13" stroke-linecap="round"`
+             + (da ? ` stroke-dasharray="${da}"` : '') + `/>`;
+      }
+      body += markSvg(mark, w / 2, 50, hasLine ? 32 : 42, c);
+      const cls = `mdp-lg-swatch mdp-lg-${mark || 'none'}${hasLine ? ' mdp-lg-wide mdp-lg-line-' + line : ''}`;
+      // width/height attributes give the element an intrinsic size; the CSS
+      // above overrides them so the handle still scales with --mdp-px.
+      const aw = (px * w / 100).toFixed(1);
+      return `<svg class="${cls}" width="${aw}" height="${px}" viewBox="0 0 ${w} 100" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">${body}</svg>`;
+    };
+
+    // ---- module arguments ---------------------------------------------
     const dir = (args.direction || 'row').toLowerCase() === 'column' ? 'column' : 'row';
-    const shape = (args.shape || 'square').toLowerCase();
-    const size = { small: '11px', medium: '15px', large: '20px' }[String(args.size || 'medium').toLowerCase()] || '15px';
+    let defMark = String(args.shape || 'square').toLowerCase();
+    let defLine = String(args.line || 'none').toLowerCase();
+    if (defMark === 'line') { defMark = 'none'; if (defLine === 'none') defLine = 'solid'; }  // legacy shape: line
+    if (MARK_WORDS.indexOf(defMark) < 0) defMark = 'square';
+    if (LINE_WORDS.indexOf(defLine) < 0) defLine = 'none';
+    const px = { small: 11, medium: 15, large: 20 }[String(args.size || 'medium').toLowerCase()] || 15;
+    const size = `calc(${px} * var(--mdp-px, 1px))`;
     const gap = (args.gap && String(args.gap).trim()) || '8px 18px';
     const weight = String(args.bold) === 'true' ? '700' : '400';
+
     const items = [];
     sections.forEach((s) => {
       const m = String(s || '').trim().match(/^([\s\S]*?)[:|]\s*([\s\S]+)$/);
       if (!m) return;
-      items.push({ color: m[1].trim(), label: m[2].trim() });
+      const head = splitHead(m[1]);
+      let mark = defMark, line = defLine;
+      head.toks.forEach((t) => { if (t.mark) mark = t.mark; if (t.line) line = t.line; });
+      items.push({ color: head.color, label: m[2].trim(), mark, line });
     });
+
     let html = `\n\n<div class="mdp-mod-legend mdp-lg-${dir}" style="--lg-size:${size}; --lg-weight:${weight}; gap:${gap};">`;
     items.forEach((it) => {
-      html += `<div class="mdp-lg-item"><span class="mdp-lg-swatch mdp-lg-${shape}" style="--lg-c:${esc(it.color)};"></span><span class="mdp-lg-label">${esc(it.label)}</span></div>`;
+      html += `<div class="mdp-lg-item">${handleSvg(it.color, it.mark, it.line, px)}<span class="mdp-lg-label">${esc(it.label)}</span></div>`;
     });
     html += `</div>\n\n`;
     return html;
@@ -70,10 +196,8 @@ Example:
     .mdp-mod-legend { display: flex; gap: calc(8 * var(--mdp-px, 1px)) calc(18 * var(--mdp-px, 1px)); margin: calc(0.6 * var(--mdp-u, 1rem)) 0; flex-wrap: wrap; }
     .mdp-lg-column { flex-direction: column; }
     .mdp-lg-item { display: inline-flex; align-items: center; gap: calc(7 * var(--mdp-px, 1px)); }
-    .mdp-lg-swatch { display: inline-block; background: var(--lg-c); flex: 0 0 auto; }
-    .mdp-lg-square { width: var(--lg-size, calc(15 * var(--mdp-px, 1px))); height: var(--lg-size, calc(15 * var(--mdp-px, 1px))); border-radius: calc(3 * var(--mdp-px, 1px)); }
-    .mdp-lg-circle { width: var(--lg-size, calc(15 * var(--mdp-px, 1px))); height: var(--lg-size, calc(15 * var(--mdp-px, 1px))); border-radius: 50%; }
-    .mdp-lg-line { width: calc(var(--lg-size, calc(15 * var(--mdp-px, 1px))) + calc(7 * var(--mdp-px, 1px))); height: calc(4 * var(--mdp-px, 1px)); border-radius: calc(2 * var(--mdp-px, 1px)); }
+    .mdp-lg-swatch { display: inline-block; flex: 0 0 auto; overflow: visible; height: var(--lg-size, calc(15 * var(--mdp-px, 1px))); width: var(--lg-size, calc(15 * var(--mdp-px, 1px))); }
+    .mdp-lg-swatch.mdp-lg-wide { width: calc(2.4 * var(--lg-size, calc(15 * var(--mdp-px, 1px)))); }
     .mdp-lg-label { font-size: 0.9em; font-weight: var(--lg-weight, 400); }
   ]]></style>
 </module>
