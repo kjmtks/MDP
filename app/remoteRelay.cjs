@@ -2,7 +2,12 @@
 
 const OPEN = 1;
 
-function attachRelay(wss) {
+// opts.userOf(req): shared-deployment hook. When present, every socket is
+// tagged with its authenticated user and BROADCAST frames are relayed only
+// between sockets of the SAME user (one person's PC + tablet). Without the
+// hook (Electron / single-user web) behavior is unchanged.
+function attachRelay(wss, opts = {}) {
+  const userOf = typeof opts.userOf === 'function' ? opts.userOf : null;
   const channelTokens = new Map();
 
   // A channel with a registered token only relays to sockets presenting that token.
@@ -12,9 +17,10 @@ function attachRelay(wss) {
     return !required || ws._mdpToken === required;
   };
 
-  wss.on('connection', (ws) => {
+  wss.on('connection', (ws, req) => {
     ws._mdpChannel = null;
     ws._mdpToken = null;
+    ws._mdpUser = userOf ? userOf(req) : null;
 
     ws.on('message', (data) => {
       let msg;
@@ -37,6 +43,13 @@ function attachRelay(wss) {
 
         wss.clients.forEach((client) => {
           if (client === ws || client.readyState !== OPEN) return;
+          // Shared mode: by default relay only between one person's own
+          // devices (anti-snoop). A channel that carries a token is an
+          // EXPLICIT collaboration session -- the presenter shared the QR
+          // (channel + token), so anyone presenting that token may join and
+          // co-operate, across users. authed() below enforces the token match.
+          if (userOf && client._mdpUser !== ws._mdpUser
+              && !(channelId && channelTokens.has(channelId))) return;
           if (client._mdpChannel && channelId && client._mdpChannel !== channelId) return;
           if (!authed(client, channelId)) return;
           client.send(JSON.stringify(payload));

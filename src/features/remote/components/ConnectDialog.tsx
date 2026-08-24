@@ -1,3 +1,4 @@
+import { WEB_BASE } from '../../../api/base';
 import React, { useState, useEffect } from 'react';
 import { Dialog, DialogTitle, DialogContent, Typography, Box, IconButton, TextField, Button, MenuItem } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
@@ -29,7 +30,7 @@ export const ConnectDialog: React.FC<ConnectDialogProps> = ({ open, onClose, cha
 
   const protocol = isEmbedded ? 'http:' : window.location.protocol;
   const tokenParam = token ? `&token=${encodeURIComponent(token)}` : '';
-  const remoteUrl = `${protocol}//${hostname}${port ? ':' + port : ''}/remote?channel=${channelId}${tokenParam}`;
+  const remoteUrl = `${protocol}//${hostname}${port ? ':' + port : ''}${WEB_BASE}/remote?channel=${channelId}${tokenParam}`;
 
   useEffect(() => {
     if (open) {

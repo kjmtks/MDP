@@ -12,12 +12,12 @@ function CurrentPage() {
   const hash = window.location.hash;
 
   if (hash.includes('#/capture')) return <CapturePage />;
-  if (path === '/presenter' || hash.includes('#/presenter')) return <PresenterPage />;
-  if (path === '/remote' || hash.includes('#/remote')) return <RemotePage />;
+  if (path.endsWith('/presenter') || hash.includes('#/presenter')) return <PresenterPage />;
+  if (path.endsWith('/remote') || hash.includes('#/remote')) return <RemotePage />;
 
   // Main window: the editor stays mounted (preserving tabs/state) and the
   // full-screen Settings page overlays on top when navigated to.
-  const settingsOpen = path === '/settings' || hash.includes('#/settings');
+  const settingsOpen = path.endsWith('/settings') || hash.includes('#/settings');
   return (
     <>
       <EditorPage />

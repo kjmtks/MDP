@@ -15,6 +15,7 @@ import CheckIcon from '@mui/icons-material/Check';
 import CloudDownloadIcon from '@mui/icons-material/CloudDownload';
 import StorageIcon from '@mui/icons-material/Storage';
 import { MdpLinkDialog } from './MdpLinkDialog';
+import { askSharedMode } from '../../../api/base';
 import { OfflineCacheDialog } from './OfflineCacheDialog';
 import { ConfigureMdpDialog } from './ConfigureMdpDialog';
 import { isMdpFolder, scopeConfigDirs } from '../../workspace/mdpScope';
@@ -142,6 +143,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [sshBypassJump, setSshBypassJump] = useState(false);
   useEffect(() => { apiClient.getSshBypassJump().then(setSshBypassJump).catch(() => {}); }, []);
   const [cacheDialogOpen, setCacheDialogOpen] = useState(false);
+  // Shared web deployment: `.mdplink` links are disabled server-side,
+  // so don't offer the menu item at all.
+  // (also gates the other link-backed features: offline pinning).
+  const [linksAvailable, setLinksAvailable] = useState(true);
+  useEffect(() => {
+    if (isElectron()) return;
+    askSharedMode().then((sharedMode) => { if (sharedMode) setLinksAvailable(false); });
+  }, []);
   const [configureMdp, setConfigureMdp] = useState<{ open: boolean; configDir: string | null }>({ open: false, configDir: null });
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -794,7 +803,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <MenuItem key="new-folder" onClick={() => handleOpenDialog('directory')}>
               <ListItemIcon><CreateNewFolderIcon fontSize="small" /></ListItemIcon> New Folder
             </MenuItem>,
-            <MenuItem key="new-link" onClick={() => {
+            ...(linksAvailable ? [<MenuItem key="new-link" onClick={() => {
               const parentPath = contextMenu?.node?.type === 'file'
                 ? contextMenu.path.substring(0, contextMenu.path.lastIndexOf('/'))
                 : (contextMenu?.path ?? '');
@@ -802,7 +811,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               setContextMenu(null);
             }}>
               <ListItemIcon><LinkIcon fontSize="small" /></ListItemIcon> Add Link (.mdplink)…
-            </MenuItem>
+            </MenuItem>] : [])
           ]
         )}
         {(ctxFileInSpecial || ctxShowGenericNew) && (contextMenu?.node || clipboard.length > 0) && <Divider />}
@@ -839,7 +848,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <ListItemIcon><StorageIcon fontSize="small" /></ListItemIcon> Offline cache…
           </MenuItem>
         )}
-        {contextMenu?.node && contextMenu.node.type === 'file' && contextMenu.node.name.endsWith('.slide.md') && (
+        {linksAvailable && contextMenu?.node && contextMenu.node.type === 'file' && contextMenu.node.name.endsWith('.slide.md') && (
           <MenuItem onClick={async () => {
             const p = contextMenu.path; setContextMenu(null);
             notify('Caching deck for offline…', { severity: 'info' });

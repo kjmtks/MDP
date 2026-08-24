@@ -23,8 +23,16 @@ PER-ENTRY HANDLES — put shape/line tokens after the colour, before the `:`:
            (or the words solid/dashed/dotted/dashdot; `..` not `:`, because
            `:` separates the label)
 
-Tokens may be glued (`o--`) or spaced (`o --`). Match them to the real plot:
-if two series differ only by colour, give them the SAME handle.
+Labels may contain KaTeX math (`$..$` or backslash-paren delimiters) - it is
+typeset after render.
+
+Tokens may be glued (`o--`) or spaced (`o --`). An entry that carries tokens
+describes its WHOLE handle, so `-` is a bare line (no marker), `o` a bare marker
+(no line) and `o-` both — as in matplotlib's format strings. An entry with no
+token at all falls back to the module's `shape` / `line` parameters.
+
+Match the handles to the real plot: if two series differ only by colour, give
+them the SAME handle.
 
 Parameters (defaults for entries that carry no tokens):
   - `direction` (row|column, default row): row wraps horizontally; column stacks.
@@ -181,7 +189,13 @@ Example:
       if (!m) return;
       const head = splitHead(m[1]);
       let mark = defMark, line = defLine;
-      head.toks.forEach((t) => { if (t.mark) mark = t.mark; if (t.line) line = t.line; });
+      if (head.toks.length) {
+        // An entry that carries tokens describes its WHOLE handle: whatever it
+        // does not name is off. So `-` is a bare line, `o` a bare marker and
+        // `o-` both — the same reading as matplotlib's format strings.
+        mark = 'none'; line = 'none';
+        head.toks.forEach((t) => { if (t.mark) mark = t.mark; if (t.line) line = t.line; });
+      }
       items.push({ color: head.color, label: m[2].trim(), mark, line });
     });
 
@@ -200,4 +214,23 @@ Example:
     .mdp-lg-swatch.mdp-lg-wide { width: calc(2.4 * var(--lg-size, calc(15 * var(--mdp-px, 1px)))); }
     .mdp-lg-label { font-size: 0.9em; font-weight: var(--lg-weight, 400); }
   ]]></style>
+  <script><![CDATA[
+    export default {
+      init(el) {
+        const r = (typeof window !== 'undefined') && window.renderMathInElement;
+        const t = el.textContent || '';
+        if (!r || (t.indexOf('$') === -1 && t.indexOf('\\(') === -1)) return;
+        try {
+          r(el, {
+            delimiters: [
+              { left: '$$', right: '$$', display: false },
+              { left: '$', right: '$', display: false },
+              { left: '\\(', right: '\\)', display: false }
+            ],
+            throwOnError: false
+          });
+        } catch (e) { /* leave raw math visible on error */ }
+      }
+    }
+  ]]></script>
 </module>

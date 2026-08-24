@@ -21,7 +21,8 @@ export default defineConfig(({ mode }) => {
       })
     ],
     
-    base: './',
+    // 既定 './' (Electron と同梱 Web)．接頭辞つき配備は VITE_BASE=/mdp/ で上書き．
+    base: process.env.VITE_BASE || './',
     
     define: {
       __API_PORT__: JSON.stringify(apiPort),

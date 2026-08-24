@@ -1,3 +1,4 @@
+import { FILES_PREFIX } from '../../api/base';
 import { apiClient, isElectron } from '../../api/apiClient';
 
 // Inline drawio/other SVGs into the slide DOM instead of <object>/<img>. Inline
@@ -128,7 +129,7 @@ function processSvg(raw: string, key: string): string {
 export function loadSvg(path: string): Promise<string> {
   // Empty-authority (`mdp-file:///…`) so a managed `.mdp/images/…` SVG isn't parsed
   // as an invalid dot-leading hostname.
-  fallback.set(path, (isElectron() ? 'mdp-file:///' : '/files/') + path.split('/').map(encodeURIComponent).join('/'));
+  fallback.set(path, (isElectron() ? 'mdp-file:///' : FILES_PREFIX) + path.split('/').map(encodeURIComponent).join('/'));
   const cached = cache.get(path);
   if (cached !== undefined) return Promise.resolve(cached);
   const existing = inflight.get(path);
@@ -148,7 +149,7 @@ export async function prewarmSvgs(htmls: string[], basePath: string): Promise<vo
   const toWsPath = (src: string): string => {
     let s = src.split('?')[0];
     if (s.startsWith('mdp-file://')) s = s.replace(/^mdp-file:\/\/+/, '');
-    else if (s.startsWith('/files/')) s = s.slice('/files/'.length);
+    else if (s.startsWith(FILES_PREFIX)) s = s.slice(FILES_PREFIX.length);
     else if (s.startsWith('/')) s = s.slice(1);
     else s = basePath ? `${basePath}/${s}` : s;
     try { s = decodeURIComponent(s); } catch { /* ignore */ }

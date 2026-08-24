@@ -1,3 +1,4 @@
+import { FILES_PREFIX } from '../../api/base';
 import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import { Typography, Button, Menu, MenuItem, Divider, Dialog, DialogTitle, DialogContent, DialogActions } from '@mui/material';
 import FolderOpenIcon from '@mui/icons-material/FolderOpen';
@@ -7,6 +8,9 @@ import { type SnippetsCategory, type ThemeOption, type FileType, getCustomItemSt
 import { MainHeader } from '../../components/layout/MainHeader';
 import { MODULES_DIR, EFFECTS_DIR, IMAGES_DIR, SNIPPETS_DIR, TEMPLATES_DIR, THEMES_DIR } from '../../features/workspace/specialFolders';
 import { scopeConfigDirs, collectScopedAssetPaths } from '../../features/workspace/mdpScope';
+import { useEditLock } from '../../features/editor/hooks/useEditLock';
+import { EditorState } from '@codemirror/state';
+import { EditorView } from '@codemirror/view';
 import { type MdpContent, parseContent, effectiveDisabledModules, effectiveAiNotes, effectiveStyleProfile, contentPath } from '../../features/workspace/mdpContent';
 import { McpBridge, validateDeckText } from '../../features/mcp/McpBridge';
 import { useAppSettings } from '../../features/settings/AppSettingsContext';
@@ -647,13 +651,13 @@ export default function EditorPage() {
       // Empty-authority form (`mdp-file:///…`) so a managed `.mdp/images/…` path
       // isn't parsed as an invalid dot-leading hostname (→ broken image). See the
       // mdp-file protocol handler.
-      const imgPrefix = isElectron() ? 'mdp-file:///' : '/files/';
+      const imgPrefix = isElectron() ? 'mdp-file:///' : FILES_PREFIX;
       let md = resolveImages(previewMarkdown, imageLibrary, (p) => `${imgPrefix}${p.replace(/^\//, '')}`).markdown;
       // baseUrl for a module's `resolve(path)` — the previewed deck's folder served via
       // the platform scheme — so a module can turn a deck-relative asset (e.g. a
       // <video> src) into a loadable URL. Mirrors useSlideProcessor's baseUrl. Modules
       // are expanded HERE (upstream), so this is where resolve() must get the baseUrl.
-      const mediaPrefix = isElectron() ? 'mdp-file://' : '/files/';
+      const mediaPrefix = isElectron() ? 'mdp-file://' : FILES_PREFIX;
       const lastSlash = previewFileName ? previewFileName.lastIndexOf('/') : -1;
       const moduleBaseUrl = (!previewFileName || lastSlash === -1) ? mediaPrefix : `${mediaPrefix}${previewFileName.substring(0, lastSlash)}/`;
       md = applyModulesToMarkdown(md, moduleBaseUrl);
@@ -684,14 +688,14 @@ export default function EditorPage() {
 
   const imageSlides = useMemo(() => {
     if (previewFileType !== 'image' || !previewFileName) return null;
-    const src = `${isElectron() ? 'mdp-file:///' : '/files/'}${previewFileName.split('/').map(encodeURIComponent).join('/')}?t=${lastUpdated}`;
+    const src = `${isElectron() ? 'mdp-file:///' : FILES_PREFIX}${previewFileName.split('/').map(encodeURIComponent).join('/')}?t=${lastUpdated}`;
     const html = `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#ffffff;"><img src="${src}" style="max-width:100%;max-height:100%;object-fit:contain;" /></div>`;
     return [{ html, raw: '', isHidden: false, isCover: false, pageNumber: 1, className: '', header: '', footer: '' }];
   }, [previewFileType, previewFileName, lastUpdated]);
 
   const videoSlides = useMemo(() => {
     if (previewFileType !== 'video' || !previewFileName) return null;
-    const src = `${isElectron() ? 'mdp-file:///' : '/files/'}${previewFileName.split('/').map(encodeURIComponent).join('/')}?t=${lastUpdated}`;
+    const src = `${isElectron() ? 'mdp-file:///' : FILES_PREFIX}${previewFileName.split('/').map(encodeURIComponent).join('/')}?t=${lastUpdated}`;
     const html = `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#000;"><video src="${src}" controls playsinline preload="metadata" style="max-width:100%;max-height:100%;object-fit:contain;background:#000;"></video></div>`;
     return [{ html, raw: '', isHidden: false, isCover: false, pageNumber: 1, className: '', header: '', footer: '' }];
   }, [previewFileType, previewFileName, lastUpdated]);
@@ -1734,7 +1738,7 @@ export default function EditorPage() {
       // invalid dot-leading hostname (→ broken thumbnail). Managed/leading-slash
       // values are anchored at the workspace ROOT; other values are relative to the
       // deck's own folder (so a deck in a subfolder still resolves its own images).
-      const prefix = isElectron() ? 'mdp-file:///' : '/files/';
+      const prefix = isElectron() ? 'mdp-file:///' : FILES_PREFIX;
       const deckDir = baseUrl.replace(/^(mdp-file:\/\/+|\/files\/)/, '');
       const rootAnchored = value.startsWith('/') || /(^|\/)\.mdp\//.test(value);
       const rel = (rootAnchored ? value : `${deckDir}${value}`).replace(/^\//, '');
@@ -1853,9 +1857,19 @@ export default function EditorPage() {
     openPresenterTool, openSuggestModule, toggleSlideshow, handlePrint, exportPptx, pptxExporting,
     exportImages, imageExporting, toggleSlideOverview, isSlideOverview, slides.length]);
 
+  // Concurrent-edit lock: hold the active editable text file so a second
+  // person on a shared server opens it read-only instead of clobbering.
+  const lockable = !!currentFileName
+    && (effectiveFileType === 'markdown' || effectiveFileType === 'text' || effectiveFileType === 'doc')
+    && !isImageFile && !isPdfFile && !isVideoFile;
+  const lockedBy = useEditLock(lockable ? currentFileName : null, lockable);
+  const roExtensions = useMemo(
+    () => (lockedBy ? [...extensions, EditorState.readOnly.of(true), EditorView.editable.of(false)] : extensions),
+    [lockedBy, extensions]);
+
   const editorSlice: EditorSharedProps = {
     tabs, activeTabIndex, currentFileName, effectiveFileType, markdown, lastUpdated,
-    extensions, switchTab, onTabClose: handleTabCloseClick,
+    extensions: roExtensions, switchTab, onTabClose: handleTabCloseClick,
     reorderTabs, closeOtherTabs, closeAllTabs, updateTabContent, onEditorUpdate,
     onInsertText: handleInsertText, onSave: handleSave, moveSlide,
     isBookmarked, toggleBookmark, bookmarks, updateBookmark, handleEditDirectDrawio,
@@ -1863,6 +1877,14 @@ export default function EditorPage() {
 
   return (
     <div className="container">
+      {lockedBy && (
+        <div style={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 4000,
+          background: "#b8860b", color: "#fff", textAlign: "center",
+          font: "13px/2.2 system-ui, sans-serif" }}>
+          🔒 {lockedBy} が編集中です—このファイルは閲覧のみです。
+        </div>
+      )}
+
       <DrawioEditor open={isDrawioModalOpen} onClose={() => setIsDrawioModalOpen(false)} initialBase64Xml={drawioEditTarget?.base64} onSave={handleDrawioSave} />
       <DrawioEditor open={!!directDrawio} onClose={() => setDirectDrawio(null)} initialBase64Xml={directDrawio?.content} onSave={handleDirectDrawioSave} />
       <DrawioEditor open={!!drawioImageEdit} onClose={() => setDrawioImageEdit(null)} initialBase64Xml={drawioImageEdit?.base64Xml} onSave={handleDrawioImageSave} />

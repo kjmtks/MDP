@@ -62,7 +62,9 @@ if (process.argv[2]) {
   rootDir = path.resolve('./files');
 }
 
-if (!fs.existsSync(rootDir)) {
+// In multi-user (spaces) mode the single rootDir is never used and the app
+// dir may be mounted read-only -- don't create it.
+if (!process.env.MDP_WEB_CONFIG && !fs.existsSync(rootDir)) {
   console.log(`Creating directory: ${rootDir}`);
   fs.mkdirSync(rootDir, { recursive: true });
 }
@@ -71,6 +73,48 @@ const getSafePath = (targetPath) => {
   const safePath = (targetPath || '').replace(/\.\./g, '');
   return path.join(rootDir, safePath);
 };
+
+// ---- Multi-user web mode (opt-in; no config -> behavior is unchanged) ----
+// MDP_WEB_CONFIG=/path/to/mdp-web.config.json describes the deployment's
+// folder layout and permission policy (see app/webspaces.cjs for the schema).
+// MDP itself carries NO site-specific policy: which directories exist, who
+// may read or write whose, and what the virtual folders are called all live
+// in that config, owned by the deployment.
+//
+// In this mode `.mdplink` resolution is DISABLED (a user-authored link file
+// could point the server at any local path or make it open SSH sessions),
+// and the chokidar watcher is skipped -- inotify does not fire across CIFS
+// mounts anyway, and mutating API routes broadcast 'file-change' themselves.
+const webspaces = require('./app/webspaces.cjs');
+const SPACES = webspaces.load(process.env.MDP_WEB_CONFIG || '');
+const MULTI = !!SPACES;
+// Group membership snapshot {group:[user,...]}, maintained by the
+// deployment (the lab portal writes it from LDAP). Re-read on mtime
+// change; membership rarely changes so this is cheap and robust.
+let groupsCache = { at: 0, mtime: 0, map: {} };
+function groupsOfUser(user) {
+  const file = MULTI ? SPACES.groupsFile : '';
+  if (!file || !user) return [];
+  try {
+    const st = fs.statSync(file);
+    if (st.mtimeMs !== groupsCache.mtime) {
+      groupsCache = { at: Date.now(), mtime: st.mtimeMs, map: JSON.parse(fs.readFileSync(file, 'utf8')) };
+    }
+  } catch { /* missing/unreadable -> no groups */ return []; }
+  const map = groupsCache.map || {};
+  return Object.keys(map).filter((g) => Array.isArray(map[g]) && map[g].includes(user));
+}
+
+if (MULTI) {
+  app.use((req, res, next) => {
+    // Only workspace routes need a user; keep static assets cheap.
+    if (!req.path.startsWith('/api/') && !req.path.startsWith('/files/')) return next();
+    const user = webspaces.userOf(SPACES, req);
+    if (!user) return res.status(401).json({ error: 'unidentified user' });
+    req.mdpGroups = groupsOfUser(user);   // for {group} spaces (see webspaces)
+    next();
+  });
+}
 
 const getFileTree = (dir, baseDir = dir) => {
   let results = [];
@@ -122,28 +166,93 @@ app.get('/api/server-info', (req, res) => {
     }
   }
   if (addresses.length === 0) addresses.push('localhost');
-  res.json({ ips: addresses, port: PORT, hostname: os.hostname(), mode: 'local' });
+  // sharedMode: the multi-user web deployment. The client hides features
+  // that don't exist there (`.mdplink` links / SSH / offline cache).
+  // The server's interface list and hostname are the operator's business,
+  // not the users' -- clients on a shared server connect via location.host.
+  if (MULTI) return res.json({ ips: [], port: PORT, hostname: '', mode: 'local', sharedMode: true });
+  res.json({ ips: addresses, port: PORT, hostname: os.hostname(), mode: 'local', sharedMode: false });
 });
 
 // NOTE: the old Java-based `/plantuml/svg` route was removed — PlantUML now renders
 // entirely in the browser via `@plantuml/core` (WASM), so no `java`/plantuml.jar and
 // no server round-trip. See src/features/slide/parser/plantumlPlugin.ts.
 
-// Resolve a workspace-relative path through any `.mdplink` (local or SSH) it crosses.
-const vres = (rel) => mdplink.resolve(rootDir, rel || '');
-// Resolve to the `.mdplink` FILE itself (not its target) so delete acts on the link.
-const vresSelf = (rel) =>
-  /\.mdplink$/i.test(rel || '') ? mdplink.resolveLinkFile(rootDir, rel) : vres(rel);
+// Resolve a workspace-relative path. Single-user mode goes through the
+// `.mdplink`-aware resolver; shared mode asks the spaces engine (plain local
+// paths only, permission model included).
+const vres = (req, rel) => {
+  if (!MULTI) return mdplink.resolve(rootDir, rel || '');
+  const loc = webspaces.locate(SPACES, req, rel);
+  if (!loc || !webspaces.canRead(SPACES, req, loc) || !loc.abs) {
+    const e = new Error('not found'); e.status = 404; throw e;
+  }
+  return { kind: 'local', abs: loc.abs };
+};
+const assertWritable = (req, rel) => {
+  if (!MULTI) return;
+  const loc = webspaces.locate(SPACES, req, rel);
+  if (!loc || !webspaces.canRead(SPACES, req, loc)) {
+    const e = new Error('not found'); e.status = 404; throw e;
+  }
+  if (!webspaces.canWrite(SPACES, req, loc)) {
+    const e = new Error('read-only here'); e.status = 403; throw e;
+  }
+};
 
 app.get('/api/files', async (req, res) => {
+  // Multi-user mode: plain walk (no `.mdplink` following -- see vres).
+  if (MULTI) {
+    try { return res.json(webspaces.tree(SPACES, req, getFileTree)); }
+    catch (e) { return res.status(e.status || 500).json({ error: e.message }); }
+  }
   try { res.json((await mdplink.buildTree(rootDir)).nodes); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // Lazily load a deferred subtree (an SSH link or a remote subdir) on expand.
 app.get('/api/subtree', async (req, res) => {
+  if (MULTI) {
+    // No lazy (SSH) nodes exist without links; answer with a plain walk anyway.
+    try { const t = vres(req, req.query.path || ''); return res.json({ nodes: getFileTree(t.abs) }); }
+    catch (e) { return res.status(e.status || 500).json({ error: e.message, nodes: [] }); }
+  }
   try { res.json(await mdplink.buildSubTree(rootDir, req.query.path || '')); }
   catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ---- Advisory edit locks (shared mode) --------------------------------------
+// Markdown autosaves on every keystroke, so two people editing one file would
+// clobber each other. First opener of a file holds a lock; later openers are
+// served read-only. A lock is renewed by heartbeat and expires on its own so a
+// closed tab never wedges a file. Keyed by RESOLVED absolute path (so the same
+// file reached via '@homes/<me>' and one's own root is one lock).
+const LOCK_TTL_MS = 45 * 1000;
+const editLocks = new Map();   // absPath -> { user, at }
+const lockHolder = (abs) => {
+  const l = editLocks.get(abs);
+  if (!l) return null;
+  if (Date.now() - l.at > LOCK_TTL_MS) { editLocks.delete(abs); return null; }
+  return l.user;
+};
+const takeLock = (abs, user) => { editLocks.set(abs, { user, at: Date.now() }); };
+
+app.post('/api/lock', (req, res) => {
+  if (!MULTI) return res.json({ ok: true, owner: null });
+  let abs; try { abs = vres(req, req.body.path).abs; } catch (e) { return res.status(e.status || 500).json({ error: e.message }); }
+  const me = webspaces.userOf(SPACES, req);
+  const holder = lockHolder(abs);
+  if (holder && holder !== me) return res.json({ ok: false, owner: holder });
+  takeLock(abs, me);
+  res.json({ ok: true, owner: me });
+});
+
+app.post('/api/unlock', (req, res) => {
+  if (!MULTI) return res.json({ ok: true });
+  let abs; try { abs = vres(req, req.body.path).abs; } catch { return res.json({ ok: true }); }
+  const me = webspaces.userOf(SPACES, req);
+  if (editLocks.get(abs) && editLocks.get(abs).user === me) editLocks.delete(abs);
+  res.json({ ok: true });
 });
 
 app.post('/api/save', async (req, res) => {
@@ -159,29 +268,50 @@ app.post('/api/save', async (req, res) => {
     } else {
       content = Buffer.from(String(content ?? ''), 'utf-8');
     }
-    await mdplink.vfsWrite(vres(req.body.filename), content);
+    assertWritable(req, req.body.filename);
+    if (MULTI) {
+      const abs = vres(req, req.body.filename).abs;
+      const me = webspaces.userOf(SPACES, req);
+      const holder = lockHolder(abs);
+      if (holder && holder !== me) {
+        return res.status(409).json({ success: false, error: 'locked', owner: holder });
+      }
+      takeLock(abs, me);   // saving implies editing -> hold the lock
+    }
+    await mdplink.vfsWrite(vres(req, req.body.filename), content);
     res.json({ success: true });
-  } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+  } catch (e) { res.status(e.status || 500).json({ success: false, error: e.message }); }
 });
 
 app.post('/api/rename', async (req, res) => {
   const { oldPath, newPath } = req.body;
-  try { await mdplink.vfsRename(vres(oldPath), vres(newPath)); res.json({ success: true }); }
-  catch (e) { res.status(500).json({ error: e.message }); }
+  try {
+    assertWritable(req, oldPath); assertWritable(req, newPath);
+    await mdplink.vfsRename(vres(req, oldPath), vres(req, newPath));
+    if (MULTI) pokeClients(); res.json({ success: true });
+  }
+  catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 });
 
 app.post('/api/delete', async (req, res) => {
-  try { for (const p of req.body.paths) await mdplink.vfsRemove(vresSelf(p)); res.json({ success: true }); }
-  catch (e) { res.status(500).json({ error: e.message }); }
+  try {
+    for (const p of req.body.paths) assertWritable(req, p);
+    for (const p of req.body.paths) await mdplink.vfsRemove(vresSelf(req, p));
+    if (MULTI) pokeClients(); res.json({ success: true });
+  }
+  catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 });
 
 app.post('/api/move', async (req, res) => {
   const { sourcePaths, targetPath } = req.body;
   try {
-    await mdplink.vfsMkdirp(vres(targetPath));
-    for (const p of sourcePaths) await mdplink.vfsRename(vres(p), vres(`${targetPath}/${path.basename(p)}`));
+    assertWritable(req, targetPath);
+    for (const p of sourcePaths) assertWritable(req, p);
+    await mdplink.vfsMkdirp(vres(req, targetPath));
+    for (const p of sourcePaths) await mdplink.vfsRename(vres(req, p), vres(req, `${targetPath}/${path.basename(p)}`));
+    if (MULTI) pokeClients();
     res.json({ success: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 });
 
 // VFS-aware unique copy name (works inside a local/remote `.mdplink` target).
@@ -201,37 +331,47 @@ const uniqueCopyNameVfs = async (targetDir, baseName) => {
 app.post('/api/copy', async (req, res) => {
   const { sourcePaths, targetPath } = req.body;
   try {
-    const targetDir = vres(targetPath || '');
+    assertWritable(req, targetPath || '');
+    const targetDir = vres(req, targetPath || '');
     await mdplink.vfsMkdirp(targetDir);
     const created = [];
     for (const p of sourcePaths) {
       const destName = await uniqueCopyNameVfs(targetDir, path.basename(p));
-      await mdplink.vfsCopy(vres(p), mdplink.childOf(targetDir, destName));
+      await mdplink.vfsCopy(vres(req, p), mdplink.childOf(targetDir, destName));
       created.push((targetPath ? `${targetPath}/${destName}` : destName).replace(/^\//, ''));
     }
+    if (MULTI) pokeClients();
     res.json({ success: true, paths: created });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 });
 
 // Read/write a `.mdplink` file's RAW JSON config (bypasses link traversal).
+// `.mdplink` / SSH / cache endpoints act on server-global state and on links,
+// both of which are disabled in multi-user mode. Reads answer inert defaults
+// (the settings UI polls some of them); writes are refused.
+const multiOff = (res) => res.status(403).json({ error: 'disabled on the shared server' });
+
 app.get('/api/linkConfig', async (req, res) => {
+  if (MULTI) return multiOff(res);
   try { res.type('text/plain').send(await mdplink.vfsReadText(mdplink.resolveLinkFile(rootDir, req.query.path || ''))); }
   catch (e) { res.status(500).send(e.message); }
 });
 app.post('/api/linkConfig', async (req, res) => {
+  if (MULTI) return multiOff(res);
   try { await mdplink.vfsWrite(mdplink.resolveLinkFile(rootDir, req.body.path || ''), Buffer.from(String(req.body.content ?? ''), 'utf-8')); res.json({ success: true }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // Machine-local "bypass jump host" toggle for SSH links.
-app.get('/api/sshBypassJump', (req, res) => res.json({ bypassJump: mdplink.getBypassJump() }));
-app.post('/api/sshBypassJump', (req, res) => { mdplink.setBypassJump(!!req.body.bypassJump); res.json({ success: true }); });
+app.get('/api/sshBypassJump', (req, res) => res.json({ bypassJump: MULTI ? false : mdplink.getBypassJump() }));
+app.post('/api/sshBypassJump', (req, res) => { if (MULTI) return multiOff(res); mdplink.setBypassJump(!!req.body.bypassJump); res.json({ success: true }); });
 
 // Offline cache for remote (`.mdplink` SSH) files.
-app.get('/api/cacheInfo', (req, res) => res.json(mdplink.getCacheInfo()));
-app.post('/api/cacheConfig', (req, res) => { mdplink.setCacheConfig(req.body || {}); res.json(mdplink.getCacheInfo()); });
-app.post('/api/clearCache', (req, res) => { mdplink.clearCache(); res.json(mdplink.getCacheInfo()); });
+app.get('/api/cacheInfo', (req, res) => res.json(MULTI ? { enabled: false } : mdplink.getCacheInfo()));
+app.post('/api/cacheConfig', (req, res) => { if (MULTI) return multiOff(res); mdplink.setCacheConfig(req.body || {}); res.json(mdplink.getCacheInfo()); });
+app.post('/api/clearCache', (req, res) => { if (MULTI) return multiOff(res); mdplink.clearCache(); res.json(mdplink.getCacheInfo()); });
 app.post('/api/prefetchDeck', async (req, res) => {
+  if (MULTI) return multiOff(res);   // offline pinning is a link feature
   try { res.json(await mdplink.prefetchDeck(rootDir, req.body.path || '')); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -239,10 +379,12 @@ app.post('/api/prefetchDeck', async (req, res) => {
 app.post('/api/create', async (req, res) => {
   const { path: createPath, type } = req.body;
   try {
-    if (type === 'directory') await mdplink.vfsMkdirp(vres(createPath));
-    else await mdplink.vfsWrite(vres(createPath), Buffer.from('', 'utf-8'));
+    assertWritable(req, createPath);
+    if (type === 'directory') await mdplink.vfsMkdirp(vres(req, createPath));
+    else await mdplink.vfsWrite(vres(req, createPath), Buffer.from('', 'utf-8'));
+    if (MULTI) pokeClients();
     res.json({ success: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 });
 
 const MIME_BY_EXT = { svg: 'image/svg+xml', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', bmp: 'image/bmp', ico: 'image/x-icon', css: 'text/css', js: 'text/javascript', json: 'application/json', md: 'text/plain', txt: 'text/plain' };
@@ -255,7 +397,7 @@ app.get('/files/*path', async (req, res) => {
   virtualPath = virtualPath.replace(/\.\./g, '');
   try {
     // VFS-aware: serves files behind a `.mdplink` (local or remote SFTP) too.
-    const buf = await mdplink.vfsReadBuffer(vres(virtualPath));
+    const buf = await mdplink.vfsReadBuffer(vres(req, virtualPath));
     const ext = path.extname(virtualPath).toLowerCase().replace('.', '');
     res.set('Content-Type', MIME_BY_EXT[ext] || 'application/octet-stream');
     res.set('Cache-Control', 'no-store');
@@ -265,13 +407,30 @@ app.get('/files/*path', async (req, res) => {
   }
 });
 
-const targetDir = rootDir;
+// Modules/effects read straight off the workspace root; per-request (the
+// requester's home space) in multi-user mode.
+const targetDirOf = (req) => (MULTI ? vres(req, '').abs : rootDir);
 
 const publicDir = process.env.NODE_ENV === 'development' 
   ? path.join(process.cwd(), 'public') 
   : path.join(__dirname, 'dist');
 
 const safeParseJSON = (str) => JSON.parse(str.replace(/^\uFEFF/, ''));
+
+// Built-in asset lookups take a client-supplied relative path; resolve it
+// and refuse anything that escapes publicDir ('..' traversal).
+const underPublic = (rel) => {
+  const abs = path.resolve(publicDir, String(rel || ''));
+  return abs.startsWith(path.resolve(publicDir) + path.sep) ? abs : null;
+};
+
+// Site-wide shared assets (shared mode): prepended to every asset cascade
+// so the user's own `.mdp` (later in the chain) wins on a name clash.
+const siteAssetDirs = () => (MULTI ? (SPACES.assetDirs || []) : []);
+const assetChain = (raw) => [
+  ...siteAssetDirs(),
+  ...String(raw || '.mdp').split(',').map((s) => s.trim()).filter(Boolean),
+];
 
 app.get('/api/snippets', async (req, res) => {
   let snippets = [];
@@ -284,18 +443,18 @@ app.get('/api/snippets', async (req, res) => {
 
   // Custom snippet FILES cascade like other `.mdp` assets (dirs CSV, root→nearest;
   // nearest wins by file name). Omitted → root `.mdp` only.
-  const chain = String(req.query.dirs || '.mdp').split(',').map(s => s.trim()).filter(Boolean);
+  const chain = assetChain(req.query.dirs);
   const byName = new Map();
   for (const cdir of chain) {
     try {
-      for (const e of await mdplink.vfsList(vres(`${cdir}/snippets`))) {
+      for (const e of await mdplink.vfsList(vres(req, `${cdir}/snippets`))) {
         if (!e.isDir && e.name.toLowerCase().endsWith('.json')) byName.set(e.name, `${cdir}/snippets/${e.name}`);
       }
     } catch (dirErr) { /* snippets dir absent in this `.mdp` */ }
   }
   for (const [file, rel] of byName) {
     try {
-      const data = await mdplink.vfsReadText(vres(rel));
+      const data = await mdplink.vfsReadText(vres(req, rel));
       const customSnippets = safeParseJSON(data);
       if (Array.isArray(customSnippets)) {
         customSnippets.forEach(category => {
@@ -316,11 +475,11 @@ app.get('/api/snippets', async (req, res) => {
 // merge across it, NEAREST wins by file name. Omitted → root `.mdp` (legacy).
 app.get('/api/templates', async (req, res) => {
   let templates = [];
-  const chain = String(req.query.dirs || '.mdp').split(',').map(s => s.trim()).filter(Boolean);
+  const chain = assetChain(req.query.dirs);
   const byName = new Map();
   for (const cdir of chain) {
     try {
-      for (const e of await mdplink.vfsList(vres(`${cdir}/templates`))) {
+      for (const e of await mdplink.vfsList(vres(req, `${cdir}/templates`))) {
         if (!e.isDir && e.name.endsWith('.md')) byName.set(e.name, { name: e.name, path: `${cdir}/templates/${e.name}`, isCustom: true });
       }
     } catch (e) { /* templates dir absent in this `.mdp` */ }
@@ -354,10 +513,10 @@ app.get('/api/templateContent', async (req, res) => {
        // Workspace templates may live in a NESTED `.mdp` (cascade) or behind a
        // `.mdplink` — resolve through the VFS; built-ins come from publicDir.
        if (templatePath.includes('.mdp/')) {
-         return res.send(await mdplink.vfsReadText(vres(templatePath)));
+         return res.send(await mdplink.vfsReadText(vres(req, templatePath)));
        }
-       const absolutePath = path.join(publicDir, templatePath);
-       if (fs.existsSync(absolutePath)) {
+       const absolutePath = underPublic(templatePath);
+       if (absolutePath && fs.existsSync(absolutePath)) {
          return res.send(await fs.promises.readFile(absolutePath, 'utf-8'));
        }
     }
@@ -376,10 +535,10 @@ app.get('/api/themes', async (req, res) => {
         byName.set(f.replace('.css', ''), { name: f.replace('.css', ''), fileName: f, path: `themes/${f}`, isCustom: false });
     } catch (e) {}
   }
-  const chain = String(req.query.dirs || '.mdp').split(',').map(s => s.trim()).filter(Boolean);
+  const chain = assetChain(req.query.dirs);
   for (const cdir of chain) {
     try {
-      for (const e of await mdplink.vfsList(vres(`${cdir}/themes`))) if (!e.isDir && e.name.endsWith('.css'))
+      for (const e of await mdplink.vfsList(vres(req, `${cdir}/themes`))) if (!e.isDir && e.name.endsWith('.css'))
         byName.set(e.name.replace('.css', ''), { name: e.name.replace('.css', ''), fileName: e.name, path: `${cdir}/themes/${e.name}`, isCustom: true });
     } catch (e) { /* themes dir absent */ }
   }
@@ -388,7 +547,19 @@ app.get('/api/themes', async (req, res) => {
 
 app.get('/api/modules', async (req, res) => {
   let modules = [];
-  const customDir = path.join(targetDir, '.mdp', 'modules');
+  // Site-wide shared assets first; the user's own entry of the same file
+  // name replaces it below (the UI de-duplicates by name, last wins).
+  for (const adir of siteAssetDirs()) {
+    try {
+      for (const e of await mdplink.vfsList(vres(req, `${adir}/modules`))) {
+        if (!e.isDir && e.name.endsWith('.mdpmod.xml')) {
+          modules.push({ name: e.name.replace('.mdpmod.xml', ''), fileName: e.name,
+                     path: `${adir}/modules/${e.name}`, isCustom: true });
+        }
+      }
+    } catch (dirErr) { /* shared modules dir absent */ }
+  }
+  const customDir = path.join(targetDirOf(req), '.mdp', 'modules');
   if (fs.existsSync(customDir)) {
     try {
       const files = await fs.promises.readdir(customDir);
@@ -423,11 +594,14 @@ app.get('/api/moduleContent', async (req, res) => {
   try {
     const modulePath = req.query.path;
     if (modulePath) {
+       if (MULTI && modulePath.startsWith('@')) {
+         return res.send(await mdplink.vfsReadText(vres(req, modulePath)));
+       }
        const absolutePath = modulePath.startsWith('.mdp/')
-          ? path.join(targetDir, modulePath)
-          : path.join(publicDir, modulePath);
+          ? path.join(targetDirOf(req), modulePath.replace(/\.\./g, ''))
+          : underPublic(modulePath);
 
-       if (fs.existsSync(absolutePath)) {
+       if (absolutePath && fs.existsSync(absolutePath)) {
          return res.send(await fs.promises.readFile(absolutePath, 'utf-8'));
        }
     }
@@ -437,7 +611,19 @@ app.get('/api/moduleContent', async (req, res) => {
 
 app.get('/api/effects', async (req, res) => {
   let effects = [];
-  const customDir = path.join(targetDir, '.mdp', 'effects');
+  // Site-wide shared assets first; the user's own entry of the same file
+  // name replaces it below (the UI de-duplicates by name, last wins).
+  for (const adir of siteAssetDirs()) {
+    try {
+      for (const e of await mdplink.vfsList(vres(req, `${adir}/effects`))) {
+        if (!e.isDir && e.name.endsWith('.mdpfx.xml')) {
+          effects.push({ name: e.name.replace('.mdpfx.xml', ''), fileName: e.name,
+                     path: `${adir}/effects/${e.name}`, isCustom: true });
+        }
+      }
+    } catch (dirErr) { /* shared effects dir absent */ }
+  }
+  const customDir = path.join(targetDirOf(req), '.mdp', 'effects');
   if (fs.existsSync(customDir)) {
     try {
       const files = await fs.promises.readdir(customDir);
@@ -469,11 +655,14 @@ app.get('/api/effectContent', async (req, res) => {
   try {
     const effectPath = req.query.path;
     if (effectPath) {
+       if (MULTI && effectPath.startsWith('@')) {
+         return res.send(await mdplink.vfsReadText(vres(req, effectPath)));
+       }
        const absolutePath = effectPath.startsWith('.mdp/')
-          ? path.join(targetDir, effectPath)
-          : path.join(publicDir, effectPath);
+          ? path.join(targetDirOf(req), effectPath.replace(/\.\./g, ''))
+          : underPublic(effectPath);
 
-       if (fs.existsSync(absolutePath)) {
+       if (absolutePath && fs.existsSync(absolutePath)) {
          return res.send(await fs.promises.readFile(absolutePath, 'utf-8'));
        }
     }
@@ -500,12 +689,20 @@ const server = app.listen(PORT, '0.0.0.0', () => {
 
 const wss = new WebSocketServer({ server });
 
-const watcher = chokidar.watch(rootDir, { ignored: /(^|[\/\\])\../, persistent: true, ignoreInitial: true });
-watcher.on('all', () => {
+const pokeClients = () => {
   wss.clients.forEach(client => {
     if (client.readyState === WebSocket.OPEN) client.send('file-change');
   });
-});
+};
+if (!MULTI) {
+  const watcher = chokidar.watch(rootDir, { ignored: /(^|[\/\\])\../, persistent: true, ignoreInitial: true });
+  watcher.on('all', pokeClients);
+}
 
 const { attachRelay } = require('./app/remoteRelay.cjs');
-attachRelay(wss);
+// Shared mode: relay presentation-control traffic ONLY between sockets of the
+// SAME authenticated user (PC + tablet of one person). Without this, any
+// signed-in user could listen to -- or drive -- someone else's presentation.
+attachRelay(wss, MULTI
+  ? { userOf: (req) => String((req.headers || {})[SPACES.userHeader] || '') }
+  : {});

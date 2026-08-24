@@ -1,3 +1,4 @@
+import { WEB_BASE } from '../../../api/base';
 import { useEffect, useRef, useCallback } from 'react';
 import { isElectron } from '../../../api/apiClient';
 import type { SlideLinkRect } from '../capture/captureTypes';
@@ -62,7 +63,7 @@ function computeWsUrl(electronWsPort?: number | null): string | null {
   const wsHost = (window.location.port === '5173' || window.location.port === '4173')
     ? `localhost:${typeof __API_PORT__ !== 'undefined' ? __API_PORT__ : '3000'}`
     : window.location.host;
-  return `${wsProtocol}//${wsHost}`;
+  return `${wsProtocol}//${wsHost}${WEB_BASE}/`;
 }
 
 export const useSync = (

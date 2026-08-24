@@ -1,3 +1,4 @@
+import { WEB_BASE } from '../../../api/base';
 import { useEffect } from 'react';
 import { apiClient, isElectron } from '../../../api/apiClient';
 
@@ -91,7 +92,7 @@ export const useAppInit = (
     const connectWs = () => {
       if (isUnmounting) return;
       try {
-        ws = new WebSocket(`${wsProtocol}//${wsHost}`);
+        ws = new WebSocket(`${wsProtocol}//${wsHost}${WEB_BASE}/`);
         ws.onopen = () => console.log("Connected to file watcher");
         ws.onmessage = (event) => { if (event.data === 'file-change') fetchFileTree(); };
         ws.onclose = () => { if (!isUnmounting) retryTimer = setTimeout(connectWs, 5000); };

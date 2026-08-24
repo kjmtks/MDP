@@ -1,3 +1,4 @@
+import { FILES_PREFIX, WEB_BASE } from '../../../api/base';
 import { useMemo, useEffect } from 'react';
 import type { FileType } from '../../../types';
 import { BASE_HEIGHT } from '../../../constants';
@@ -17,7 +18,7 @@ export const useSlideProcessor = (
   moduleEpoch: number = 0,
 ) => {
   const baseUrl = useMemo(() => {
-    const prefix = isElectron() ? 'mdp-file://' : '/files/';
+    const prefix = isElectron() ? 'mdp-file://' : FILES_PREFIX;
     if (!currentFileName) return prefix;
     const lastSlashIndex = currentFileName.lastIndexOf('/');
     return lastSlashIndex === -1 ? prefix : `${prefix}${currentFileName.substring(0, lastSlashIndex)}/`;
@@ -134,7 +135,7 @@ export const useSlideProcessor = (
     if (globalContext.cssPath) {
       let cssPath = globalContext.cssPath;
       if (!cssPath.startsWith('http') && !cssPath.startsWith('data:')) {
-        const prefix = isElectron() ? 'mdp-file://' : '/files/';
+        const prefix = isElectron() ? 'mdp-file://' : FILES_PREFIX;
         if (cssPath.startsWith('/')) {
           cssPath = `${prefix}${cssPath.substring(1)}`;
         } else {
@@ -151,7 +152,7 @@ export const useSlideProcessor = (
           // the leading `.mdp` is parsed as an invalid hostname and the CSS 404s.
           targetCssUrl = theme.isCustom ? `mdp-file:///${theme.path}` : `app-asset://${theme.path}`;
         } else {
-          targetCssUrl = theme.isCustom ? `/files/${theme.path}` : `/${theme.path}`;
+          targetCssUrl = theme.isCustom ? `${FILES_PREFIX}${theme.path}` : `${WEB_BASE}/${theme.path}`;
         }
       }
     }

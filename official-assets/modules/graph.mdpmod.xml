@@ -170,6 +170,13 @@ Figure 1: result
       height: auto;
       margin: 0 auto;
     }
+    /* text-align は flex の子には効かないので，キャプション内に置かれた
+       flex なモジュール (@legend など) はブロックごと中央へ寄せる */
+    .mdp-mod-graph-caption .mdp-mod-legend {
+      width: fit-content;
+      margin-left: auto;
+      margin-right: auto;
+    }
     .mdp-mod-graph-caption {
       text-align: center;
       font-size: var(--graph-caption-size, 0.75em);

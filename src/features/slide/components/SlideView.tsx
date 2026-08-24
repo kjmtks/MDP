@@ -1,3 +1,4 @@
+import { FILES_PREFIX } from '../../../api/base';
 import { isElectron } from '../../../api/apiClient';
 import { BASE_HEIGHT } from '../../../constants';
 import React, { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, useMemo } from 'react';
@@ -264,7 +265,7 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
     currentHtml = currentHtml.replace(/([，．、。]) +(<[a-zA-Z0-9-]+[^>]*class="[^"]*(?:katex|math)[^"]*"[^>]*>|<math[^>]*>|<mjx-container[^>]*>)/gi, '$1$2');
 
     const resolvePath = (src: string) => {
-      if (src.startsWith('http') || src.startsWith('data:') || src.startsWith('blob:') || src.startsWith('/files/') || src.startsWith('mdp-file://')) return src;
+      if (src.startsWith('http') || src.startsWith('data:') || src.startsWith('blob:') || src.startsWith(FILES_PREFIX) || src.startsWith('mdp-file://')) return src;
 
       const [pathPart, queryPart] = src.split('?');
       let targetPath = '';
@@ -280,7 +281,7 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
       const cleanUrl = targetPath.split('/').map(encodeURIComponent).join('/');
       // Empty-authority form so a managed `.mdp/…` path isn't parsed as an invalid
       // dot-leading hostname (→ broken image).
-      const prefix = isElectron() ? 'mdp-file:///' : '/files/';
+      const prefix = isElectron() ? 'mdp-file:///' : FILES_PREFIX;
       return `${prefix}${cleanUrl}${queryPart ? '?' + queryPart : ''}`;
     };
 
@@ -289,7 +290,7 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
     const toWorkspacePath = (src: string): string => {
       let s = src.split('?')[0];
       if (s.startsWith('mdp-file://')) s = s.replace(/^mdp-file:\/\/+/, '');
-      else if (s.startsWith('/files/')) s = s.slice('/files/'.length);
+      else if (s.startsWith(FILES_PREFIX)) s = s.slice(FILES_PREFIX.length);
       else if (s.startsWith('/')) s = s.slice(1);
       else s = basePath ? `${basePath}/${s}` : s;
       try { s = decodeURIComponent(s); } catch { /* ignore */ }
