@@ -1,6 +1,7 @@
 import { WEB_BASE } from '../../../api/base';
 import { useEffect } from 'react';
 import { apiClient, isElectron } from '../../../api/apiClient';
+import { filePathCandidatesFromLocation } from '../../../utils/fileUrl';
 
 declare const __API_PORT__: string;
 
@@ -49,17 +50,19 @@ export const useAppInit = (
       apiClient.getTemplateContent('').then(text => setTemplateContent(text)).catch(err => console.error(err));
       apiClient.getThemes().then(data => setThemes(data)).catch(err => console.error(err));
 
-      const params = new URLSearchParams(window.location.search);
-      const fileUrl = params.get('file');
+      // The file named by the URL: legacy `?file=` or the path-style form
+      // (/mdp/homes/…/deck.slide.md); path candidates are matched against the
+      // tree so `@homes/…` is found from an '@'-less URL.
+      const fileUrl = filePathCandidatesFromLocation().find((p) => existing.has(p)) ?? null;
       const savedPaths = Array.isArray(SAVED_OPEN_FILES?.paths) ? SAVED_OPEN_FILES!.paths! : [];
       const savedActive = SAVED_OPEN_FILES?.active ?? null;
 
       // Fall back to the first still-existing saved file so we never restore with
       // tabs open but none active.
       const firstExisting = savedPaths.find((p) => existing.has(p)) ?? null;
-      const activePath = (fileUrl && existing.has(fileUrl)) ? fileUrl
-        : (savedActive && existing.has(savedActive)) ? savedActive
-        : firstExisting;
+      const activePath = fileUrl
+        ?? ((savedActive && existing.has(savedActive)) ? savedActive
+        : firstExisting);
 
       // Reopen previously-open files that still exist as BACKGROUND tabs (they do
       // not steal focus or drive the preview), then load the active one normally

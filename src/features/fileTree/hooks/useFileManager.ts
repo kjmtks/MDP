@@ -8,6 +8,7 @@ import { apiClient } from '../../../api/apiClient';
 import { registerModule } from '../../modules/moduleManager';
 import { reportError, confirmDialog, choiceDialog } from '../../../components/error/errorReporter';
 import { stripDrawingData } from '../../../utils/drawingBaseline';
+import { urlForFile, urlForNoFile } from '../../../utils/fileUrl';
 
 interface UseFileManagerProps {
   setCurrentSlideIndex: (idx: number) => void;
@@ -191,9 +192,7 @@ export const useFileManager = ({ setCurrentSlideIndex, syncDrawings, onFileLoade
       setTimeout(() => {
         setCurrentSlideIndex(nextTab.currentSlideIndex);
         syncDrawings(nextTab.drawings || {});
-        const params = new URLSearchParams(window.location.search);
-        params.set('file', nextTab.path);
-        window.history.pushState(null, '', `${window.location.pathname}?${params.toString()}`);
+        window.history.pushState(null, '', urlForFile(nextTab.path));
         markdownRef.current = nextTab.content;
       }, 0);
 
@@ -216,16 +215,14 @@ export const useFileManager = ({ setCurrentSlideIndex, syncDrawings, onFileLoade
 
       setTimeout(() => {
         if (newIndex === -1) {
-          window.history.pushState(null, '', window.location.pathname);
+          window.history.pushState(null, '', urlForNoFile());
           syncDrawings({});
           markdownRef.current = INITIAL_MARKDOWN;
         } else {
           const nextTab = newTabs[newIndex];
           setCurrentSlideIndex(nextTab.currentSlideIndex);
           syncDrawings(nextTab.drawings || {});
-          const params = new URLSearchParams(window.location.search);
-          params.set('file', nextTab.path);
-          window.history.pushState(null, '', `${window.location.pathname}?${params.toString()}`);
+          window.history.pushState(null, '', urlForFile(nextTab.path));
           markdownRef.current = nextTab.content;
         }
       }, 0);
@@ -268,9 +265,7 @@ export const useFileManager = ({ setCurrentSlideIndex, syncDrawings, onFileLoade
         if (!background) {
           setCurrentSlideIndex(0);
           syncDrawings({});
-          const params = new URLSearchParams(window.location.search);
-          params.set('file', fileName);
-          window.history.pushState(null, '', `${window.location.pathname}?${params.toString()}`);
+          window.history.pushState(null, '', urlForFile(fileName));
         }
         isLoadingFile.current = false;
       }, 0);
@@ -337,9 +332,7 @@ export const useFileManager = ({ setCurrentSlideIndex, syncDrawings, onFileLoade
         if (!background) {
           setCurrentSlideIndex(initialPage);
           syncDrawings(newDrawings);
-          const params = new URLSearchParams(window.location.search);
-          params.set('file', fileName);
-          window.history.pushState(null, '', `${window.location.pathname}?${params.toString()}`);
+          window.history.pushState(null, '', urlForFile(fileName));
           onFileLoaded?.();
         }
         isLoadingFile.current = false;
@@ -548,9 +541,7 @@ const updateTabContent = useCallback((path: string, newContent: string) => {
       setTimeout(() => {
         if (prev.activeIndex !== -1) {
           const nextTab = newTabs[prev.activeIndex];
-          const params = new URLSearchParams(window.location.search);
-          params.set('file', nextTab.path);
-          window.history.replaceState(null, '', `${window.location.pathname}?${params.toString()}`);
+          window.history.replaceState(null, '', urlForFile(nextTab.path));
           markdownRef.current = nextTab.content;
         }
       }, 0);
@@ -580,16 +571,14 @@ const updateTabContent = useCallback((path: string, newContent: string) => {
 
       setTimeout(() => {
         if (newActiveIndex === -1) {
-          window.history.pushState(null, '', window.location.pathname);
+          window.history.pushState(null, '', urlForNoFile());
           syncDrawings({});
           markdownRef.current = INITIAL_MARKDOWN;
         } else {
           const nextTab = newTabs[newActiveIndex];
           setCurrentSlideIndex(nextTab.currentSlideIndex);
           syncDrawings(nextTab.drawings || {});
-          const params = new URLSearchParams(window.location.search);
-          params.set('file', nextTab.path);
-          window.history.replaceState(null, '', `${window.location.pathname}?${params.toString()}`);
+          window.history.replaceState(null, '', urlForFile(nextTab.path));
           markdownRef.current = nextTab.content;
         }
       }, 0);
@@ -632,9 +621,7 @@ const updateTabContent = useCallback((path: string, newContent: string) => {
     setTimeout(() => {
       setCurrentSlideIndex(tabToKeep.currentSlideIndex);
       syncDrawings(tabToKeep.drawings || {});
-      const params = new URLSearchParams(window.location.search);
-      params.set('file', tabToKeep.path);
-      window.history.pushState(null, '', `${window.location.pathname}?${params.toString()}`);
+      window.history.pushState(null, '', urlForFile(tabToKeep.path));
       markdownRef.current = tabToKeep.content;
     }, 0);
 
@@ -651,7 +638,7 @@ const updateTabContent = useCallback((path: string, newContent: string) => {
     }
 
     setTimeout(() => {
-      window.history.pushState(null, '', window.location.pathname);
+      window.history.pushState(null, '', urlForNoFile());
       syncDrawings({});
       markdownRef.current = INITIAL_MARKDOWN;
     }, 0);

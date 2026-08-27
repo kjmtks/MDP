@@ -6,6 +6,31 @@ import { readFileSync } from 'fs';
 
 const pkg = JSON.parse(readFileSync(path.resolve(__dirname, 'package.json'), 'utf-8'));
 
+
+// Path-style slide URLs (/homes/…/deck.slide.md) contain dots, which the
+// default SPA fallback treats as file requests. Serve index.html for document
+// navigations to .md paths (production does this in server.cjs's catch-all).
+const mdDeepLinkFallback = () => {
+  const rewrite = (middlewares: { use: (fn: (req: any, res: any, next: () => void) => void) => void }) => {
+    middlewares.use((req, _res, next) => {
+      const url = String(req.url || '');
+      const pathOnly = url.split('?')[0];
+      if (req.method === 'GET'
+          && String(req.headers.accept || '').includes('text/html')
+          && /\.md$/i.test(pathOnly)
+          && !pathOnly.startsWith('/files/') && !pathOnly.startsWith('/api/')) {
+        req.url = '/index.html';
+      }
+      next();
+    });
+  };
+  return {
+    name: 'md-deep-link-fallback',
+    configureServer(server: { middlewares: Parameters<typeof rewrite>[0] }) { rewrite(server.middlewares); },
+    configurePreviewServer(server: { middlewares: Parameters<typeof rewrite>[0] }) { rewrite(server.middlewares); },
+  };
+};
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
 
@@ -14,6 +39,7 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [
       react(),
+      mdDeepLinkFallback(),
       license({
         thirdParty: {
           output: path.resolve(__dirname, 'public/ThirdPartyNotices.txt'),
