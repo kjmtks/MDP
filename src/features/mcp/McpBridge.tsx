@@ -133,7 +133,9 @@ export function validateDeckText(text: string, themes: ThemeOption[]) {
       }
       if (isModuleDisabled(name)) warnings.push(`${where}: module "@${name}" is DISABLED for this folder (its output renders as nothing)`);
       // Self-closing (bodyless) block modules take NO <!-- @end --> — don't expect one.
-      if (mod.config.type !== 'inline' && !mod.config.inlineRender && !mod.config.selfClosing) depth++;
+      // Block modules that render INLINE (`<render inline="true">`, e.g. @badge,
+      // @speak) still take a body + @end, so they open a region like any block.
+      if (mod.config.type !== 'inline' && !mod.config.selfClosing) depth++;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const args: any = parseArguments(argsStr);
       const known = new Set([...mod.config.parameters.map((pp) => pp.name), 'x', 'y', 'w', 'h', 'rot']);
