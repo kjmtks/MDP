@@ -312,6 +312,9 @@
       "path": "modules/shortcut.mdpmod.xml"
     },
     {
+      "path": "modules/speak.mdpmod.xml"
+    },
+    {
       "path": "modules/speakcard.mdpmod.xml"
     },
     {

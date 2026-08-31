@@ -1,0 +1,165 @@
+<module>
+  <name>speak</name>
+  <type>block</type>
+  <description>Inline speakable text: renders its body inline with a small play mark; clicking speaks it with machine TTS (window.mdpTts) and highlights the words as they are read. The lightweight sibling of @speakcard (no translation/reading-note rows).</description>
+  <tags>interactive, inline, education, language</tags>
+  <aiSpec><![CDATA[
+Wrap a phrase or sentence INSIDE running text to make it speakable: the body renders
+inline (with a small ▶ mark before it), clicking it reads it aloud via the app's TTS
+(window.mdpTts) with read-along word highlighting; clicking again stops. Use @speakcard
+instead when you want the full card (sentence + smaller translation + reading note).
+Undecorated by design — the text keeps its surrounding style.
+
+Gotcha: declared as a block module but renders INLINE, so it flows within the
+surrounding sentence. The body is the spoken text (inline Markdown allowed); the
+spoken string is the body's plain text.
+
+Parameters:
+  • lang (text, default en-US) — BCP-47 language; picks the narrator automatically.
+  • voice (text, default '') — Web Speech narrator by name, substring ok (e.g. Zira).
+  • speaker (number, default -1) — VOICEVOX style id, used when lang is Japanese
+    (-1 = use Web Speech; auto-falls back to Web Speech if the engine is down).
+  • rate (number, default 1) — speaking rate (0.5–2).
+  • highlight (boolean, default true) — highlight the words as they are spoken.
+  • icon (boolean, default true) — show the small ▶ mark before the text.
+
+Example:
+The verb <!-- @speak lang: en-US -->**boils**<!-- @end --> is in the present tense.
+Full sentence: <!-- @speak rate: 0.9 -->Water boils at 100 °C.<!-- @end -->
+]]></aiSpec>
+  <interactive>true</interactive>
+
+  <parameters>
+    <param name="lang" type="text" default="en-US" label="Language" desc="BCP-47 language of the text (picks the narrator), e.g. en-US, ja-JP." />
+    <param name="voice" type="text" default="" label="Narrator" desc="Web Speech narrator by name (substring ok, e.g. Zira). Blank = auto by language." />
+    <param name="speaker" type="number" default="-1" label="VOICEVOX speaker" desc="VOICEVOX style id when the language is Japanese (-1 = use Web Speech)." min="-1" max="9999" integer="true" />
+    <param name="rate" type="number" default="1" label="Rate" desc="Speaking rate (0.5-2)." min="0.1" max="3" />
+    <param name="highlight" type="boolean" default="true" label="Read-along highlight" desc="Highlight the words as they are spoken." />
+    <param name="icon" type="boolean" default="true" label="Play mark" desc="Show the small play mark before the text." />
+  </parameters>
+
+  <snippets>
+    <snippet>
+      <category>Education</category>
+      <label>Speakable text (inline)</label>
+      <text><![CDATA[<!-- @speak rate: 0.9 -->Water boils at 100 °C.<!-- @end -->]]></text>
+      <description>Inline text that speaks on click, with read-along highlight.</description>
+    </snippet>
+    <snippet>
+      <category>Education</category>
+      <label>Speakable text (named narrator)</label>
+      <text><![CDATA[<!-- @speak voice: Zira, rate: 0.85 -->atmospheric pressure<!-- @end -->]]></text>
+      <description>Speak a word/phrase with a named narrator (e.g. Zira).</description>
+    </snippet>
+  </snippets>
+
+  <render inline="true"><![CDATA[
+    const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const body = sections[0] ? sections[0].trim() : '';
+    const rate = parseFloat(args.rate);
+    const speaker = parseInt(args.speaker, 10);
+    const icon = String(args.icon) !== 'false';
+    return '<span class="mdp-mod-speak mdp-interactive" role="button" tabindex="0" title="Speak"'
+      + ' data-lang="' + esc(args.lang || 'en-US') + '"'
+      + ' data-voice="' + esc(args.voice || '') + '"'
+      + ' data-speaker="' + (isNaN(speaker) ? -1 : speaker) + '"'
+      + ' data-rate="' + (isNaN(rate) ? '' : rate) + '"'
+      + ' data-highlight="' + (String(args.highlight) === 'false' ? 'false' : 'true') + '"'
+      + (icon ? '<span class="mdp-speak-mark" aria-hidden="true">&#9654;</span>' : '')
+      + '<span class="mdp-speak-body">' + body + '</span></span>';
+  ]]></render>
+
+  <style><![CDATA[
+    /* Undecorated: the text keeps the surrounding style; only a small play mark
+       and a subtle hover underline hint that it is clickable. */
+    .mdp-mod-speak { cursor: pointer; }
+    .mdp-mod-speak:hover .mdp-speak-body { text-decoration: underline dotted; text-underline-offset: 0.2em; }
+    .mdp-mod-speak .mdp-speak-mark {
+      color: var(--accent-color);
+      font-size: 0.62em;
+      margin-right: 0.35em;
+      vertical-align: 0.15em;
+    }
+    ::highlight(mdp-speak) { background-color: rgba(255, 196, 0, 0.55); }
+  ]]></style>
+
+  <script><![CDATA[
+    export default {
+      init(el, ctx) {
+        const HL = 'mdp-speak';
+        const canHL = String(el.dataset.highlight) !== 'false'
+          && typeof window.Highlight === 'function' && window.CSS && CSS.highlights;
+        const clearHL = function () { if (canHL) { try { CSS.highlights.delete(HL); } catch (e) { /* ignore */ } } };
+        const highlightRange = function (root, start, end) {
+          if (!canHL || end <= start) return;
+          try {
+            const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+            let pos = 0, sNode = null, sOff = 0, eNode = null, eOff = 0, n;
+            while ((n = walker.nextNode())) {
+              const len = (n.textContent || '').length;
+              if (!sNode && start < pos + len) { sNode = n; sOff = start - pos; }
+              if (end <= pos + len) { eNode = n; eOff = end - pos; break; }
+              pos += len;
+            }
+            if (!sNode || !eNode) return;
+            const range = document.createRange();
+            range.setStart(sNode, Math.max(0, sOff));
+            range.setEnd(eNode, Math.max(0, eOff));
+            CSS.highlights.set(HL, new Highlight(range));
+          } catch (e) { /* ignore */ }
+        };
+
+        const mark = el.querySelector('.mdp-speak-mark');
+        const bodyEl = el.querySelector('.mdp-speak-body');
+        let current = null;
+        const restore = function () {
+          el.classList.remove('mdp-speak-playing');
+          if (mark) mark.innerHTML = '&#9654;';
+          clearHL();
+          current = null;
+        };
+        const toggle = function () {
+          const tts = window.mdpTts;
+          if (!tts || !bodyEl) return;
+          if (el.classList.contains('mdp-speak-playing')) { tts.stop(); return; }
+          const full = bodyEl.textContent || '';
+          const text = full.trim();
+          if (!text) return;
+          const lead = (full.match(/^\s*/) || [''])[0].length;
+          const rate = parseFloat(el.dataset.rate);
+          const lang = el.dataset.lang || '';
+          const voice = el.dataset.voice || '';
+          const speaker = parseInt(el.dataset.speaker, 10);
+          const o = {};
+          if (!isNaN(rate) && rate > 0) o.rate = rate;
+          if (lang) o.lang = lang;
+          if (/^ja/i.test(lang) && speaker >= 0) o.speaker = speaker;
+          else if (voice) o.voice = voice;
+          o.onProgress = function (p) {
+            if (typeof p.charIndex === 'number') {
+              let end = (typeof p.charLength === 'number' && p.charLength > 0)
+                ? p.charIndex + p.charLength : -1;
+              if (end < 0) {
+                const m = text.slice(p.charIndex).search(/[\s,.!?;:、。]/);
+                end = m > 0 ? p.charIndex + m : text.length;
+              }
+              highlightRange(bodyEl, lead + p.charIndex, lead + Math.min(end, text.length));
+            } else if (typeof p.fraction === 'number') {
+              highlightRange(bodyEl, lead, lead + Math.round(text.length * p.fraction));
+            }
+          };
+          const u = tts.speak(text, o);
+          current = u;
+          el.classList.add('mdp-speak-playing');
+          if (mark) mark.innerHTML = '&#9632;';
+          u.done.then(restore, restore);
+        };
+        el.addEventListener('click', function (ev) { ev.stopPropagation(); toggle(); });
+        el.addEventListener('keydown', function (ev) {
+          if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); ev.stopPropagation(); toggle(); }
+        });
+        ctx.onCleanup(function () { if (current) current.stop(); clearHL(); });
+      }
+    }
+  ]]></script>
+</module>
