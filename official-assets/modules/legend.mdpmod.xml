@@ -23,8 +23,8 @@ PER-ENTRY HANDLES — put shape/line tokens after the colour, before the `:`:
            (or the words solid/dashed/dotted/dashdot; `..` not `:`, because
            `:` separates the label)
 
-Labels may contain KaTeX math (`$..$` or backslash-paren delimiters) - it is
-typeset after render.
+Labels are rendered as Markdown + KaTeX (like the graph module's labels), so
+math (`$..$` or backslash-paren delimiters) and inline emphasis both work.
 
 Tokens may be glued (`o--`) or spaced (`o --`). An entry that carries tokens
 describes its WHOLE handle, so `-` is a bare line (no marker), `o` a bare marker
@@ -199,9 +199,11 @@ Example:
       items.push({ color: head.color, label: m[2].trim(), mark, line });
     });
 
+    // Labels are emitted as markdown blocks (blank-line padded, same trick as
+    // the graph module's labels/caption), so Markdown + KaTeX typeset them.
     let html = `\n\n<div class="mdp-mod-legend mdp-lg-${dir}" style="--lg-size:${size}; --lg-weight:${weight}; gap:${gap};">`;
     items.forEach((it) => {
-      html += `<div class="mdp-lg-item">${handleSvg(it.color, it.mark, it.line, px)}<span class="mdp-lg-label">${esc(it.label)}</span></div>`;
+      html += `<div class="mdp-lg-item">${handleSvg(it.color, it.mark, it.line, px)}<div class="mdp-lg-label">\n\n${it.label}\n\n</div></div>`;
     });
     html += `</div>\n\n`;
     return html;
@@ -213,6 +215,8 @@ Example:
     .mdp-lg-swatch { display: inline-block; flex: 0 0 auto; overflow: visible; height: var(--lg-size, calc(15 * var(--mdp-px, 1px))); width: var(--lg-size, calc(15 * var(--mdp-px, 1px))); }
     .mdp-lg-swatch.mdp-lg-wide { width: calc(2.4 * var(--lg-size, calc(15 * var(--mdp-px, 1px)))); }
     .mdp-lg-label { font-size: 0.9em; font-weight: var(--lg-weight, 400); }
+    .mdp-lg-label p { margin: 0; display: inline; }
+    .mdp-lg-label .katex-display { margin: 0; display: inline; }
   ]]></style>
   <script><![CDATA[
     export default {

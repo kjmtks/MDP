@@ -55,13 +55,38 @@ export function loadWebSpeechVoices(): Promise<SpeechSynthesisVoice[]> {
   });
 }
 
-function speakWebSpeech(text: string, cfg: TtsConfig): Utterance {
+// Narrator selection for Web Speech, used by per-call overrides (module API):
+//   voice — narrator by voiceURI/name, exact first then case-insensitive substring
+//           (e.g. 'Zira' matches "Microsoft Zira - English (United States)").
+//   lang  — BCP-47 prefix (e.g. 'en', 'en-US', 'ja'); picks the configured default
+//           voice when it matches, else the best installed voice for that language
+//           (local voices first). No match → undefined; the utterance then carries
+//           only `lang` and the OS chooses.
+// With neither given this reduces to the configured default voice (legacy behavior).
+export interface VoiceSelect { voice?: string; lang?: string }
+
+export function resolveWebSpeechVoice(sel: VoiceSelect, cfg: TtsConfig): SpeechSynthesisVoice | undefined {
+  const voices = listWebSpeechVoices();
+  const wanted = (sel.voice || '').trim().toLowerCase();
+  if (wanted) {
+    return voices.find((v) => v.voiceURI.toLowerCase() === wanted || v.name.toLowerCase() === wanted)
+      || voices.find((v) => v.name.toLowerCase().includes(wanted) || v.voiceURI.toLowerCase().includes(wanted));
+  }
+  const def = cfg.webspeechVoiceURI ? voices.find((v) => v.voiceURI === cfg.webspeechVoiceURI) : undefined;
+  const lang = (sel.lang || '').trim().toLowerCase();
+  if (!lang) return def;
+  const matches = (v: SpeechSynthesisVoice) => v.lang.toLowerCase().replace(/_/g, '-').startsWith(lang);
+  if (def && matches(def)) return def;
+  const cand = voices.filter(matches);
+  return cand.find((v) => v.localService && v.default) || cand.find((v) => v.localService) || cand[0];
+}
+
+function speakWebSpeech(text: string, cfg: TtsConfig, sel?: VoiceSelect): Utterance {
   const synth = window.speechSynthesis;
   const u = new SpeechSynthesisUtterance(text);
-  if (cfg.webspeechVoiceURI) {
-    const v = listWebSpeechVoices().find((x) => x.voiceURI === cfg.webspeechVoiceURI);
-    if (v) { u.voice = v; u.lang = v.lang; }
-  }
+  const v = resolveWebSpeechVoice(sel || {}, cfg);
+  if (v) { u.voice = v; u.lang = v.lang; }
+  else if (sel?.lang) u.lang = sel.lang;
   u.rate = Math.max(0.1, Math.min(10, cfg.rate || 1));
   u.pitch = Math.max(0, Math.min(2, cfg.pitch ?? 1));
   let resolve!: () => void;
@@ -126,7 +151,7 @@ export interface Clip { play: () => Utterance; dispose: () => void }
 // the (slow) network synthesis up front, so the caller can prefetch the next unit
 // during playback of the current one. For Web Speech there is nothing to
 // pre-synthesize, so play() speaks on demand.
-export async function synthesize(text: string, cfg: TtsConfig): Promise<Clip> {
+export async function synthesize(text: string, cfg: TtsConfig, sel?: VoiceSelect): Promise<Clip> {
   const t = (text || '').trim();
   if (!t) return { play: () => NOOP, dispose: () => {} };
   if (cfg.engine === 'voicevox') {
@@ -134,14 +159,14 @@ export async function synthesize(text: string, cfg: TtsConfig): Promise<Clip> {
     let used = false;
     return { play: () => { used = true; return playAudioUrl(url, true); }, dispose: () => { if (!used) URL.revokeObjectURL(url); } };
   }
-  return { play: () => (webSpeechAvailable() ? speakWebSpeech(t, cfg) : NOOP), dispose: () => {} };
+  return { play: () => (webSpeechAvailable() ? speakWebSpeech(t, cfg, sel) : NOOP), dispose: () => {} };
 }
 
 // ---- Unified entry point ---------------------------------------------------
 
 // Speak `text` with the configured engine. Returns immediately with an Utterance;
 // for VOICEVOX the async network setup is wrapped so stop() works even mid-request.
-export function speak(text: string, cfg: TtsConfig): Utterance {
+export function speak(text: string, cfg: TtsConfig, sel?: VoiceSelect): Utterance {
   const t = (text || '').trim();
   if (!t) return NOOP;
   if (cfg.engine === 'voicevox') {
@@ -156,6 +181,6 @@ export function speak(text: string, cfg: TtsConfig): Utterance {
     })();
     return { done, stop: () => { stopped = true; inner?.stop(); } };
   }
-  if (webSpeechAvailable()) return speakWebSpeech(t, cfg);
+  if (webSpeechAvailable()) return speakWebSpeech(t, cfg, sel);
   return NOOP;
 }

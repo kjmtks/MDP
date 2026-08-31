@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useRef, useState, useCallb
 import { apiClient } from '../../api/apiClient';
 import { type AppSettings, DEFAULT_SETTINGS, SETTINGS_PATH, normalizeSettings } from './types';
 import { appThemeVariant } from '../../styles/appThemes';
+import { setModuleTtsDefaults } from '../tts/moduleTtsApi';
 
 interface AppSettingsContextValue {
   settings: AppSettings;
@@ -69,6 +70,10 @@ export const AppSettingsProvider: React.FC<{ children: React.ReactNode }> = ({ c
     el.style.setProperty('--app-editor-caret-width', `${settings.editorCaretWidth}px`);
     el.style.setProperty('--app-editor-line-height', `${settings.editorLineHeight}`);
   }, [settings.appTheme, settings.appFontSize, settings.editorFontSize, settings.editorCaretWidth, settings.editorLineHeight]);
+
+  // Mirror the TTS preferences into the module-facing `window.mdpTts` API so
+  // module <script>s speak with the user's configured engine/narrator by default.
+  useEffect(() => { setModuleTtsDefaults(settings.tts); }, [settings.tts]);
 
   const persist = useCallback((next: AppSettings) => {
     if (saveTimer.current) window.clearTimeout(saveTimer.current);

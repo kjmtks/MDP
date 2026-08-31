@@ -1,0 +1,205 @@
+<module>
+  <name>speakcard</name>
+  <type>block</type>
+  <description>A language-learning sentence card: main sentence + smaller translation + optional reading note, each speakable with machine TTS (Web Speech / VOICEVOX) via the app's window.mdpTts API. Interactive: the speak buttons never advance the slide.</description>
+  <tags>interactive, education, language</tags>
+  <aiSpec><![CDATA[
+Use for language-teaching slides (e.g. technical English): shows a MAIN sentence with a
+speak button, a smaller SUB line (the translation), and an optional READING NOTE (e.g.
+"100 °C = one hundred degrees Celsius"). Clicking a speak button reads that line aloud
+with the app's TTS (window.mdpTts): the narrator is picked automatically from the line's
+language, or named explicitly. Requires an MDP build that exposes window.mdpTts; the
+buttons are inert (no crash) on older builds.
+
+Block module: 1–3 body sections split by `<!-- @ -->`:
+  section 1 — the main sentence (Markdown; e.g. the English sentence)
+  section 2 — the sub line / translation, rendered smaller (optional)
+  section 3 — a reading note, rendered small in accent color, never spoken (optional)
+To flip the direction (Japanese main, English sub) just swap the texts AND set
+mainlang: ja-JP, sublang: en-US.
+
+Parameters:
+  • mainlang (text, default en-US) — language of the main sentence (BCP-47; drives narrator pick).
+  • sublang (text, default ja-JP) — language of the sub line.
+  • mainvoice (text, default '') — narrator for the main line by name, substring ok (e.g. Zira).
+  • subvoice (text, default '') — narrator for the sub line (Web Speech name).
+  • speaker (number, default -1) — VOICEVOX style id used for whichever line is Japanese
+    (-1 = don't use VOICEVOX; falls back to Web Speech automatically if the engine is down).
+  • rate (number, default 1) — speaking rate for both lines (0.5–2; slower for learners).
+  • size (select sm|md|lg, default md) — overall text scale.
+  • color (color, default var(--accent-color)) — accent bar / note color.
+
+Example:
+<!-- @speakcard mainlang: en-US, sublang: ja-JP, mainvoice: Zira, rate: 0.9 -->
+Water **boils** at 100 °C at atmospheric pressure.
+<!-- @ -->
+水は大気圧下で 100 °C で沸騰する．
+<!-- @ -->
+100 °C = *one hundred degrees Celsius*
+<!-- @end -->
+]]></aiSpec>
+  <interactive>true</interactive>
+
+  <parameters>
+    <param name="mainlang" type="text" default="en-US" label="Main language" desc="BCP-47 language of the main sentence (picks the narrator), e.g. en-US, ja-JP." />
+    <param name="sublang" type="text" default="ja-JP" label="Sub language" desc="BCP-47 language of the sub (translation) line." />
+    <param name="mainvoice" type="text" default="" label="Main narrator" desc="Web Speech narrator for the main line, by name (substring ok, e.g. Zira). Blank = auto by language." />
+    <param name="subvoice" type="text" default="" label="Sub narrator" desc="Web Speech narrator for the sub line. Blank = auto by language." />
+    <param name="speaker" type="number" default="-1" label="VOICEVOX speaker" desc="VOICEVOX style id for the Japanese line (-1 = use Web Speech)." min="-1" max="9999" integer="true" />
+    <param name="rate" type="number" default="1" label="Rate" desc="Speaking rate for both lines (0.5-2)." min="0.1" max="3" />
+    <param name="size" type="select" default="md" label="Size" options="sm:Small,md:Medium,lg:Large" desc="Overall text scale of the card." />
+    <param name="color" type="color" default="var(--accent-color)" label="Accent color" desc="Accent bar and reading-note color." />
+  </parameters>
+
+  <snippets>
+    <snippet>
+      <category>Education</category>
+      <label>Speak card (EN + 和訳)</label>
+      <text><![CDATA[<!-- @speakcard mainlang: en-US, sublang: ja-JP, rate: 0.9 -->
+Water **boils** at 100 °C at atmospheric pressure.
+<!-- @ -->
+水は大気圧下で 100 °C で沸騰する．
+<!-- @ -->
+100 °C = *one hundred degrees Celsius*
+<!-- @end -->]]></text>
+      <description>English sentence + smaller Japanese translation + reading note; both lines speakable.</description>
+    </snippet>
+    <snippet>
+      <category>Education</category>
+      <label>Speak card (named narrator)</label>
+      <text><![CDATA[<!-- @speakcard mainvoice: Zira, rate: 0.85 -->
+Several methods **have been proposed** to reduce noise.
+<!-- @ -->
+ノイズを低減するための手法がいくつか提案されてきた．
+<!-- @end -->]]></text>
+      <description>Pick the narrator by name (e.g. Zira for en-US).</description>
+    </snippet>
+    <snippet>
+      <category>Education</category>
+      <label>Speak card (VOICEVOX 和訳)</label>
+      <text><![CDATA[<!-- @speakcard speaker: 3 -->
+This paper proposes a new compression method.
+<!-- @ -->
+本論文では新しい圧縮手法を提案する．
+<!-- @end -->]]></text>
+      <description>Japanese line spoken by VOICEVOX style id 3 (falls back to Web Speech if the engine is not running).</description>
+    </snippet>
+  </snippets>
+
+  <render><![CDATA[
+    const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const sizes = { sm: '0.85em', md: '1em', lg: '1.2em' };
+    const size = sizes[String(args.size || 'md').toLowerCase()] || '1em';
+    const color = args.color || 'var(--accent-color)';
+    const rate = parseFloat(args.rate);
+    const speaker = parseInt(args.speaker, 10);
+    const main = sections[0] ? sections[0].trim() : '';
+    const sub = sections[1] ? sections[1].trim() : '';
+    const note = sections[2] ? sections[2].trim() : '';
+    const btn = (kind) => '<button class="mdp-speak-btn" type="button" data-kind="' + kind + '" title="Speak">&#9654;</button>';
+    let html = '<div class="mdp-mod-speakcard mdp-interactive" style="--speak-color: ' + esc(color) + '; font-size: ' + size + ';"'
+      + ' data-mainlang="' + esc(args.mainlang || 'en-US') + '"'
+      + ' data-sublang="' + esc(args.sublang || 'ja-JP') + '"'
+      + ' data-mainvoice="' + esc(args.mainvoice || '') + '"'
+      + ' data-subvoice="' + esc(args.subvoice || '') + '"'
+      + ' data-speaker="' + (isNaN(speaker) ? -1 : speaker) + '"'
+      + ' data-rate="' + (isNaN(rate) ? '' : rate) + '">';
+    html += '<div class="speakcard-row speakcard-main">' + btn('main') + '<div class="speakcard-text">\n\n' + main + '\n\n</div></div>';
+    if (sub) html += '<div class="speakcard-row speakcard-sub">' + btn('sub') + '<div class="speakcard-text">\n\n' + sub + '\n\n</div></div>';
+    if (note) html += '<div class="speakcard-note">\n\n' + note + '\n\n</div>';
+    html += '</div>';
+    return '\n\n' + html + '\n\n';
+  ]]></render>
+
+  <style><![CDATA[
+    .mdp-mod-speakcard {
+      margin: calc(0.6 * var(--mdp-u, 1rem)) 0;
+      padding: calc(0.5 * var(--mdp-u, 1rem)) calc(0.8 * var(--mdp-u, 1rem));
+      border-left: calc(4 * var(--mdp-px, 1px)) solid var(--speak-color, var(--accent-color));
+      background: color-mix(in srgb, var(--speak-color, var(--accent-color)) 5%, transparent);
+      border-radius: calc(6 * var(--mdp-px, 1px));
+    }
+    .mdp-mod-speakcard .speakcard-row { display: flex; align-items: baseline; gap: calc(0.5 * var(--mdp-u, 1rem)); }
+    .mdp-mod-speakcard .speakcard-text { flex: 1 1 auto; min-width: 0; }
+    .mdp-mod-speakcard .speakcard-text > :first-child { margin-top: 0; }
+    .mdp-mod-speakcard .speakcard-text > :last-child { margin-bottom: 0; }
+    .mdp-mod-speakcard .speakcard-main .speakcard-text { font-weight: 600; }
+    .mdp-mod-speakcard .speakcard-sub { margin-top: calc(0.15 * var(--mdp-u, 1rem)); opacity: 0.85; }
+    .mdp-mod-speakcard .speakcard-sub .speakcard-text { font-size: 0.68em; }
+    .mdp-mod-speakcard .speakcard-sub .mdp-speak-btn { font-size: 0.75em; }
+    .mdp-mod-speakcard .speakcard-note {
+      margin-top: calc(0.2 * var(--mdp-u, 1rem));
+      padding-left: calc(1.6 * var(--mdp-u, 1rem));
+      font-size: 0.58em;
+      font-style: italic;
+      color: var(--speak-color, var(--accent-color));
+    }
+    .mdp-mod-speakcard .speakcard-note > :first-child { margin-top: 0; }
+    .mdp-mod-speakcard .speakcard-note > :last-child { margin-bottom: 0; }
+    .mdp-mod-speakcard .mdp-speak-btn {
+      flex: 0 0 auto;
+      cursor: pointer;
+      border: calc(1.5 * var(--mdp-px, 1px)) solid var(--speak-color, var(--accent-color));
+      background: transparent;
+      color: var(--speak-color, var(--accent-color));
+      font: inherit;
+      font-size: 0.8em;
+      line-height: 1;
+      width: 1.7em; height: 1.7em;
+      border-radius: 50%;
+      display: inline-flex; align-items: center; justify-content: center;
+      padding: 0;
+    }
+    .mdp-mod-speakcard .mdp-speak-btn:hover { background: color-mix(in srgb, var(--speak-color, var(--accent-color)) 15%, transparent); }
+    .mdp-mod-speakcard .mdp-speak-btn.mdp-speak-playing { background: var(--speak-color, var(--accent-color)); color: #fff; }
+  ]]></style>
+
+  <!--
+    Speech is LOCAL to the surface where the button is clicked (no owner/mirror
+    state sync — audio should come from the machine driving the click). Uses the
+    app-provided window.mdpTts (engine/narrator defaults from Settings; per-call
+    overrides from this module's parameters). Buttons toggle: click to speak,
+    click again to stop; starting one line stops the other (mdpTts is exclusive).
+  -->
+  <script><![CDATA[
+    export default {
+      init(el, ctx) {
+        const rate = parseFloat(el.dataset.rate);
+        let current = null;
+        let currentBtn = null;
+        const restore = function (btn) { btn.classList.remove('mdp-speak-playing'); btn.innerHTML = '&#9654;'; };
+        const optsFor = function (kind) {
+          const lang = (kind === 'main' ? el.dataset.mainlang : el.dataset.sublang) || '';
+          const voice = (kind === 'main' ? el.dataset.mainvoice : el.dataset.subvoice) || '';
+          const speaker = parseInt(el.dataset.speaker, 10);
+          const o = {};
+          if (!isNaN(rate) && rate > 0) o.rate = rate;
+          if (lang) o.lang = lang;
+          if (/^ja/i.test(lang) && speaker >= 0) o.speaker = speaker;
+          else if (voice) o.voice = voice;
+          return o;
+        };
+        el.querySelectorAll('.mdp-speak-btn').forEach(function (btn) {
+          btn.addEventListener('click', function (ev) {
+            ev.stopPropagation();
+            const tts = window.mdpTts;
+            if (!tts) return; // app build without the TTS API
+            if (btn.classList.contains('mdp-speak-playing')) { tts.stop(); return; }
+            if (currentBtn) restore(currentBtn);
+            const row = btn.closest('.speakcard-row');
+            const textEl = row && row.querySelector('.speakcard-text');
+            const text = textEl ? (textEl.textContent || '').trim() : '';
+            if (!text) return;
+            const u = tts.speak(text, optsFor(btn.dataset.kind));
+            current = u; currentBtn = btn;
+            btn.classList.add('mdp-speak-playing');
+            btn.innerHTML = '&#9632;';
+            const done = function () { if (currentBtn === btn) { restore(btn); currentBtn = null; current = null; } };
+            u.done.then(done, done);
+          });
+        });
+        ctx.onCleanup(function () { if (current) current.stop(); });
+      }
+    }
+  ]]></script>
+</module>

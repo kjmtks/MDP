@@ -9,6 +9,7 @@ import renderMathInElement from 'katex/contrib/auto-render';
 import 'katex/dist/katex.min.css';
 import 'highlight.js/styles/atom-one-dark.css';
 import QRCode from 'qrcode';
+import { installModuleTtsApi } from './features/tts/moduleTtsApi';
 
 // Expose KaTeX (bundled, offline-safe) so module <script>s can typeset math in
 // DOM they inject as raw HTML — that HTML bypasses the markdown KaTeX extension,
@@ -26,6 +27,11 @@ import QRCode from 'qrcode';
   const qr = QRCode.create(String(text), opts || {});
   return { size: qr.modules.size, data: Array.from(qr.modules.data) };
 };
+
+// Expose text-to-speech to module <script>s as `window.mdpTts` — speak with the
+// user's configured engine/narrator, or override per call ({ lang, voice, speaker,
+// rate, … }). Defaults are kept in sync from AppSettingsContext.
+installModuleTtsApi();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
