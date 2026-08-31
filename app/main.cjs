@@ -90,6 +90,25 @@ mainWindow = new BrowserWindow({
   }
 }
 
+// Developer conveniences for EVERY window (incl. child windows like the presenter
+// popup, which otherwise have no way to open DevTools):
+//  - F12 / Ctrl+Shift+I toggles DevTools on the focused window.
+//  - Renderer console lines carrying the opt-in TTS diagnostics tag ([mdpTts …],
+//    enabled via localStorage.mdpTtsDebug='1') are mirrored to the terminal, so
+//    popup logs are readable even without DevTools.
+app.on('web-contents-created', (_e, wc) => {
+  wc.on('before-input-event', (_ev, input) => {
+    if (input.type !== 'keyDown') return;
+    if (input.key === 'F12' || (input.control && input.shift && (input.key === 'I' || input.key === 'i'))) {
+      wc.toggleDevTools();
+    }
+  });
+  wc.on('console-message', (ev, _level, legacyMessage) => {
+    const msg = (ev && typeof ev === 'object' && typeof ev.message === 'string') ? ev.message : legacyMessage;
+    if (typeof msg === 'string' && msg.includes('[mdpTts')) console.log(`[renderer] ${msg}`);
+  });
+});
+
 app.whenReady().then(async () => {
   const { session } = require('electron');
   await session.defaultSession.clearCache();

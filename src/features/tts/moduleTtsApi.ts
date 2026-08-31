@@ -19,6 +19,7 @@ import {
   listVoicevoxSpeakers,
   loadWebSpeechVoices,
   speak as ttsSpeak,
+  ttsLog,
   webSpeechAvailable,
   type SpeakProgressCallback,
   type TtsConfig,
@@ -86,6 +87,7 @@ const api: MdpTtsApi = {
     let stopped = false;
     let inner: Utterance | null = null;
     const done = (async () => {
+      ttsLog('mdpTts.speak', { text: t.slice(0, 40), opts: { ...opts, onProgress: !!opts.onProgress } });
       if (opts.exclusive !== false) api.stop();
       const engine = pickEngine(opts);
       const cfg: TtsConfig = {
@@ -105,7 +107,8 @@ const api: MdpTtsApi = {
         inner = ttsSpeak(t, cfg, sel, onProgress);
         current = inner;
         await inner.done;
-      } catch {
+      } catch (err) {
+        ttsLog('engine error → fallback?', { engine: cfg.engine, err: String(err) });
         // VOICEVOX unreachable → Web Speech fallback (same text, language hint).
         if (cfg.engine === 'voicevox' && webSpeechAvailable() && !stopped) {
           await loadWebSpeechVoices();
@@ -121,6 +124,7 @@ const api: MdpTtsApi = {
 
   stop(): void {
     const u = current;
+    if (u) ttsLog('mdpTts.stop (had a current utterance)');
     current = null;
     try { u?.stop(); } catch { /* ignore */ }
   },

@@ -8,7 +8,9 @@ Wrap a phrase or sentence INSIDE running text to make it speakable: the body ren
 inline (with a small ▶ mark before it), clicking it reads it aloud via the app's TTS
 (window.mdpTts) with read-along word highlighting; clicking again stops. Use @speakcard
 instead when you want the full card (sentence + smaller translation + reading note).
-Undecorated by design — the text keeps its surrounding style.
+Undecorated by design — the text keeps its surrounding style. Cross-surface: clicking
+on the presenter/remote plays the audio on the OWNER surface (slideshow / preview);
+the mark and highlight stay in sync everywhere.
 
 Gotcha: declared as a block module but renders INLINE, so it flows within the
 surrounding sentence. The body is the spoken text (inline Markdown allowed); the
@@ -83,6 +85,12 @@ Full sentence: <!-- @speak rate: 0.9 -->Water boils at 100 °C.<!-- @end -->
     ::highlight(mdp-speak) { background-color: rgba(255, 196, 0, 0.55); }
   ]]></style>
 
+  <!--
+    Cross-surface protocol (same as @speakcard): a click on ANY surface only
+    dispatches an action; the OWNER surface (slideshow / preview) speaks via
+    window.mdpTts and broadcasts { playing, prog } so the mark and read-along
+    highlight stay in sync on the presenter / remote too.
+  -->
   <script><![CDATA[
     export default {
       init(el, ctx) {
@@ -111,54 +119,81 @@ Full sentence: <!-- @speak rate: 0.9 -->Water boils at 100 °C.<!-- @end -->
 
         const mark = el.querySelector('.mdp-speak-mark');
         const bodyEl = el.querySelector('.mdp-speak-body');
-        let current = null;
-        const restore = function () {
-          el.classList.remove('mdp-speak-playing');
-          if (mark) mark.innerHTML = '&#9654;';
-          clearHL();
-          current = null;
-        };
-        const toggle = function () {
-          const tts = window.mdpTts;
-          if (!tts || !bodyEl) return;
-          if (el.classList.contains('mdp-speak-playing')) { tts.stop(); return; }
-          const full = bodyEl.textContent || '';
-          const text = full.trim();
-          if (!text) return;
-          const lead = (full.match(/^\s*/) || [''])[0].length;
-          const rate = parseFloat(el.dataset.rate);
-          const lang = el.dataset.lang || '';
-          const voice = el.dataset.voice || '';
-          const speaker = parseInt(el.dataset.speaker, 10);
-          const o = {};
-          if (!isNaN(rate) && rate > 0) o.rate = rate;
-          if (lang) o.lang = lang;
-          if (/^ja/i.test(lang) && speaker >= 0) o.speaker = speaker;
-          else if (voice) o.voice = voice;
-          o.onProgress = function (p) {
-            if (typeof p.charIndex === 'number') {
-              let end = (typeof p.charLength === 'number' && p.charLength > 0)
-                ? p.charIndex + p.charLength : -1;
+
+        // Shared state across surfaces: { playing: boolean, prog: {ci,cl}|{f}|null }
+        const paint = function (st) {
+          st = st || ctx.getShared() || {};
+          const on = !!st.playing;
+          el.classList.toggle('mdp-speak-playing', on);
+          if (mark) mark.innerHTML = on ? '&#9632;' : '&#9654;';
+          if (on && st.prog && bodyEl) {
+            const full = bodyEl.textContent || '';
+            const text = full.trim();
+            const lead = (full.match(/^\s*/) || [''])[0].length;
+            const p = st.prog;
+            if (typeof p.ci === 'number') {
+              let end = (typeof p.cl === 'number' && p.cl > 0) ? p.ci + p.cl : -1;
               if (end < 0) {
-                const m = text.slice(p.charIndex).search(/[\s,.!?;:、。]/);
-                end = m > 0 ? p.charIndex + m : text.length;
+                const m = text.slice(p.ci).search(/[\s,.!?;:、。]/);
+                end = m > 0 ? p.ci + m : text.length;
               }
-              highlightRange(bodyEl, lead + p.charIndex, lead + Math.min(end, text.length));
-            } else if (typeof p.fraction === 'number') {
-              highlightRange(bodyEl, lead, lead + Math.round(text.length * p.fraction));
+              highlightRange(bodyEl, lead + p.ci, lead + Math.min(end, text.length));
+            } else if (typeof p.f === 'number') {
+              highlightRange(bodyEl, lead, lead + Math.round(text.length * p.f));
             }
-          };
-          const u = tts.speak(text, o);
-          current = u;
-          el.classList.add('mdp-speak-playing');
-          if (mark) mark.innerHTML = '&#9632;';
-          u.done.then(restore, restore);
+          } else if (!on) {
+            clearHL();
+          }
+        };
+        ctx.onShared(paint);
+
+        const toggle = function () {
+          const st = ctx.getShared() || {};
+          if (st.playing) ctx.sendAction('stop');
+          else ctx.sendAction('speak');
         };
         el.addEventListener('click', function (ev) { ev.stopPropagation(); toggle(); });
         el.addEventListener('keydown', function (ev) {
           if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); ev.stopPropagation(); toggle(); }
         });
-        ctx.onCleanup(function () { if (current) current.stop(); clearHL(); });
+
+        if (ctx.role === 'owner') {
+          let current = null;
+          const stopNow = function () { if (current) { const u = current; current = null; u.stop(); } };
+          const play = function () {
+            const tts = window.mdpTts;
+            if (!tts || !bodyEl) return;
+            stopNow();
+            const text = (bodyEl.textContent || '').trim();
+            if (!text) return;
+            const rate = parseFloat(el.dataset.rate);
+            const lang = el.dataset.lang || '';
+            const voice = el.dataset.voice || '';
+            const speaker = parseInt(el.dataset.speaker, 10);
+            const o = {};
+            if (!isNaN(rate) && rate > 0) o.rate = rate;
+            if (lang) o.lang = lang;
+            if (/^ja/i.test(lang) && speaker >= 0) o.speaker = speaker;
+            else if (voice) o.voice = voice;
+            o.onProgress = function (p) {
+              if (typeof p.charIndex === 'number') ctx.setShared({ prog: { ci: p.charIndex, cl: p.charLength } });
+              else if (typeof p.fraction === 'number') ctx.setShared({ prog: { f: p.fraction } });
+            };
+            const u = tts.speak(text, o);
+            current = u;
+            ctx.setShared({ playing: true, prog: null });
+            const done = function () { if (current === u) { current = null; ctx.setShared({ playing: false, prog: null }); } };
+            u.done.then(done, done);
+          };
+          ctx.onAction(function (type) {
+            if (type === 'speak') play();
+            else if (type === 'stop') { stopNow(); ctx.setShared({ playing: false, prog: null }); }
+          });
+          ctx.onCleanup(function () { stopNow(); clearHL(); });
+        } else {
+          ctx.onCleanup(clearHL);
+        }
+        paint();
       }
     }
   ]]></script>

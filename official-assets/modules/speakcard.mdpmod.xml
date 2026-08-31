@@ -37,6 +37,10 @@ Parameters:
 The card itself is UNDECORATED (no frame/background) — wrap it in @callout, @bubble,
 @infobox etc. when a framed look is wanted.
 
+Cross-surface: clicking ▶ on ANY surface (presenter tool, remote) plays the audio on
+the OWNER surface (the slideshow / preview driving the display); button state and the
+read-along highlight stay in sync on every surface.
+
 Example:
 <!-- @speakcard mainlang: en-US, sublang: ja-JP, mainvoice: Zira, rate: 0.9 -->
 Water **boils** at 100 °C at atmospheric pressure.
@@ -175,22 +179,22 @@ This paper proposes a new compression method.
   ]]></style>
 
   <!--
-    Speech is LOCAL to the surface where the button is clicked (no owner/mirror
-    state sync — audio should come from the machine driving the click). Uses the
-    app-provided window.mdpTts (engine/narrator defaults from Settings; per-call
-    overrides from this module's parameters). Buttons toggle: click to speak,
-    click again to stop; starting one line stops the other (mdpTts is exclusive).
+    Cross-surface protocol (like @timer): a click on ANY surface (editor preview,
+    slideshow, presenter, remote) only DISPATCHES an action; the OWNER surface —
+    the slideshow / preview that drives the display — performs the actual speech
+    via window.mdpTts, and broadcasts { playing, prog } shared state so every
+    surface shows the same button state and read-along highlight. So pressing ▶
+    in the presenter tool plays the audio on the main display, with the highlight
+    visible on both. Buttons toggle: click to speak, click again to stop.
   -->
   <script><![CDATA[
     export default {
       init(el, ctx) {
         const rate = parseFloat(el.dataset.rate);
-        let current = null;
-        let currentBtn = null;
 
         // Read-along highlight via the CSS Custom Highlight API — colors a Range
-        // without mutating the rendered DOM. Only one utterance plays at a time
-        // (mdpTts is exclusive), so a single global highlight name suffices.
+        // without mutating the rendered DOM. One highlight name per window is
+        // enough (one utterance plays at a time).
         const HL = 'mdp-speak';
         const canHL = String(el.dataset.highlight) !== 'false'
           && typeof window.Highlight === 'function' && window.CSS && CSS.highlights;
@@ -215,57 +219,102 @@ This paper proposes a new compression method.
           } catch (e) { /* ignore */ }
         };
 
-        const restore = function (btn) { btn.classList.remove('mdp-speak-playing'); btn.innerHTML = '&#9654;'; clearHL(); };
-        const optsFor = function (kind) {
-          const lang = (kind === 'main' ? el.dataset.mainlang : el.dataset.sublang) || '';
-          const voice = (kind === 'main' ? el.dataset.mainvoice : el.dataset.subvoice) || '';
-          const speaker = parseInt(el.dataset.speaker, 10);
-          const o = {};
-          if (!isNaN(rate) && rate > 0) o.rate = rate;
-          if (lang) o.lang = lang;
-          if (/^ja/i.test(lang) && speaker >= 0) o.speaker = speaker;
-          else if (voice) o.voice = voice;
-          return o;
+        const textElOf = function (kind) {
+          const row = el.querySelector(kind === 'main' ? '.speakcard-main' : '.speakcard-sub');
+          return row ? row.querySelector('.speakcard-text') : null;
         };
+        const btnOf = function (kind) {
+          const row = el.querySelector(kind === 'main' ? '.speakcard-main' : '.speakcard-sub');
+          return row ? row.querySelector('.mdp-speak-btn') : null;
+        };
+
+        // Every surface renders from the shared state:
+        //   { playing: 'main'|'sub'|null, prog: {ci,cl}|{f}|null }
+        const paint = function (st) {
+          st = st || ctx.getShared() || {};
+          ['main', 'sub'].forEach(function (kind) {
+            const btn = btnOf(kind);
+            if (!btn) return;
+            const on = st.playing === kind;
+            btn.classList.toggle('mdp-speak-playing', on);
+            btn.innerHTML = on ? '&#9632;' : '&#9654;';
+          });
+          if (st.playing && st.prog) {
+            const tEl = textElOf(st.playing);
+            if (tEl) {
+              const full = tEl.textContent || '';
+              const text = full.trim();
+              const lead = (full.match(/^\s*/) || [''])[0].length;
+              const p = st.prog;
+              if (typeof p.ci === 'number') {
+                let end = (typeof p.cl === 'number' && p.cl > 0) ? p.ci + p.cl : -1;
+                if (end < 0) {
+                  const m = text.slice(p.ci).search(/[\s,.!?;:、。]/);
+                  end = m > 0 ? p.ci + m : text.length;
+                }
+                highlightRange(tEl, lead + p.ci, lead + Math.min(end, text.length));
+              } else if (typeof p.f === 'number') {
+                highlightRange(tEl, lead, lead + Math.round(text.length * p.f));
+              }
+            }
+          } else if (!st.playing) {
+            clearHL();
+          }
+        };
+        ctx.onShared(paint);
+
+        // A click on ANY surface only dispatches; the owner performs the speech.
         el.querySelectorAll('.mdp-speak-btn').forEach(function (btn) {
           btn.addEventListener('click', function (ev) {
             ev.stopPropagation();
-            const tts = window.mdpTts;
-            if (!tts) return; // app build without the TTS API
-            if (btn.classList.contains('mdp-speak-playing')) { tts.stop(); return; }
-            if (currentBtn) restore(currentBtn);
-            const row = btn.closest('.speakcard-row');
-            const textEl = row && row.querySelector('.speakcard-text');
-            const full = textEl ? (textEl.textContent || '') : '';
-            const text = full.trim();
-            if (!text) return;
-            // Spoken string is the TRIMMED text; DOM offsets need the lead back.
-            const lead = (full.match(/^\s*/) || [''])[0].length;
-            const opts = optsFor(btn.dataset.kind);
-            opts.onProgress = function (p) {
-              if (typeof p.charIndex === 'number') {
-                // Web Speech word boundary: highlight the current word.
-                let end = (typeof p.charLength === 'number' && p.charLength > 0)
-                  ? p.charIndex + p.charLength : -1;
-                if (end < 0) {
-                  const m = text.slice(p.charIndex).search(/[\s,.!?;:、。]/);
-                  end = m > 0 ? p.charIndex + m : text.length;
-                }
-                highlightRange(textEl, lead + p.charIndex, lead + Math.min(end, text.length));
-              } else if (typeof p.fraction === 'number') {
-                // Pre-synthesized audio (VOICEVOX): approximate progressive fill.
-                highlightRange(textEl, lead, lead + Math.round(text.length * p.fraction));
-              }
-            };
-            const u = tts.speak(text, opts);
-            current = u; currentBtn = btn;
-            btn.classList.add('mdp-speak-playing');
-            btn.innerHTML = '&#9632;';
-            const done = function () { if (currentBtn === btn) { restore(btn); currentBtn = null; current = null; } };
-            u.done.then(done, done);
+            const st = ctx.getShared() || {};
+            const kind = btn.dataset.kind;
+            if (st.playing === kind) ctx.sendAction('stop');
+            else ctx.sendAction('speak', { kind: kind });
           });
         });
-        ctx.onCleanup(function () { if (current) current.stop(); clearHL(); });
+
+        if (ctx.role === 'owner') {
+          let current = null;
+          const optsFor = function (kind) {
+            const lang = (kind === 'main' ? el.dataset.mainlang : el.dataset.sublang) || '';
+            const voice = (kind === 'main' ? el.dataset.mainvoice : el.dataset.subvoice) || '';
+            const speaker = parseInt(el.dataset.speaker, 10);
+            const o = {};
+            if (!isNaN(rate) && rate > 0) o.rate = rate;
+            if (lang) o.lang = lang;
+            if (/^ja/i.test(lang) && speaker >= 0) o.speaker = speaker;
+            else if (voice) o.voice = voice;
+            return o;
+          };
+          const stopNow = function () { if (current) { const u = current; current = null; u.stop(); } };
+          const play = function (kind) {
+            const tts = window.mdpTts;
+            const tEl = textElOf(kind);
+            if (!tts || !tEl) return;
+            stopNow();
+            const text = (tEl.textContent || '').trim();
+            if (!text) return;
+            const o = optsFor(kind);
+            o.onProgress = function (p) {
+              if (typeof p.charIndex === 'number') ctx.setShared({ prog: { ci: p.charIndex, cl: p.charLength } });
+              else if (typeof p.fraction === 'number') ctx.setShared({ prog: { f: p.fraction } });
+            };
+            const u = tts.speak(text, o);
+            current = u;
+            ctx.setShared({ playing: kind, prog: null });
+            const done = function () { if (current === u) { current = null; ctx.setShared({ playing: null, prog: null }); } };
+            u.done.then(done, done);
+          };
+          ctx.onAction(function (type, payload) {
+            if (type === 'speak' && payload && payload.kind) play(payload.kind);
+            else if (type === 'stop') { stopNow(); ctx.setShared({ playing: null, prog: null }); }
+          });
+          ctx.onCleanup(function () { stopNow(); clearHL(); });
+        } else {
+          ctx.onCleanup(clearHL);
+        }
+        paint();
       }
     }
   ]]></script>

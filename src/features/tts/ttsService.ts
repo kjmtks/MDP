@@ -26,6 +26,20 @@ export const DEFAULT_TTS: TtsConfig = {
   voicevoxSpeaker: 1,
 };
 
+// Opt-in TTS diagnostics: run `localStorage.mdpTtsDebug = '1'` in DevTools (per
+// window) and every speak/cancel/stop plus each utterance's lifecycle events are
+// logged with stack traces — for hunting down "speech stops immediately" reports.
+export function ttsDebug(): boolean {
+  try { return window.localStorage.getItem('mdpTtsDebug') === '1'; } catch { return false; }
+}
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function ttsLog(...args: any[]): void {
+  if (ttsDebug()) console.log(`[mdpTts ${new Date().toISOString().slice(11, 23)}]`, ...args);
+}
+function ttsTrace(label: string): void {
+  if (ttsDebug()) console.trace(`[mdpTts] ${label}`);
+}
+
 // A running utterance: `done` resolves when speech finishes (or is stopped/errors);
 // `stop()` cancels it immediately and resolves `done`.
 export interface Utterance { done: Promise<void>; stop: () => void }
@@ -88,6 +102,13 @@ export function resolveWebSpeechVoice(sel: VoiceSelect, cfg: TtsConfig): SpeechS
   return cand.find((v) => v.localService && v.default) || cand.find((v) => v.localService) || cand[0];
 }
 
+// Chromium GC workaround: SpeechSynthesis does NOT keep a queued utterance alive,
+// and once speakWebSpeech returns nothing else references it — a garbage-collected
+// utterance goes SILENT mid-speech (long-standing crbug). Hits busy windows first
+// (e.g. the presenter, whose rAF timer loop makes GC frequent). Hold every live
+// utterance here until it ends, errors, or is stopped.
+const liveUtterances = new Set<SpeechSynthesisUtterance>();
+
 function speakWebSpeech(text: string, cfg: TtsConfig, sel?: VoiceSelect, onProgress?: SpeakProgressCallback): Utterance {
   const synth = window.speechSynthesis;
   const u = new SpeechSynthesisUtterance(text);
@@ -106,11 +127,19 @@ function speakWebSpeech(text: string, cfg: TtsConfig, sel?: VoiceSelect, onProgr
   u.pitch = Math.max(0, Math.min(2, cfg.pitch ?? 1));
   let resolve!: () => void;
   const done = new Promise<void>((r) => { resolve = r; });
-  u.onend = () => resolve();
-  u.onerror = () => resolve();
+  const finish = () => { liveUtterances.delete(u); resolve(); };
+  u.onend = (e) => { ttsLog('utterance END', { elapsed: e.elapsedTime, text: text.slice(0, 40) }); finish(); };
+  u.onerror = (e) => { ttsLog('utterance ERROR', { error: e.error, text: text.slice(0, 40) }); finish(); };
+  if (ttsDebug()) {
+    u.onstart = () => ttsLog('utterance START', { voice: u.voice?.name || '(default)', lang: u.lang, text: text.slice(0, 40) });
+    u.onpause = () => ttsLog('utterance PAUSE');
+  }
+  liveUtterances.add(u);
+  ttsTrace('cancel() before speak');
   synth.cancel();
   synth.speak(u);
-  return { done, stop: () => { try { synth.cancel(); } catch { /* ignore */ } resolve(); } };
+  ttsLog('speak queued', { text: text.slice(0, 40), voice: v?.name || '(default)', pending: synth.pending, speaking: synth.speaking, paused: synth.paused });
+  return { done, stop: () => { ttsTrace('utterance.stop() → cancel()'); try { synth.cancel(); } catch { /* ignore */ } finish(); } };
 }
 
 // ---- VOICEVOX --------------------------------------------------------------

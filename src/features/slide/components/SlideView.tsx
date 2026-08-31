@@ -197,6 +197,14 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
   // down the previous run first. Driven off the actual DOM node (not state) so it
   // works reliably even when the slide mounts mid-transition.
   const runModuleScripts = useCallback(() => {
+    // TTS-debug diagnostics (localStorage.mdpTtsDebug='1'): a module re-run tears
+    // down running module state (stopping speech etc.), so record WHO triggered it
+    // — the stack is embedded in the message so the terminal mirror carries it.
+    try {
+      if (window.localStorage.getItem('mdpTtsDebug') === '1') {
+        console.log('[mdpTts] runModuleScripts (teardown+reinit)\n' + new Error().stack);
+      }
+    } catch { /* ignore */ }
     // Header/footer live in separate sibling nodes — run them via this SAME
     // reliable trigger (rAF / effects / observer) so they initialise everywhere
     // the content does (incl. the fullscreen slideshow), not a fragile side path.
@@ -445,9 +453,29 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
   // Watch only direct children (childList, not subtree) so a module's own deep
   // updates (e.g. timer textContent) don't retrigger it. The initial mount is
   // handled by setContent's run, which happens before the observer is attached.
+  // STABLE dangerouslySetInnerHTML wrappers. React (19) treats a NEW `{ __html }`
+  // object as a changed prop and re-assigns innerHTML even when the string is
+  // identical — destroying and recreating every child node. On surfaces that
+  // re-render frequently (the presenter re-renders every second for its clocks),
+  // that re-triggered the content MutationObserver → module teardown/re-init in a
+  // permanent loop, killing interactive module state (e.g. stopping TTS speech
+  // moments after it started). Memoizing the wrapper keeps the prop identity
+  // stable so React leaves the DOM alone until the HTML actually changes.
+  const contentHtml = useMemo(() => ({ __html: processedHtml }), [processedHtml]);
+  const headerHtml = useMemo(() => ({ __html: header || '' }), [header]);
+  const footerHtml = useMemo(() => ({ __html: footer || '' }), [footer]);
+
   useEffect(() => {
     if (!containerEl) return;
-    const observer = new MutationObserver(() => {
+    const observer = new MutationObserver((records) => {
+      // TTS-debug diagnostics: SHOW the mutation that retriggers module re-init.
+      try {
+        if (window.localStorage.getItem('mdpTtsDebug') === '1') {
+          const fmt = (n: Node) => n.nodeName + ((n as HTMLElement).className ? '.' + String((n as HTMLElement).className).slice(0, 60) : '');
+          console.log('[mdpTts] container mutation: ' + records.map((r) =>
+            `+[${[...r.addedNodes].map(fmt).join(',')}] -[${[...r.removedNodes].map(fmt).join(',')}]`).join(' | '));
+        }
+      } catch { /* ignore */ }
       observer.disconnect();
       runModuleScripts();
       // The content DOM was replaced (e.g. a re-render or transition) — its
@@ -565,7 +593,7 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
         } as React.CSSProperties)
       }}
     >
-      {!flow && header && <div ref={setHeaderNode} className="slide-header" dangerouslySetInnerHTML={{ __html: header }} />}
+      {!flow && header && <div ref={setHeaderNode} className="slide-header" dangerouslySetInnerHTML={headerHtml} />}
 
       <div
         ref={setContent} className={`slide-content ${className} ${buildStep !== undefined ? 'mdp-build-active' : ''}`}
@@ -573,7 +601,7 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
           const a = (e.target as HTMLElement).closest('a.mdp-slide-link') as HTMLElement | null;
           if (a) { e.preventDefault(); e.stopPropagation(); onSlideLink(a.dataset.mdpTarget || ''); }
         } : undefined}
-        dangerouslySetInnerHTML={{ __html: processedHtml }}
+        dangerouslySetInnerHTML={contentHtml}
         style={{ width: '100%', height: flow ? 'auto' : '100%' }}
       />
 
@@ -589,7 +617,7 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
         <ManipulationLayer container={containerEl} headerContainer={headerEl} footerContainer={footerEl} runtime={manipulate} />
       )}
 
-      {!flow && footer && <div ref={setFooterNode} className="slide-footer" dangerouslySetInnerHTML={{ __html: footer }} />}
+      {!flow && footer && <div ref={setFooterNode} className="slide-footer" dangerouslySetInnerHTML={footerHtml} />}
       {!flow && pageNumber && <div className="slide-page-number">{pageNumber}</div>}
     </div>
   );

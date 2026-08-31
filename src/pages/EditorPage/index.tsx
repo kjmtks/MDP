@@ -1131,7 +1131,11 @@ export default function EditorPage() {
   });
 
   const openPresenterTool = useCallback(() => {
-    const baseUrl = window.location.href.split('#')[0];
+    // Strip BOTH the hash and the query (`?file=…` deep link): the presenter gets
+    // its content over the sync channel, and a file:// URL that keeps a query
+    // string fails to load on Windows (ERR_FILE_NOT_FOUND) — so the popup must
+    // open the bare index.html.
+    const baseUrl = window.location.href.split('#')[0].split('?')[0];
     window.open(`${baseUrl}#/presenter?channel=${channelId}&token=${encodeURIComponent(token)}`, '_blank', 'width=1000,height=800');
   }, [channelId, token]);
 
