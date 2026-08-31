@@ -64,7 +64,7 @@ Full sentence: <!-- @speak rate: 0.9 -->Water boils at 100 °C.<!-- @end -->
       + ' data-voice="' + esc(args.voice || '') + '"'
       + ' data-speaker="' + (isNaN(speaker) ? -1 : speaker) + '"'
       + ' data-rate="' + (isNaN(rate) ? '' : rate) + '"'
-      + ' data-highlight="' + (String(args.highlight) === 'false' ? 'false' : 'true') + '"'
+      + ' data-highlight="' + (String(args.highlight) === 'false' ? 'false' : 'true') + '">'
       + (icon ? '<span class="mdp-speak-mark" aria-hidden="true">&#9654;</span>' : '')
       + '<span class="mdp-speak-body">' + body + '</span></span>';
   ]]></render>
