@@ -30,6 +30,13 @@ export const DEFAULT_TTS: TtsConfig = {
 // `stop()` cancels it immediately and resolves `done`.
 export interface Utterance { done: Promise<void>; stop: () => void }
 
+// Spoken-position progress, for callers that highlight the text as it is read.
+// Web Speech reports word boundaries: charIndex (+ charLength when the platform
+// provides it) into the spoken string. VOICEVOX plays a pre-synthesized WAV, so
+// it reports only `fraction` (0..1 of playback time) — an approximation.
+export interface SpeakProgress { charIndex?: number; charLength?: number; fraction?: number }
+export type SpeakProgressCallback = (p: SpeakProgress) => void;
+
 const NOOP: Utterance = { done: Promise.resolve(), stop: () => {} };
 
 // ---- Web Speech ------------------------------------------------------------
@@ -81,12 +88,20 @@ export function resolveWebSpeechVoice(sel: VoiceSelect, cfg: TtsConfig): SpeechS
   return cand.find((v) => v.localService && v.default) || cand.find((v) => v.localService) || cand[0];
 }
 
-function speakWebSpeech(text: string, cfg: TtsConfig, sel?: VoiceSelect): Utterance {
+function speakWebSpeech(text: string, cfg: TtsConfig, sel?: VoiceSelect, onProgress?: SpeakProgressCallback): Utterance {
   const synth = window.speechSynthesis;
   const u = new SpeechSynthesisUtterance(text);
   const v = resolveWebSpeechVoice(sel || {}, cfg);
   if (v) { u.voice = v; u.lang = v.lang; }
   else if (sel?.lang) u.lang = sel.lang;
+  if (onProgress) {
+    u.onboundary = (e: SpeechSynthesisEvent) => {
+      // Word boundaries only (some platforms also emit 'sentence'); charLength is
+      // absent on older platforms — the caller then finds the word end itself.
+      if (e.name && e.name !== 'word') return;
+      onProgress({ charIndex: e.charIndex, charLength: e.charLength });
+    };
+  }
   u.rate = Math.max(0.1, Math.min(10, cfg.rate || 1));
   u.pitch = Math.max(0, Math.min(2, cfg.pitch ?? 1));
   let resolve!: () => void;
@@ -130,13 +145,19 @@ async function synthVoicevox(text: string, cfg: TtsConfig): Promise<string> {
   return URL.createObjectURL(blob);
 }
 
-function playAudioUrl(url: string, revoke: boolean): Utterance {
+function playAudioUrl(url: string, revoke: boolean, onProgress?: SpeakProgressCallback): Utterance {
   const audio = new Audio(url);
   let resolve!: () => void;
   const done = new Promise<void>((r) => { resolve = r; });
   const finish = () => { if (revoke) URL.revokeObjectURL(url); resolve(); };
   audio.onended = finish;
   audio.onerror = finish;
+  if (onProgress) {
+    audio.addEventListener('timeupdate', () => {
+      const d = audio.duration;
+      if (d > 0 && isFinite(d)) onProgress({ fraction: Math.min(1, audio.currentTime / d) });
+    });
+  }
   void audio.play().catch(finish);
   return { done, stop: () => { try { audio.pause(); } catch { /* ignore */ } finish(); } };
 }
@@ -151,29 +172,29 @@ export interface Clip { play: () => Utterance; dispose: () => void }
 // the (slow) network synthesis up front, so the caller can prefetch the next unit
 // during playback of the current one. For Web Speech there is nothing to
 // pre-synthesize, so play() speaks on demand.
-export async function synthesize(text: string, cfg: TtsConfig, sel?: VoiceSelect): Promise<Clip> {
+export async function synthesize(text: string, cfg: TtsConfig, sel?: VoiceSelect, onProgress?: SpeakProgressCallback): Promise<Clip> {
   const t = (text || '').trim();
   if (!t) return { play: () => NOOP, dispose: () => {} };
   if (cfg.engine === 'voicevox') {
     const url = await synthVoicevox(t, cfg);
     let used = false;
-    return { play: () => { used = true; return playAudioUrl(url, true); }, dispose: () => { if (!used) URL.revokeObjectURL(url); } };
+    return { play: () => { used = true; return playAudioUrl(url, true, onProgress); }, dispose: () => { if (!used) URL.revokeObjectURL(url); } };
   }
-  return { play: () => (webSpeechAvailable() ? speakWebSpeech(t, cfg, sel) : NOOP), dispose: () => {} };
+  return { play: () => (webSpeechAvailable() ? speakWebSpeech(t, cfg, sel, onProgress) : NOOP), dispose: () => {} };
 }
 
 // ---- Unified entry point ---------------------------------------------------
 
 // Speak `text` with the configured engine. Returns immediately with an Utterance;
 // for VOICEVOX the async network setup is wrapped so stop() works even mid-request.
-export function speak(text: string, cfg: TtsConfig, sel?: VoiceSelect): Utterance {
+export function speak(text: string, cfg: TtsConfig, sel?: VoiceSelect, onProgress?: SpeakProgressCallback): Utterance {
   const t = (text || '').trim();
   if (!t) return NOOP;
   if (cfg.engine === 'voicevox') {
     let stopped = false;
     let inner: Utterance | null = null;
     const done = (async () => {
-      const clip = await synthesize(t, cfg); // may throw if the engine is unreachable
+      const clip = await synthesize(t, cfg, sel, onProgress); // may throw if the engine is unreachable
       if (stopped) { clip.dispose(); return; }
       inner = clip.play();
       if (stopped) { inner.stop(); return; }
@@ -181,6 +202,6 @@ export function speak(text: string, cfg: TtsConfig, sel?: VoiceSelect): Utteranc
     })();
     return { done, stop: () => { stopped = true; inner?.stop(); } };
   }
-  if (webSpeechAvailable()) return speakWebSpeech(t, cfg, sel);
+  if (webSpeechAvailable()) return speakWebSpeech(t, cfg, sel, onProgress);
   return NOOP;
 }

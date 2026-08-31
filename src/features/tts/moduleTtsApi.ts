@@ -20,6 +20,7 @@ import {
   loadWebSpeechVoices,
   speak as ttsSpeak,
   webSpeechAvailable,
+  type SpeakProgressCallback,
   type TtsConfig,
   type TtsEngine,
   type Utterance,
@@ -36,6 +37,10 @@ export interface MdpTtsSpeakOptions {
   speaker?: number;     // VOICEVOX style id (default: settings)
   url?: string;         // VOICEVOX engine URL (default: settings)
   exclusive?: boolean;  // default true: stop the previous mdpTts utterance first
+  // Spoken-position callback for read-along highlighting. Web Speech reports
+  // { charIndex, charLength? } per word; VOICEVOX reports { fraction } (0..1 of
+  // playback time). Indices refer to the trimmed text passed to speak().
+  onProgress?: SpeakProgressCallback;
 }
 
 export interface MdpTtsVoice {
@@ -92,11 +97,12 @@ const api: MdpTtsApi = {
         voicevoxSpeaker: typeof opts.speaker === 'number' ? opts.speaker : defaults.voicevoxSpeaker,
       };
       const sel: VoiceSelect = { voice: opts.voice, lang: opts.lang };
+      const onProgress = typeof opts.onProgress === 'function' ? opts.onProgress : undefined;
       // Narrator matching needs the voice list, which loads async on first use.
       if (engine === 'webspeech') await loadWebSpeechVoices();
       if (stopped) return;
       try {
-        inner = ttsSpeak(t, cfg, sel);
+        inner = ttsSpeak(t, cfg, sel, onProgress);
         current = inner;
         await inner.done;
       } catch {
@@ -104,7 +110,7 @@ const api: MdpTtsApi = {
         if (cfg.engine === 'voicevox' && webSpeechAvailable() && !stopped) {
           await loadWebSpeechVoices();
           if (stopped) return;
-          inner = ttsSpeak(t, { ...cfg, engine: 'webspeech' }, sel);
+          inner = ttsSpeak(t, { ...cfg, engine: 'webspeech' }, sel, onProgress);
           current = inner;
           await inner.done;
         }

@@ -8,8 +8,10 @@ Use for language-teaching slides (e.g. technical English): shows a MAIN sentence
 speak button, a smaller SUB line (the translation), and an optional READING NOTE (e.g.
 "100 °C = one hundred degrees Celsius"). Clicking a speak button reads that line aloud
 with the app's TTS (window.mdpTts): the narrator is picked automatically from the line's
-language, or named explicitly. Requires an MDP build that exposes window.mdpTts; the
-buttons are inert (no crash) on older builds.
+language, or named explicitly. While speaking, the words being read are highlighted in
+place (word-by-word for Web Speech; an approximate progressive fill for VOICEVOX).
+Requires an MDP build that exposes window.mdpTts; the buttons are inert (no crash) on
+older builds.
 
 Block module: 1–3 body sections split by `<!-- @ -->`:
   section 1 — the main sentence (Markdown; e.g. the English sentence)
@@ -21,13 +23,19 @@ mainlang: ja-JP, sublang: en-US.
 Parameters:
   • mainlang (text, default en-US) — language of the main sentence (BCP-47; drives narrator pick).
   • sublang (text, default ja-JP) — language of the sub line.
+  • subspeak (boolean, default false) — also give the sub line a speak button
+    (default: only the main sentence is speakable).
   • mainvoice (text, default '') — narrator for the main line by name, substring ok (e.g. Zira).
   • subvoice (text, default '') — narrator for the sub line (Web Speech name).
   • speaker (number, default -1) — VOICEVOX style id used for whichever line is Japanese
     (-1 = don't use VOICEVOX; falls back to Web Speech automatically if the engine is down).
   • rate (number, default 1) — speaking rate for both lines (0.5–2; slower for learners).
+  • highlight (boolean, default true) — highlight the words as they are spoken.
   • size (select sm|md|lg, default md) — overall text scale.
-  • color (color, default var(--accent-color)) — accent bar / note color.
+  • color (color, default var(--accent-color)) — speak-button and reading-note color.
+
+The card itself is UNDECORATED (no frame/background) — wrap it in @callout, @bubble,
+@infobox etc. when a framed look is wanted.
 
 Example:
 <!-- @speakcard mainlang: en-US, sublang: ja-JP, mainvoice: Zira, rate: 0.9 -->
@@ -43,12 +51,14 @@ Water **boils** at 100 °C at atmospheric pressure.
   <parameters>
     <param name="mainlang" type="text" default="en-US" label="Main language" desc="BCP-47 language of the main sentence (picks the narrator), e.g. en-US, ja-JP." />
     <param name="sublang" type="text" default="ja-JP" label="Sub language" desc="BCP-47 language of the sub (translation) line." />
+    <param name="subspeak" type="boolean" default="false" label="Sub speakable" desc="Also give the sub (translation) line a speak button." />
     <param name="mainvoice" type="text" default="" label="Main narrator" desc="Web Speech narrator for the main line, by name (substring ok, e.g. Zira). Blank = auto by language." />
     <param name="subvoice" type="text" default="" label="Sub narrator" desc="Web Speech narrator for the sub line. Blank = auto by language." />
     <param name="speaker" type="number" default="-1" label="VOICEVOX speaker" desc="VOICEVOX style id for the Japanese line (-1 = use Web Speech)." min="-1" max="9999" integer="true" />
     <param name="rate" type="number" default="1" label="Rate" desc="Speaking rate for both lines (0.5-2)." min="0.1" max="3" />
+    <param name="highlight" type="boolean" default="true" label="Read-along highlight" desc="Highlight the words as they are spoken." />
     <param name="size" type="select" default="md" label="Size" options="sm:Small,md:Medium,lg:Large" desc="Overall text scale of the card." />
-    <param name="color" type="color" default="var(--accent-color)" label="Accent color" desc="Accent bar and reading-note color." />
+    <param name="color" type="color" default="var(--accent-color)" label="Accent color" desc="Speak-button and reading-note color." />
   </parameters>
 
   <snippets>
@@ -77,7 +87,7 @@ Several methods **have been proposed** to reduce noise.
     <snippet>
       <category>Education</category>
       <label>Speak card (VOICEVOX 和訳)</label>
-      <text><![CDATA[<!-- @speakcard speaker: 3 -->
+      <text><![CDATA[<!-- @speakcard subspeak: true, speaker: 3 -->
 This paper proposes a new compression method.
 <!-- @ -->
 本論文では新しい圧縮手法を提案する．
@@ -98,6 +108,7 @@ This paper proposes a new compression method.
     const note = sections[2] ? sections[2].trim() : '';
     const btn = (kind) => '<button class="mdp-speak-btn" type="button" data-kind="' + kind + '" title="Speak">&#9654;</button>';
     let html = '<div class="mdp-mod-speakcard mdp-interactive" style="--speak-color: ' + esc(color) + '; font-size: ' + size + ';"'
+      + ' data-highlight="' + (String(args.highlight) === 'false' ? 'false' : 'true') + '"'
       + ' data-mainlang="' + esc(args.mainlang || 'en-US') + '"'
       + ' data-sublang="' + esc(args.sublang || 'ja-JP') + '"'
       + ' data-mainvoice="' + esc(args.mainvoice || '') + '"'
@@ -105,19 +116,26 @@ This paper proposes a new compression method.
       + ' data-speaker="' + (isNaN(speaker) ? -1 : speaker) + '"'
       + ' data-rate="' + (isNaN(rate) ? '' : rate) + '">';
     html += '<div class="speakcard-row speakcard-main">' + btn('main') + '<div class="speakcard-text">\n\n' + main + '\n\n</div></div>';
-    if (sub) html += '<div class="speakcard-row speakcard-sub">' + btn('sub') + '<div class="speakcard-text">\n\n' + sub + '\n\n</div></div>';
+    const subspeak = String(args.subspeak) === 'true';
+    if (sub) {
+      html += '<div class="speakcard-row speakcard-sub' + (subspeak ? '' : ' speakcard-nobtn') + '">'
+        + (subspeak ? btn('sub') : '')
+        + '<div class="speakcard-text">\n\n' + sub + '\n\n</div></div>';
+    }
     if (note) html += '<div class="speakcard-note">\n\n' + note + '\n\n</div>';
     html += '</div>';
     return '\n\n' + html + '\n\n';
   ]]></render>
 
   <style><![CDATA[
+    /* Deliberately undecorated: no border/background/box — authors who want a
+       frame wrap the card in @callout / @bubble / @infobox themselves. */
     .mdp-mod-speakcard {
-      margin: calc(0.6 * var(--mdp-u, 1rem)) 0;
-      padding: calc(0.5 * var(--mdp-u, 1rem)) calc(0.8 * var(--mdp-u, 1rem));
-      border-left: calc(4 * var(--mdp-px, 1px)) solid var(--speak-color, var(--accent-color));
-      background: color-mix(in srgb, var(--speak-color, var(--accent-color)) 5%, transparent);
-      border-radius: calc(6 * var(--mdp-px, 1px));
+      margin: calc(0.5 * var(--mdp-u, 1rem)) 0;
+    }
+    /* Read-along highlight (CSS Custom Highlight API; set from the script). */
+    ::highlight(mdp-speak) {
+      background-color: rgba(255, 196, 0, 0.55);
     }
     .mdp-mod-speakcard .speakcard-row { display: flex; align-items: baseline; gap: calc(0.5 * var(--mdp-u, 1rem)); }
     .mdp-mod-speakcard .speakcard-text { flex: 1 1 auto; min-width: 0; }
@@ -125,6 +143,8 @@ This paper proposes a new compression method.
     .mdp-mod-speakcard .speakcard-text > :last-child { margin-bottom: 0; }
     .mdp-mod-speakcard .speakcard-main .speakcard-text { font-weight: 600; }
     .mdp-mod-speakcard .speakcard-sub { margin-top: calc(0.15 * var(--mdp-u, 1rem)); opacity: 0.85; }
+    /* Without its speak button the sub line still aligns under the main text. */
+    .mdp-mod-speakcard .speakcard-row.speakcard-nobtn { padding-left: calc(1.6 * var(--mdp-u, 1rem)); }
     .mdp-mod-speakcard .speakcard-sub .speakcard-text { font-size: 0.68em; }
     .mdp-mod-speakcard .speakcard-sub .mdp-speak-btn { font-size: 0.75em; }
     .mdp-mod-speakcard .speakcard-note {
@@ -167,7 +187,35 @@ This paper proposes a new compression method.
         const rate = parseFloat(el.dataset.rate);
         let current = null;
         let currentBtn = null;
-        const restore = function (btn) { btn.classList.remove('mdp-speak-playing'); btn.innerHTML = '&#9654;'; };
+
+        // Read-along highlight via the CSS Custom Highlight API — colors a Range
+        // without mutating the rendered DOM. Only one utterance plays at a time
+        // (mdpTts is exclusive), so a single global highlight name suffices.
+        const HL = 'mdp-speak';
+        const canHL = String(el.dataset.highlight) !== 'false'
+          && typeof window.Highlight === 'function' && window.CSS && CSS.highlights;
+        const clearHL = function () { if (canHL) { try { CSS.highlights.delete(HL); } catch (e) { /* ignore */ } } };
+        // Highlight [start, end) measured in textContent characters of `root`.
+        const highlightRange = function (root, start, end) {
+          if (!canHL || end <= start) return;
+          try {
+            const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+            let pos = 0, sNode = null, sOff = 0, eNode = null, eOff = 0, n;
+            while ((n = walker.nextNode())) {
+              const len = (n.textContent || '').length;
+              if (!sNode && start < pos + len) { sNode = n; sOff = start - pos; }
+              if (end <= pos + len) { eNode = n; eOff = end - pos; break; }
+              pos += len;
+            }
+            if (!sNode || !eNode) return;
+            const range = document.createRange();
+            range.setStart(sNode, Math.max(0, sOff));
+            range.setEnd(eNode, Math.max(0, eOff));
+            CSS.highlights.set(HL, new Highlight(range));
+          } catch (e) { /* ignore */ }
+        };
+
+        const restore = function (btn) { btn.classList.remove('mdp-speak-playing'); btn.innerHTML = '&#9654;'; clearHL(); };
         const optsFor = function (kind) {
           const lang = (kind === 'main' ? el.dataset.mainlang : el.dataset.sublang) || '';
           const voice = (kind === 'main' ? el.dataset.mainvoice : el.dataset.subvoice) || '';
@@ -188,9 +236,28 @@ This paper proposes a new compression method.
             if (currentBtn) restore(currentBtn);
             const row = btn.closest('.speakcard-row');
             const textEl = row && row.querySelector('.speakcard-text');
-            const text = textEl ? (textEl.textContent || '').trim() : '';
+            const full = textEl ? (textEl.textContent || '') : '';
+            const text = full.trim();
             if (!text) return;
-            const u = tts.speak(text, optsFor(btn.dataset.kind));
+            // Spoken string is the TRIMMED text; DOM offsets need the lead back.
+            const lead = (full.match(/^\s*/) || [''])[0].length;
+            const opts = optsFor(btn.dataset.kind);
+            opts.onProgress = function (p) {
+              if (typeof p.charIndex === 'number') {
+                // Web Speech word boundary: highlight the current word.
+                let end = (typeof p.charLength === 'number' && p.charLength > 0)
+                  ? p.charIndex + p.charLength : -1;
+                if (end < 0) {
+                  const m = text.slice(p.charIndex).search(/[\s,.!?;:、。]/);
+                  end = m > 0 ? p.charIndex + m : text.length;
+                }
+                highlightRange(textEl, lead + p.charIndex, lead + Math.min(end, text.length));
+              } else if (typeof p.fraction === 'number') {
+                // Pre-synthesized audio (VOICEVOX): approximate progressive fill.
+                highlightRange(textEl, lead, lead + Math.round(text.length * p.fraction));
+              }
+            };
+            const u = tts.speak(text, opts);
             current = u; currentBtn = btn;
             btn.classList.add('mdp-speak-playing');
             btn.innerHTML = '&#9632;';
@@ -198,7 +265,7 @@ This paper proposes a new compression method.
             u.done.then(done, done);
           });
         });
-        ctx.onCleanup(function () { if (current) current.stop(); });
+        ctx.onCleanup(function () { if (current) current.stop(); clearHL(); });
       }
     }
   ]]></script>
