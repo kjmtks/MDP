@@ -87,9 +87,11 @@ const api: MdpTtsApi = {
     let stopped = false;
     let inner: Utterance | null = null;
     const done = (async () => {
+      try {
       ttsLog('mdpTts.speak', { text: t.slice(0, 40), opts: { ...opts, onProgress: !!opts.onProgress } });
       if (opts.exclusive !== false) api.stop();
       const engine = pickEngine(opts);
+      ttsLog('speak: engine =', engine);
       const cfg: TtsConfig = {
         ...defaults,
         engine,
@@ -102,6 +104,7 @@ const api: MdpTtsApi = {
       const onProgress = typeof opts.onProgress === 'function' ? opts.onProgress : undefined;
       // Narrator matching needs the voice list, which loads async on first use.
       if (engine === 'webspeech') await loadWebSpeechVoices();
+      ttsLog('speak: voices ready, stopped =', stopped);
       if (stopped) return;
       try {
         inner = ttsSpeak(t, cfg, sel, onProgress);
@@ -117,6 +120,11 @@ const api: MdpTtsApi = {
           current = inner;
           await inner.done;
         }
+      }
+      } catch (err) {
+        // Surface unexpected failures instead of letting the rejected promise be
+        // swallowed by a caller's `.then(done, done)`.
+        ttsLog('speak: UNEXPECTED ERROR', String(err && (err as Error).stack || err));
       }
     })();
     return { done, stop: () => { stopped = true; inner?.stop(); } };

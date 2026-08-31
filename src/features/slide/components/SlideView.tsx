@@ -201,8 +201,9 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
     // down running module state (stopping speech etc.), so record WHO triggered it
     // — the stack is embedded in the message so the terminal mirror carries it.
     try {
-      if (window.localStorage.getItem('mdpTtsDebug') === '1') {
-        console.log('[mdpTts] runModuleScripts (teardown+reinit)\n' + new Error().stack);
+      if (window.localStorage.getItem('mdpTtsDebug') === '1' && runScriptsRef.current) {
+        const w = containerNodeRef.current ? Math.round(containerNodeRef.current.getBoundingClientRect().width) : -1;
+        console.log(`[mdpTts] runModuleScripts (teardown+reinit) w=${w}\n` + new Error().stack);
       }
     } catch { /* ignore */ }
     // Header/footer live in separate sibling nodes — run them via this SAME
@@ -513,7 +514,25 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
   // Includes header/footer (runModuleScripts now runs them) and `presenting`, so
   // they re-init when their HTML changes AND the timer autostart re-evaluates when
   // a slide starts presenting (entering the fullscreen slideshow).
+  const prevScriptDepsRef = useRef<unknown[]>([]);
   useEffect(() => {
+    // TTS-debug diagnostics: name WHICH dep re-fired this effect (a re-fire tears
+    // down running module state, e.g. stopping speech).
+    try {
+      if (window.localStorage.getItem('mdpTtsDebug') === '1' && runScriptsRef.current) {
+        const deps: unknown[] = [processedHtml, header, footer, isActive, presenting, moduleRole];
+        const names = ['processedHtml', 'header', 'footer', 'isActive', 'presenting', 'moduleRole'];
+        const changed = names.filter((_, i) => prevScriptDepsRef.current[i] !== deps[i]);
+        console.log('[mdpTts] scripts-effect fired; changed: ' + (changed.join(',') || '(none→callback identity)'));
+        if (changed.includes('processedHtml') && typeof prevScriptDepsRef.current[0] === 'string') {
+          const a = prevScriptDepsRef.current[0] as string; const b = processedHtml;
+          let d = -1; const n = Math.min(a.length, b.length);
+          for (let i = 0; i < n; i++) { if (a[i] !== b[i]) { d = i; break; } }
+          console.log(`[mdpTts] processedHtml diff@${d} lens=${a.length}/${b.length} old="${d >= 0 ? a.slice(Math.max(0, d - 45), d + 45) : '(prefix-equal)'}" new="${d >= 0 ? b.slice(Math.max(0, d - 45), d + 45) : ''}"`);
+        }
+        prevScriptDepsRef.current = deps;
+      }
+    } catch { /* ignore */ }
     if (isActive) runModuleScripts();
   }, [processedHtml, header, footer, isActive, presenting, moduleRole, runModuleScripts]);
 

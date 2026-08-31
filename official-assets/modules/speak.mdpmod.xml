@@ -152,9 +152,17 @@ Full sentence: <!-- @speak rate: 0.9 -->Water boils at 100 °C.<!-- @end -->
           if (st.playing) ctx.sendAction('stop');
           else ctx.sendAction('speak');
         };
-        el.addEventListener('click', function (ev) { ev.stopPropagation(); toggle(); });
-        el.addEventListener('keydown', function (ev) {
+        // Listeners must be removed on cleanup: re-init runs on the SAME DOM, and
+        // a leftover listener would toggle the new playback straight off.
+        const onClick = function (ev) { ev.stopPropagation(); toggle(); };
+        const onKeydown = function (ev) {
           if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); ev.stopPropagation(); toggle(); }
+        };
+        el.addEventListener('click', onClick);
+        el.addEventListener('keydown', onKeydown);
+        ctx.onCleanup(function () {
+          el.removeEventListener('click', onClick);
+          el.removeEventListener('keydown', onKeydown);
         });
 
         if (ctx.role === 'owner') {

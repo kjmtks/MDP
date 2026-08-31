@@ -190,6 +190,15 @@ This paper proposes a new compression method.
   <script><![CDATA[
     export default {
       init(el, ctx) {
+        const dbg = function () {
+          try {
+            if (window.localStorage.getItem('mdpTtsDebug') !== '1') return;
+            const a = Array.prototype.slice.call(arguments).join(' ');
+            const w = Math.round(el.getBoundingClientRect().width);
+            console.log('[mdpTts][speakcard ' + ctx.id + ' ' + ctx.role + ' sync=' + ctx.syncId + ' w=' + w + '] ' + a);
+          } catch (e) { /* ignore */ }
+        };
+        dbg('init');
         const rate = parseFloat(el.dataset.rate);
 
         // Read-along highlight via the CSS Custom Highlight API — colors a Range
@@ -264,14 +273,25 @@ This paper proposes a new compression method.
         ctx.onShared(paint);
 
         // A click on ANY surface only dispatches; the owner performs the speech.
+        // NOTE: teardown/re-init runs init() again on the SAME DOM (the module
+        // system re-runs scripts without rebuilding the HTML), so listeners MUST
+        // be removed on cleanup — otherwise a single physical click fires the
+        // stale listener too, which toggles the fresh playback straight off.
+        const wired = [];
         el.querySelectorAll('.mdp-speak-btn').forEach(function (btn) {
-          btn.addEventListener('click', function (ev) {
+          const onClick = function (ev) {
             ev.stopPropagation();
             const st = ctx.getShared() || {};
             const kind = btn.dataset.kind;
+            dbg('click kind=' + kind + ' playing=' + st.playing);
             if (st.playing === kind) ctx.sendAction('stop');
             else ctx.sendAction('speak', { kind: kind });
-          });
+          };
+          btn.addEventListener('click', onClick);
+          wired.push([btn, onClick]);
+        });
+        ctx.onCleanup(function () {
+          wired.forEach(function (p) { p[0].removeEventListener('click', p[1]); });
         });
 
         if (ctx.role === 'owner') {
@@ -287,8 +307,9 @@ This paper proposes a new compression method.
             else if (voice) o.voice = voice;
             return o;
           };
-          const stopNow = function () { if (current) { const u = current; current = null; u.stop(); } };
+          const stopNow = function () { if (current) { dbg('stopNow: stopping current'); const u = current; current = null; u.stop(); } };
           const play = function (kind) {
+            dbg('play kind=' + kind);
             const tts = window.mdpTts;
             const tEl = textElOf(kind);
             if (!tts || !tEl) return;
@@ -307,10 +328,11 @@ This paper proposes a new compression method.
             u.done.then(done, done);
           };
           ctx.onAction(function (type, payload) {
+            dbg('onAction ' + type);
             if (type === 'speak' && payload && payload.kind) play(payload.kind);
             else if (type === 'stop') { stopNow(); ctx.setShared({ playing: null, prog: null }); }
           });
-          ctx.onCleanup(function () { stopNow(); clearHL(); });
+          ctx.onCleanup(function () { dbg('cleanup (owner), hadCurrent=' + !!current); stopNow(); clearHL(); });
         } else {
           ctx.onCleanup(clearHL);
         }
