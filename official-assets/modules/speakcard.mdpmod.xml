@@ -41,6 +41,11 @@ Cross-surface: clicking ▶ on ANY surface (presenter tool, remote) plays the au
 the OWNER surface (the slideshow / preview driving the display); button state and the
 read-along highlight stay in sync on every surface.
 
+Script/bus control: give the card a stable address with `tag: ex1`, then a @script can
+play it and wait for the audio to finish before narrating on:
+`[[emit-wait: cmd:ex1 play main | 例文①]]` (use `play sub` for the sub line, `stop`
+to stop). In the presenter view the marker appears as a clickable chip.
+
 Example:
 <!-- @speakcard mainlang: en-US, sublang: ja-JP, mainvoice: Zira, rate: 0.9 -->
 Water **boils** at 100 °C at atmospheric pressure.
@@ -295,7 +300,15 @@ This paper proposes a new compression method.
         });
 
         if (ctx.role === 'owner') {
-          let current = null;
+          // Utterance ownership lives in a window-global registry keyed by
+          // syncId, because the app can run DUPLICATE owner instances of the
+          // same card (hidden render surfaces in the main window). With a
+          // per-instance `current`, the losing instance's canceled utterance
+          // "finishes" → clears the shared playing state and answers the
+          // narration's replyTo while the winner is still speaking (symptom:
+          // audio plays but ■ flips back, no highlight, narration talks over).
+          const REG = window.__mdpSpeakReg || (window.__mdpSpeakReg = {});
+          const key = ctx.syncId;
           const optsFor = function (kind) {
             const lang = (kind === 'main' ? el.dataset.mainlang : el.dataset.sublang) || '';
             const voice = (kind === 'main' ? el.dataset.mainvoice : el.dataset.subvoice) || '';
@@ -307,32 +320,66 @@ This paper proposes a new compression method.
             else if (voice) o.voice = voice;
             return o;
           };
-          const stopNow = function () { if (current) { dbg('stopNow: stopping current'); const u = current; current = null; u.stop(); } };
-          const play = function (kind) {
+          // Stop whichever instance's utterance is active for this card.
+          // answer=true also answers its pending narration reply (explicit
+          // stops); play() passes false — the replacement utterance carries
+          // the (same) reply instead.
+          const stopNow = function (answer) {
+            const e = REG[key];
+            if (!e) return;
+            REG[key] = null;
+            dbg('stopNow: stopping current (by=' + e.by + ')');
+            e.u.stop();
+            if (answer && typeof e.onDone === 'function') e.onDone();
+          };
+          const play = function (kind, onDone) {
             dbg('play kind=' + kind);
             const tts = window.mdpTts;
             const tEl = textElOf(kind);
-            if (!tts || !tEl) return;
-            stopNow();
+            if (!tts || !tEl) { if (typeof onDone === 'function') onDone(); return; }
+            stopNow(false);
             const text = (tEl.textContent || '').trim();
-            if (!text) return;
+            if (!text) { if (typeof onDone === 'function') onDone(); return; }
             const o = optsFor(kind);
             o.onProgress = function (p) {
               if (typeof p.charIndex === 'number') ctx.setShared({ prog: { ci: p.charIndex, cl: p.charLength } });
               else if (typeof p.fraction === 'number') ctx.setShared({ prog: { f: p.fraction } });
             };
             const u = tts.speak(text, o);
-            current = u;
+            const entry = { u: u, onDone: onDone, by: ctx.id };
+            REG[key] = entry;
             ctx.setShared({ playing: kind, prog: null });
-            const done = function () { if (current === u) { current = null; ctx.setShared({ playing: null, prog: null }); } };
+            const done = function () {
+              // A replaced/canceled utterance is no longer the registry entry:
+              // it must neither clear the shared state nor answer the reply.
+              if (REG[key] !== entry) { dbg('done: superseded, ignoring'); return; }
+              REG[key] = null;
+              ctx.setShared({ playing: null, prog: null });
+              if (typeof onDone === 'function') onDone();
+            };
             u.done.then(done, done);
           };
           ctx.onAction(function (type, payload) {
             dbg('onAction ' + type);
             if (type === 'speak' && payload && payload.kind) play(payload.kind);
-            else if (type === 'stop') { stopNow(); ctx.setShared({ playing: null, prog: null }); }
+            else if (type === 'stop') { stopNow(true); ctx.setShared({ playing: null, prog: null }); }
           });
-          ctx.onCleanup(function () { dbg('cleanup (owner), hadCurrent=' + !!current); stopNow(); clearHL(); });
+          // App-wide bus commands (script markers / presenter chips / other
+          // modules): `cmd:<tag> play [main|sub]` and `cmd:<tag> stop`. `done`
+          // answers the sender's replyTo when the utterance finishes, so an
+          // [[emit-wait:]] narration resumes right after the audio.
+          ctx.onCommand(function (action, args, done) {
+            dbg('onCommand ' + action + ' ' + args.join(' '));
+            if (action === 'play' || action === '') play(args[0] === 'sub' ? 'sub' : 'main', done);
+            else if (action === 'stop') { stopNow(true); ctx.setShared({ playing: null, prog: null }); done(); }
+            else done();
+          });
+          ctx.onCleanup(function () {
+            const mine = REG[key] && REG[key].by === ctx.id;
+            dbg('cleanup (owner), hadCurrent=' + mine);
+            if (mine) stopNow(true);
+            clearHL();
+          });
         } else {
           ctx.onCleanup(clearHL);
         }

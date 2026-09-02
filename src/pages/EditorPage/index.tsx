@@ -51,7 +51,7 @@ import type { ModuleParam } from '../../utils/moduleParser';
 const FX_EASINGS = ['ease', 'linear', 'ease-in', 'ease-out', 'ease-in-out', 'cubic-bezier(0.4, 0, 0.2, 1)'];
 import { clearAllEffects, registerEffect, getAllEffectSnippets } from '../../features/effects/effectManager';
 import { applyModulesToMarkdown, parseArguments } from '../../features/modules/moduleProcessor';
-import { resolveImages, setLibraryImages, clearLibraryImages, parseInFileImageDefs, type ImageEntry } from '../../features/images/imageRegistry';
+import { resolveImages, setLibraryImages, parseInFileImageDefs, type ImageEntry } from '../../features/images/imageRegistry';
 import { addFileImageDef, editFileImageDef, deleteFileImageDef } from '../../features/images/imageDocEdits';
 import { updateModuleTransforms, removeModuleDirectives, parseModuleDirectives, moveModuleDirective, getModuleDirectiveText, pasteModuleDirective, pasteModuleAt } from '../../features/modules/moduleDocEdits';
 import { splitMarkdownToBlocks } from '../../features/slide/parser/slideParser';
@@ -937,9 +937,11 @@ export default function EditorPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [drawings]);
 
-  const handleUpdateNote = useCallback((pageIndex: number, newNote: string) => {
+  // Locate one slide's text span in the editor document (slides split on `---`,
+  // fenced code ignored). Shared by the presenter-side note / script write-back.
+  const sliceSlideRange = useCallback((pageIndex: number) => {
     const view = editorRef.current?.view;
-    if (!view) return;
+    if (!view) return null;
 
     const doc = view.state.doc;
     let startLine = 1;
@@ -960,7 +962,13 @@ export default function EditorPage() {
 
     const startPos = doc.line(startLine).from;
     const endPos = Math.max(startPos, doc.line(endLine).to);
-    const slideText = doc.sliceString(startPos, endPos);
+    return { view, startPos, endPos, slideText: doc.sliceString(startPos, endPos) };
+  }, [editorRef]);
+
+  const handleUpdateNote = useCallback((pageIndex: number, newNote: string) => {
+    const range = sliceSlideRange(pageIndex);
+    if (!range) return;
+    const { view, startPos, endPos, slideText } = range;
 
     let newSlideText = slideText;
 
@@ -981,7 +989,42 @@ export default function EditorPage() {
     }
 
     view.dispatch({ changes: { from: startPos, to: endPos, insert: newSlideText } });
-  }, [editorRef]);
+  }, [sliceSlideRange]);
+
+  // Presenter-side edit of the read-aloud `@script`. `scripts` holds one raw text
+  // per existing `<!-- @script: … -->` block IN DOCUMENT ORDER, so a slide that
+  // interleaves several script blocks with its content keeps that structure: the
+  // i-th block is rewritten in place, an emptied one is dropped, and extra entries
+  // (a slide that had no script yet) are appended at the end.
+  const handleUpdateScript = useCallback((pageIndex: number, scripts: string[]) => {
+    const range = sliceSlideRange(pageIndex);
+    if (!range) return;
+    const { view, startPos, endPos, slideText } = range;
+
+    const open = '<' + '!-- @script:\n';
+    const close = '\n--' + '>';
+    const block = (body: string) => open + body.trim() + close;
+
+    const scriptRegex = new RegExp('<' + '!--\\s*@script:[\\s\\S]*?--' + '>', 'g');
+    let i = 0;
+    // A dropped block leaves a sentinel so the blank lines around it collapse
+    // back to a single paragraph break instead of a hole in the markdown.
+    const GONE = '\u0000';
+    let newSlideText = slideText.replace(scriptRegex, (match: string) => {
+      const body = scripts[i++];
+      if (body === undefined) return match;      // fewer drafts than blocks: keep
+      return body.trim() ? block(body) : GONE;   // emptied out: drop the block
+    }).replace(new RegExp('\\n*' + GONE + '\\n*', 'g'), '\n\n');
+    // Drafts beyond the existing blocks (incl. a first script on a slide that had
+    // none) are appended after the slide body.
+    const extra = scripts.slice(i).filter((t) => t && t.trim());
+    if (extra.length) {
+      newSlideText = newSlideText.trimEnd() + '\n\n' + extra.map(block).join('\n\n') + '\n';
+    }
+
+    if (newSlideText === slideText) return;
+    view.dispatch({ changes: { from: startPos, to: endPos, insert: newSlideText } });
+  }, [sliceSlideRange]);
 
   const { rasterize, host: rasterHost } = useSlideRasterizer();
   const pptxTitle = useMemo(() => {
@@ -1049,7 +1092,7 @@ export default function EditorPage() {
     syncSlides, currentSlideIndex, slideSize, globalContext, baseUrl, themeCssUrl, lastUpdated, drawings,
     moveSlide, addStroke, clear, undo, redo, handleAddBlankSlide, updateStrokes, handleUpdateNote,
     remotePort, rasterize, remoteActive, basePath, isSlideOverview, toggleSlideOverview, selectSlideFromOverview,
-    step, navLink, navBack, navForward
+    step, navLink, navBack, navForward, handleUpdateScript
   );
 
   const handleUpdateStrokes = useCallback((pageIndex: number, indices: number[], dx: number, dy: number) => {

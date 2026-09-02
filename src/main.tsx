@@ -10,6 +10,7 @@ import 'katex/dist/katex.min.css';
 import 'highlight.js/styles/atom-one-dark.css';
 import QRCode from 'qrcode';
 import { installModuleTtsApi } from './features/tts/moduleTtsApi';
+import { installMdpBus } from './features/bus/mdpBus';
 
 // Expose KaTeX (bundled, offline-safe) so module <script>s can typeset math in
 // DOM they inject as raw HTML — that HTML bypasses the markdown KaTeX extension,
@@ -32,6 +33,11 @@ import { installModuleTtsApi } from './features/tts/moduleTtsApi';
 // user's configured engine/narrator, or override per call ({ lang, voice, speaker,
 // rate, … }). Defaults are kept in sync from AppSettingsContext.
 installModuleTtsApi();
+
+// Expose the app-wide event bus as `window.mdpBus` — modules, the narration
+// engine and app surfaces exchange addressable events through it (see
+// features/bus/mdpBus.ts for topics and conventions).
+installMdpBus();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

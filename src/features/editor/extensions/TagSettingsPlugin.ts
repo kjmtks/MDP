@@ -7,7 +7,16 @@ import { RangeSetBuilder } from '@codemirror/state';
 // dialog. Mirrors ModuleSettingsPlugin (the ⚙ button). The directive text stays
 // visible/editable — this is an additive widget, not a replace decoration.
 class TagSettingsWidget extends WidgetType {
-  constructor(readonly value: string, readonly from: number, readonly to: number) { super(); }
+  readonly value: string;
+  readonly from: number;
+  readonly to: number;
+
+  constructor(value: string, from: number, to: number) {
+    super();
+    this.value = value;
+    this.from = from;
+    this.to = to;
+  }
 
   eq(o: TagSettingsWidget) { return o.value === this.value && o.from === this.from && o.to === this.to; }
   ignoreEvent() { return true; }

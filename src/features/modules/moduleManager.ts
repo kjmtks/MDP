@@ -1,5 +1,6 @@
 import { parseMdmodXml, type ModuleData } from '../../utils/moduleParser';
 import { moduleSyncBus } from './moduleSyncBus';
+import { mdpBus } from '../bus/mdpBus';
 
 export const loadedModules: Record<string, ModuleData> = {};
 
@@ -89,6 +90,14 @@ export interface ModuleScriptContext {
   onShared: (cb: (state: any) => void) => void;    // display updates from shared state
   sendAction: (type: string, payload?: any) => void;  // dispatch a user action
   onAction: (cb: (type: string, payload: any) => void) => void; // owner: handle actions
+  // --- app-wide event bus (mdpBus) ---
+  tag: string;                      // the directive's `tag:` argument ('' if none)
+  emit: (topic: string, payload?: any) => void;       // publish a bus event (all surfaces)
+  onBus: (topic: string, cb: (payload: any, meta: { topic: string; remote: boolean }) => void) => void; // subscribe (auto-cleaned)
+  // Receive `cmd:<tag>` / `cmd:<syncId>` commands (from [[emit…]] script markers,
+  // presenter chips, or other modules). Call `done()` when the command finishes —
+  // it answers the sender's replyTo so a waiting narration resumes.
+  onCommand: (cb: (action: string, args: string[], done: () => void) => void) => void;
 }
 
 let instanceCounter = 0;
@@ -142,6 +151,10 @@ export const executeModuleScripts = (
     const makeCtx = (el: HTMLElement, occ: number): ModuleScriptContext => {
       // Deterministic across surfaces: same slide html → same module order.
       const syncId = `${slideIndex}:${name}:${occ}`;
+      // The directive's `tag:` argument lands on the manip wrapper (an ancestor).
+      const tag = el.dataset.mdpTag
+        || (el.closest ? (el.closest('[data-mdp-tag]') as HTMLElement | null)?.dataset.mdpTag : undefined)
+        || '';
       return {
         id: el.dataset.mdpId || name,
         root: el,
@@ -156,6 +169,21 @@ export const executeModuleScripts = (
         onShared: (cb) => { cleanups.push(moduleSyncBus.onState(syncId, cb)); },
         sendAction: (type, payload) => moduleSyncBus.dispatchAction(syncId, type, payload),
         onAction: (cb) => { cleanups.push(moduleSyncBus.onAction(syncId, cb)); },
+        tag,
+        emit: (topic, payload) => mdpBus.emit(topic, payload),
+        onBus: (topic, cb) => { cleanups.push(mdpBus.on(topic, cb)); },
+        onCommand: (cb) => {
+          const handler = (payload: any) => {
+            const args: string[] = Array.isArray(payload?.args) ? payload.args.map(String) : [];
+            const replyTo = typeof payload?.replyTo === 'string' ? payload.replyTo : '';
+            let replied = false;
+            const done = () => { if (replied) return; replied = true; if (replyTo) mdpBus.emit(replyTo, {}); };
+            try { cb(args[0] || '', args.slice(1), done); }
+            catch (e) { console.error(`[MDP] module onCommand error (${name}):`, e); done(); }
+          };
+          if (tag) cleanups.push(mdpBus.on(`cmd:${tag}`, handler));
+          cleanups.push(mdpBus.on(`cmd:${syncId}`, handler));
+        },
       };
     };
 

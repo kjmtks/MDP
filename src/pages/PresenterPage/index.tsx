@@ -12,6 +12,7 @@ import { useAppSettings } from '../../features/settings/AppSettingsContext';
 import { matchAction } from '../../features/settings/shortcuts/matcher';
 import { ACTIONS_BY_SCOPE } from '../../features/settings/shortcuts/registry';
 import { moduleSyncBus } from '../../features/modules/moduleSyncBus';
+import { mdpBus } from '../../features/bus/mdpBus';
 import { registerParsedModule, clearAllModules } from '../../features/modules/moduleManager';
 import { registerParsedEffect, clearAllEffects } from '../../features/effects/effectManager';
 import type { ModuleData } from '../../utils/moduleParser';
@@ -58,6 +59,13 @@ const extractNoteText = (slide: any) => {
 
   return text.trim();
 };
+
+// The raw `<!-- @script: … -->` blocks of a slide, in document order. Editing
+// works on the RAW text (the rendered scriptHtml has its control markers turned
+// into chips / stripped), so `[[step]]`, `[[emit: …]]` etc. survive a round-trip.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const extractScriptBlocks = (slide: any): string[] =>
+  [...String(slide?.raw || '').matchAll(/<!--\s*@script:\s*([\s\S]*?)\s*-->/g)].map((m) => m[1].trim());
 
 export default function PresenterPage() {
   const { settings: appSettings } = useAppSettings();
@@ -111,6 +119,8 @@ export default function PresenterPage() {
 
   const [isEditingNote, setIsEditingNote] = useState(false);
   const [noteDraft, setNoteDraft] = useState('');
+  const [isEditingScript, setIsEditingScript] = useState(false);
+  const [scriptDrafts, setScriptDrafts] = useState<string[]>([]);
   const [prevIndex, setPrevIndex] = useState(currentIndex);
 
   const timerStartRef = useRef<number | null>(null);
@@ -126,6 +136,16 @@ export default function PresenterPage() {
   const deckSeconds = useMemo(() => estimateDeckSeconds(slides, readingCpm), [slides, readingCpm]);
   const currentBudgetSec = useMemo(() => (currentSlide ? slideSeconds(currentSlide, readingCpm) : 0), [currentSlide, readingCpm]);
   const currentHasExplicit = !!(currentSlide && explicitSlideSeconds(currentSlide.raw || '') != null);
+  // Budget of everything BEFORE the current slide — the schedule the elapsed timer
+  // is compared against to say whether the talk is running ahead or behind.
+  const budgetBeforeSec = useMemo(() => {
+    let s = 0;
+    for (let i = 0; i < currentIndex && i < slides.length; i++) {
+      const sl = slides[i];
+      if (sl && !sl.isHidden) s += slideSeconds(sl, readingCpm);
+    }
+    return s;
+  }, [slides, currentIndex, readingCpm]);
 
   const { send } = useSync(channelId, token, (msg: SyncMessage) => {
     switch (msg.type) {
@@ -168,6 +188,9 @@ export default function PresenterPage() {
       case 'MODULE_ACTION':
         moduleSyncBus.receiveAction(msg.syncId, msg.actionType, msg.payload);
         break;
+      case 'BUS_EVENT':
+        mdpBus.receiveRemote(msg.topic, msg.payload);
+        break;
       case 'DRAW_STROKE':
         addStroke(msg.pageIndex, msg.stroke, false);
         break;
@@ -181,13 +204,16 @@ export default function PresenterPage() {
   // host (owner), which runs the logic and broadcasts state to all surfaces.
   useEffect(() => {
     moduleSyncBus.setSender((m) => send(m as SyncMessage, 'all'));
-    return () => moduleSyncBus.setSender(null);
+    mdpBus.setSender((m) => send(m as SyncMessage, 'all'));
+    return () => { moduleSyncBus.setSender(null); mdpBus.setSender(null); };
   }, [send]);
 
   if (currentIndex !== prevIndex) {
     setPrevIndex(currentIndex);
     setIsEditingNote(false);
     setNoteDraft(extractNoteText(currentSlide));
+    setIsEditingScript(false);
+    setScriptDrafts(extractScriptBlocks(currentSlide));
     // Restart the per-slide countdown from the current elapsed value.
     slideBaselineMsRef.current = elapsedTime;
   }
@@ -202,6 +228,19 @@ export default function PresenterPage() {
     }
     setIsEditingNote(!isEditingNote);
   }, [isEditingNote, channelId, currentIndex, noteDraft, send, currentSlide]);
+
+  const handleToggleEditScript = useCallback(() => {
+    if (isEditingScript) {
+      if (channelId) {
+        send({ type: 'UPDATE_SCRIPT', pageIndex: currentIndex, scripts: scriptDrafts, channelId });
+      }
+    } else {
+      // A slide with no script yet starts with one empty block to type into.
+      const blocks = extractScriptBlocks(currentSlide);
+      setScriptDrafts(blocks.length ? blocks : ['']);
+    }
+    setIsEditingScript(!isEditingScript);
+  }, [isEditingScript, channelId, currentIndex, scriptDrafts, send, currentSlide]);
 
   useEffect(() => {
     const linkId = 'mdp-presenter-theme';
@@ -480,13 +519,84 @@ export default function PresenterPage() {
 
                 <Panel defaultSize={60} minSize={10}>
                   <div className="presenter-notes" style={{ width: '100%', height: '100%', padding: '15px', boxSizing: 'border-box', overflowY: 'auto', backgroundColor: '#1e1e1e', color: '#ddd', display: 'flex', flexDirection: 'column' }}>
-                    {/* Read-aloud @script manuscript, shown prominently above notes. */}
-                    {currentSlide?.scriptHtml && (
-                      <div style={{ flexShrink: 0, marginBottom: 12 }}>
+                    {/* Read-aloud @script manuscript, shown prominently above notes.
+                        Script markers ([[step]], [[emit…]]) render as inline CHIPS:
+                        clicking one fires the same event the narrated auto-play
+                        would fire at that point (step-advance / mdpBus emit). */}
+                    <div style={{ flexShrink: 0, marginBottom: 12 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span className="presenter-label" style={{ color: '#8ab4f8' }}>SCRIPT — read aloud</span>
-                        <div className="markdown-body" style={{ marginTop: 6, padding: '10px 12px', background: '#232a36', borderLeft: '3px solid #3b82f6', borderRadius: 4, fontSize: '1.05rem', lineHeight: 1.7 }} dangerouslySetInnerHTML={{ __html: currentSlide.scriptHtml }} />
+                        <Button
+                          size="small"
+                          startIcon={isEditingScript ? <SaveIcon /> : <EditIcon />}
+                          onClick={handleToggleEditScript}
+                          sx={{ color: '#7f93ad', textTransform: 'none', '&:hover': { color: '#8ab4f8' } }}
+                        >
+                          {isEditingScript ? 'Save' : 'Edit'}
+                        </Button>
                       </div>
-                    )}
+                      {isEditingScript ? (
+                        /* Edit the RAW `@script` blocks, one textarea per source block
+                           (a slide often interleaves several with its content), so the
+                           write-back keeps each block where the author put it. */
+                        <div style={{ maxHeight: '45vh', overflowY: 'auto', marginTop: 6 }}>
+                          {scriptDrafts.map((draft, i) => (
+                            <div key={i} style={{ marginBottom: 8 }}>
+                              {scriptDrafts.length > 1 && (
+                                <div style={{ fontSize: '0.62rem', color: '#777', letterSpacing: 1, marginBottom: 2 }}>
+                                  BLOCK {i + 1} / {scriptDrafts.length}
+                                </div>
+                              )}
+                              <TextField
+                                multiline
+                                fullWidth
+                                minRows={3}
+                                value={draft}
+                                onChange={(e) => setScriptDrafts((prev) => prev.map((d, j) => (j === i ? e.target.value : d)))}
+                                variant="outlined"
+                                placeholder="Read-aloud manuscript… ([[step]] / [[emit: …]] markers are kept)"
+                                sx={{
+                                  '& .MuiInputBase-root': { color: '#ddd', padding: '8px', fontFamily: 'monospace', fontSize: '0.9rem', background: '#232a36' },
+                                  '& fieldset': { borderColor: '#3b5170' },
+                                  '& .MuiInputBase-root:hover fieldset': { borderColor: '#5b7fae' },
+                                  '& .MuiInputBase-root.Mui-focused fieldset': { borderColor: '#3b82f6' },
+                                }}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      ) : currentSlide?.scriptHtml ? (
+                        <div
+                          className="markdown-body presenter-script"
+                          style={{ marginTop: 6, padding: '10px 12px', background: '#232a36', borderLeft: '3px solid #3b82f6', borderRadius: 4, fontSize: '1.05rem', lineHeight: 1.7 }}
+                          onClick={(e) => {
+                            const chip = (e.target as HTMLElement).closest?.('.mdp-script-chip[data-chip]') as HTMLElement | null;
+                            if (!chip) return;
+                            e.preventDefault(); e.stopPropagation();
+                            const kind = chip.dataset.chip;
+                            if (kind === 'step') { sendNav(1); }
+                            else if (kind === 'emit') {
+                              const topic = chip.dataset.topic || '';
+                              const args = (chip.dataset.args || '').split(' ').filter(Boolean);
+                              if (topic) mdpBus.emit(topic, { args });
+                            }
+                            chip.classList.add('mdp-chip-used');
+                          }}
+                          dangerouslySetInnerHTML={{ __html: currentSlide.scriptHtml }}
+                        />
+                      ) : (
+                        <div style={{ marginTop: 6, fontSize: '0.85rem', color: '#666', fontStyle: 'italic' }}>
+                          No script for this slide.
+                        </div>
+                      )}
+                      <style>{`
+                          .presenter-script .mdp-script-chip { display:inline-flex; align-items:center; gap:4px; margin:0 3px; padding:1px 8px; border-radius:999px; font-size:0.85em; line-height:1.5; vertical-align:baseline; border:1px solid #3b82f6; background:rgba(59,130,246,0.15); color:#8ab4f8; cursor:pointer; user-select:none; }
+                          .presenter-script .mdp-script-chip:hover { background:rgba(59,130,246,0.35); }
+                          .presenter-script .mdp-script-chip.mdp-chip-passive { border-color:#555; background:rgba(255,255,255,0.06); color:#999; cursor:default; }
+                          .presenter-script .mdp-script-chip.mdp-chip-used { opacity:0.45; }
+                        .presenter-script .mdp-script-chip.mdp-chip-used::after { content:' ✓'; }
+                      `}</style>
+                    </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', borderBottom: '1px solid #444', paddingBottom: '8px', flexShrink: 0 }}>
                       <span className="presenter-label">NOTES</span>
                       <Button
@@ -546,26 +656,44 @@ export default function PresenterPage() {
         </div>
 
         {/* Speaking-time countdowns: this slide's remaining budget + the whole
-            deck's remaining. Green → amber (<20% left) → red (over). */}
+            deck's remaining. Green → amber (<20% left) → red (over). A third,
+            smaller column says how far AHEAD/BEHIND schedule the talk is. */}
         {(() => {
-          const slideRemain = currentBudgetSec - Math.max(0, (elapsedTime - slideBaselineMsRef.current) / 1000);
-          const totalRemain = deckSeconds - elapsedTime / 1000;
+          const elapsedSec = elapsedTime / 1000;
+          const onSlideSec = Math.max(0, (elapsedTime - slideBaselineMsRef.current) / 1000);
+          const slideRemain = currentBudgetSec - onSlideSec;
+          const totalRemain = deckSeconds - elapsedSec;
+          // Pace: elapsed vs. where the schedule says we should be — every earlier
+          // slide's budget, plus the part of THIS slide's budget already consumed
+          // (capped, so lingering past the budget counts as falling behind, and
+          // simply being on this slide does not).
+          const paceSec = elapsedSec - (budgetBeforeSec + Math.min(onSlideSec, currentBudgetSec));
+          const behind = paceSec > 0;
+          const onTime = Math.abs(paceSec) < 5;
           const col = (rem: number, budget: number) => rem < 0 ? '#f04747' : (budget > 0 && rem < budget * 0.2) ? '#f0a020' : '#4caf50';
-          const Cell = ({ label, remain, budget, sub }: { label: string; remain: number; budget: number; sub: string }) => (
-            <div style={{ textAlign: 'center', minWidth: 110 }}>
+          const paceCol = elapsedTime === 0 ? '#666' : onTime ? '#8a8a8a' : behind ? '#f0a020' : '#4caf50';
+          const Cell = ({ label, value, valueColor, valueSize, sub, width }: { label: string; value: string; valueColor: string; valueSize: string; sub: string; width: number }) => (
+            <div style={{ textAlign: 'center', minWidth: width }}>
               <div style={{ fontSize: '0.68rem', color: '#888', letterSpacing: 1 }}>{label}</div>
-              <div style={{ fontSize: '1.7rem', fontFamily: 'monospace', fontWeight: 'bold', color: col(remain, budget), lineHeight: 1.1 }}>
-                {formatClock(remain)}
+              {/* Fixed row height so the smaller PACE value keeps its sub-line
+                  aligned with the two clocks next to it. */}
+              <div style={{ fontSize: valueSize, fontFamily: 'monospace', fontWeight: 'bold', color: valueColor, lineHeight: 1.1, whiteSpace: 'nowrap', height: '1.95rem', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+                {value}
               </div>
-              <div style={{ fontSize: '0.62rem', color: '#666' }}>{sub}</div>
+              <div style={{ fontSize: '0.62rem', color: '#666', whiteSpace: 'nowrap' }}>{sub}</div>
             </div>
           );
           return (
-            <div style={{ display: 'flex', gap: 28, alignItems: 'center', paddingRight: 12 }}>
-              <Cell label="THIS SLIDE" remain={slideRemain} budget={currentBudgetSec}
+            <div style={{ display: 'flex', gap: 24, alignItems: 'center', paddingRight: 12 }}>
+              <Cell label="THIS SLIDE" value={formatClock(slideRemain)} valueColor={col(slideRemain, currentBudgetSec)} valueSize="1.7rem" width={110}
                 sub={`${currentHasExplicit ? '' : '≈ '}budget ${formatClock(currentBudgetSec)}`} />
-              <Cell label="TOTAL LEFT" remain={totalRemain} budget={deckSeconds}
+              <Cell label="TOTAL LEFT" value={formatClock(totalRemain)} valueColor={col(totalRemain, deckSeconds)} valueSize="1.7rem" width={110}
                 sub={`of ${formatClock(deckSeconds)}`} />
+              {/* Pace sits BESIDE the deck clock (its own column), a size down, so
+                  the footer keeps its three-line height. */}
+              <Cell label="PACE" valueColor={paceCol} valueSize="1.2rem" width={96}
+                value={elapsedTime === 0 ? '—' : onTime ? '±0:00' : `${behind ? '▲' : '▼'} ${formatClock(Math.abs(paceSec))}`}
+                sub={elapsedTime === 0 ? 'not started' : onTime ? 'on schedule' : behind ? 'behind' : 'ahead'} />
             </div>
           );
         })()}

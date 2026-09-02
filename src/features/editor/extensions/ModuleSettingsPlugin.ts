@@ -21,13 +21,20 @@ const isInCode = (view: EditorView, pos: number): boolean => {
 // argument-editing dialog. The directive text stays visible/editable — this is
 // an additive widget, not a replace decoration.
 class ModuleSettingsWidget extends WidgetType {
-  constructor(
-    readonly name: string,
-    readonly args: string,
-    readonly from: number,
-    readonly to: number,
-    readonly original: string,
-  ) { super(); }
+  readonly name: string;
+  readonly args: string;
+  readonly from: number;
+  readonly to: number;
+  readonly original: string;
+
+  constructor(name: string, args: string, from: number, to: number, original: string) {
+    super();
+    this.name = name;
+    this.args = args;
+    this.from = from;
+    this.to = to;
+    this.original = original;
+  }
 
   eq(o: ModuleSettingsWidget) {
     return o.name === this.name && o.args === this.args && o.from === this.from && o.to === this.to;

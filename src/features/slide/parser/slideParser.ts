@@ -7,6 +7,7 @@ import type { SlideContext, MotionSpec } from './SlideContext';
 import type { Stroke } from '../../drawing/components/DrawingOverlay';
 import { applyModulesToMarkdown, parseArguments } from '../../modules/moduleProcessor';
 import { applyBuildsToMarkdown } from './buildProcessor';
+import { renderScriptChips } from '../../autoplay/autoplay';
 import markedKatex from "marked-katex-extension";
 import { registerMdpKatex } from "./katexExtensions";
 
@@ -280,7 +281,9 @@ export const renderSlideHTML = (block: RawBlock, globalContext: SlideContext, pa
     gfm: true,
     async: false
   }) as string : "";
-  const scriptHtml = scriptMarkdown ? marked.parse(scriptMarkdown, {
+  // Script markers ([[step]], [[emit…]], [[say…]]) become presenter-pane CHIPS
+  // (clickable event buttons) instead of literal marker text.
+  const scriptHtml = scriptMarkdown ? marked.parse(renderScriptChips(scriptMarkdown), {
     breaks: true,
     gfm: true,
     async: false

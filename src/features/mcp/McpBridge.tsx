@@ -138,7 +138,7 @@ export function validateDeckText(text: string, themes: ThemeOption[]) {
       if (mod.config.type !== 'inline' && !mod.config.selfClosing) depth++;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const args: any = parseArguments(argsStr);
-      const known = new Set([...mod.config.parameters.map((pp) => pp.name), 'x', 'y', 'w', 'h', 'rot']);
+      const known = new Set([...mod.config.parameters.map((pp) => pp.name), 'x', 'y', 'w', 'h', 'rot', 'tag']);
       for (const k of Object.keys(args)) if (!known.has(k)) warnings.push(`${where}: "@${name}" has unknown parameter "${k}"`);
       for (const pd of mod.config.parameters) if (pd.required && !(pd.name in args)) errors.push(`${where}: "@${name}" is missing required parameter "${pd.name}"`);
     }
@@ -637,9 +637,9 @@ Match the user's style throughout (cached profile if present, else get_style_sam
           // readable size, ONE composite image.
           const d = await ensureDeck(params.path);
           if (!d.slideCount) throw new Error('The deck has no slides yet.');
-          const wanted: number[] = Array.isArray(params.slides)
-            ? [...new Set(params.slides.map(Number))].filter((n: number) => Number.isInteger(n) && n >= 1 && n <= d.slideCount)
-            : [];
+          const asked: unknown[] = Array.isArray(params.slides) ? params.slides : [];
+          const wanted: number[] = [...new Set(asked.map(Number))]
+            .filter((n) => Number.isInteger(n) && n >= 1 && n <= d.slideCount);
           if (!wanted.length) throw new Error(`"slides" must be an array of 1…${d.slideCount}.`);
           if (wanted.length > 12) throw new Error('Max 12 slides per call — split the request (or use render_deck_overview for a full contact sheet).');
           const thumbW = Math.min(Math.max(Number(params.width) || 480, 240), 1200);
@@ -651,8 +651,9 @@ Match the user's style throughout (cached profile if present, else get_style_sam
           if (!d.slideCount) throw new Error('The deck has no slides yet.');
           const cc = ctxRef.current; // ensureDeck may have switched tabs — re-read
           // Optional 1-based `slides` filter — measure ONLY those (token/DOM saver).
-          const wanted: number[] | undefined = Array.isArray(params.slides) && params.slides.length
-            ? [...new Set(params.slides.map(Number))].filter((n) => Number.isInteger(n) && n >= 1 && n <= d.slideCount)
+          const asked: unknown[] = Array.isArray(params.slides) ? params.slides : [];
+          const wanted: number[] | undefined = asked.length
+            ? [...new Set(asked.map(Number))].filter((n) => Number.isInteger(n) && n >= 1 && n <= d.slideCount)
             : undefined;
           const items = cc.slides
             .map((slide: Slide, i: number) => ({ n: i + 1, slide }))

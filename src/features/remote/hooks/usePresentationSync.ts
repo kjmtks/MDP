@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { useSync, type SyncMessage } from './useSync';
 import type { Stroke } from '../../drawing/components/DrawingOverlay';
 import { moduleSyncBus } from '../../modules/moduleSyncBus';
+import { mdpBus } from '../../bus/mdpBus';
 import { loadedModules } from '../../modules/moduleManager';
 import { loadedEffects } from '../../effects/effectManager';
 import type { RasterizeResult } from '../capture/captureTypes';
@@ -37,6 +38,7 @@ export const usePresentationSync = (
   onSlideLink?: (target: string) => void,
   historyBack?: () => void,
   historyForward?: () => void,
+  handleUpdateScript?: (pageIndex: number, scripts: string[]) => void,
 ) => {
   const [channelId] = useState<string>(() => {
     const query = window.location.hash.split('?')[1] || window.location.search;
@@ -101,7 +103,10 @@ export const usePresentationSync = (
 
   const collectAllImages = useCallback(async (): Promise<(string | null)[]> => {
     const out: (string | null)[] = [];
-    for (let i = 0; i < slides.length; i++) out.push(await rasterizeSlide(i));
+    // rasterizeSlide returns {dataUrl, links} — the grid payload carries only
+    // the image, so unwrap it here (an object here reaches the remote as
+    // `<img src="[object Object]">`).
+    for (let i = 0; i < slides.length; i++) out.push((await rasterizeSlide(i))?.dataUrl ?? null);
     return out;
   }, [slides.length, rasterizeSlide]);
 
@@ -128,6 +133,9 @@ export const usePresentationSync = (
         break;
       case 'MODULE_ACTION':
         moduleSyncBus.receiveAction(msg.syncId, msg.actionType, msg.payload);
+        break;
+      case 'BUS_EVENT':
+        mdpBus.receiveRemote(msg.topic, msg.payload);
         break;
       case 'NAV':
         moveSlide(msg.direction);
@@ -157,6 +165,11 @@ export const usePresentationSync = (
           handleUpdateNote(msg.pageIndex, msg.note);
         }
         break;
+      case 'UPDATE_SCRIPT':
+        if (handleUpdateScript && Array.isArray(msg.scripts)) {
+          handleUpdateScript(msg.pageIndex, msg.scripts);
+        }
+        break;
       case 'TOGGLE_OVERVIEW':
         toggleSlideOverview?.();
         break;
@@ -178,7 +191,9 @@ export const usePresentationSync = (
     // is broadcast to the live presenter over BroadcastChannel ('local'); the
     // remote uses rasterized images and ignores module sync.
     moduleSyncBus.setSender((m) => send(m as SyncMessage, 'local'));
-    return () => moduleSyncBus.setSender(null);
+    // App-wide bus events reach every surface (incl. remote controllers).
+    mdpBus.setSender((m) => send(m as SyncMessage, 'all'));
+    return () => { moduleSyncBus.setSender(null); mdpBus.setSender(null); };
   }, [send]);
 
   // Push the live presenter state.

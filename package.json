@@ -1,6 +1,6 @@
 {
   "name": "mdp",
-  "version": "1.4.13",
+  "version": "1.4.15",
   "description": "Markdown Presentation Editor",
   "author": "Takeshi Kojima",
   "type": "module",
@@ -8,7 +8,7 @@
   "scripts": {
     "postinstall": "node scripts/download-drawio.cjs",
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "tsc -b && vite build",
     "start": "node server.cjs",
     "electron:dev": "npm run build && concurrently \"vite build --watch\" \"cross-env NODE_ENV=development electron .\"",
     "electron:start": "cross-env NODE_ENV=production electron .",

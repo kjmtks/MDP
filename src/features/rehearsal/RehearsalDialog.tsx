@@ -21,6 +21,9 @@ interface Step { index: number; title: string; script: string; budget: number }
 const stripHtml = (html: string): string => {
   if (!html) return '';
   const doc = new DOMParser().parseFromString(html, 'text/html');
+  // Script-marker chips ([[step]]/[[emit…]] rendered for the presenter pane) are
+  // controls, not prose — drop them so the rehearsal never reads them aloud.
+  doc.body.querySelectorAll('.mdp-script-chip').forEach((el) => el.remove());
   return (doc.body.textContent || '').replace(/\s+/g, ' ').trim();
 };
 

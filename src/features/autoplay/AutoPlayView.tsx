@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { IconButton, Tooltip, Slider } from '@mui/material';
+import { IconButton, Tooltip, Slider, LinearProgress } from '@mui/material';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import PauseIcon from '@mui/icons-material/Pause';
 import SkipNextIcon from '@mui/icons-material/SkipNext';
@@ -18,13 +18,16 @@ import {
   synthesize, type Clip, type Utterance,
   webSpeechAvailable, loadWebSpeechVoices, listVoicevoxSpeakers, type VoicevoxStyle,
 } from '../tts/ttsService';
-import { scriptSegments, slideDwellMs, scriptUnits } from './autoplay';
+import { scriptSegments, slideDwellMs, scriptUnits, segmentParts, type ScriptAction } from './autoplay';
+import { mdpBus } from '../bus/mdpBus';
 
 // One playable step of the narration: which slide + build step to show, the text to
 // SPEAK (`text`; null = a silent dwell), and the CAPTION to show (`caption`; may carry
 // `\(…\)` KaTeX that is rendered on screen). Caption and speech can differ: a formula
 // is rendered in the caption but spoken only via its `[[say:…]]` reading.
-interface PlayItem { slideIdx: number; buildStep: number; text: string | null; caption: string; dwellMs: number }
+// An `action` item fires/waits on an app-wide bus event instead of speaking
+// ([[emit…]] / [[wait…]] / [[pause…]] script markers).
+interface PlayItem { slideIdx: number; buildStep: number; text: string | null; caption: string; dwellMs: number; action?: ScriptAction }
 
 // KaTeX delimiters for rendering a caption's inline/display math.
 const KATEX_DELIMS = [
@@ -53,6 +56,10 @@ export const AutoPlayView: React.FC<{
   // the human reading speed — a synthetic narrator can run faster/slower than a person.
   const ttsCfg = useMemo(() => ({ ...settings.tts }), [settings.tts]);
   const patchTts = (p: Partial<typeof settings.tts>) => update({ tts: { ...settings.tts, ...p } });
+  // Pre-generate the whole show before starting it? Only meaningful for VOICEVOX:
+  // Web Speech exposes no audio data — it synthesizes while it speaks, so there is
+  // nothing to prepare in advance.
+  const pregenMode = settings.tts.engine === 'voicevox' && settings.tts.pregenerate;
 
   // Flatten the deck into narration steps: one per @script segment (split at
   // `[[step]]`), plus dwell items for script-less slides / trailing build reveals.
@@ -76,12 +83,20 @@ export const AutoPlayView: React.FC<{
       // segment share its build step; builds advance only at [[step]].
       segs.forEach((seg, k) => {
         const bs = Math.min(k, steps);
-        for (const u of scriptUnits(seg)) {
-          if (u.speech) {
-            out.push({ slideIdx: si, buildStep: bs, text: u.speech, caption: u.caption, dwellMs: 90 });
-          } else {
-            const readMs = Math.round(Math.max(1800, Math.min(7000, (u.caption.replace(/\\[()[\]]/g, '').length / (cpm / 60)) * 1000)));
-            out.push({ slideIdx: si, buildStep: bs, text: null, caption: u.caption, dwellMs: readMs });
+        // Split the segment further at ACTION markers: text parts narrate as
+        // usual; action parts become fire/wait items at that exact position.
+        for (const part of segmentParts(seg)) {
+          if ('action' in part) {
+            out.push({ slideIdx: si, buildStep: bs, text: null, caption: '', dwellMs: 0, action: part.action });
+            continue;
+          }
+          for (const u of scriptUnits(part.text)) {
+            if (u.speech) {
+              out.push({ slideIdx: si, buildStep: bs, text: u.speech, caption: u.caption, dwellMs: 90 });
+            } else {
+              const readMs = Math.round(Math.max(1800, Math.min(7000, (u.caption.replace(/\\[()[\]]/g, '').length / (cpm / 60)) * 1000)));
+              out.push({ slideIdx: si, buildStep: bs, text: null, caption: u.caption, dwellMs: readMs });
+            }
           }
         }
       });
@@ -116,6 +131,14 @@ export const AutoPlayView: React.FC<{
   // Pre-flight setup gate: while false, show the "configure & start" screen instead
   // of the player, so the voice/engine/speed are chosen BEFORE going fullscreen.
   const [started, setStarted] = useState(false);
+  // Pre-generation (opt-in, VOICEVOX only): all of the show's audio is synthesized
+  // BEFORE it starts, so a machine too slow to synthesize in real time still plays
+  // back smoothly. `prep` drives the progress bar; `usingPregen` says the current
+  // run is playing from that cache (its speed is baked into the audio).
+  const [prep, setPrep] = useState<{ done: number; total: number; etaSec: number | null } | null>(null);
+  const [usingPregen, setUsingPregen] = useState(false);
+  const clipsRef = useRef<(Clip | null)[]>([]);   // playlist index -> pre-generated clip
+  const prepTokenRef = useRef(0);                 // bumped to cancel a preparation run
   const [webVoices, setWebVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [vvSpeakers, setVvSpeakers] = useState<VoicevoxStyle[]>([]);
   const [vvStatus, setVvStatus] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle');
@@ -169,12 +192,21 @@ export const AutoPlayView: React.FC<{
   // Leaving the player should also leave fullscreen.
   const closeAll = () => { if (document.fullscreenElement) void document.exitFullscreen().catch(() => {}); stopAll(); onClose(); };
 
+  // Free every pre-generated clip (each holds a WAV object URL).
+  const disposeCache = () => {
+    clipsRef.current.forEach((c) => { try { c?.dispose(); } catch { /* ignore */ } });
+    clipsRef.current = [];
+  };
+
   // Reset when (re)opened.
   useEffect(() => {
     if (open) { setStarted(false); setSlideIdx(0); setBuildStep(0); setFinished(false); setError(''); setCaption(''); itemIdxRef.current = 0; }
-    else { stopAll(); setPlaying(false); }
+    // Closing frees the pre-generated audio: it is the only place the cache can
+    // outlive the playlist it was built for (the view is modal — the deck cannot
+    // be edited while it is open).
+    else { stopAll(); setPlaying(false); prepTokenRef.current++; setPrep(null); setUsingPregen(false); disposeCache(); }
   }, [open]);
-  useEffect(() => () => stopAll(), []);
+  useEffect(() => () => { stopAll(); disposeCache(); }, []);
 
   // On the setup screen, populate the Web Speech voice list (loads asynchronously).
   useEffect(() => {
@@ -209,9 +241,50 @@ export const AutoPlayView: React.FC<{
     sleepCtl.current = { id, resolve: res };
   });
 
+  // Wait for a bus topic (or timeout) — interruptible via stopAll(), like sleep().
+  const waitForTopic = (topic: string, timeoutMs: number) => new Promise<void>((res) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return; settled = true;
+      off(); window.clearTimeout(id);
+      if (sleepCtl.current && sleepCtl.current.resolve === finish) sleepCtl.current = null;
+      res();
+    };
+    const off = mdpBus.on(topic, finish);
+    const id = window.setTimeout(finish, timeoutMs);
+    sleepCtl.current = { id, resolve: finish };
+  });
+
+  // Execute a [[emit…]]/[[wait…]]/[[pause…]] script action at its position.
+  const runAction = async (a: ScriptAction) => {
+    if (a.kind === 'pause') { await sleep(a.timeoutMs ?? 1000); return; }
+    if (!a.topic) return;
+    const payload: Record<string, unknown> = { args: a.args || [] };
+    if (a.kind === 'emit') { mdpBus.emit(a.topic, payload); return; }
+    const timeoutMs = a.timeoutMs ?? 30000;
+    if (a.kind === 'wait') { await waitForTopic(a.topic, timeoutMs); return; }
+    // emit-wait: fire, then hold the narration until the reply (or timeout).
+    const replyTo = `reply:${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+    const wait = waitForTopic(replyTo, timeoutMs);
+    mdpBus.emit(a.topic, { ...payload, replyTo });
+    await wait;
+  };
+
   // Kick off synthesis for one item (empty text → an instant no-op clip).
   const synthClip = (item: PlayItem): Promise<Clip> => synthesize(item?.text || '', ttsCfg);
-  const disposeQuietly = async (p: Promise<Clip> | null) => { if (p) { try { (await p).dispose(); } catch { /* ignore */ } } };
+  // The clip for playlist index `i`: the PRE-GENERATED one when the show was
+  // prepared up front, else a fresh synthesis (streamed during the previous item).
+  const clipFor = (i: number): Promise<Clip> | null => {
+    if (i < 0 || i >= playlist.length) return null;
+    const cached = clipsRef.current[i];
+    return cached ? Promise.resolve(cached) : synthClip(playlist[i]);
+  };
+  // Free a clip that was synthesized on the fly. Pre-generated ones stay alive — the
+  // show can be restarted or jumped back through without synthesizing again.
+  const releaseTemp = async (i: number, p: Promise<Clip> | null) => {
+    if (!p || clipsRef.current[i]) return;
+    try { (await p).dispose(); } catch { /* ignore */ }
+  };
 
   const run = async (fromItem: number) => {
     const my = ++tokenRef.current;
@@ -219,41 +292,87 @@ export const AutoPlayView: React.FC<{
     // Prefetch the first item's audio; thereafter each iteration hands its
     // prefetched-next clip to the following one, so VOICEVOX synthesis of the NEXT
     // segment overlaps playback of the current one (no silent gap between segments).
-    let curClip: Promise<Clip> | null = playlist[fromItem] ? synthClip(playlist[fromItem]) : null;
+    // With a pre-generated show every lookup is an instant cache hit instead.
+    let curClip: Promise<Clip> | null = clipFor(fromItem);
     for (let i = fromItem; i < playlist.length; i++) {
-      if (tokenRef.current !== my) { await disposeQuietly(curClip); return; }
+      if (tokenRef.current !== my) { await releaseTemp(i, curClip); return; }
       itemIdxRef.current = i;
       const item = playlist[i];
       setSlideIdx(item.slideIdx); setBuildStep(item.buildStep); setCaption(item.caption || '');
-      const nextClip = (i + 1 < playlist.length) ? synthClip(playlist[i + 1]) : null;
-      if (item.text) {
+      const nextClip = clipFor(i + 1);
+      if (item.action) {
+        await runAction(item.action);
+        if (tokenRef.current !== my) { await releaseTemp(i, curClip); await releaseTemp(i + 1, nextClip); return; }
+      } else if (item.text) {
         let clip: Clip;
         try { clip = await (curClip ?? synthClip(item)); }
         catch (e) {
           setError(e instanceof Error ? e.message : 'Speech failed.');
           setPlaying(false); tokenRef.current++;
-          await disposeQuietly(nextClip); return;
+          await releaseTemp(i + 1, nextClip); return;
         }
-        if (tokenRef.current !== my) { clip.dispose(); await disposeQuietly(nextClip); return; }
+        if (tokenRef.current !== my) {
+          if (!clipsRef.current[i]) clip.dispose();
+          await releaseTemp(i + 1, nextClip); return;
+        }
         const u = clip.play(); utterRef.current = u;
         await u.done;
-        if (tokenRef.current !== my) { await disposeQuietly(nextClip); return; }
+        if (!clipsRef.current[i]) clip.dispose();   // streamed clip: free its WAV
+        if (tokenRef.current !== my) { await releaseTemp(i + 1, nextClip); return; }
         await sleep(item.dwellMs);
       } else {
         await sleep(item.dwellMs);
-        if (tokenRef.current !== my) { await disposeQuietly(nextClip); return; }
+        if (tokenRef.current !== my) { await releaseTemp(i + 1, nextClip); return; }
       }
       curClip = nextClip;
     }
     if (tokenRef.current === my) { setPlaying(false); setFinished(true); }
   };
 
+  // Synthesize the WHOLE show before it starts. Resolves true when every clip is
+  // ready, false if the user cancelled or the engine failed (the caller then stays
+  // on the setup screen). Cancelling takes effect at the next segment boundary.
+  const pregenAll = async (): Promise<boolean> => {
+    const targets: { i: number; text: string }[] = [];
+    playlist.forEach((it, i) => { if (it.text) targets.push({ i, text: it.text }); });
+    const my = ++prepTokenRef.current;
+    disposeCache();
+    setError('');
+    setPrep({ done: 0, total: targets.length, etaSec: null });
+    const t0 = Date.now();
+    for (let k = 0; k < targets.length; k++) {
+      if (prepTokenRef.current !== my) { disposeCache(); setPrep(null); return false; }
+      try {
+        clipsRef.current[targets[k].i] = await synthesize(targets[k].text, ttsCfg);
+      } catch (e) {
+        disposeCache();
+        setPrep(null);
+        setError(e instanceof Error ? e.message : 'Speech synthesis failed.');
+        return false;
+      }
+      if (prepTokenRef.current !== my) { disposeCache(); setPrep(null); return false; }
+      // ETA from the average cost so far — the only honest estimate we have, and
+      // the one thing that makes a multi-minute wait bearable.
+      const avgMs = (Date.now() - t0) / (k + 1);
+      setPrep({ done: k + 1, total: targets.length, etaSec: Math.round((avgMs * (targets.length - k - 1)) / 1000) });
+    }
+    setPrep(null);
+    setUsingPregen(true);
+    return true;
+  };
+  const cancelPregen = () => { prepTokenRef.current++; };
+
   const play = () => { if (finished) { itemIdxRef.current = 0; setSlideIdx(0); run(0); } else run(itemIdxRef.current); };
   // Leave the setup screen: go TRUE fullscreen (ignored if the browser refuses) and
-  // start the narrated show from the first slide.
-  const startShow = () => {
-    setStarted(true);
+  // start the narrated show from the first slide. Fullscreen is requested FIRST —
+  // it needs the click's user activation, which a long pre-generation would consume.
+  const startShow = async () => {
     if (rootRef.current && !document.fullscreenElement) void rootRef.current.requestFullscreen().catch(() => {});
+    if (pregenMode) {
+      const ok = await pregenAll();
+      if (!ok) return;   // cancelled / engine failure → stay on the setup screen
+    }
+    setStarted(true);
     run(0);
   };
   const pause = () => { stopAll(); setPlaying(false); };
@@ -267,6 +386,20 @@ export const AutoPlayView: React.FC<{
     setSlideIdx(ni); setBuildStep(0); setFinished(false);
     if (wasPlaying) run(it); else setPlaying(false);
   };
+
+  // App-wide narration control: any module (or the presenter) can pause/resume/
+  // skip the narrated auto-play by emitting `narration:*` bus events.
+  const controlRef = useRef({ play, pause, jump, playing });
+  controlRef.current = { play, pause, jump, playing };
+  useEffect(() => {
+    if (!open) return;
+    const offs = [
+      mdpBus.on('narration:pause', () => { if (controlRef.current.playing) controlRef.current.pause(); }),
+      mdpBus.on('narration:resume', () => { if (!controlRef.current.playing) controlRef.current.play(); }),
+      mdpBus.on('narration:skip', () => controlRef.current.jump(1)),
+    ];
+    return () => offs.forEach((f) => f());
+  }, [open]);
 
   // Keyboard transport (works with the control bar hidden — essential for clean
   // recording): Space = play/pause, ←/→ = previous/next slide. Active only during
@@ -318,6 +451,9 @@ export const AutoPlayView: React.FC<{
               {' '}{slides.length} slides · {scriptedCount} with a script.
             </div>
 
+            {/* While pre-generating, the settings are frozen: the clips already made
+                use the values as they were when Start was pressed. */}
+            <div style={{ pointerEvents: prep ? 'none' : 'auto', opacity: prep ? 0.5 : 1 }}>
             {/* Engine */}
             <div style={{ marginBottom: 16 }}>
               <div style={{ fontWeight: 700, marginBottom: 7 }}>Voice engine</div>
@@ -388,23 +524,77 @@ export const AutoPlayView: React.FC<{
                 <input type="checkbox" checked={showBar} onChange={(e) => setShowBar(e.target.checked)} />
                 Control bar
               </label>
+              <label
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8, userSelect: 'none',
+                  cursor: engine === 'voicevox' ? 'pointer' : 'not-allowed', opacity: engine === 'voicevox' ? 1 : 0.5,
+                }}
+                title={engine === 'voicevox'
+                  ? 'Synthesize every line BEFORE the show starts, then play from memory. Slower to start, but no stutter on machines that cannot synthesize in real time.'
+                  : 'VOICEVOX only — Web Speech synthesizes while it speaks, so there is nothing to prepare in advance.'}>
+                <input type="checkbox" disabled={engine !== 'voicevox'}
+                  checked={engine === 'voicevox' && settings.tts.pregenerate}
+                  onChange={(e) => patchTts({ pregenerate: e.target.checked })} />
+                Pre-generate audio
+              </label>
             </div>
+            {pregenMode && (
+              <div style={{ margin: '-14px 0 18px', fontSize: 12, color: '#9aa0aa' }}>
+                ⏳ All {playlist.filter((it) => it.text).length} lines are synthesized before the show starts (progress is shown);
+                playback then runs from memory — for machines that stutter on real-time synthesis.
+                The speed is baked in, so it can’t be changed during the show.
+              </div>
+            )}
             {!showBar && (
               <div style={{ margin: '-14px 0 18px', fontSize: 12, color: '#9aa0aa' }}>
                 🎬 Clean-recording mode: no control bar in the frame. Space = pause/resume, ←/→ = slides, mouse move = peek controls, Esc = exit fullscreen.
               </div>
             )}
-
-            <button type="button" onClick={startShow} style={{
-              width: '100%', padding: '13px 0', borderRadius: 10, cursor: 'pointer', border: 'none',
-              background: 'linear-gradient(90deg,#4f8cf7,#6aa1ff)', color: '#fff', fontSize: 16, fontWeight: 800,
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-            }}>
-              <PlayArrowIcon /> Start in full screen
-            </button>
-            <div style={{ textAlign: 'center', color: '#787e88', fontSize: 11.5, marginTop: 10 }}>
-              Esc exits full screen · Space/▶ pause · these settings are saved
             </div>
+
+            {prep ? (
+              /* Pre-generation in progress: the show waits here until every line is
+                 synthesized, so playback afterwards never has to wait for the engine. */
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 7 }}>
+                  <span style={{ fontWeight: 700 }}>Generating audio…</span>
+                  <span style={{ color: '#9aa0aa', fontVariantNumeric: 'tabular-nums' }}>
+                    {prep.done} / {prep.total}
+                    {prep.etaSec != null && prep.etaSec > 0
+                      ? ` · ~${Math.floor(prep.etaSec / 60)}:${String(prep.etaSec % 60).padStart(2, '0')} left`
+                      : ''}
+                  </span>
+                </div>
+                <LinearProgress
+                  variant="determinate"
+                  value={prep.total ? (prep.done / prep.total) * 100 : 0}
+                  sx={{ height: 10, borderRadius: 999, backgroundColor: '#242730', '& .MuiLinearProgress-bar': { backgroundColor: '#4f8cf7', borderRadius: 999 } }}
+                />
+                <button type="button" onClick={cancelPregen} style={{
+                  width: '100%', marginTop: 14, padding: '10px 0', borderRadius: 10, cursor: 'pointer',
+                  border: '1px solid #3a3d44', background: '#1b1d22', color: '#e8e8ea', fontSize: 14, fontWeight: 700,
+                }}>
+                  Cancel
+                </button>
+                <div style={{ textAlign: 'center', color: '#787e88', fontSize: 11.5, marginTop: 10 }}>
+                  Cancelling stops after the line being synthesized
+                </div>
+              </div>
+            ) : (
+              <>
+                <button type="button" onClick={() => void startShow()} style={{
+                  width: '100%', padding: '13px 0', borderRadius: 10, cursor: 'pointer', border: 'none',
+                  background: 'linear-gradient(90deg,#4f8cf7,#6aa1ff)', color: '#fff', fontSize: 16, fontWeight: 800,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                }}>
+                  <PlayArrowIcon /> {pregenMode ? 'Generate audio & start' : 'Start in full screen'}
+                </button>
+                {error && <div style={{ color: '#f87171', fontSize: 12.5, marginTop: 10, textAlign: 'center' }}>{error}</div>}
+                <div style={{ textAlign: 'center', color: '#787e88', fontSize: 11.5, marginTop: 10 }}>
+                  Esc exits full screen · Space/▶ pause · these settings are saved
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -459,17 +649,19 @@ export const AutoPlayView: React.FC<{
         </div>
         <div style={{ fontSize: 12, color: '#9aa', marginLeft: 12 }}>
           {settings.tts.engine === 'voicevox' ? 'VOICEVOX' : 'Web Speech'}
+          {usingPregen ? <span style={{ color: '#86efac', marginLeft: 8 }}>· pre-generated</span> : null}
           {error ? <span style={{ color: '#f87171', marginLeft: 10 }}>{error}</span> : null}
           {finished && !error ? <span style={{ color: '#86efac', marginLeft: 10 }}>Finished</span> : null}
         </div>
 
         <div style={{ flex: 1 }} />
 
-        {/* Voice playback speed (independent of the talk-time reading speed). */}
-        <Tooltip title="Voice speed">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 150 }}>
+        {/* Voice playback speed (independent of the talk-time reading speed). Locked
+            for a pre-generated show — the speed is already baked into the audio. */}
+        <Tooltip title={usingPregen ? 'Speed is fixed: the audio was pre-generated at this rate' : 'Voice speed'}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 150, opacity: usingPregen ? 0.55 : 1 }}>
             <span style={{ fontSize: 12, color: '#9aa' }}>Speed</span>
-            <Slider size="small" min={0.5} max={2} step={0.1} value={settings.tts.rate}
+            <Slider size="small" min={0.5} max={2} step={0.1} value={settings.tts.rate} disabled={usingPregen}
               onChange={(_, v) => patchTts({ rate: v as number })} sx={{ width: 90, color: '#8ab4f8' }} />
             <span style={{ fontSize: 12, width: 30 }}>{settings.tts.rate.toFixed(1)}×</span>
           </div>

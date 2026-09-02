@@ -42,6 +42,12 @@ export interface AppSettings {
     webspeechVoiceURI: string;
     voicevoxUrl: string;
     voicevoxSpeaker: number;
+    // Narrated auto-play: synthesize the WHOLE show's audio BEFORE starting it
+    // (progress bar), instead of synthesizing each segment as it plays. Slow
+    // machines stutter on real-time synthesis; pre-generating trades a wait up
+    // front for gap-free playback. VOICEVOX only — Web Speech cannot be
+    // pre-synthesized (the browser gives no audio data, only live playback).
+    pregenerate: boolean;
   };
   // Reading speed (characters/minute) for the talk-time estimate of read-aloud
   // `@script` slides. Per-person; calibratable in Settings. ~320 for Japanese.
@@ -72,7 +78,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   mcpEnabled: false,
   mcpAssetWrite: 'confirm',
   mcpHostConfigPaths: {},
-  tts: { engine: 'webspeech', rate: 1, pitch: 1, webspeechVoiceURI: '', voicevoxUrl: 'http://127.0.0.1:50021', voicevoxSpeaker: 1 },
+  tts: { engine: 'webspeech', rate: 1, pitch: 1, webspeechVoiceURI: '', voicevoxUrl: 'http://127.0.0.1:50021', voicevoxSpeaker: 1, pregenerate: false },
   readingCharsPerMin: 320,
   readingCalibrationText:
     'それでは発表を始めます。本日は、私たちの研究の背景と目的、提案手法、実験結果、そして今後の課題について順にご説明します。' +
@@ -110,6 +116,7 @@ export function normalizeSettings(raw: unknown): AppSettings {
         webspeechVoiceURI: typeof t.webspeechVoiceURI === 'string' ? t.webspeechVoiceURI : d.webspeechVoiceURI,
         voicevoxUrl: typeof t.voicevoxUrl === 'string' && t.voicevoxUrl ? t.voicevoxUrl : d.voicevoxUrl,
         voicevoxSpeaker: typeof t.voicevoxSpeaker === 'number' ? t.voicevoxSpeaker : d.voicevoxSpeaker,
+        pregenerate: typeof t.pregenerate === 'boolean' ? t.pregenerate : d.pregenerate,
       };
     })(),
     readingCharsPerMin: typeof r.readingCharsPerMin === 'number' && r.readingCharsPerMin > 0 ? r.readingCharsPerMin : 320,

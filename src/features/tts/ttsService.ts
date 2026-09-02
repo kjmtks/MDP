@@ -193,21 +193,28 @@ function playAudioUrl(url: string, revoke: boolean, onProgress?: SpeakProgressCa
 
 // ---- Prefetchable clips (for the narrated auto-play) ------------------------
 
-// A prepared utterance: `play()` starts it (returns an Utterance), `dispose()`
-// frees any held resources (a VOICEVOX object URL) if it was never played.
+// A prepared utterance: `play()` starts it (returns an Utterance) and may be called
+// MORE THAN ONCE — a pre-generated clip is replayed when the show is restarted or
+// jumps back. `dispose()` frees the held resources (a VOICEVOX object URL); the clip
+// must not be played afterwards. Callers own the lifetime: dispose every clip you
+// synthesized once you are done with it.
 export interface Clip { play: () => Utterance; dispose: () => void }
 
 // Prepare `text` for the configured engine WITHOUT playing. For VOICEVOX this does
 // the (slow) network synthesis up front, so the caller can prefetch the next unit
-// during playback of the current one. For Web Speech there is nothing to
-// pre-synthesize, so play() speaks on demand.
+// during playback of the current one — or pre-generate the WHOLE show before it
+// starts (see the auto-play's pre-generate mode). For Web Speech there is nothing
+// to pre-synthesize, so play() speaks on demand.
 export async function synthesize(text: string, cfg: TtsConfig, sel?: VoiceSelect, onProgress?: SpeakProgressCallback): Promise<Clip> {
   const t = (text || '').trim();
   if (!t) return { play: () => NOOP, dispose: () => {} };
   if (cfg.engine === 'voicevox') {
     const url = await synthVoicevox(t, cfg);
-    let used = false;
-    return { play: () => { used = true; return playAudioUrl(url, true, onProgress); }, dispose: () => { if (!used) URL.revokeObjectURL(url); } };
+    let freed = false;
+    return {
+      play: () => (freed ? NOOP : playAudioUrl(url, false, onProgress)),
+      dispose: () => { if (!freed) { freed = true; URL.revokeObjectURL(url); } },
+    };
   }
   return { play: () => (webSpeechAvailable() ? speakWebSpeech(t, cfg, sel, onProgress) : NOOP), dispose: () => {} };
 }
@@ -225,9 +232,13 @@ export function speak(text: string, cfg: TtsConfig, sel?: VoiceSelect, onProgres
     const done = (async () => {
       const clip = await synthesize(t, cfg, sel, onProgress); // may throw if the engine is unreachable
       if (stopped) { clip.dispose(); return; }
-      inner = clip.play();
-      if (stopped) { inner.stop(); return; }
-      await inner.done;
+      try {
+        inner = clip.play();
+        if (stopped) { inner.stop(); return; }
+        await inner.done;
+      } finally {
+        clip.dispose();  // one-shot playback owns the clip
+      }
     })();
     return { done, stop: () => { stopped = true; inner?.stop(); } };
   }

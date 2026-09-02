@@ -114,9 +114,13 @@ function wrapManipulable(
     if (manip.maxH != null) styles.push(`max-height:${manip.maxH}%`);
   }
 
+  // Optional stable address for the app-wide event bus: `tag: NAME` on any
+  // directive lets scripts/markers command this instance via `cmd:NAME`.
+  const tag = (args.tag || '').trim().replace(/[^\w-]/g, '');
   const attrs = [
     'class="mdp-manip"',
     'data-mdp-manip="1"',
+    tag ? `data-mdp-tag="${tag}"` : '',
     ord != null ? `data-mdp-ord="${ord}"` : '',
     `data-move="${manip.move}"`,
     `data-resize="${manip.resize}"`,

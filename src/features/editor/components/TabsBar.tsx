@@ -27,8 +27,7 @@ export const TabsBar: React.FC<TabsBarProps> = ({
     e.dataTransfer.effectAllowed = 'move';
   };
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const handleDragOver = (e: React.DragEvent, index: number) => {
+  const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
   };
@@ -66,7 +65,7 @@ export const TabsBar: React.FC<TabsBarProps> = ({
               key={tab.id}
               draggable
               onDragStart={(e) => handleDragStart(e, index)}
-              onDragOver={(e) => handleDragOver(e, index)}
+              onDragOver={handleDragOver}
               onDrop={(e) => handleDrop(e, index)}
               onContextMenu={(e) => handleContextMenu(e, index)}
               onClick={() => onTabClick(index)}

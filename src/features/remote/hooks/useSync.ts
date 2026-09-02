@@ -28,6 +28,9 @@ export interface OverviewGridPayload {
 export type SyncMessage =
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   | { type: 'SYNC_STATE'; payload: any; channelId?: string }
+  // App-wide event bus (mdpBus) crossing surfaces — one hop, never re-forwarded.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  | { type: 'BUS_EVENT'; topic: string; payload?: any; channelId?: string }
   | { type: 'SYNC_STATE_IMAGE'; payload: ImageSyncPayload; channelId?: string }
   | { type: 'NAV'; direction: number; channelId: string }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -39,6 +42,9 @@ export type SyncMessage =
   | { type: 'ADD_BLANK_SLIDE'; pageIndex: number; channelId?: string }
   | { type: 'UPDATE_STROKES'; pageIndex: number; indices: number[]; dx: number; dy: number; channelId?: string }
   | { type: 'UPDATE_NOTE'; pageIndex: number; note: string; channelId?: string }
+  // Presenter-side edit of the read-aloud `@script` blocks of a slide. One entry
+  // per source `<!-- @script: … -->` block, in document order (raw text, markers kept).
+  | { type: 'UPDATE_SCRIPT'; pageIndex: number; scripts: string[]; channelId?: string }
   | { type: 'TOGGLE_OVERVIEW'; channelId?: string }
   | { type: 'SELECT_SLIDE'; index: number; channelId?: string }
   // Hyperlink navigation (mirror→host): jump to a link target / move through history.

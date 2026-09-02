@@ -161,7 +161,12 @@ const moduleRegionField = StateField.define<ModuleScan>({
 // One vertical bar per nesting depth, rendered in the scope gutter. Consecutive
 // lines' bars align, forming a continuous rail from a block's start to its @end.
 class ScopeMarker extends GutterMarker {
-  constructor(readonly depths: number[]) { super(); }
+  readonly depths: number[];
+
+  constructor(depths: number[]) {
+    super();
+    this.depths = depths;
+  }
   eq(o: ScopeMarker): boolean {
     return o.depths.length === this.depths.length && o.depths.every((d, i) => d === this.depths[i]);
   }

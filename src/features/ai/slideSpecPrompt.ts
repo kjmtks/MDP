@@ -129,6 +129,18 @@ block on a single slide OVERRIDES the global one for that slide; an EMPTY block
     \`基本角周波数を \\(\\omega_0 = 2\\pi/T\\) [[say: オメガゼロ イコール 2パイ割るティー]] とおくと，…\`
     — the caption shows \\(\\omega_0=2\\pi/T\\); the narrator says "オメガゼロ イコール 2パイ割るティー".
     Prefer KaTeX + \`[[say:…]]\` over spelling maths out phonetically in plain text.
+  - **Event markers (app-wide bus):** a script can fire events on the app event bus
+    (mdpBus) at exact points, e.g. to have an on-slide module play an example and
+    then continue narrating:
+    \`[[emit: TOPIC arg1 arg2 | label]]\` — fire and keep reading;
+    \`[[emit-wait: TOPIC args timeout=30s | label]]\` — fire, PAUSE the narration
+    until the receiver signals done (or the timeout), then resume;
+    \`[[wait: TOPIC timeout=10s]]\` — wait for an event; \`[[pause: 2s]]\` — timed pause.
+    Address a module instance by giving its directive a \`tag:\` argument (any module
+    accepts it, like x/y): \`<!-- @speakcard tag: ex1 … -->\` is commanded with topic
+    \`cmd:ex1\` (e.g. \`[[emit-wait: cmd:ex1 play main | 例文①]]\`). In the presenter
+    view these markers render as clickable CHIPS, so a human presenter fires the
+    same events manually while reading the script. Markers never appear on slides.
 - \`<!-- @time 90s -->\` — this slide's speaking-time budget (overrides the estimate).
   Accepts \`90s\`, \`2m\`, \`1m30s\`, \`1:30\` (mm:ss). Shown live in the presenter view
   (per-slide + whole-deck countdown).
@@ -172,6 +184,9 @@ Argument syntax (the \`key: value\` list):
 - Positioned modules accept \`x\`, \`y\` (center %, 0–100), \`w\`, \`h\` (size %), \`rot\`
   (degrees) — but normally you let the user place them on the canvas; don't add
   these unless a specific position is requested.
+- Every module also accepts \`tag: NAME\` — a stable address for the app event bus,
+  so \`@script\` markers (\`[[emit-wait: cmd:NAME …]]\`) or other modules can command
+  this instance. Add it only when a script/module actually targets the instance.
 
 ## Markdown features
 

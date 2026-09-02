@@ -25,6 +25,88 @@ export function stripStepMarkers(s: string): string {
   return String(s || '').replace(STEP_MARKER, '').trim();
 }
 
+// ACTION markers fire app-wide bus events (mdpBus) from inside a script:
+//   [[emit: topic arg1 arg2 | label]]        fire and keep reading
+//   [[emit-wait: topic args timeout=30s | label]]  fire, PAUSE narration until the
+//                                            reply (or timeout), then resume
+//   [[wait: topic timeout=10s]]              wait for an event
+//   [[pause: 2s]]                            timed pause
+// The optional `| label` names the chip shown in the presenter's script pane.
+// Like [[step]]/[[say]], they are stripped from captions, speech and estimates.
+const ACTION_MARKER_SRC = '\\[\\[\\s*(emit-wait|emit|wait|pause)\\s*:\\s*([^\\]]*?)\\s*\\]\\]';
+const actionMarkerRe = () => new RegExp(ACTION_MARKER_SRC, 'gi');
+
+export interface ScriptAction {
+  kind: 'emit' | 'emit-wait' | 'wait' | 'pause';
+  topic?: string;
+  args?: string[];
+  timeoutMs?: number;
+  label?: string;
+}
+
+// Parse "2s" / "1500ms" / "2" (seconds) into ms.
+function parseDurationMs(s: string): number | undefined {
+  const m = /^([\d.]+)\s*(ms|s)?$/i.exec(s.trim());
+  if (!m) return undefined;
+  const n = parseFloat(m[1]);
+  if (!Number.isFinite(n)) return undefined;
+  return (m[2] || 's').toLowerCase() === 'ms' ? Math.round(n) : Math.round(n * 1000);
+}
+
+export function parseScriptAction(kindRaw: string, bodyRaw: string): ScriptAction {
+  const kind = kindRaw.toLowerCase() as ScriptAction['kind'];
+  let body = bodyRaw;
+  let label: string | undefined;
+  const bar = body.indexOf('|');
+  if (bar >= 0) { label = body.slice(bar + 1).trim() || undefined; body = body.slice(0, bar); }
+  if (kind === 'pause') {
+    return { kind, timeoutMs: parseDurationMs(body) ?? 1000, label };
+  }
+  const tokens = body.trim().split(/\s+/).filter(Boolean);
+  let timeoutMs: number | undefined;
+  const rest: string[] = [];
+  for (const t of tokens) {
+    const m = /^timeout=(.+)$/i.exec(t);
+    if (m) timeoutMs = parseDurationMs(m[1]);
+    else rest.push(t);
+  }
+  return { kind, topic: rest[0] || '', args: rest.slice(1), timeoutMs, label };
+}
+
+// Split a narration segment into text parts and action parts, in order.
+export type SegmentPart = { text: string } | { action: ScriptAction };
+export function segmentParts(seg: string): SegmentPart[] {
+  const out: SegmentPart[] = [];
+  const re = actionMarkerRe();
+  let last = 0;
+  let m: RegExpExecArray | null;
+  const s = String(seg || '');
+  while ((m = re.exec(s)) !== null) {
+    if (m.index > last) out.push({ text: s.slice(last, m.index) });
+    out.push({ action: parseScriptAction(m[1], m[2]) });
+    last = m.index + m[0].length;
+  }
+  if (last < s.length) out.push({ text: s.slice(last) });
+  return out;
+}
+
+// Render a script's markdown for the PRESENTER pane: markers become inline chip
+// elements (clicked chips re-fire the same events manually). [[say:…]] readings
+// are hidden (the presenter reads the math itself).
+export function renderScriptChips(scriptMarkdown: string): string {
+  const esc = (v: string) => v.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return String(scriptMarkdown || '')
+    .replace(/\[\[\s*step\s*\]\]/gi, '<button type="button" class="mdp-script-chip" data-chip="step" title="ビルドを1歩進める">⏭</button>')
+    .replace(actionMarkerRe(), (_m, kindRaw: string, body: string) => {
+      const a = parseScriptAction(kindRaw, body);
+      if (a.kind === 'pause') return `<span class="mdp-script-chip mdp-chip-passive" title="自動再生時の間">⏸${a.label ? ' ' + esc(a.label) : ''}</span>`;
+      if (a.kind === 'wait') return `<span class="mdp-script-chip mdp-chip-passive" title="自動再生時はイベント待ち">⏳ ${esc(a.label || a.topic || '')}</span>`;
+      const label = a.label || a.topic || '';
+      return `<button type="button" class="mdp-script-chip" data-chip="emit" data-topic="${esc(a.topic || '')}" data-args="${esc((a.args || []).join(' '))}" title="クリックでイベント送信">▶ ${esc(label)}</button>`;
+    })
+    .replace(/\[\[\s*say\s*:[\s\S]*?\]\]/gi, ' ');
+}
+
 // A `[[say: 読み]]` marker gives the SPOKEN reading of a nearby formula, so the
 // on-screen caption can render the math (`\(…\)` / `\[…\]`) while the narrator says
 // the reading instead of the raw LaTeX. Placed next to the math it annotates.
@@ -44,6 +126,7 @@ export function captionText(seg: string): string {
   return String(seg || '')
     .replace(SAY_MARKER, ' ')
     .replace(STEP_MARKER, ' ')
+    .replace(actionMarkerRe(), ' ')
     .replace(/[ \t]+/g, ' ')
     .trim();
 }
@@ -56,6 +139,7 @@ export function speechText(seg: string): string {
     .replace(SAY_MARKER, ' $1 ')
     .replace(MATH_SPAN, ' ')
     .replace(STEP_MARKER, ' ')
+    .replace(actionMarkerRe(), ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -63,7 +147,7 @@ export function speechText(seg: string): string {
 // Remove BOTH control marker families (`[[step]]`, `[[say:…]]`) for a plain reading /
 // display surface that renders math itself (presenter & rehearsal scriptHtml).
 export function stripScriptMarkers(s: string): string {
-  return String(s || '').replace(SAY_MARKER, ' ').replace(STEP_MARKER, ' ').replace(/[ \t]+/g, ' ').trim();
+  return String(s || '').replace(SAY_MARKER, ' ').replace(STEP_MARKER, ' ').replace(actionMarkerRe(), ' ').replace(/[ \t]+/g, ' ').trim();
 }
 
 // One subtitle-sized unit of a narration segment: what to SHOW (caption — may carry
@@ -86,6 +170,7 @@ export function scriptUnits(seg: string, maxLen = 42): ScriptUnit[] {
   const atoms: { math: string; say: string }[] = [];
   const masked = String(seg || '')
     .replace(STEP_MARKER, ' ')
+    .replace(actionMarkerRe(), ' ')
     // math span + optional attached reading → one indivisible token
     .replace(/(\\\([\s\S]*?\\\)|\\\[[\s\S]*?\\\])\s*(?:\[\[\s*say\s*:\s*([\s\S]*?)\]\])?/g, (_m, math: string, say?: string) => {
       atoms.push({ math, say: (say || '').trim() });

@@ -10,7 +10,8 @@ inline (with a small ▶ mark before it), clicking it reads it aloud via the app
 instead when you want the full card (sentence + smaller translation + reading note).
 Undecorated by design — the text keeps its surrounding style. Cross-surface: clicking
 on the presenter/remote plays the audio on the OWNER surface (slideshow / preview);
-the mark and highlight stay in sync everywhere.
+the mark and highlight stay in sync everywhere. With `tag: NAME` a @script can play it
+via `[[emit-wait: cmd:NAME play | ラベル]]` (see @speakcard).
 
 Gotcha: declared as a block module but renders INLINE, so it flows within the
 surrounding sentence. The body is the spoken text (inline Markdown allowed); the
@@ -166,14 +167,24 @@ Full sentence: <!-- @speak rate: 0.9 -->Water boils at 100 °C.<!-- @end -->
         });
 
         if (ctx.role === 'owner') {
-          let current = null;
-          const stopNow = function () { if (current) { const u = current; current = null; u.stop(); } };
-          const play = function () {
+          // Utterance ownership in a window-global registry keyed by syncId —
+          // duplicate owner instances exist (hidden render surfaces); see
+          // @speakcard for the failure mode this prevents.
+          const REG = window.__mdpSpeakReg || (window.__mdpSpeakReg = {});
+          const key = ctx.syncId;
+          const stopNow = function (answer) {
+            const e = REG[key];
+            if (!e) return;
+            REG[key] = null;
+            e.u.stop();
+            if (answer && typeof e.onDone === 'function') e.onDone();
+          };
+          const play = function (onDone) {
             const tts = window.mdpTts;
-            if (!tts || !bodyEl) return;
-            stopNow();
+            if (!tts || !bodyEl) { if (typeof onDone === 'function') onDone(); return; }
+            stopNow(false);
             const text = (bodyEl.textContent || '').trim();
-            if (!text) return;
+            if (!text) { if (typeof onDone === 'function') onDone(); return; }
             const rate = parseFloat(el.dataset.rate);
             const lang = el.dataset.lang || '';
             const voice = el.dataset.voice || '';
@@ -188,16 +199,31 @@ Full sentence: <!-- @speak rate: 0.9 -->Water boils at 100 °C.<!-- @end -->
               else if (typeof p.fraction === 'number') ctx.setShared({ prog: { f: p.fraction } });
             };
             const u = tts.speak(text, o);
-            current = u;
+            const entry = { u: u, onDone: onDone, by: ctx.id };
+            REG[key] = entry;
             ctx.setShared({ playing: true, prog: null });
-            const done = function () { if (current === u) { current = null; ctx.setShared({ playing: false, prog: null }); } };
+            const done = function () {
+              if (REG[key] !== entry) return; // superseded — not ours to report
+              REG[key] = null;
+              ctx.setShared({ playing: false, prog: null });
+              if (typeof onDone === 'function') onDone();
+            };
             u.done.then(done, done);
           };
           ctx.onAction(function (type) {
             if (type === 'speak') play();
-            else if (type === 'stop') { stopNow(); ctx.setShared({ playing: false, prog: null }); }
+            else if (type === 'stop') { stopNow(true); ctx.setShared({ playing: false, prog: null }); }
           });
-          ctx.onCleanup(function () { stopNow(); clearHL(); });
+          // Bus commands: `cmd:<tag> play` / `cmd:<tag> stop` (see @speakcard).
+          ctx.onCommand(function (action, args, done) {
+            if (action === 'play' || action === '') play(done);
+            else if (action === 'stop') { stopNow(true); ctx.setShared({ playing: false, prog: null }); done(); }
+            else done();
+          });
+          ctx.onCleanup(function () {
+            if (REG[key] && REG[key].by === ctx.id) stopNow(true);
+            clearHL();
+          });
         } else {
           ctx.onCleanup(clearHL);
         }
