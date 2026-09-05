@@ -1,427 +1,565 @@
 {
   "effects": [
     {
-      "path": "effects/blur.mdpfx.xml"
+      "path": "effects/blur.mdpfx.xml",
+      "hash": "0868ec0b"
     },
     {
-      "path": "effects/bounce.mdpfx.xml"
+      "path": "effects/bounce.mdpfx.xml",
+      "hash": "7f2c9512"
     },
     {
-      "path": "effects/drop.mdpfx.xml"
+      "path": "effects/drop.mdpfx.xml",
+      "hash": "df258d60"
     },
     {
-      "path": "effects/fade.mdpfx.xml"
+      "path": "effects/fade.mdpfx.xml",
+      "hash": "2e9ae9fc"
     },
     {
-      "path": "effects/flash.mdpfx.xml"
+      "path": "effects/flash.mdpfx.xml",
+      "hash": "db199a69"
     },
     {
-      "path": "effects/flip.mdpfx.xml"
+      "path": "effects/flip.mdpfx.xml",
+      "hash": "d59732ba"
     },
     {
-      "path": "effects/fly.mdpfx.xml"
+      "path": "effects/fly.mdpfx.xml",
+      "hash": "4e5185f3"
     },
     {
-      "path": "effects/glide.mdpfx.xml"
+      "path": "effects/glide.mdpfx.xml",
+      "hash": "d6342e2d"
     },
     {
-      "path": "effects/glow.mdpfx.xml"
+      "path": "effects/glow.mdpfx.xml",
+      "hash": "67bf228b"
     },
     {
-      "path": "effects/iris.mdpfx.xml"
+      "path": "effects/iris.mdpfx.xml",
+      "hash": "6fe10ef0"
     },
     {
-      "path": "effects/none.mdpfx.xml"
+      "path": "effects/none.mdpfx.xml",
+      "hash": "3f704669"
     },
     {
-      "path": "effects/pulse.mdpfx.xml"
+      "path": "effects/pulse.mdpfx.xml",
+      "hash": "539d3093"
     },
     {
-      "path": "effects/reveal.mdpfx.xml"
+      "path": "effects/reveal.mdpfx.xml",
+      "hash": "1b4ddd04"
     },
     {
-      "path": "effects/rotate.mdpfx.xml"
+      "path": "effects/rotate.mdpfx.xml",
+      "hash": "3334d92f"
     },
     {
-      "path": "effects/shake.mdpfx.xml"
+      "path": "effects/shake.mdpfx.xml",
+      "hash": "a9cad33a"
     },
     {
-      "path": "effects/skew.mdpfx.xml"
+      "path": "effects/skew.mdpfx.xml",
+      "hash": "355cf879"
     },
     {
-      "path": "effects/slide.mdpfx.xml"
+      "path": "effects/slide.mdpfx.xml",
+      "hash": "578aff27"
     },
     {
-      "path": "effects/swing.mdpfx.xml"
+      "path": "effects/swing.mdpfx.xml",
+      "hash": "b6f38c73"
     },
     {
-      "path": "effects/tada.mdpfx.xml"
+      "path": "effects/tada.mdpfx.xml",
+      "hash": "31abf6be"
     },
     {
-      "path": "effects/wipe.mdpfx.xml"
+      "path": "effects/wipe.mdpfx.xml",
+      "hash": "d9f1668c"
     },
     {
-      "path": "effects/zoom.mdpfx.xml"
+      "path": "effects/zoom.mdpfx.xml",
+      "hash": "4b34c911"
     }
   ],
   "modules": [
     {
-      "path": "modules/addclass.mdpmod.xml"
+      "path": "modules/addclass.mdpmod.xml",
+      "hash": "221e6d55"
     },
     {
-      "path": "modules/addstyle.mdpmod.xml"
+      "path": "modules/addstyle.mdpmod.xml",
+      "hash": "2318cc71"
     },
     {
-      "path": "modules/agenda.mdpmod.xml"
+      "path": "modules/agenda.mdpmod.xml",
+      "hash": "cb31a3f2"
     },
     {
-      "path": "modules/alert.mdpmod.xml"
+      "path": "modules/alert.mdpmod.xml",
+      "hash": "23cae9ce"
     },
     {
-      "path": "modules/arrow.mdpmod.xml"
+      "path": "modules/arrow.mdpmod.xml",
+      "hash": "1ac2815e"
     },
     {
-      "path": "modules/avatar.mdpmod.xml"
+      "path": "modules/avatar.mdpmod.xml",
+      "hash": "de913df9"
     },
     {
-      "path": "modules/avatarrow.mdpmod.xml"
+      "path": "modules/avatarrow.mdpmod.xml",
+      "hash": "6d834bfc"
     },
     {
-      "path": "modules/badge.mdpmod.xml"
+      "path": "modules/badge.mdpmod.xml",
+      "hash": "439fd770"
     },
     {
-      "path": "modules/balloon.mdpmod.xml"
+      "path": "modules/balloon.mdpmod.xml",
+      "hash": "a917973a"
     },
     {
-      "path": "modules/barchart.mdpmod.xml"
+      "path": "modules/barchart.mdpmod.xml",
+      "hash": "8470154a"
     },
     {
-      "path": "modules/bignumber.mdpmod.xml"
+      "path": "modules/bignumber.mdpmod.xml",
+      "hash": "dc6bfb50"
     },
     {
-      "path": "modules/bigo.mdpmod.xml"
+      "path": "modules/bigo.mdpmod.xml",
+      "hash": "f4470ee0"
     },
     {
-      "path": "modules/boxplot.mdpmod.xml"
+      "path": "modules/boxplot.mdpmod.xml",
+      "hash": "3d145e41"
     },
     {
-      "path": "modules/browser.mdpmod.xml"
+      "path": "modules/browser.mdpmod.xml",
+      "hash": "0d9a78ea"
     },
     {
-      "path": "modules/bubble.mdpmod.xml"
+      "path": "modules/bubble.mdpmod.xml",
+      "hash": "e3f09345"
     },
     {
-      "path": "modules/button.mdpmod.xml"
+      "path": "modules/button.mdpmod.xml",
+      "hash": "911c8e9d"
     },
     {
-      "path": "modules/callout.mdpmod.xml"
+      "path": "modules/callout.mdpmod.xml",
+      "hash": "773d6472"
     },
     {
-      "path": "modules/card.mdpmod.xml"
+      "path": "modules/card.mdpmod.xml",
+      "hash": "a4921f07"
     },
     {
-      "path": "modules/checklist.mdpmod.xml"
+      "path": "modules/checklist.mdpmod.xml",
+      "hash": "b6901eca"
     },
     {
-      "path": "modules/clock.mdpmod.xml"
+      "path": "modules/clock.mdpmod.xml",
+      "hash": "19b17cfe"
     },
     {
-      "path": "modules/columns.mdpmod.xml"
+      "path": "modules/columns.mdpmod.xml",
+      "hash": "558725cb"
     },
     {
-      "path": "modules/compare.mdpmod.xml"
+      "path": "modules/compare.mdpmod.xml",
+      "hash": "7a63b529"
     },
     {
-      "path": "modules/comparetable.mdpmod.xml"
+      "path": "modules/comparetable.mdpmod.xml",
+      "hash": "afbab5bd"
     },
     {
-      "path": "modules/confusionmatrix.mdpmod.xml"
+      "path": "modules/confusionmatrix.mdpmod.xml",
+      "hash": "2da50420"
     },
     {
-      "path": "modules/coordplane.mdpmod.xml"
+      "path": "modules/coordplane.mdpmod.xml",
+      "hash": "7fad00c2"
     },
     {
-      "path": "modules/cycle.mdpmod.xml"
+      "path": "modules/cycle.mdpmod.xml",
+      "hash": "4b0efe30"
     },
     {
-      "path": "modules/definition.mdpmod.xml"
+      "path": "modules/definition.mdpmod.xml",
+      "hash": "1e246148"
     },
     {
-      "path": "modules/derivation.mdpmod.xml"
+      "path": "modules/derivation.mdpmod.xml",
+      "hash": "06ee090c"
     },
     {
-      "path": "modules/distribution.mdpmod.xml"
+      "path": "modules/distribution.mdpmod.xml",
+      "hash": "8830ef33"
     },
     {
-      "path": "modules/equation.mdpmod.xml"
+      "path": "modules/equation.mdpmod.xml",
+      "hash": "1ee7e6a9"
     },
     {
-      "path": "modules/faq.mdpmod.xml"
+      "path": "modules/faq.mdpmod.xml",
+      "hash": "eda8f536"
     },
     {
-      "path": "modules/fishbone.mdpmod.xml"
+      "path": "modules/fishbone.mdpmod.xml",
+      "hash": "090a005d"
     },
     {
-      "path": "modules/flow.mdpmod.xml"
+      "path": "modules/flow.mdpmod.xml",
+      "hash": "8c3fdf1e"
     },
     {
-      "path": "modules/formula.mdpmod.xml"
+      "path": "modules/formula.mdpmod.xml",
+      "hash": "30cda532"
     },
     {
-      "path": "modules/fracbar.mdpmod.xml"
+      "path": "modules/fracbar.mdpmod.xml",
+      "hash": "7ccb977b"
     },
     {
-      "path": "modules/freebox.mdpmod.xml"
+      "path": "modules/freebox.mdpmod.xml",
+      "hash": "fb5843ed"
     },
     {
-      "path": "modules/funcplot.mdpmod.xml"
+      "path": "modules/funcplot.mdpmod.xml",
+      "hash": "4bbd445f"
     },
     {
-      "path": "modules/funnel.mdpmod.xml"
+      "path": "modules/funnel.mdpmod.xml",
+      "hash": "b20bfaf6"
     },
     {
-      "path": "modules/gallery.mdpmod.xml"
+      "path": "modules/gallery.mdpmod.xml",
+      "hash": "e01399f5"
     },
     {
-      "path": "modules/gantt.mdpmod.xml"
+      "path": "modules/gantt.mdpmod.xml",
+      "hash": "6a58fef4"
     },
     {
-      "path": "modules/gauge.mdpmod.xml"
+      "path": "modules/gauge.mdpmod.xml",
+      "hash": "6612ac62"
     },
     {
-      "path": "modules/graph.mdpmod.xml"
+      "path": "modules/graph.mdpmod.xml",
+      "hash": "a2d6140d"
     },
     {
-      "path": "modules/grid.mdpmod.xml"
+      "path": "modules/grid.mdpmod.xml",
+      "hash": "5256b997"
     },
     {
-      "path": "modules/heatmap.mdpmod.xml"
+      "path": "modules/heatmap.mdpmod.xml",
+      "hash": "66716576"
     },
     {
-      "path": "modules/histogram.mdpmod.xml"
+      "path": "modules/histogram.mdpmod.xml",
+      "hash": "51e4c897"
     },
     {
-      "path": "modules/iarrow.mdpmod.xml"
+      "path": "modules/iarrow.mdpmod.xml",
+      "hash": "2e908e75"
     },
     {
-      "path": "modules/iconlist.mdpmod.xml"
+      "path": "modules/iconlist.mdpmod.xml",
+      "hash": "7f3199dd"
     },
     {
-      "path": "modules/infobox.mdpmod.xml"
+      "path": "modules/infobox.mdpmod.xml",
+      "hash": "56ef999b"
     },
     {
-      "path": "modules/kanban.mdpmod.xml"
+      "path": "modules/kanban.mdpmod.xml",
+      "hash": "fc1068bc"
     },
     {
-      "path": "modules/kbd.mdpmod.xml"
+      "path": "modules/kbd.mdpmod.xml",
+      "hash": "6356472a"
     },
     {
-      "path": "modules/label.mdpmod.xml"
+      "path": "modules/label.mdpmod.xml",
+      "hash": "8dad03f5"
     },
     {
-      "path": "modules/legend.mdpmod.xml"
+      "path": "modules/legend.mdpmod.xml",
+      "hash": "a4d02879"
     },
     {
-      "path": "modules/line.mdpmod.xml"
+      "path": "modules/line.mdpmod.xml",
+      "hash": "bbc64ae9"
     },
     {
-      "path": "modules/mark.mdpmod.xml"
+      "path": "modules/mark.mdpmod.xml",
+      "hash": "227cddaf"
     },
     {
-      "path": "modules/matmul.mdpmod.xml"
+      "path": "modules/matmul.mdpmod.xml",
+      "hash": "08e2b30a"
     },
     {
-      "path": "modules/matrix.mdpmod.xml"
+      "path": "modules/matrix.mdpmod.xml",
+      "hash": "c440332a"
     },
     {
-      "path": "modules/metrics.mdpmod.xml"
+      "path": "modules/metrics.mdpmod.xml",
+      "hash": "ff2ddaf7"
     },
     {
-      "path": "modules/mindmap.mdpmod.xml"
+      "path": "modules/mindmap.mdpmod.xml",
+      "hash": "922fe1d2"
     },
     {
-      "path": "modules/multicolumn.mdpmod.xml"
+      "path": "modules/multicolumn.mdpmod.xml",
+      "hash": "22ff25c2"
     },
     {
-      "path": "modules/netgraph.mdpmod.xml"
+      "path": "modules/netgraph.mdpmod.xml",
+      "hash": "262e6c19"
     },
     {
-      "path": "modules/numberline.mdpmod.xml"
+      "path": "modules/numberline.mdpmod.xml",
+      "hash": "de1778b3"
     },
     {
-      "path": "modules/phone.mdpmod.xml"
+      "path": "modules/phone.mdpmod.xml",
+      "hash": "264788df"
     },
     {
-      "path": "modules/pixelgrid.mdpmod.xml"
+      "path": "modules/pixelgrid.mdpmod.xml",
+      "hash": "4a41814e"
     },
     {
-      "path": "modules/polarplot.mdpmod.xml"
+      "path": "modules/polarplot.mdpmod.xml",
+      "hash": "075a349a"
     },
     {
-      "path": "modules/pricing.mdpmod.xml"
+      "path": "modules/pricing.mdpmod.xml",
+      "hash": "8ee4f890"
     },
     {
-      "path": "modules/probtree.mdpmod.xml"
+      "path": "modules/probtree.mdpmod.xml",
+      "hash": "c78ea038"
     },
     {
-      "path": "modules/process.mdpmod.xml"
+      "path": "modules/process.mdpmod.xml",
+      "hash": "7c070614"
     },
     {
-      "path": "modules/progress.mdpmod.xml"
+      "path": "modules/progress.mdpmod.xml",
+      "hash": "e74010a7"
     },
     {
-      "path": "modules/proof.mdpmod.xml"
+      "path": "modules/proof.mdpmod.xml",
+      "hash": "1e639096"
     },
     {
-      "path": "modules/pyramid.mdpmod.xml"
+      "path": "modules/pyramid.mdpmod.xml",
+      "hash": "f0e7efbd"
     },
     {
-      "path": "modules/qr.mdpmod.xml"
+      "path": "modules/qr.mdpmod.xml",
+      "hash": "d5bdaa8b"
     },
     {
-      "path": "modules/quantity.mdpmod.xml"
+      "path": "modules/quantity.mdpmod.xml",
+      "hash": "1be1d1fc"
     },
     {
-      "path": "modules/quote.mdpmod.xml"
+      "path": "modules/quote.mdpmod.xml",
+      "hash": "05c54af2"
     },
     {
-      "path": "modules/radar.mdpmod.xml"
+      "path": "modules/radar.mdpmod.xml",
+      "hash": "fbe7d5d2"
     },
     {
-      "path": "modules/rating.mdpmod.xml"
+      "path": "modules/rating.mdpmod.xml",
+      "hash": "78e421f9"
     },
     {
-      "path": "modules/references.mdpmod.xml"
+      "path": "modules/references.mdpmod.xml",
+      "hash": "6146553b"
     },
     {
-      "path": "modules/roadmap.mdpmod.xml"
+      "path": "modules/roadmap.mdpmod.xml",
+      "hash": "2f3cb8f9"
     },
     {
-      "path": "modules/scatter.mdpmod.xml"
+      "path": "modules/scatter.mdpmod.xml",
+      "hash": "210ce8c9"
     },
     {
-      "path": "modules/sequence.mdpmod.xml"
+      "path": "modules/sequence.mdpmod.xml",
+      "hash": "33726a46"
     },
     {
-      "path": "modules/setops.mdpmod.xml"
+      "path": "modules/setops.mdpmod.xml",
+      "hash": "a26d3ee8"
     },
     {
-      "path": "modules/shape.mdpmod.xml"
+      "path": "modules/shape.mdpmod.xml",
+      "hash": "66e27b85"
     },
     {
-      "path": "modules/shortcut.mdpmod.xml"
+      "path": "modules/shortcut.mdpmod.xml",
+      "hash": "77003e57"
     },
     {
-      "path": "modules/speak.mdpmod.xml"
+      "path": "modules/speak.mdpmod.xml",
+      "hash": "b84c2bb0"
     },
     {
-      "path": "modules/speakcard.mdpmod.xml"
+      "path": "modules/speakcard.mdpmod.xml",
+      "hash": "b7782060"
     },
     {
-      "path": "modules/spectrum.mdpmod.xml"
+      "path": "modules/spectrum.mdpmod.xml",
+      "hash": "9dac4443"
     },
     {
-      "path": "modules/stackedbar.mdpmod.xml"
+      "path": "modules/stackedbar.mdpmod.xml",
+      "hash": "00f083b6"
     },
     {
-      "path": "modules/stamp.mdpmod.xml"
+      "path": "modules/stamp.mdpmod.xml",
+      "hash": "ab6bb4e2"
     },
     {
-      "path": "modules/statdelta.mdpmod.xml"
+      "path": "modules/statdelta.mdpmod.xml",
+      "hash": "f8e8798e"
     },
     {
-      "path": "modules/statement.mdpmod.xml"
+      "path": "modules/statement.mdpmod.xml",
+      "hash": "3c88bea6"
     },
     {
-      "path": "modules/steps.mdpmod.xml"
+      "path": "modules/steps.mdpmod.xml",
+      "hash": "239dc380"
     },
     {
-      "path": "modules/sticky.mdpmod.xml"
+      "path": "modules/sticky.mdpmod.xml",
+      "hash": "17626d23"
     },
     {
-      "path": "modules/swot.mdpmod.xml"
+      "path": "modules/swot.mdpmod.xml",
+      "hash": "27d8d45d"
     },
     {
-      "path": "modules/target.mdpmod.xml"
+      "path": "modules/target.mdpmod.xml",
+      "hash": "0e721e04"
     },
     {
-      "path": "modules/terminal.mdpmod.xml"
+      "path": "modules/terminal.mdpmod.xml",
+      "hash": "3dd962e6"
     },
     {
-      "path": "modules/theorem.mdpmod.xml"
+      "path": "modules/theorem.mdpmod.xml",
+      "hash": "234cf606"
     },
     {
-      "path": "modules/tierlist.mdpmod.xml"
+      "path": "modules/tierlist.mdpmod.xml",
+      "hash": "bb454895"
     },
     {
-      "path": "modules/timeline.mdpmod.xml"
+      "path": "modules/timeline.mdpmod.xml",
+      "hash": "1c5eefb6"
     },
     {
-      "path": "modules/timer.mdpmod.xml"
+      "path": "modules/timer.mdpmod.xml",
+      "hash": "d4281302"
     },
     {
-      "path": "modules/tree.mdpmod.xml"
+      "path": "modules/tree.mdpmod.xml",
+      "hash": "d74a6511"
     },
     {
-      "path": "modules/triangle.mdpmod.xml"
+      "path": "modules/triangle.mdpmod.xml",
+      "hash": "f123332c"
     },
     {
-      "path": "modules/truthtable.mdpmod.xml"
+      "path": "modules/truthtable.mdpmod.xml",
+      "hash": "20431abe"
     },
     {
-      "path": "modules/unitcircle.mdpmod.xml"
+      "path": "modules/unitcircle.mdpmod.xml",
+      "hash": "6dfdf762"
     },
     {
-      "path": "modules/venn.mdpmod.xml"
+      "path": "modules/venn.mdpmod.xml",
+      "hash": "05d83767"
     },
     {
-      "path": "modules/video.mdpmod.xml"
+      "path": "modules/video.mdpmod.xml",
+      "hash": "f3cc06ce"
     },
     {
-      "path": "modules/waterfall.mdpmod.xml"
+      "path": "modules/waterfall.mdpmod.xml",
+      "hash": "684e9dcf"
     },
     {
-      "path": "modules/wordcloud.mdpmod.xml"
+      "path": "modules/wordcloud.mdpmod.xml",
+      "hash": "01a56cd8"
     }
   ],
   "snippets": [],
   "taxonomy": [
     {
-      "path": "taxonomy/taxonomy.json"
+      "path": "taxonomy/taxonomy.json",
+      "hash": "5a73e7f7"
     }
   ],
   "templates": [
     {
-      "path": "templates/poster.slide.md"
+      "path": "templates/poster.slide.md",
+      "hash": "6dce6ce5"
     }
   ],
   "themes": [
     {
-      "path": "themes/academic.css"
+      "path": "themes/academic.css",
+      "hash": "58bb392b"
     },
     {
-      "path": "themes/dark.css"
+      "path": "themes/dark.css",
+      "hash": "67a23fc3"
     },
     {
-      "path": "themes/forest.css"
+      "path": "themes/forest.css",
+      "hash": "af330e5b"
     },
     {
-      "path": "themes/midnight.css"
+      "path": "themes/midnight.css",
+      "hash": "55dbb0d4"
     },
     {
-      "path": "themes/minimal.css"
+      "path": "themes/minimal.css",
+      "hash": "8dc21e9f"
     },
     {
-      "path": "themes/poster.css"
+      "path": "themes/poster.css",
+      "hash": "9fdc5318"
     },
     {
-      "path": "themes/sepia.css"
+      "path": "themes/sepia.css",
+      "hash": "28d99a18"
     },
     {
-      "path": "themes/sunset.css"
+      "path": "themes/sunset.css",
+      "hash": "4f35dba7"
     },
     {
-      "path": "themes/terminal.css"
+      "path": "themes/terminal.css",
+      "hash": "e333dffb"
     }
   ]
 }

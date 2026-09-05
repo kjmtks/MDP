@@ -64,10 +64,12 @@ export const usePresentationSync = (
   const sendLocalState = useCallback(() => {
     sendRef.current?.({
       type: 'SYNC_STATE',
-      payload: { slides, index: currentSlideIndex, step: step ?? 0, slideSize, globalContext, baseUrl, themeCssUrl, lastUpdated, allDrawings: drawings, isOverview: isSlideOverview, modules: Object.values(loadedModules), effects: Object.values(loadedEffects) },
+      // `basePath` travels too: a mirror needs it to resolve a slide's drawio/SVG
+      // and image paths (SlideView builds those from `raw` + basePath).
+      payload: { slides, index: currentSlideIndex, step: step ?? 0, slideSize, globalContext, baseUrl, basePath, themeCssUrl, lastUpdated, allDrawings: drawings, isOverview: isSlideOverview, modules: Object.values(loadedModules), effects: Object.values(loadedEffects) },
       channelId,
     }, 'local');
-  }, [slides, currentSlideIndex, step, slideSize, globalContext, baseUrl, themeCssUrl, lastUpdated, drawings, channelId, isSlideOverview]);
+  }, [slides, currentSlideIndex, step, slideSize, globalContext, baseUrl, basePath, themeCssUrl, lastUpdated, drawings, channelId, isSlideOverview]);
 
   const nextVisibleIndex = useCallback((from: number) => {
     let n = from + 1;

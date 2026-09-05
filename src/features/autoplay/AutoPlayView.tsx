@@ -241,19 +241,28 @@ export const AutoPlayView: React.FC<{
     sleepCtl.current = { id, resolve: res };
   });
 
-  // Wait for a bus topic (or timeout) — interruptible via stopAll(), like sleep().
-  const waitForTopic = (topic: string, timeoutMs: number) => new Promise<void>((res) => {
+  // Wait for a bus topic — interruptible via stopAll(), like sleep(). Resolves
+  // `true` when the event arrived, `false` when the wait ran out (or was cut).
+  const waitForTopic = (topic: string, timeoutMs: number) => new Promise<boolean>((res) => {
     let settled = false;
-    const finish = () => {
+    const finish = (arrived: boolean) => {
       if (settled) return; settled = true;
       off(); window.clearTimeout(id);
-      if (sleepCtl.current && sleepCtl.current.resolve === finish) sleepCtl.current = null;
-      res();
+      if (sleepCtl.current && sleepCtl.current.resolve === cut) sleepCtl.current = null;
+      res(arrived);
     };
-    const off = mdpBus.on(topic, finish);
-    const id = window.setTimeout(finish, timeoutMs);
-    sleepCtl.current = { id, resolve: finish };
+    const cut = () => finish(false);
+    const off = mdpBus.on(topic, () => finish(true));
+    const id = window.setTimeout(cut, timeoutMs);
+    sleepCtl.current = { id, resolve: cut };
   });
+
+  const warnNoReply = (kind: string, topic: string, ms: number) => {
+    const msg = `[[${kind}: ${topic}]] — no reply within ${Math.round(ms / 1000)}s; the narration continued.`;
+    console.warn(`[MDP narration] ${msg} Check the \`tag:\` name, and that this workspace's module `
+      + 'definition supports ctx.onCommand (re-sync the official assets if it is an old copy).');
+    setError(msg);
+  };
 
   // Execute a [[emit…]]/[[wait…]]/[[pause…]] script action at its position.
   const runAction = async (a: ScriptAction) => {
@@ -262,12 +271,20 @@ export const AutoPlayView: React.FC<{
     const payload: Record<string, unknown> = { args: a.args || [] };
     if (a.kind === 'emit') { mdpBus.emit(a.topic, payload); return; }
     const timeoutMs = a.timeoutMs ?? 30000;
-    if (a.kind === 'wait') { await waitForTopic(a.topic, timeoutMs); return; }
+    if (a.kind === 'wait') {
+      if (!await waitForTopic(a.topic, timeoutMs)) warnNoReply('wait', a.topic, timeoutMs);
+      return;
+    }
     // emit-wait: fire, then hold the narration until the reply (or timeout).
     const replyTo = `reply:${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
     const wait = waitForTopic(replyTo, timeoutMs);
     mdpBus.emit(a.topic, { ...payload, replyTo });
-    await wait;
+    // A timed-out emit-wait is the single most confusing failure in the field: the
+    // show simply stalls and then carries on, with nothing played. It means NOBODY
+    // answered `cmd:<tag>` — usually a tag typo, a module whose definition in this
+    // workspace's `.mdp/modules/` predates ctx.onCommand, or an instance that is
+    // not the owner. Say so instead of failing silently.
+    if (!await wait) warnNoReply('emit-wait', a.topic, timeoutMs);
   };
 
   // Kick off synthesis for one item (empty text → an instant no-op clip).

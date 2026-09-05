@@ -32,10 +32,21 @@ function matches(pattern: string, topic: string): boolean {
   return pattern.endsWith('*') ? topic.startsWith(pattern.slice(0, -1)) : topic === pattern;
 }
 
+// Opt-in bus diagnostics: run `localStorage.mdpBusDebug = '1'` in DevTools (per
+// window, F12 works on every MDP window) and every event is logged WITH ITS
+// HANDLER COUNT. That count is the whole diagnosis for "the module never reacted":
+// 0 handlers in the window that owns the module means nobody is listening for
+// that `cmd:<tag>` — a tag typo, a module definition too old to call
+// ctx.onCommand, or no owner instance on screen.
+function busDebug(): boolean {
+  try { return window.localStorage.getItem('mdpBusDebug') === '1'; } catch { return false; }
+}
+
 function deliver(topic: string, payload: BusPayload, remote: boolean): void {
   const meta: BusMeta = { topic, remote };
-  [...subs].forEach((s) => {
-    if (!matches(s.pattern, topic)) return;
+  const targets = [...subs].filter((s) => matches(s.pattern, topic));
+  if (busDebug()) console.log(`[mdpBus] ${remote ? 'RECV' : 'emit'} "${topic}" → ${targets.length} handler(s)`, payload);
+  targets.forEach((s) => {
     try { s.cb(payload, meta); } catch (e) { console.error('[MDP] mdpBus handler error', e); }
   });
 }
@@ -49,6 +60,7 @@ export const mdpBus = {
     if (!topic) return;
     deliver(topic, payload, false);
     if ((opts?.scope ?? 'all') !== 'local') {
+      if (busDebug() && !sender) console.log(`[mdpBus] "${topic}" NOT forwarded: no transport in this window`);
       try { sender?.({ type: 'BUS_EVENT', topic, payload }); } catch { /* ignore */ }
     }
   },

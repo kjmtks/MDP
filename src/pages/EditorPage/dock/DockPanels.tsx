@@ -11,6 +11,7 @@ import CachedIcon from '@mui/icons-material/Cached';
 import SmartphoneIcon from '@mui/icons-material/Smartphone';
 import DevicesIcon from '@mui/icons-material/Devices';
 import PresentToAllIcon from '@mui/icons-material/PresentToAll';
+import BrandingWatermarkIcon from '@mui/icons-material/BrandingWatermark';
 import RecordVoiceOverIcon from '@mui/icons-material/RecordVoiceOver';
 import SmartDisplayIcon from '@mui/icons-material/SmartDisplay';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
@@ -537,6 +538,7 @@ export const PreviewPanel: React.FC = () => {
         )}
         <Box sx={{ flex: 1 }} />
         <Tooltip title="Open Presenter View"><span><IconButton size="small" sx={toolBtnSx} disabled={!h.canPresent} onClick={h.onOpenPresenter}><PresentToAllIcon fontSize="small" /></IconButton></span></Tooltip>
+        <Tooltip title="Open Output Window (slide only, aspect-locked — share/capture this instead of the whole screen)"><span><IconButton size="small" sx={toolBtnSx} disabled={!h.canPresent} onClick={h.onOpenOutput}><BrandingWatermarkIcon fontSize="small" /></IconButton></span></Tooltip>
         <Tooltip title="Rehearse (read @script aloud + time vs @time)"><span><IconButton size="small" sx={toolBtnSx} disabled={!h.canPresent} onClick={h.onRehearse}><RecordVoiceOverIcon fontSize="small" /></IconButton></span></Tooltip>
         <Tooltip title="Auto-play with narration (read @script aloud, auto-advance; [[step]] drives builds)"><span><IconButton size="small" sx={toolBtnSx} disabled={!h.canPresent} onClick={h.onAutoPlay}><SmartDisplayIcon fontSize="small" /></IconButton></span></Tooltip>
         <Tooltip title="Start Slideshow (F5)"><span><IconButton size="small" sx={toolBtnSx} disabled={!h.canPresent} onClick={h.onToggleSlideshow}><PlayArrowIcon fontSize="small" /></IconButton></span></Tooltip>

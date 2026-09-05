@@ -1182,6 +1182,21 @@ export default function EditorPage() {
     window.open(`${baseUrl}#/presenter?channel=${channelId}&token=${encodeURIComponent(token)}`, '_blank', 'width=1000,height=800');
   }, [channelId, token]);
 
+  // The audience-facing OUTPUT WINDOW: slide only, no chrome, locked to the deck's
+  // aspect ratio. Made for a single display — share/capture just this window (or a
+  // screen region sized to it) and keep the presenter tool beside it, outside the
+  // shared area. Opened at half the deck's pixel size, which fits any laptop.
+  const openOutputWindow = useCallback(() => {
+    const baseUrl = window.location.href.split('#')[0].split('?')[0];
+    const w = Math.max(480, Math.round((slideSize.width || 1280) / 2));
+    const h = Math.round(w * (slideSize.height || 720) / (slideSize.width || 1280));
+    window.open(
+      `${baseUrl}#/output?channel=${channelId}&token=${encodeURIComponent(token)}`,
+      'mdp-output',
+      `width=${w},height=${h}`,
+    );
+  }, [channelId, token, slideSize.width, slideSize.height]);
+
   const [rehearseOpen, setRehearseOpen] = useState(false);
   const [autoPlayOpen, setAutoPlayOpen] = useState(false);
   const [suggestOpen, setSuggestOpen] = useState(false);
@@ -1888,6 +1903,7 @@ export default function EditorPage() {
     onSwitchToRemote: handleSwitchToRemote,
     onOpenConnectDialog: openConnectDialog,
     onOpenPresenter: openPresenterTool,
+    onOpenOutput: openOutputWindow,
     onRehearse: () => setRehearseOpen(true),
     onAutoPlay: () => setAutoPlayOpen(true),
     onSuggestModule: openSuggestModule,
@@ -1901,7 +1917,7 @@ export default function EditorPage() {
     isSlideOverview,
     canPresent: slides.length > 0,
   }), [handleOpenFolderWithFlag, handleManualSync, handleSwitchToRemote, openConnectDialog,
-    openPresenterTool, openSuggestModule, toggleSlideshow, handlePrint, exportPptx, pptxExporting,
+    openPresenterTool, openOutputWindow, openSuggestModule, toggleSlideshow, handlePrint, exportPptx, pptxExporting,
     exportImages, imageExporting, toggleSlideOverview, isSlideOverview, slides.length]);
 
   // Concurrent-edit lock: hold the active editable text file so a second

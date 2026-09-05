@@ -18,6 +18,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   maximize: () => ipcRenderer.send('window-maximize'),
   close: () => ipcRenderer.send('window-close'),
   exportPdf: (filename) => ipcRenderer.send('export-pdf', filename),
+  // Lock THIS window's content aspect ratio (output window); no-op elsewhere.
+  setWindowAspectRatio: (ratio) => ipcRenderer.send('window-set-aspect-ratio', ratio),
   saveBinaryDialog: (args) => ipcRenderer.invoke('saveBinaryDialog', args),
   getLinkConfig: (relPath) => ipcRenderer.invoke('getLinkConfig', relPath),
   setLinkConfig: (args) => ipcRenderer.invoke('setLinkConfig', args),
@@ -54,6 +56,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('app-close-request', handler);
   },
   confirmAppClose: () => ipcRenderer.send('app-close-confirmed'),
+  // Multi-monitor slideshow: list displays, park the window on one, undo it.
+  getDisplays: () => ipcRenderer.invoke('getDisplays'),
+  moveToDisplay: (displayId) => ipcRenderer.invoke('moveToDisplay', displayId),
+  restoreWindowPlacement: () => ipcRenderer.invoke('restoreWindowPlacement'),
   startRemoteServer: () => ipcRenderer.invoke('startRemoteServer'),
   getRemoteInfo: () => ipcRenderer.invoke('getRemoteInfo'),
   stopRemoteServer: () => ipcRenderer.send('stopRemoteServer'),

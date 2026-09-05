@@ -1,7 +1,23 @@
 import { apiClient } from '../../api/apiClient';
 
-export interface CatalogItem { path: string; }
+// `hash` is the official file's content fingerprint (scripts/make_catalog.py).
+// Absent on an older catalog — then only MISSING files can be detected, which is
+// exactly the gap that let an out-of-date module sit in a workspace forever.
+export interface CatalogItem { path: string; hash?: string }
 export type CatalogData = Record<string, CatalogItem[]>;
+
+/** The same fingerprint make_catalog.py computes: FNV-1a/32 over the UTF-8 bytes,
+ *  CRLF normalised to LF and any BOM stripped, so a local copy hashes identically
+ *  no matter which writer produced it. Not cryptographic — it only has to differ
+ *  when the file differs. */
+export function assetHash(text: string): string {
+  const bytes = new TextEncoder().encode(String(text).replace(/^\uFEFF/, '').replace(/\r\n/g, '\n'));
+  let h = 0x811c9dc5;
+  for (let i = 0; i < bytes.length; i++) {
+    h = Math.imul(h ^ bytes[i], 0x01000193) >>> 0;
+  }
+  return h.toString(16).padStart(8, '0');
+}
 
 // Official assets now live in the MDP app repo under official-assets/.
 // catalog.json sits at the root of that folder and its item paths are

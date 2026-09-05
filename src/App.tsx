@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import EditorPage from './pages/EditorPage';
 import PresenterPage from './pages/PresenterPage';
 import RemotePage from './pages/RemotePage';
+import OutputPage from './pages/OutputPage';
 import CapturePage from './features/remote/capture/CapturePage';
 import { SettingsPage } from './pages/SettingsPage';
 import { NotificationHost } from './components/error/NotificationHost';
@@ -14,6 +15,8 @@ function CurrentPage() {
   if (hash.includes('#/capture')) return <CapturePage />;
   if (path.endsWith('/presenter') || hash.includes('#/presenter')) return <PresenterPage />;
   if (path.endsWith('/remote') || hash.includes('#/remote')) return <RemotePage />;
+  // The audience-facing output window: slide only, no chrome (see OutputPage).
+  if (path.endsWith('/output') || hash.includes('#/output')) return <OutputPage />;
 
   // Main window: the editor stays mounted (preserving tabs/state) and the
   // full-screen Settings page overlays on top when navigated to.

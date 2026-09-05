@@ -86,12 +86,33 @@ export function loadWebSpeechVoices(): Promise<SpeechSynthesisVoice[]> {
 // With neither given this reduces to the configured default voice (legacy behavior).
 export interface VoiceSelect { voice?: string; lang?: string }
 
+// One warning per missing voice/language, so a slide that speaks repeatedly does
+// not flood the console. Plain console.warn: visible with DevTools (F12) without
+// turning on the mdpTtsDebug flag, because this is a MACHINE SETUP problem that
+// only shows up on someone else's laptop.
+const warnedVoices = new Set<string>();
+function warnMissingVoice(what: string, voices: SpeechSynthesisVoice[]): void {
+  if (warnedVoices.has(what)) return;
+  warnedVoices.add(what);
+  console.warn(
+    `[MDP TTS] No installed narrator for ${what}. Installed: `
+    + (voices.map((v) => `${v.name} (${v.lang})`).join(', ') || '(none)')
+    + '. On Windows, add that language and its Speech feature in '
+    + 'Settings > Time & language > Language & region.',
+  );
+}
+
 export function resolveWebSpeechVoice(sel: VoiceSelect, cfg: TtsConfig): SpeechSynthesisVoice | undefined {
   const voices = listWebSpeechVoices();
   const wanted = (sel.voice || '').trim().toLowerCase();
   if (wanted) {
-    return voices.find((v) => v.voiceURI.toLowerCase() === wanted || v.name.toLowerCase() === wanted)
+    const named = voices.find((v) => v.voiceURI.toLowerCase() === wanted || v.name.toLowerCase() === wanted)
       || voices.find((v) => v.name.toLowerCase().includes(wanted) || v.voiceURI.toLowerCase().includes(wanted));
+    // A deck that names a narrator ("Zira") must still speak on a machine where
+    // that narrator is not installed: fall through to the language match instead
+    // of returning nothing. Only the requested VOICE is lost, never the speech.
+    if (named) return named;
+    warnMissingVoice(`voice "${sel.voice}"`, voices);
   }
   const def = cfg.webspeechVoiceURI ? voices.find((v) => v.voiceURI === cfg.webspeechVoiceURI) : undefined;
   const lang = (sel.lang || '').trim().toLowerCase();
@@ -99,7 +120,11 @@ export function resolveWebSpeechVoice(sel: VoiceSelect, cfg: TtsConfig): SpeechS
   const matches = (v: SpeechSynthesisVoice) => v.lang.toLowerCase().replace(/_/g, '-').startsWith(lang);
   if (def && matches(def)) return def;
   const cand = voices.filter(matches);
-  return cand.find((v) => v.localService && v.default) || cand.find((v) => v.localService) || cand[0];
+  const pick = cand.find((v) => v.localService && v.default) || cand.find((v) => v.localService) || cand[0];
+  // No voice for this language is installed at all — the classic cross-machine
+  // failure (a Japanese Windows with no English voice). Invisible otherwise.
+  if (!pick) warnMissingVoice(`language "${sel.lang}"`, voices);
+  return pick;
 }
 
 // Chromium GC workaround: SpeechSynthesis does NOT keep a queued utterance alive,

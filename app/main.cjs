@@ -1,4 +1,4 @@
-﻿const { app, BrowserWindow, ipcMain, Menu, dialog, protocol, net, shell } = require('electron');
+﻿const { app, BrowserWindow, ipcMain, Menu, dialog, protocol, net, shell, screen } = require('electron');
 const path = require('path');
 const fs = require('fs/promises');
 const fsSync = require('fs');
@@ -276,7 +276,69 @@ ipcMain.handle('getRemoteInfo', () => remoteServer.getRemoteInfo());
 
 ipcMain.handle('getAppVersion', () => app.getVersion());
 
+// The output window (`#/output`) asks to keep its CONTENT at the deck's aspect
+// ratio, so a drag-resize can never letterbox what a screen share captures.
+// Electron applies the constraint to the drag itself; the window frame is
+// accounted for by the API.
+ipcMain.on('window-set-aspect-ratio', (event, ratio) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const r = Number(ratio);
+  if (!win || win.isDestroyed() || !isFinite(r) || r <= 0) return;
+  win.setAspectRatio(r);
+  win.setBackgroundColor('#000000');
+  win.setMenuBarVisibility(false);
+});
+
 ipcMain.on('stopRemoteServer', () => remoteServer.stopRemoteServer());
+
+// ---- Slideshow display picking (multi-monitor) ------------------------------
+// The slideshow is an HTML-fullscreen overlay inside the main window, so it
+// fullscreens on whichever display the window happens to sit on. These handlers
+// let the renderer move the window to a chosen display first and put it back
+// when the show ends — notably for a laptop + HDMI dummy plug, where the
+// presenter tool stays on the visible screen while the show runs (and is
+// screen-shared) on the dummy display.
+let preShowPlacement = null;   // main window's { bounds, maximized } before the move
+
+ipcMain.handle('getDisplays', () => {
+  const primaryId = screen.getPrimaryDisplay().id;
+  const currentId = mainWindow && !mainWindow.isDestroyed()
+    ? screen.getDisplayMatching(mainWindow.getBounds()).id : null;
+  return screen.getAllDisplays().map((d, i) => ({
+    id: d.id,
+    label: d.label || `Display ${i + 1}`,
+    width: d.bounds.width,
+    height: d.bounds.height,
+    primary: d.id === primaryId,
+    current: d.id === currentId,
+  }));
+});
+
+ipcMain.handle('moveToDisplay', (event, displayId) => {
+  if (!mainWindow || mainWindow.isDestroyed()) return { success: false };
+  const target = screen.getAllDisplays().find((d) => d.id === Number(displayId));
+  if (!target) return { success: false };
+  if (screen.getDisplayMatching(mainWindow.getBounds()).id === target.id) {
+    return { success: true, moved: false };
+  }
+  // Remember where the window was — only for the FIRST move of a show, so a
+  // stray second call can never make "restore" bounce to the show display.
+  if (!preShowPlacement) {
+    preShowPlacement = { bounds: mainWindow.getNormalBounds(), maximized: mainWindow.isMaximized() };
+  }
+  if (mainWindow.isMaximized()) mainWindow.unmaximize();
+  mainWindow.setBounds(target.workArea);
+  return { success: true, moved: true };
+});
+
+ipcMain.handle('restoreWindowPlacement', () => {
+  if (!mainWindow || mainWindow.isDestroyed() || !preShowPlacement) return { success: false };
+  const p = preShowPlacement;
+  preShowPlacement = null;
+  mainWindow.setBounds(p.bounds);
+  if (p.maximized) mainWindow.maximize();
+  return { success: true };
+});
 
 let captureWin = null;
 async function ensureCaptureWin() {

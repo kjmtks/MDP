@@ -1,8 +1,26 @@
 import { useEffect, useRef } from 'react';
 import { apiClient } from '../../../api/apiClient';
-import { syncOfficialCatalog, fetchCatalog, catalogLocalPath } from '../syncService';
+import { syncOfficialCatalog, fetchCatalog, catalogLocalPath, assetHash } from '../syncService';
 import type { FileNode } from '../../../types';
 import { reportError, notify, confirmDialog } from '../../../components/error/errorReporter';
+
+// Versions the user chose NOT to update, as `{ 'modules/x.mdpmod.xml': hash }`.
+// Kept in the workspace so a deliberately customised asset stops asking, while a
+// NEWER official version (different hash) asks again.
+const SKIP_FILE = '.mdp/.asset-update-skip.json';
+
+const loadSkippedStale = async (): Promise<Record<string, string>> => {
+  try {
+    const raw = await apiClient.readFileText(SKIP_FILE);
+    const obj = JSON.parse(raw);
+    return (obj && typeof obj === 'object') ? obj as Record<string, string> : {};
+  } catch { return {}; }
+};
+
+const saveSkippedStale = async (map: Record<string, string>): Promise<void> => {
+  try { await apiClient.saveFile(SKIP_FILE, JSON.stringify(map, null, 2)); }
+  catch (e) { console.error('Failed to record skipped asset updates', e); }
+};
 
 const collectFilePaths = (nodes: FileNode[], acc: Set<string>) => {
   for (const n of nodes) {
@@ -43,18 +61,47 @@ export function useCatalogSync(
         collectFilePaths(fileTree, localPaths);
 
         const missing: string[] = [];
+        // Present locally, but no longer the official content: the catalog carries
+        // each file's hash, so a stale copy is detectable. This is the case that
+        // used to be invisible — e.g. a module predating a new capability, whose
+        // slides then silently do nothing.
+        const stale: string[] = [];
+        const present: Array<{ local: string; remote: string; hash: string }> = [];
         for (const [category, items] of Object.entries(catalog)) {
           for (const item of items) {
-            if (!localPaths.has(catalogLocalPath(category, item))) missing.push(item.path);
+            const local = catalogLocalPath(category, item);
+            if (!localPaths.has(local)) missing.push(item.path);
+            else if (item.hash) present.push({ local, remote: item.path, hash: item.hash });
           }
         }
 
-        if (missing.length === 0) return;
+        // Hash the local copies (skipping ones the user chose to keep — see below).
+        // A few at a time: a workspace can be a `.mdplink` over SFTP, where a
+        // hundred simultaneous reads would be rude. This runs in the background —
+        // nothing waits on it but the prompt.
+        const skipped = await loadSkippedStale();
+        const todo = present.filter((f) => skipped[f.remote] !== f.hash);
+        for (let i = 0; i < todo.length; i += 8) {
+          await Promise.all(todo.slice(i, i + 8).map(async (f) => {
+            try {
+              if (assetHash(await apiClient.readFileText(f.local)) !== f.hash) stale.push(f.remote);
+            } catch { /* unreadable — treat as up to date rather than nagging */ }
+          }));
+        }
 
+        if (missing.length === 0 && stale.length === 0) return;
+
+        const what = [
+          missing.length ? `${missing.length} missing` : '',
+          stale.length ? `${stale.length} out of date` : '',
+        ].filter(Boolean).join(' and ');
         const wantsToSync = await confirmDialog(
-          `This project is missing ${missing.length} official MDP asset(s).\n` +
-          'Download and set up the latest modules, themes, templates, and snippets?',
-          { title: 'Set Up Official Assets', confirmText: 'Download', cancelText: 'Not now' }
+          `Official MDP assets: ${what}.\n` +
+          (stale.length ? `Out of date: ${stale.slice(0, 6).map((p) => p.split('/').pop()).join(', ')}` +
+            `${stale.length > 6 ? `, +${stale.length - 6} more` : ''}\n` : '') +
+          'Download the latest modules, themes, templates and snippets?\n' +
+          'Local edits to these files WILL be overwritten.',
+          { title: 'Update Official Assets', confirmText: 'Update', cancelText: 'Not now' }
         );
 
         if (wantsToSync) {
@@ -65,13 +112,22 @@ export function useCatalogSync(
           } catch (err) {
             reportError('Sync failed. Please check your network connection.', { detail: err });
           }
-        } else {
+        } else if (missing.length) {
+          // Declining the FIRST-TIME setup means this workspace doesn't want
+          // official assets at all — unchanged behaviour.
           try {
             await apiClient.saveFile('.mdp_sync_ignored', '');
             onManualRefresh();
           } catch (e) {
             console.error('Failed to create ignore file', e);
           }
+        } else {
+          // Declining an UPDATE is not a rejection of official assets: the copy is
+          // probably customised on purpose. Remember these exact versions so the
+          // prompt stays quiet until the official file changes again.
+          await saveSkippedStale({ ...skipped, ...Object.fromEntries(
+            present.filter((f) => stale.includes(f.remote)).map((f) => [f.remote, f.hash]),
+          ) });
         }
       } catch (e) {
         console.error('Error in useCatalogSync:', e);

@@ -1,5 +1,47 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import type { AppMode } from '../../drawing/components/SlideControls';
+import { choiceDialog } from '../../../components/error/errorReporter';
+
+interface DisplayInfo {
+  id: number; label: string; width: number; height: number;
+  primary: boolean; current: boolean;
+}
+
+// Electron only: which display should host the slideshow? The show is an
+// HTML-fullscreen overlay in the main window, so it lands on the window's
+// display — asking up front (and moving the window there) means a laptop +
+// HDMI dummy plug can keep the presenter tool on the visible screen while the
+// shared show runs on the dummy display. Resolves to:
+//   null      — user cancelled; don't start the show.
+//   'stay'    — nothing to pick (web build, one display, or the picker failed).
+//   'moved'   — window parked on the chosen display; restore when the show ends.
+const pickSlideshowDisplay = async (): Promise<null | 'stay' | 'moved'> => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const api = (window as any).electronAPI;
+  if (!api?.getDisplays) return 'stay';
+  let displays: DisplayInfo[];
+  try { displays = await api.getDisplays(); } catch { return 'stay'; }
+  if (!Array.isArray(displays) || displays.length < 2) return 'stay';
+
+  const last = localStorage.getItem('mdp_slideshow_display');
+  const options = displays.map((d) => {
+    const notes = [d.primary && 'primary', d.current && 'current'].filter(Boolean).join(', ');
+    return {
+      value: String(d.id),
+      label: `${d.label} — ${d.width}×${d.height}${notes ? ` (${notes})` : ''}`,
+      variant: (last ? String(d.id) === last : d.current) ? 'contained' as const : 'outlined' as const,
+    };
+  });
+  const choice = await choiceDialog('Which display should show the slideshow?', {
+    title: 'Start Slideshow', options,
+  });
+  if (choice === null) return null;
+  localStorage.setItem('mdp_slideshow_display', choice);
+  try {
+    const res = await api.moveToDisplay(Number(choice));
+    return res?.moved ? 'moved' : 'stay';
+  } catch { return 'stay'; }
+};
 
 export const usePresentation = (
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -58,8 +100,29 @@ export const usePresentation = (
     setIsSlideOverview(prev => !prev);
   }, []);
 
+  // True while the main window has been parked on a picked display for the
+  // running show; the effect below puts it back once the show ends, whatever
+  // ended it (Esc, the close button, a fullscreen error).
+  const movedForShowRef = useRef(false);
+  useEffect(() => {
+    if (!isSlideshow && movedForShowRef.current) {
+      movedForShowRef.current = false;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (window as any).electronAPI?.restoreWindowPlacement?.().catch(() => {});
+    }
+  }, [isSlideshow]);
+
   const toggleSlideshow = useCallback(() => {
-    if (!document.fullscreenElement) {
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+      setMode('view');
+      return;
+    }
+    const start = async () => {
+      const placement = await pickSlideshowDisplay();
+      if (placement === null) return;   // cancelled from the display picker
+      movedForShowRef.current = placement === 'moved';
+
       setIsSlideshow(true);
       setMode('view');
       setShowControls(isTouchDevice);
@@ -73,16 +136,16 @@ export const usePresentation = (
         if (nextIndex < slides.length) setCurrentSlideIndex(nextIndex);
       }
 
+      // After a cross-display move, give the OS a beat to settle the window
+      // before fullscreening, or the show can land on the old display.
       setTimeout(() => {
         slideshowRef.current?.requestFullscreen().catch(err => {
           console.error(`Error attempting to enable full-screen mode: ${err.message}`);
           setIsSlideshow(false);
         });
-      }, 10);
-    } else {
-      document.exitFullscreen();
-      setMode('view');
-    }
+      }, placement === 'moved' ? 150 : 10);
+    };
+    void start();
   }, [currentSlideIndex, slides, isTouchDevice, setIsSlideshow, setMode, setShowControls, setCurrentSlideIndex]);
 
   return {

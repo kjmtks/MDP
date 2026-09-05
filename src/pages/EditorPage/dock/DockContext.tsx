@@ -174,6 +174,7 @@ export interface HeaderActions {
   onSwitchToRemote: () => void;
   onOpenConnectDialog: () => void;
   onOpenPresenter: () => void;
+  onOpenOutput: () => void;
   onRehearse: () => void;
   onAutoPlay: () => void;
   onSuggestModule: () => void;
