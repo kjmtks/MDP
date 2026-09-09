@@ -606,23 +606,30 @@ export function findModules(
 // markdown; a match contributes its tags (matched against module.tags) plus any
 // directly-boosted module names, and a short human reason. Data-light heuristics,
 // deliberately conservative — they RANK candidates, they don't decide.
+//
+// The word-shaped rules carry their Japanese equivalents too, and the label:value
+// rule takes any non-separator label (`\w` matched no CJK at all, so a deck written
+// in Japanese got no suggestions from these rules — the very decks this is for).
 interface SuggestRule { test: RegExp; tags?: string[]; boost?: string[]; reason: string }
 const SUGGEST_RULES: SuggestRule[] = [
   { test: /(^|\n)\s*[-*+]\s+\S.*(\n\s*[-*+]\s+\S.*){2,}/, tags: ['list', 'process', 'cycle'], boost: ['steps', 'checklist', 'iconlist', 'agenda', 'cycle'], reason: 'a bullet list (3+ items)' },
   { test: /(^|\n)\s*\d+[.)]\s+\S/, tags: ['process', 'flow'], boost: ['steps', 'flow', 'roadmap'], reason: 'a numbered/ordered list' },
-  { test: /\b(first|second|then|next|after that|finally|step\s*\d)\b/i, tags: ['process', 'flow'], boost: ['steps', 'flow', 'process'], reason: 'sequential wording (first/then/finally)' },
+  { test: /\b(first|second|then|next|after that|finally|step\s*\d)\b|まず|はじめに|次に|その後|最後に|手順\s*\d|ステップ\s*\d/i, tags: ['process', 'flow'], boost: ['steps', 'flow', 'process'], reason: 'sequential wording (first/then/finally)' },
   { test: /\$[^$\n]+\$|\\\(|\\\[|\\frac|\\sum|\\int/, tags: ['equations', 'proofs'], boost: ['equation', 'formula', 'theorem', 'cases', 'derivation'], reason: 'inline math' },
   { test: /(^|\n)\s*\|.*\|.*\|/, tags: ['table', 'comparison'], boost: ['comparetable', 'heatmap', 'matrix'], reason: 'a pipe table' },
-  { test: /\b(vs\.?|versus|compared? (to|with)|pros?\b.*\bcons?)\b/i, tags: ['comparison'], boost: ['compare', 'comparetable', 'spectrum'], reason: 'a comparison' },
-  { test: /\b(strengths?|weakness(es)?|opportunit(y|ies)|threats?)\b/i, boost: ['swot'], reason: 'SWOT vocabulary' },
-  { test: /\b(19|20)\d{2}\b|\bQ[1-4]\b|\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b/i, tags: ['timeline'], boost: ['timeline', 'roadmap', 'gantt'], reason: 'dates / a schedule' },
+  { test: /\b(vs\.?|versus|compared? (to|with)|pros?\b.*\bcons?)\b|と(の)?比較|比較する|長所.*短所|メリット.*デメリット|従来手法/i, tags: ['comparison'], boost: ['compare', 'comparetable', 'spectrum'], reason: 'a comparison' },
+  { test: /\b(strengths?|weakness(es)?|opportunit(y|ies)|threats?)\b|強み.*弱み|機会.*脅威/i, boost: ['swot'], reason: 'SWOT vocabulary' },
+  { test: /\b(19|20)\d{2}\b|\bQ[1-4]\b|\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b|\d{1,2}\s*月|令和\s*\d|第\s*[1-4]\s*四半期/i, tags: ['timeline'], boost: ['timeline', 'roadmap', 'gantt'], reason: 'dates / a schedule' },
   { test: /\b\d+(\.\d+)?\s?%/, tags: ['kpi', 'charts'], boost: ['progress', 'gauge', 'stackedbar', 'funnel', 'statdelta'], reason: 'percentages' },
   { test: /(^|\n)\s*#{1,3}\s*\S.*\n[\s\S]*\b\d[\d,]{2,}\b/, tags: ['kpi'], boost: ['bignumber', 'statdelta', 'metrics'], reason: 'a headline number' },
   { test: /```|(^|\n)\s*\$\s+\S|\bnpm |\bgit /, boost: ['terminal', 'browser'], reason: 'code / a shell command' },
   { test: /(^|\n)\s*>\s+\S|["“][^"”]{20,}["”]/, boost: ['quote', 'balloon'], reason: 'a quotation' },
   { test: /!\[[^\]]*\]\([^)]+\)/, tags: ['media'], boost: ['graph', 'gallery'], reason: 'an image' },
-  { test: /\b(agenda|outline|contents|today'?s topics|overview)\b/i, boost: ['agenda'], reason: 'an agenda/overview' },
-  { test: /(^|\n)\s*-?\s*\w[\w ]*[:|]\s*-?\d+(\.\d+)?(\s*,\s*-?\d+(\.\d+)?)*/, tags: ['charts', 'statistics'], boost: ['barchart', 'stackedbar', 'radar', 'scatter', 'histogram', 'boxplot'], reason: 'numeric label:value data' },
+  { test: /\b(agenda|outline|contents|today'?s topics|overview)\b|目次|アジェンダ|本日の(内容|流れ)|発表の流れ/i, boost: ['agenda'], reason: 'an agenda/overview' },
+  // A label may be any text (CJK included) but not markup: a line starting with
+  // `<`, `#` or `>` is a directive/heading/quote, not data — `<!-- @time: 30 -->`
+  // must not read as a chart.
+  { test: /(^|\n)\s*-?\s*[^\s:|：｜<>#][^:|：｜<\n]*[:|：｜]\s*-?\d+(\.\d+)?(\s*[,、]\s*-?\d+(\.\d+)?)*/, tags: ['charts', 'statistics'], boost: ['barchart', 'stackedbar', 'radar', 'scatter', 'histogram', 'boxplot'], reason: 'numeric label:value data' },
 ];
 
 /** Recommend modules for a slide's CONTENT (or a described intent). Runs the signal

@@ -15,6 +15,7 @@
     "app/mdplink.cjs",
     "app/mcp-bridge.cjs",
     "app/mcp-server.cjs",
+    "app/mcp-tools.cjs",
     "node_modules/ws/**/*",
     "node_modules/ssh2/**/*",
     "node_modules/asn1/**/*",
@@ -59,6 +60,7 @@
     ]
   },
   "asarUnpack": [
-    "app/mcp-server.cjs"
+    "app/mcp-server.cjs",
+    "app/mcp-tools.cjs"
   ]
 }

@@ -47,6 +47,21 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '50mb' }));
 
+// A deployment may serve the app under a PATH PREFIX (built with VITE_BASE=/mdp/),
+// with the reverse proxy stripping that prefix before it proxies. Requests that
+// reach this server directly still carry it -- the headless MCP renderer opens the
+// app on loopback, and its asset/API URLs are the prefixed ones baked into the
+// build. Strip it here too, before anything routes on the path. Unset: nothing
+// changes.
+const BASE_PATH = String(process.env.MDP_BASE_PATH || '').replace(/\/+$/, '');
+if (BASE_PATH) {
+  app.use((req, res, next) => {
+    if (req.url === BASE_PATH) req.url = '/';
+    else if (req.url.startsWith(`${BASE_PATH}/`)) req.url = req.url.slice(BASE_PATH.length);
+    next();
+  });
+}
+
 // A malformed request must never take the whole server down (async route handlers
 // have no global Express catcher; Node's default is process exit).
 process.on('unhandledRejection', (err) => console.error('[MDP] Unhandled rejection:', err));
@@ -108,7 +123,7 @@ function groupsOfUser(user) {
 if (MULTI) {
   app.use((req, res, next) => {
     // Only workspace routes need a user; keep static assets cheap.
-    if (!req.path.startsWith('/api/') && !req.path.startsWith('/files/')) return next();
+    if (!req.path.startsWith('/api/') && !req.path.startsWith('/files/') && req.path !== '/mcp') return next();
     const user = webspaces.userOf(SPACES, req);
     if (!user) return res.status(401).json({ error: 'unidentified user' });
     req.mdpGroups = groupsOfUser(user);   // for {group} spaces (see webspaces)
@@ -669,6 +684,28 @@ app.get('/api/effectContent', async (req, res) => {
   } catch(e) { console.error(e); }
   res.send("");
 });
+
+// ---- MCP (shared mode only) --------------------------------------------------
+// An AI assistant reaches this deployment the way a person does: the same identity
+// header, the same spaces, the same permissions (app/mcp-web.cjs). Single-user
+// servers keep the desktop route -- the local bridge + stdio proxy.
+if (MULTI) {
+  const mcpWeb = require('./app/mcp-web.cjs');
+  const mcpRender = require('./app/mcp-render.cjs');
+  mcpRender.configure({
+    url: process.env.MDP_SELF_URL || `http://127.0.0.1:${PORT}`,
+    userHeader: SPACES.userHeader,
+    // Previews, measurement and the module registries are answered by the app
+    // itself in a headless browser. The deployment provides one (its image installs
+    // it); with no browser those tools are simply not offered.
+    executablePath: process.env.MDP_MCP_RENDERER === '0' ? '' : mcpRender.findChromium(process.env.MDP_CHROMIUM),
+  });
+  mcpWeb.mount(app, {
+    spaces: SPACES, webspaces, walk: getFileTree, lockHolder,
+    pokeClients: () => pokeClients(), assetDir: publicDir,
+  });
+  console.log(`MCP endpoint at POST /mcp${mcpRender.enabled() ? '' : ' (visual tools off: no browser)'}`);
+}
 
 app.get(/.*/, (req, res) => {
   if (req.path.startsWith('/files/')) return res.status(404).send('Not found');

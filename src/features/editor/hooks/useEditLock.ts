@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { apiClient, isElectron } from '../../../api/apiClient';
+import { apiClient, isElectron, isMcpRenderer } from '../../../api/apiClient';
 
 // Advisory lock for concurrent Markdown editing on a shared server.
 //
@@ -9,7 +9,8 @@ import { apiClient, isElectron } from '../../../api/apiClient';
 // nothing wedges a file permanently (the server also expires stale locks).
 //
 // Electron and single-user web return no owner, so `lockedBy` stays null and
-// behavior is unchanged.
+// behavior is unchanged. The headless MCP renderer never takes one either: it
+// reads decks on an AI's behalf, and must not lock the author out of their file.
 const RENEW_MS = 20 * 1000;
 
 export function useEditLock(path: string | null, active: boolean): string | null {
@@ -17,7 +18,7 @@ export function useEditLock(path: string | null, active: boolean): string | null
   const heldRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (isElectron() || !active || !path) { setLockedBy(null); return; }
+    if (isElectron() || isMcpRenderer() || !active || !path) { setLockedBy(null); return; }
     let cancelled = false;
     let timer: number | undefined;
 

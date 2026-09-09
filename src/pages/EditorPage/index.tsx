@@ -40,7 +40,7 @@ import { useSlideProcessor } from '../../features/slide/hooks/useSlideProcessor'
 import { useDrawio } from '../../features/drawio/hooks/useDrawio';
 import { useAppActions } from './hooks/useAppActions';
 import { useEditorIntegration } from '../../features/editor/hooks/useEditorIntegration';
-import { apiClient, isElectron } from '../../api/apiClient';
+import { apiClient, isElectron, isMcpRenderer } from '../../api/apiClient';
 import { clearAllModules, registerModule, getAllModuleSnippets, loadedModules, setDisabledModules } from '../../features/modules/moduleManager';
 import { refreshModuleRegions } from '../../features/editor/extensions/ModuleRegionPlugin';
 import { ModuleSettingsDialog } from '../../features/modules/components/ModuleSettingsDialog';
@@ -321,6 +321,11 @@ export default function EditorPage() {
   // generation so slides parsed before registration are re-parsed once their
   // markdown transforms (and CSS) are available — otherwise they stay raw.
   const [moduleEpoch, setModuleEpoch] = useState(0);
+  // Have the workspace's modules and effects finished registering at least once?
+  // Only the headless MCP renderer reads it (see McpBridge): a spec / render call
+  // that lands mid-load would describe an MDP with no modules. `moduleEpoch` is not
+  // the same thing — other async assets bump it too, before modules are in.
+  const [assetsReady, setAssetsReady] = useState(false);
   // Modules load asynchronously after the editor mounts; when they (re)load, ask
   // the editor to re-scan so block/inline module directives get coloured/foldable
   // (the initial scan ran before any module was registered).
@@ -514,6 +519,7 @@ export default function EditorPage() {
       }
 
       if (!isCancelled) {
+        setAssetsReady(true);
         refreshModuleSnippets();
         // Modules + effects are now registered (markdown transforms + CSS ready):
         // force a slide re-parse so anything rendered raw beforehand is fixed.
@@ -524,6 +530,8 @@ export default function EditorPage() {
     const timerId = setTimeout(() => {
       if (modulePathsString !== '' || effectPathsString !== '' || !hasSelectedFolder) {
         loadAllModules();
+      } else {
+        setAssetsReady(true);   // nothing to load (a folder with no assets)
       }
     }, 300);
 
@@ -2072,13 +2080,15 @@ export default function EditorPage() {
 
       <MainHeader onResetLayout={() => window.dispatchEvent(new Event(RESET_LAYOUT_EVENT))} isSlideOverview={isSlideOverview} onCloseOverview={() => setIsSlideOverview(false)} />
 
-      {/* MCP live-tools handler (Electron; inert on web). Renders only hidden work
-          surfaces (rasterizer + measurement mounts). */}
-      {isElectron() && (
+      {/* MCP live-tools handler: the desktop app, and the shared server's headless
+          renderer page (`?mcp=1`). Renders only hidden work surfaces (rasterizer +
+          measurement mounts). */}
+      {(isElectron() || isMcpRenderer()) && (
         <McpBridge ctx={{
           currentFileName, markdownRef, currentSlideIndex, setCurrentSlideIndex,
           slides, slideSize, basePath, themeCssUrl, scopeDirs, aiNotes: scopeAiNotes, styleProfile: scopeStyleProfile,
           assetWritePolicy: appSettings.mcpAssetWrite,
+          modulesReady: assetsReady,
           loadFile, handleInsertText, tabs, updateTabContent,
           saveActiveFile: handleSave, reloadFileFromDisk,
           onRefreshTree: handleManualRefresh,

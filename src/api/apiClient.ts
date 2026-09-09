@@ -8,6 +8,15 @@ export const isElectron = () => {
   return typeof window !== 'undefined' && !!(window as any).electronAPI;
 };
 
+// The headless MCP renderer (app/mcp-render.cjs) opens this app with `?mcp=1` on
+// the shared server: the same editor, driven by an AI's tool calls instead of a
+// person. It only ever READS — it must never take an edit lock or write anything
+// (MCP writes go through the server's own file tools).
+export const isMcpRenderer = () => {
+  try { return typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('mcp') === '1'; }
+  catch { return false; }
+};
+
 export const apiClient = {
   saveFile: async (filename: string, content: string, isBase64: boolean = false) => {
     if (isElectron()) {

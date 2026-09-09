@@ -9,7 +9,7 @@ import { loadTaxonomy } from '../ai/loadTaxonomy';
 import { parseArguments } from '../modules/moduleProcessor';
 import { splitMarkdownToBlocks } from '../slide/parser/slideParser';
 import { confirmDialog } from '../../components/error/errorReporter';
-import { apiClient } from '../../api/apiClient';
+import { apiClient, isMcpRenderer } from '../../api/apiClient';
 import type { OpenTab } from '../fileTree/hooks/useFileManager';
 import type { ThemeOption } from '../../types';
 
@@ -32,6 +32,10 @@ export interface McpCtx {
   styleProfile: string;
   // 'confirm' → review dialog before an AI-authored asset is saved; 'auto' → silent.
   assetWritePolicy: 'confirm' | 'auto';
+  // Have this workspace's modules and effects finished registering? The headless
+  // MCP renderer waits for it: a spec / render call against an empty registry
+  // would quietly describe an MDP with no modules.
+  modulesReady: boolean;
   loadFile: (path: string) => Promise<void> | void;
   handleInsertText: (text: string) => void;
   tabs: OpenTab[];
@@ -258,9 +262,13 @@ export const McpBridge: React.FC<{ ctx: McpCtx }> = ({ ctx }) => {
   rasterizeRef.current = rasterize;
 
   useEffect(() => {
+    // Two ways in, one set of handlers: Electron IPC from the desktop bridge, and —
+    // on the shared server — the headless renderer page, which calls `handle`
+    // directly through `window.mdpMcp` (app/mcp-render.cjs).
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const api = (window as any).electronAPI;
-    if (!api?.onMcpRequest) return;
+    const headless = isMcpRenderer();
+    if (!api?.onMcpRequest && !headless) return;
 
     const activeDeck = () => {
       const c = ctxRef.current;
@@ -666,8 +674,13 @@ Match the user's style throughout (cached profile if present, else get_style_sam
           measureBusyRef.current = true;
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           let rows: any[];
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          let measured: any;
           try {
-            rows = await new Promise((resolve, reject) => setMeasureJob({ items, resolve, reject }));
+            // The measurement effect resolves with { slideSize, slides, note } —
+            // the rows are in `slides`.
+            measured = await new Promise((resolve, reject) => setMeasureJob({ items, resolve, reject }));
+            rows = Array.isArray(measured) ? measured : (measured?.slides || []);
           } finally {
             measureBusyRef.current = false;
           }
@@ -682,9 +695,13 @@ Match the user's style throughout (cached profile if present, else get_style_sam
           const isIssue = (r: { overflowX?: number; overflowY?: number; empty?: boolean }) =>
             (r.overflowX || 0) > 0 || (r.overflowY || 0) > 0 || !!r.empty;
           const issues = rows.filter(isIssue);
-          if (params.all) return { deck: d.path, totalSlides: d.slideCount, measured: rows.length, rows };
-          return {
+          const head = {
             deck: d.path, totalSlides: d.slideCount, measured: rows.length,
+            slideSize: measured?.slideSize, note: measured?.note,
+          };
+          if (params.all) return { ...head, rows };
+          return {
+            ...head,
             issues,
             ...(issues.length ? {} : { ok: `no overflow/empty among the ${rows.length} measured slide(s)` }),
           };
@@ -711,6 +728,16 @@ Match the user's style throughout (cached profile if present, else get_style_sam
       }
     };
 
+    if (headless) {
+      // `ready` is what the renderer waits for (flipped by the effect below, once
+      // the module/effect registries have loaded) — until then a tool call would
+      // see an empty workspace.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (window as any).mdpMcp = { ready: false, handle };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return () => { delete (window as any).mdpMcp; };
+    }
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const off = api.onMcpRequest(async ({ id, method, params }: any) => {
       try {
@@ -722,6 +749,12 @@ Match the user's style throughout (cached profile if present, else get_style_sam
     });
     return off;
   }, []);
+
+  useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const w = window as any;
+    if (w.mdpMcp) w.mdpMcp.ready = ctx.modulesReady;
+  }, [ctx.modulesReady]);
 
   const size = ctx.slideSize;
   return (

@@ -13,6 +13,25 @@ const os = require('os');
 const mdplink = require('./mdplink.cjs');
 
 let ctx = null;         // { getBaseDir, getWindow, getAssetPath }
+
+// ---- workspace indirection ---------------------------------------------------
+// Every tool call runs against a WORKSPACE, threaded through as `baseDir`:
+//   * a plain PATH string in the desktop app — paths resolve through the VFS
+//     (`.mdplink` local/SSH targets included), live tools go to the editor window,
+//     and assets come from the app bundle (`ctx`);
+//   * a per-request OBJECT on the shared web server (app/mcp-web.cjs) — the
+//     signed-in user's own resolver and permission model, a headless renderer for
+//     the visual tools, and that deployment's asset dir. One bridge then serves
+//     many users, with no way for a call to reach outside its requester's spaces.
+// Nothing else in this file touches mdplink.resolve / relay / ctx: it all goes
+// through these five helpers, so both worlds stay in step.
+const vres = (b, rel, mode) => (typeof b === 'string' ? mdplink.resolve(b, rel) : b.resolve(rel, mode || 'r'));
+const vtree = async (b) => (typeof b === 'string' ? ((await mdplink.buildTree(b)).nodes || []) : (await b.tree()));
+const rly = (b, method, params, timeoutMs) => (typeof b === 'string' ? relay(method, params, timeoutMs) : b.relay(method, params, timeoutMs));
+const assetPath = (b, rel) => (typeof b === 'string' ? ctx.getAssetPath(rel) : b.assetPath(rel));
+// Reading speed (characters per minute) behind the talk-time estimate; the desktop
+// takes the user's setting, a shared server the same 320 default it used to.
+const readingCpm = (b) => (typeof b === 'string' ? (ctx.getReadingCpm ? ctx.getReadingCpm() : 320) : b.readingCpm());
 let server = null;
 let token = null;
 let port = 0;
@@ -83,14 +102,14 @@ async function listWorkspaceAssets(baseDir, kind) {
   if (!spec || !baseDir) return [];
   const out = [];
   let entries;
-  try { entries = await mdplink.vfsList(mdplink.resolve(baseDir, `.mdp/${spec.sub}`)); }
+  try { entries = await mdplink.vfsList(vres(baseDir, `.mdp/${spec.sub}`)); }
   catch { return []; }
   for (const e of entries) {
     if (e.isDir || !e.name.toLowerCase().endsWith(spec.ext)) continue;
     const name = e.name.slice(0, -spec.ext.length);
     let description = '';
     try {
-      const raw = await mdplink.vfsReadText(mdplink.resolve(baseDir, `.mdp/${spec.sub}/${e.name}`));
+      const raw = await mdplink.vfsReadText(vres(baseDir, `.mdp/${spec.sub}/${e.name}`));
       if (kind === 'module' || kind === 'effect') {
         const m = raw.match(/<description>([\s\S]*?)<\/description>/i);
         description = m ? m[1].trim() : '';
@@ -180,7 +199,7 @@ const joinBlocks = (blocks) => blocks.join('\n---\n');
 // `.mdp` cascade chain for a deck (root→nearest), same rule as the frontend
 // resolver: ancestor dirs (bounded by the workspace root) that contain `.mdp`.
 async function mdpChainDirs(baseDir, deckPath) {
-  const tree = (await mdplink.buildTree(baseDir)).nodes || [];
+  const tree = await vtree(baseDir);
   const childrenAt = (dir) => {
     if (!dir) return tree;
     let nodes = tree;
@@ -208,7 +227,7 @@ async function disabledModules(baseDir, configDirs) {
   const state = new Map();
   for (const cdir of configDirs) {
     try {
-      const c = JSON.parse(await mdplink.vfsReadText(mdplink.resolve(baseDir, `${cdir}/content.json`)));
+      const c = JSON.parse(await mdplink.vfsReadText(vres(baseDir, `${cdir}/content.json`)));
       for (const [name, enabled] of Object.entries((c && c.modules) || {})) state.set(name, !!enabled);
     } catch { /* no content.json in this .mdp */ }
   }
@@ -226,7 +245,7 @@ async function listScoped(baseDir, configDirs, subdir, ext, builtinDir) {
   } catch { /* no bundled dir */ }
   for (const cdir of configDirs) {
     try {
-      for (const e of await mdplink.vfsList(mdplink.resolve(baseDir, `${cdir}/${subdir}`))) {
+      for (const e of await mdplink.vfsList(vres(baseDir, `${cdir}/${subdir}`))) {
         if (!e.isDir && e.name.endsWith(ext)) byName.set(e.name, { name: e.name.slice(0, -ext.length), path: `${cdir}/${subdir}/${e.name}` });
       }
     } catch { /* subdir absent in this .mdp */ }
@@ -242,7 +261,7 @@ async function readLibrary(baseDir, chain) {
   const byAlias = new Map();
   for (const cdir of chain) {
     let reg;
-    try { reg = JSON.parse(await mdplink.vfsReadText(mdplink.resolve(baseDir, `${cdir}/images/registry.json`))); }
+    try { reg = JSON.parse(await mdplink.vfsReadText(vres(baseDir, `${cdir}/images/registry.json`))); }
     catch { continue; } // this `.mdp` has no library
     for (const [alias, value] of Object.entries((reg && reg.images) || {})) {
       const v = String(value);
@@ -263,7 +282,7 @@ async function readLibrary(baseDir, chain) {
 // The `.mdp` chain for a deck arg, falling back to the workspace ROOT scope when no
 // deck is given AND none is active — so the library is readable headlessly too.
 async function scopeChain(baseDir, deckArg) {
-  const deckPath = deckArg ? requireDeckPath(deckArg) : await activeDeckPath().catch(() => '');
+  const deckPath = deckArg ? requireDeckPath(deckArg) : await activeDeckPath(baseDir).catch(() => '');
   return mdpChainDirs(baseDir, deckPath);
 }
 
@@ -502,14 +521,14 @@ const BOM = '\uFEFF';
 // U+FFFD replacement chars — i.e. it is NOT valid UTF-8 (e.g. Shift_JIS/CP932).
 async function currentDeckText(baseDir, deckPath) {
   try {
-    const r = await relay('getDeckText', { path: deckPath }, 8000);
+    const r = await rly(baseDir, 'getDeckText', { path: deckPath }, 8000);
     if (r && r.open) {
       const text = String(r.text || '').replace(/^\uFEFF/, '');
       return { text, open: true, bom: false, crlf: /\r\n/.test(text), nonUtf8: false };
     }
   } catch { /* editor unavailable → fall back to disk */ }
   let buf;
-  try { buf = await mdplink.vfsReadBuffer(mdplink.resolve(baseDir, deckPath)); }
+  try { buf = await mdplink.vfsReadBuffer(vres(baseDir, deckPath)); }
   catch { return { text: '', open: false, bom: false, crlf: false, nonUtf8: false, missing: true }; }
   let text = buf.toString('utf-8');
   const bom = text.charCodeAt(0) === 0xFEFF;
@@ -531,10 +550,10 @@ function assertUtf8Writable(enc, deckPath) {
 // (one per deck path, overwritten each write) — off in the deck folders.
 async function backupDeck(baseDir, deckPath) {
   try {
-    const prev = await mdplink.vfsReadBuffer(mdplink.resolve(baseDir, deckPath));
+    const prev = await mdplink.vfsReadBuffer(vres(baseDir, deckPath));
     const flat = deckPath.replace(/[\\/]/g, '__');
-    await mdplink.vfsMkdirp(mdplink.resolve(baseDir, '.mdp/mcp-backups'));
-    await mdplink.vfsWrite(mdplink.resolve(baseDir, `.mdp/mcp-backups/${flat}.bak`), prev);
+    await mdplink.vfsMkdirp(vres(baseDir, '.mdp/mcp-backups', 'w'));
+    await mdplink.vfsWrite(vres(baseDir, `.mdp/mcp-backups/${flat}.bak`, 'w'), prev);
   } catch { /* file doesn't exist yet (new deck) → nothing to back up */ }
 }
 
@@ -552,14 +571,14 @@ async function writeDeckBack(baseDir, deckPath, newText, open, enc) {
     newText = text;
   }
   if (open) {
-    const r = await relay('setOpenDeckText', { path: deckPath, text: newText }, 10000);
+    const r = await rly(baseDir, 'setOpenDeckText', { path: deckPath, text: newText }, 10000);
     if (r && r.applied) return { appliedTo: 'editor (unsaved — ask the user to save)' };
   }
   await backupDeck(baseDir, deckPath);
   let out = enc && enc.crlf ? newText.split('\n').join('\r\n') : newText;
   if (enc && enc.bom) out = BOM + out;
-  await mdplink.vfsWrite(mdplink.resolve(baseDir, deckPath), Buffer.from(out, 'utf-8'));
-  relay('refreshTree', {}, 5000).catch(() => {});
+  await mdplink.vfsWrite(vres(baseDir, deckPath, 'w'), Buffer.from(out, 'utf-8'));
+  rly(baseDir, 'refreshTree', {}, 5000).catch(() => {});
   return { appliedTo: 'file (previous version saved to .mdp/mcp-backups/)' };
 }
 
@@ -582,11 +601,20 @@ const WRITE_METHODS = new Set(['write_deck', 'append_slide', 'replace_slide', 'p
 async function callTool(method, params) {
   const baseDir = ctx.getBaseDir();
   if (!baseDir) throw new Error('No workspace folder is open in MDP.');
+  return callToolFor(baseDir, method, params);
+}
+
+// Run one tool against a GIVEN workspace — the entry point for a caller that
+// brings its own (the shared web server, one workspace per signed-in user).
+async function callToolFor(baseDir, method, params) {
   const p = params || {};
 
-  // Serialize concurrent writes to the SAME deck (lost-update prevention).
+  // Serialize concurrent writes to the SAME deck (lost-update prevention). The key
+  // carries the workspace, because on a shared server the same relative path means
+  // a different file for every user.
   if (WRITE_METHODS.has(method) && p.path && typeof p.path === 'string') {
-    return withDeckLock(requireDeckPath(p.path), () => callToolInner(method, p, baseDir));
+    const key = `${typeof baseDir === 'string' ? baseDir : baseDir.key}\u0000${requireDeckPath(p.path)}`;
+    return withDeckLock(key, () => callToolInner(method, p, baseDir));
   }
   return callToolInner(method, p, baseDir);
 }
@@ -597,9 +625,9 @@ async function callTool(method, params) {
 async function verifyDeck(baseDir, deckPath) {
   const { text } = await currentDeckText(baseDir, deckPath);
   const [validate, lint, measure] = await Promise.all([
-    relay('validateDeck', { path: deckPath }, 30000).catch((e) => ({ error: String((e && e.message) || e) })),
+    rly(baseDir, 'validateDeck', { path: deckPath }, 30000).catch((e) => ({ error: String((e && e.message) || e) })),
     Promise.resolve(lintDeck(text)),
-    relay('measureSlides', { path: deckPath }, 120000).catch((e) => ({ error: String((e && e.message) || e) })),
+    rly(baseDir, 'measureSlides', { path: deckPath }, 120000).catch((e) => ({ error: String((e && e.message) || e) })),
   ]);
   return {
     path: deckPath, validate, lint, measure,
@@ -611,7 +639,7 @@ async function callToolInner(method, p, baseDir) {
 
   switch (method) {
     case 'list_decks': {
-      const tree = (await mdplink.buildTree(baseDir)).nodes || [];
+      const tree = await vtree(baseDir);
       const decks = [];
       (function walk(nodes) {
         for (const n of nodes || []) {
@@ -626,12 +654,12 @@ async function callToolInner(method, p, baseDir) {
       // Sampled deck bodies (binary-elided) for distilling the author's style, plus
       // the currently-cached profile + its freshness, so the AI can decide whether a
       // (re)analysis is warranted. Scoped to a deck's `.mdp` chain (default: active).
-      const deckPath = p.deck ? requireDeckPath(p.deck) : await activeDeckPath().catch(() => '');
+      const deckPath = p.deck ? requireDeckPath(p.deck) : await activeDeckPath(baseDir).catch(() => '');
       const chain = await mdpChainDirs(baseDir, deckPath);
       const nearestDir = chain[chain.length - 1];
       let profile = null;
-      try { profile = JSON.parse(await mdplink.vfsReadText(mdplink.resolve(baseDir, `${nearestDir}/content.json`))).styleProfile || null; } catch { /* none */ }
-      const tree = (await mdplink.buildTree(baseDir)).nodes || [];
+      try { profile = JSON.parse(await mdplink.vfsReadText(vres(baseDir, `${nearestDir}/content.json`))).styleProfile || null; } catch { /* none */ }
+      const tree = await vtree(baseDir);
       const decks = [];
       (function walk(nodes) { for (const n of nodes || []) { if (n.type === 'file' && /\.slide\.md$/i.test(n.name)) decks.push(n.path); if (n.children) walk(n.children); } })(tree);
       const limit = Math.min(Math.max(Number(p.limit) || 3, 1), 8);
@@ -641,7 +669,7 @@ async function callToolInner(method, p, baseDir) {
       const samples = [];
       for (const dp of chosen) {
         try {
-          const text = await mdplink.vfsReadText(mdplink.resolve(baseDir, dp));
+          const text = await mdplink.vfsReadText(vres(baseDir, dp));
           samples.push({ path: dp, content: elideBinary(text).text.slice(0, 8000) });
         } catch { /* skip unreadable */ }
       }
@@ -656,11 +684,11 @@ async function callToolInner(method, p, baseDir) {
 
     case 'save_style_profile': {
       if (typeof p.profile !== 'string' || !p.profile.trim()) throw new Error('"profile" (the distilled style description) is required.');
-      const deckPath = p.deck ? requireDeckPath(p.deck) : await activeDeckPath().catch(() => '');
+      const deckPath = p.deck ? requireDeckPath(p.deck) : await activeDeckPath(baseDir).catch(() => '');
       const chain = await mdpChainDirs(baseDir, deckPath);
       const configDir = p.dir ? `${requireDeckPath(p.dir)}/.mdp` : chain[chain.length - 1];
       let content = {};
-      try { content = JSON.parse(await mdplink.vfsReadText(mdplink.resolve(baseDir, `${configDir}/content.json`))) || {}; } catch { /* new */ }
+      try { content = JSON.parse(await mdplink.vfsReadText(vres(baseDir, `${configDir}/content.json`))) || {}; } catch { /* new */ }
       if (typeof content !== 'object' || Array.isArray(content)) content = {};
       content.version = content.version || 1;
       content.styleProfile = {
@@ -668,8 +696,8 @@ async function callToolInner(method, p, baseDir) {
         ...(p.analyzedDate ? { analyzedAt: String(p.analyzedDate) } : {}),
         ...(Array.isArray(p.basedOn) && p.basedOn.length ? { basedOn: p.basedOn.map(String) } : {}),
       };
-      await mdplink.vfsWrite(mdplink.resolve(baseDir, `${configDir}/content.json`), Buffer.from(JSON.stringify(content, null, 2), 'utf-8'));
-      relay('contentChanged', {}, 5000).catch(() => {});
+      await mdplink.vfsWrite(vres(baseDir, `${configDir}/content.json`, 'w'), Buffer.from(JSON.stringify(content, null, 2), 'utf-8'));
+      rly(baseDir, 'contentChanged', {}, 5000).catch(() => {});
       return { savedTo: `${configDir}/content.json`, note: 'Cached. It is now injected into get_slide_spec automatically — no need to re-read decks next time.' };
     }
 
@@ -836,22 +864,22 @@ async function callToolInner(method, p, baseDir) {
     }
 
     case 'list_modules': {
-      const deckPath = p.deck ? requireDeckPath(p.deck) : await activeDeckPath();
+      const deckPath = p.deck ? requireDeckPath(p.deck) : await activeDeckPath(baseDir);
       const chain = await mdpChainDirs(baseDir, deckPath);
       const disabled = await disabledModules(baseDir, chain);
-      const all = await listScoped(baseDir, chain, 'modules', '.mdpmod.xml', ctx.getAssetPath('modules'));
+      const all = await listScoped(baseDir, chain, 'modules', '.mdpmod.xml', assetPath(baseDir, 'modules'));
       return { scope: chain, modules: all.map((m) => ({ ...m, disabled: disabled.has(m.name) || undefined })) };
     }
 
     case 'list_themes': {
-      const deckPath = p.deck ? requireDeckPath(p.deck) : await activeDeckPath();
+      const deckPath = p.deck ? requireDeckPath(p.deck) : await activeDeckPath(baseDir);
       const chain = await mdpChainDirs(baseDir, deckPath);
-      const themes = await listScoped(baseDir, chain, 'themes', '.css', ctx.getAssetPath('themes'));
+      const themes = await listScoped(baseDir, chain, 'themes', '.css', assetPath(baseDir, 'themes'));
       return { scope: chain, themes: themes.map((t) => t.name) };
     }
 
     case 'list_snippets': {
-      const deckPath = p.deck ? requireDeckPath(p.deck) : await activeDeckPath();
+      const deckPath = p.deck ? requireDeckPath(p.deck) : await activeDeckPath(baseDir);
       const chain = await mdpChainDirs(baseDir, deckPath);
       const cats = new Map(); // category -> [labels]
       const addFile = (raw) => {
@@ -865,12 +893,12 @@ async function callToolInner(method, p, baseDir) {
         }
       };
       // Built-in defaults, then the deck's `.mdp` chain (root→nearest) — same merge as the app.
-      try { addFile(fs.readFileSync(path.join(ctx.getAssetPath(''), 'default-snippets.json'), 'utf-8')); } catch { /* none bundled */ }
+      try { addFile(fs.readFileSync(path.join(assetPath(baseDir, ''), 'default-snippets.json'), 'utf-8')); } catch { /* none bundled */ }
       for (const cdir of chain) {
         try {
-          for (const e of await mdplink.vfsList(mdplink.resolve(baseDir, `${cdir}/snippets`))) {
+          for (const e of await mdplink.vfsList(vres(baseDir, `${cdir}/snippets`))) {
             if (e.isDir || !e.name.toLowerCase().endsWith('.json')) continue;
-            try { addFile(await mdplink.vfsReadText(mdplink.resolve(baseDir, `${cdir}/snippets/${e.name}`))); } catch { /* skip bad file */ }
+            try { addFile(await mdplink.vfsReadText(vres(baseDir, `${cdir}/snippets/${e.name}`))); } catch { /* skip bad file */ }
           }
         } catch { /* no snippets dir in this `.mdp` */ }
       }
@@ -883,19 +911,19 @@ async function callToolInner(method, p, baseDir) {
       if (mp.startsWith('builtin:')) {
         const rel = mp.slice('builtin:'.length);
         if (rel.includes('..')) throw new Error('Invalid module path.');
-        return fs.readFileSync(path.join(ctx.getAssetPath(''), rel), 'utf-8');
+        return fs.readFileSync(path.join(assetPath(baseDir, ''), rel), 'utf-8');
       }
-      return await mdplink.vfsReadText(mdplink.resolve(baseDir, requireDeckPath(mp)));
+      return await mdplink.vfsReadText(vres(baseDir, requireDeckPath(mp)));
     }
 
     case 'get_deck_outline': {
-      const deckPath = p.path ? requireDeckPath(p.path) : await activeDeckPath();
+      const deckPath = p.path ? requireDeckPath(p.path) : await activeDeckPath(baseDir);
       const { text } = await currentDeckText(baseDir, deckPath);
-      return { path: deckPath, ...outlineDeck(text, ctx.getReadingCpm ? ctx.getReadingCpm() : 320), note: '`slide` is the 1-based POSITION in the file; `page` is the number PRINTED bottom-right on the slide — they differ because covers and hidden slides carry no number. Cite `page` to the user and to readers; pass `slide` to tools that take a slide number. `id` is the slide\'s `@id` anchor, which `[](#id)` renders as that page number. Per-slide `seconds` and total `estimatedMinutes` are a rough talk-time estimate: a slide\'s `<!-- @time … -->` if set (explicitTime), else read time of its `<!-- @script: … -->` at the user\'s reading speed, else a complexity estimate (base + bullets + visuals). @note does NOT affect time (it\'s supplementary). Set @time or write an @script for accuracy. Hidden slides excluded.' };
+      return { path: deckPath, ...outlineDeck(text, readingCpm(baseDir)), note: '`slide` is the 1-based POSITION in the file; `page` is the number PRINTED bottom-right on the slide — they differ because covers and hidden slides carry no number. Cite `page` to the user and to readers; pass `slide` to tools that take a slide number. `id` is the slide\'s `@id` anchor, which `[](#id)` renders as that page number. Per-slide `seconds` and total `estimatedMinutes` are a rough talk-time estimate: a slide\'s `<!-- @time … -->` if set (explicitTime), else read time of its `<!-- @script: … -->` at the user\'s reading speed, else a complexity estimate (base + bullets + visuals). @note does NOT affect time (it\'s supplementary). Set @time or write an @script for accuracy. Hidden slides excluded.' };
     }
 
     case 'lint_deck': {
-      const deckPath = p.path ? requireDeckPath(p.path) : await activeDeckPath();
+      const deckPath = p.path ? requireDeckPath(p.path) : await activeDeckPath(baseDir);
       const { text } = await currentDeckText(baseDir, deckPath);
       return { path: deckPath, ...lintDeck(text), note: 'Design & consistency advisories — complements validate_deck (syntax/params) and measure_slides (overflow/fill). severity: warn = likely issue, info = style nudge. slide 0 = deck-level. Use judgment; not every finding needs a change.' };
     }
@@ -904,7 +932,7 @@ async function callToolInner(method, p, baseDir) {
       const query = String(p.query || '').toLowerCase();
       const wantTags = Array.isArray(p.tags) ? p.tags.map((t) => String(t).toLowerCase()) : [];
       if (!query && !wantTags.length) throw new Error('Provide "query" and/or "tags".');
-      const tree = (await mdplink.buildTree(baseDir)).nodes || [];
+      const tree = await vtree(baseDir);
       const decks = [];
       (function walk(nodes) {
         for (const n of nodes || []) {
@@ -915,7 +943,7 @@ async function callToolInner(method, p, baseDir) {
       const results = [];
       for (const deckPath of decks.slice(0, 300)) {
         let text;
-        try { text = await mdplink.vfsReadText(mdplink.resolve(baseDir, deckPath)); } catch { continue; }
+        try { text = await mdplink.vfsReadText(vres(baseDir, deckPath)); } catch { continue; }
         const meta = splitBlocks(text)[0] || '';
         const title = metaField(meta, 'title');
         const subtitle = metaField(meta, 'subtitle');
@@ -1004,8 +1032,8 @@ async function callToolInner(method, p, baseDir) {
     }
 
     case 'list_templates': {
-      const chain = await mdpChainDirs(baseDir, await activeDeckPath().catch(() => ''));
-      const templates = await listScoped(baseDir, chain, 'templates', '.md', ctx.getAssetPath('templates'));
+      const chain = await mdpChainDirs(baseDir, await activeDeckPath(baseDir).catch(() => ''));
+      const templates = await listScoped(baseDir, chain, 'templates', '.md', assetPath(baseDir, 'templates'));
       return { templates };
     }
 
@@ -1014,25 +1042,25 @@ async function callToolInner(method, p, baseDir) {
       if (tp.startsWith('builtin:')) {
         const rel = tp.slice('builtin:'.length);
         if (rel.includes('..')) throw new Error('Invalid template path.');
-        return fs.readFileSync(path.join(ctx.getAssetPath(''), rel), 'utf-8');
+        return fs.readFileSync(path.join(assetPath(baseDir, ''), rel), 'utf-8');
       }
-      return await mdplink.vfsReadText(mdplink.resolve(baseDir, requireDeckPath(tp)));
+      return await mdplink.vfsReadText(vres(baseDir, requireDeckPath(tp)));
     }
 
     case 'read_theme': {
       const name = String(p.name || '').replace(/\.css$/i, '');
       if (!/^[\w.-]+$/.test(name)) throw new Error('Invalid theme name.');
-      const deckPath = p.deck ? requireDeckPath(p.deck) : await activeDeckPath().catch(() => '');
+      const deckPath = p.deck ? requireDeckPath(p.deck) : await activeDeckPath(baseDir).catch(() => '');
       const chain = await mdpChainDirs(baseDir, deckPath);
       for (const cdir of [...chain].reverse()) { // nearest first
-        try { return await mdplink.vfsReadText(mdplink.resolve(baseDir, `${cdir}/themes/${name}.css`)); } catch { /* keep looking */ }
+        try { return await mdplink.vfsReadText(vres(baseDir, `${cdir}/themes/${name}.css`)); } catch { /* keep looking */ }
       }
-      try { return fs.readFileSync(path.join(ctx.getAssetPath('themes'), `${name}.css`), 'utf-8'); }
+      try { return fs.readFileSync(path.join(assetPath(baseDir, 'themes'), `${name}.css`), 'utf-8'); }
       catch { throw new Error(`Theme "${name}" not found (see list_themes).`); }
     }
 
     case 'get_asset_templates': {
-      const read = (rel) => { try { return fs.readFileSync(path.join(ctx.getAssetPath(''), rel), 'utf-8'); } catch { return ''; } };
+      const read = (rel) => { try { return fs.readFileSync(path.join(assetPath(baseDir, ''), rel), 'utf-8'); } catch { return ''; } };
       const SNIPPET_TEMPLATE = JSON.stringify(
         [{ category: 'My Snippets', items: [{ label: 'Example', text: 'Hello, MDP!\n', description: 'Inserted at the cursor' }] }],
         null, 2,
@@ -1091,16 +1119,20 @@ async function callToolInner(method, p, baseDir) {
       // The renderer decides per the user's "Creating modules/themes/effects"
       // setting: 'auto' approves silently; 'confirm' shows a review dialog (a module
       // <script> RUNS in the app). If the user declines, do not write.
-      const ok = await relay('confirmAssetWrite', { kind, name, rel, hasScript, content }, 300000);
+      const ok = await rly(baseDir, 'confirmAssetWrite', { kind, name, rel, hasScript, content }, 300000);
       if (!ok || !ok.approved) throw new Error('The user declined to save this asset.');
-      await mdplink.vfsWrite(mdplink.resolve(baseDir, rel), Buffer.from(content, 'utf-8'));
+      await mdplink.vfsWrite(vres(baseDir, rel, 'w'), Buffer.from(content, 'utf-8'));
       // Tree refresh re-registers modules/effects and refreshes the theme list live.
-      relay('refreshTree', {}, 5000).catch(() => {});
-      return { saved: rel, note: kind === 'module' && hasScript ? 'Registered live — its <script> will run in MDP.' : 'Registered live.' };
+      rly(baseDir, 'refreshTree', {}, 5000).catch(() => {});
+      const note = [
+        kind === 'module' && hasScript ? 'Registered live — its <script> will run in MDP.' : 'Registered live.',
+        ok.note,   // e.g. "nobody reviewed this" where there is no user at the screen
+      ].filter(Boolean).join(' ');
+      return { saved: rel, note };
     }
 
     // Live tools → renderer.
-    case 'validate_deck': return await relay('validateDeck', { path: p.path ? requireDeckPath(p.path) : undefined, text: typeof p.text === 'string' ? p.text : undefined }, 30000);
+    case 'validate_deck': return await rly(baseDir, 'validateDeck', { path: p.path ? requireDeckPath(p.path) : undefined, text: typeof p.text === 'string' ? p.text : undefined }, 30000);
     case 'read_image': {
       const maxWidth = p.maxWidth ? Number(p.maxWidth) : undefined;
       if (p.alias) {
@@ -1111,16 +1143,16 @@ async function callToolInner(method, p, baseDir) {
         const e = (await readLibrary(baseDir, chain)).get(String(p.alias));
         if (!e) throw new Error(`Unknown image alias "${p.alias}" in this scope (see list_images).`);
         if (e.kind === 'url') throw new Error(`Alias "${p.alias}" points at a URL — it cannot be fetched (offline-first).`);
-        return await relay('readImage', e.kind === 'data' ? { dataUrl: e.data, maxWidth } : { path: e.rel, maxWidth }, 30000);
+        return await rly(baseDir, 'readImage', e.kind === 'data' ? { dataUrl: e.data, maxWidth } : { path: e.rel, maxWidth }, 30000);
       }
-      if (p.path) return await relay('readImage', { path: requireDeckPath(p.path), maxWidth }, 30000);
+      if (p.path) return await rly(baseDir, 'readImage', { path: requireDeckPath(p.path), maxWidth }, 30000);
       throw new Error('Provide "path" or "alias".');
     }
-    case 'render_deck_overview': return await relay('renderDeckOverview', { path: p.path ? requireDeckPath(p.path) : undefined, thumbWidth: p.thumbWidth ? Number(p.thumbWidth) : undefined }, 170000);
+    case 'render_deck_overview': return await rly(baseDir, 'renderDeckOverview', { path: p.path ? requireDeckPath(p.path) : undefined, thumbWidth: p.thumbWidth ? Number(p.thumbWidth) : undefined }, 170000);
     case 'render_slides': {
       const slides = Array.isArray(p.slides) ? p.slides.map(Number).filter((n) => Number.isInteger(n)) : [];
       if (!slides.length) throw new Error('Provide "slides": an array of 1-based slide numbers (max 12).');
-      return await relay('renderSlides', { path: p.path ? requireDeckPath(p.path) : undefined, slides, width: p.width ? Number(p.width) : undefined }, 170000);
+      return await rly(baseDir, 'renderSlides', { path: p.path ? requireDeckPath(p.path) : undefined, slides, width: p.width ? Number(p.width) : undefined }, 170000);
     }
     case 'check_deck': {
       // One-shot inspection: validate (syntax/params/structure) + lint (design
@@ -1129,21 +1161,21 @@ async function callToolInner(method, p, baseDir) {
       // (no measure — rendering needs a real, open deck).
       if (typeof p.text === 'string' && p.text.trim()) {
         const [validate, lint] = await Promise.all([
-          relay('validateDeck', { text: String(p.text) }, 30000),
+          rly(baseDir, 'validateDeck', { text: String(p.text) }, 30000),
           Promise.resolve(lintDeck(String(p.text))),
         ]);
         return { dryRun: true, validate, lint, note: 'Dry run on the given text — nothing was written. measure/overflow needs the deck written + open (call check_deck with `path`, or write with verify: true).' };
       }
-      const deckPath = p.path ? requireDeckPath(p.path) : await activeDeckPath();
+      const deckPath = p.path ? requireDeckPath(p.path) : await activeDeckPath(baseDir);
       return await verifyDeck(baseDir, deckPath);
     }
     case 'bootstrap': {
       // Everything an authoring session needs, ONE response: the full slide spec
       // (format + module/effect indexes + themes + cached style profile), plus the
       // workspace's decks, templates and image aliases. Replaces ~6 opening calls.
-      const deckPath = p.deck ? requireDeckPath(p.deck) : await activeDeckPath().catch(() => null);
+      const deckPath = p.deck ? requireDeckPath(p.deck) : await activeDeckPath(baseDir).catch(() => null);
       const [spec, decksR, templatesR, imagesR] = await Promise.all([
-        relay('spec', {}, 30000),
+        rly(baseDir, 'spec', {}, 30000),
         callToolInner('list_decks', {}, baseDir),
         callToolInner('list_templates', deckPath ? { deck: deckPath } : {}, baseDir).catch(() => ({ templates: [] })),
         callToolInner('list_images', deckPath ? { deck: deckPath } : {}, baseDir).catch(() => ({ images: [] })),
@@ -1157,35 +1189,35 @@ async function callToolInner(method, p, baseDir) {
         note: 'One-shot environment: spec (authoring format + module/effect indexes + themes + style profile) + decks + templates + image aliases. Next: get_module_spec for the modules you pick; check_deck / verify:true after writing.',
       };
     }
-    case 'get_slide_spec': return await relay('spec', {}, 30000);
+    case 'get_slide_spec': return await rly(baseDir, 'spec', {}, 30000);
     case 'get_module_spec': {
       const names = Array.isArray(p.names) ? p.names.map((n) => String(n)) : (p.name ? [String(p.name)] : []);
       if (!names.length) throw new Error('Provide "names": an array of module names (from the get_slide_spec index).');
-      return await relay('moduleSpec', { names }, 20000);
+      return await rly(baseDir, 'moduleSpec', { names }, 20000);
     }
     case 'find_modules': {
       const query = p.query != null ? String(p.query) : undefined;
       const tags = Array.isArray(p.tags) ? p.tags.map((t) => String(t)) : undefined;
       if (!query && !(tags && tags.length)) throw new Error('Provide "query" and/or "tags" to search modules.');
-      return await relay('findModules', { query, tags }, 20000);
+      return await rly(baseDir, 'findModules', { query, tags }, 20000);
     }
     case 'suggest_modules': {
       const text = String(p.text ?? '');
       if (!text.trim()) throw new Error('Provide "text": the slide content (or a description of it) to recommend modules for.');
-      return await relay('suggestModules', { text, limit: p.limit != null ? Number(p.limit) : undefined }, 20000);
+      return await rly(baseDir, 'suggestModules', { text, limit: p.limit != null ? Number(p.limit) : undefined }, 20000);
     }
     case 'get_effect_spec': {
       const names = Array.isArray(p.names) ? p.names.map((n) => String(n)) : (p.name ? [String(p.name)] : []);
       if (!names.length) throw new Error('Provide "names": animation effect names (from the get_slide_spec effect index).');
-      return await relay('effectSpec', { names }, 20000);
+      return await rly(baseDir, 'effectSpec', { names }, 20000);
     }
     case 'suggest_effects': {
       const text = String(p.text ?? '');
       if (!text.trim()) throw new Error('Provide "text": the mood/intent to recommend effects for (e.g. "subtle", "energetic").');
-      return await relay('suggestEffects', { text, limit: p.limit != null ? Number(p.limit) : undefined }, 20000);
+      return await rly(baseDir, 'suggestEffects', { text, limit: p.limit != null ? Number(p.limit) : undefined }, 20000);
     }
     case 'get_active_deck': {
-      const r = await relay('activeDeck', { includeContent: !!p.includeContent }, 10000);
+      const r = await rly(baseDir, 'activeDeck', { includeContent: !!p.includeContent }, 10000);
       // Even on request, embedded base64 goes out elided (like read_deck) — a
       // "which deck is open?" probe must never cost a deck of image tokens.
       if (r && typeof r.content === 'string') {
@@ -1195,23 +1227,23 @@ async function callToolInner(method, p, baseDir) {
       }
       return r;
     }
-    case 'open_deck': return await relay('openDeck', { path: requireDeckPath(p.path) }, 20000);
+    case 'open_deck': return await rly(baseDir, 'openDeck', { path: requireDeckPath(p.path) }, 20000);
     // Long timeout: handleSave's external-change guard may put a dialog in front of
     // the user (the file changed on disk since MDP loaded it) and we wait for them.
-    case 'save_deck': return await relay('saveDeck', { path: p.path ? requireDeckPath(p.path) : undefined }, 300000);
-    case 'reload_deck': return await relay('reloadDeck', { path: p.path ? requireDeckPath(p.path) : undefined, discardUnsaved: !!p.discardUnsaved }, 30000);
-    case 'goto_slide': return await relay('gotoSlide', { slide: Number(p.slide) }, 10000);
-    case 'insert_at_cursor': return await relay('insertAtCursor', { text: String(p.text ?? '') }, 10000);
-    case 'measure_slides': return await relay('measureSlides', { path: p.path ? requireDeckPath(p.path) : undefined, slides: Array.isArray(p.slides) ? p.slides.map(Number).filter((n) => Number.isInteger(n)) : undefined, all: !!p.all }, 120000);
-    case 'render_slide_image': return await relay('renderSlideImage', { path: p.path ? requireDeckPath(p.path) : undefined, slide: Number(p.slide), width: p.width ? Number(p.width) : undefined }, 120000);
+    case 'save_deck': return await rly(baseDir, 'saveDeck', { path: p.path ? requireDeckPath(p.path) : undefined }, 300000);
+    case 'reload_deck': return await rly(baseDir, 'reloadDeck', { path: p.path ? requireDeckPath(p.path) : undefined, discardUnsaved: !!p.discardUnsaved }, 30000);
+    case 'goto_slide': return await rly(baseDir, 'gotoSlide', { slide: Number(p.slide) }, 10000);
+    case 'insert_at_cursor': return await rly(baseDir, 'insertAtCursor', { text: String(p.text ?? '') }, 10000);
+    case 'measure_slides': return await rly(baseDir, 'measureSlides', { path: p.path ? requireDeckPath(p.path) : undefined, slides: Array.isArray(p.slides) ? p.slides.map(Number).filter((n) => Number.isInteger(n)) : undefined, all: !!p.all }, 120000);
+    case 'render_slide_image': return await rly(baseDir, 'renderSlideImage', { path: p.path ? requireDeckPath(p.path) : undefined, slide: Number(p.slide), width: p.width ? Number(p.width) : undefined }, 120000);
 
     default:
       throw new Error(`Unknown tool: ${method}`);
   }
 }
 
-async function activeDeckPath() {
-  const r = await relay('activeDeck', {}, 8000).catch(() => null);
+async function activeDeckPath(baseDir) {
+  const r = await rly(baseDir, 'activeDeck', {}, 8000).catch(() => null);
   if (!r || !r.path) throw new Error('No deck is open — pass "deck" or open one with open_deck.');
   return r.path;
 }
@@ -1272,4 +1304,4 @@ function stop() {
 const isRunning = () => !!server;
 const getPort = () => port;
 
-module.exports = { init, start, stop, isRunning, getPort, handleRendererResponse };
+module.exports = { init, start, stop, isRunning, getPort, handleRendererResponse, callToolFor };
