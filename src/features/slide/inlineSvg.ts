@@ -31,6 +31,22 @@ export function getSvgNode(key: string): DocumentFragment | null {
   return tpl.content.cloneNode(true) as DocumentFragment;
 }
 
+/** Window event fired when a cached workspace SVG was rewritten on disk (e.g. a
+ *  `![@drawio](path)` diagram edited in place). Mounted slides listen and
+ *  re-inject that key. `detail.key` = the workspace path used as the cache key. */
+export const SVG_INVALIDATED_EVENT = 'mdp-inline-svg-invalidated';
+
+/** Forget a workspace SVG and tell every mounted slide to fetch and re-inject it.
+ *  `keys` are the cache keys (workspace paths, as SlideView builds them). */
+export function invalidateSvg(...keys: string[]): void {
+  for (const key of keys) {
+    cache.delete(key);
+    nodeCache.delete(key);
+    inflight.delete(key);
+    try { window.dispatchEvent(new CustomEvent(SVG_INVALIDATED_EVENT, { detail: { key } })); } catch { /* ignore */ }
+  }
+}
+
 function hashKey(s: string): string {
   let h = 0;
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;

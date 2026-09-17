@@ -16,7 +16,10 @@ export class CollapseWidget extends WidgetType {
     wrapper.style.cssText = "display: inline-flex; align-items: center; gap: 6px; vertical-align: middle; margin: 0 4px;";
 
     const textSpan = document.createElement("span");
-    textSpan.textContent = "( 📊 Drawio Data ";
+    // A workspace file reference shows its path (editable in place); an embedded
+    // data-URI shows a generic label.
+    const isFileRef = /\.svg(\?.*)?$/i.test(this.base64.trim()) && !/^data:/i.test(this.base64.trim());
+    textSpan.textContent = isFileRef ? `( 📊 ${this.base64.trim()} ` : "( 📊 Drawio Data ";
     textSpan.style.cssText = `
       color: var(--app-text-muted);
       background-color: var(--app-bg-elevated);

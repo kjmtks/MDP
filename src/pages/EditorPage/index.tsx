@@ -644,7 +644,7 @@ export default function EditorPage() {
   const {
     isDrawioModalOpen, setIsDrawioModalOpen, drawioEditTarget,
     setDrawioButtonPos, setDrawioEditTarget, handleDrawioSave
-  } = useDrawio(editorRef, setMarkdown, markdownRef);
+  } = useDrawio(editorRef, setMarkdown, markdownRef, currentFileName);
 
   const processedMarkdown = useMemo(() => {
     if (!previewMarkdown) return '';

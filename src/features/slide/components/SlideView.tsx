@@ -4,7 +4,7 @@ import { BASE_HEIGHT } from '../../../constants';
 import React, { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, useMemo } from 'react';
 import { DrawingOverlay, type Stroke } from '../../drawing/components/DrawingOverlay';
 import { ManipulationLayer, type ManipRuntime } from './ManipulationLayer';
-import { getCachedSvg, getFallback, getSvgNode, loadSvg, registerDataUri } from '../inlineSvg';
+import { getCachedSvg, getFallback, getSvgNode, loadSvg, registerDataUri, SVG_INVALIDATED_EVENT } from '../inlineSvg';
 import { executeModuleScripts } from '../../modules/moduleManager';
 import { applyBuildStep, applyBuildStepInstant } from '../../effects/buildRuntime';
 import './SlideViewer.css';
@@ -428,6 +428,28 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
   useLayoutEffect(() => {
     injectInlineSvgs();
   }, [processedHtml, containerEl, svgVersion, manipulate?.enabled, injectInlineSvgs]);
+
+  // A workspace SVG edited in place (drawio) was dropped from the inline cache:
+  // empty the matching placeholders and bump the version so the next inject
+  // fetches the new file and re-fills them (the html string is unchanged, so
+  // nothing else would trigger a re-inject).
+  useEffect(() => {
+    const onInvalidated = (e: Event) => {
+      const key = (e as CustomEvent<{ key?: string }>).detail?.key;
+      const node = containerNodeRef.current;
+      if (!key || !node) return;
+      let hit = false;
+      node.querySelectorAll<HTMLElement>('.mdp-drawio-svg[data-svg-key]').forEach((ph) => {
+        if (ph.getAttribute('data-svg-key') !== key) return;
+        ph.removeAttribute('data-svg-done');
+        ph.textContent = '';
+        hit = true;
+      });
+      if (hit) setSvgVersion((v) => v + 1);
+    };
+    window.addEventListener(SVG_INVALIDATED_EVENT, onInvalidated);
+    return () => window.removeEventListener(SVG_INVALIDATED_EVENT, onInvalidated);
+  }, []);
 
   useEffect(() => {
     if (!containerEl) return;
