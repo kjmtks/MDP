@@ -2077,7 +2077,7 @@ export default function EditorPage() {
             // Overview during the presentation: fill the overlay with the slide
             // grid so it shows on top of the slideshow; selecting jumps to a slide.
             <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
-              <SlideOverviewGrid slides={slides} currentSlideIndex={currentSlideIndex} slideSize={slideSize} drawings={drawings} onSelectSlide={selectSlideFromOverview} />
+              <SlideOverviewGrid slides={slides} currentSlideIndex={currentSlideIndex} slideSize={slideSize} drawings={drawings} onSelectSlide={selectSlideFromOverview} basePath={basePath} />
             </div>
           ) : (
             <>
@@ -2144,7 +2144,7 @@ export default function EditorPage() {
           </Button>
         </div>
       ) : isSlideOverview && !isSlideshow ? (
-        <SlideOverviewGrid slides={slides} currentSlideIndex={currentSlideIndex} slideSize={slideSize} drawings={drawings} onSelectSlide={selectSlideFromOverview} />
+        <SlideOverviewGrid slides={slides} currentSlideIndex={currentSlideIndex} slideSize={slideSize} drawings={drawings} onSelectSlide={selectSlideFromOverview} basePath={basePath} />
       ) : (
         <DockProvider sidebar={sidebarSlice} preview={previewSlice} editor={editorSlice} snippets={snippetsSlice} images={imagesSlice} headerActions={headerSlice}>
           <div className="content">

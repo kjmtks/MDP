@@ -12,9 +12,12 @@ interface SlideOverviewGridProps {
   slideSize: { width: number; height: number };
   drawings: Record<number, Stroke[]>;
   onSelectSlide: (index: number) => void;
+  // The deck's folder, so relative images and inlined drawio/SVG files resolve
+  // (a mirror surface receives it over the sync channel).
+  basePath?: string;
 }
 
-export const SlideOverviewGrid: React.FC<SlideOverviewGridProps> = React.memo(({ slides, currentSlideIndex, slideSize, drawings, onSelectSlide }) => {
+export const SlideOverviewGrid: React.FC<SlideOverviewGridProps> = React.memo(({ slides, currentSlideIndex, slideSize, drawings, onSelectSlide, basePath }) => {
   const { settings } = useAppSettings();
   const cpm = settings.readingCharsPerMin;
   const visibleCount = slides.filter((s) => !s.isHidden).length;
@@ -65,7 +68,7 @@ export const SlideOverviewGrid: React.FC<SlideOverviewGridProps> = React.memo(({
             {slide.isCover && <div className="thumbnail-cover"></div>}
             <div className="thumbnail-frame" style={{ aspectRatio: `${slideSize.width} / ${slideSize.height}`, background: 'white', opacity: slide.isHidden ? 0.5 : 1, pointerEvents: 'none' }}>
               <SlideScaler width={slideSize.width} height={slideSize.height}>
-                <SlideView html={slide.html} pageNumber={slide.pageNumber} className={slide.className} isActive={true} slideSize={slideSize} isEnabledPointerEvents={false} header={slide.header} footer={slide.footer} drawings={drawings[index]} slideIndex={index} moduleRole="mirror" runScripts={false} />
+                <SlideView html={slide.html} raw={slide.raw} basePath={basePath} pageNumber={slide.pageNumber} className={slide.className} isActive={true} slideSize={slideSize} isEnabledPointerEvents={false} header={slide.header} footer={slide.footer} drawings={drawings[index]} slideIndex={index} moduleRole="mirror" runScripts={false} />
               </SlideScaler>
             </div>
           </div>

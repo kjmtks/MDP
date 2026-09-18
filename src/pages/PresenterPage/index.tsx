@@ -43,6 +43,9 @@ interface SyncData {
   isOverview?: boolean;
   modules?: ModuleData[];
   effects?: EffectData[];
+  // The deck's folder: relative images and inlined drawio/SVG files resolve
+  // against it (without it a `./figs/x.drawio.svg` stays blank on this mirror).
+  basePath?: string;
   // The deck's most recent saved rehearsal run (host-side sidecar), for the
   // "last time" marks on the countdowns.
   lastRehearsal?: RehearsalRun | null;
@@ -106,6 +109,7 @@ export default function PresenterPage() {
   const nextSlide = nextIndex !== -1 ? slides[nextIndex] : null;
 
   const [slideSize, setSlideSize] = useState({ width: 1280, height: 720 });
+  const [basePath, setBasePath] = useState<string | undefined>(undefined);
   const [themeCssUrl, setThemeCssUrl] = useState<string | undefined>(undefined);
   const [lastUpdated, setLastUpdated] = useState<number>(0);
   const [isOverview, setIsOverview] = useState(false);
@@ -129,7 +133,6 @@ export default function PresenterPage() {
 
   const timerStartRef = useRef<number | null>(null);
   const accumulatedTimeRef = useRef<number>(0);
-  const animationFrameRef = useRef<number>(0);
   // Elapsed-timer value (ms) captured when the CURRENT slide was entered, so the
   // per-slide countdown measures time spent on THIS slide.
   const slideBaselineMsRef = useRef<number>(0);
@@ -193,6 +196,7 @@ export default function PresenterPage() {
         if (typeof data.index === 'number') setCurrentIndex(data.index);
         if (typeof data.step === 'number') setStep(data.step);
         if (data.slideSize) setSlideSize(data.slideSize);
+        if ('basePath' in data) setBasePath(data.basePath);
         if (data.allDrawings) syncDrawings(data.allDrawings);
         setIsOverview(!!data.isOverview);
         if ('lastRehearsal' in data) setLastRehearsal(data.lastRehearsal ?? null);
@@ -296,21 +300,19 @@ export default function PresenterPage() {
     return () => clearInterval(timer);
   }, []);
 
+  // Stopwatch display: 10 updates/s on a plain interval. A requestAnimationFrame
+  // loop re-rendered the whole presenter 60×/s (heavy with live slides) and stops
+  // entirely while the window is hidden or covered; the interval keeps counting
+  // (the value itself is wall-clock based, so nothing is lost either way).
   useEffect(() => {
-    const updateTimer = () => {
-      if (isTimerRunning && timerStartRef.current) {
-        setElapsedTime(accumulatedTimeRef.current + (Date.now() - timerStartRef.current));
-        animationFrameRef.current = requestAnimationFrame(updateTimer);
-      }
+    if (!isTimerRunning) { timerStartRef.current = null; return; }
+    if (!timerStartRef.current) timerStartRef.current = Date.now();
+    const tick = () => {
+      if (timerStartRef.current) setElapsedTime(accumulatedTimeRef.current + (Date.now() - timerStartRef.current));
     };
-    if (isTimerRunning) {
-      if (!timerStartRef.current) timerStartRef.current = Date.now();
-      animationFrameRef.current = requestAnimationFrame(updateTimer);
-    } else {
-      cancelAnimationFrame(animationFrameRef.current);
-      timerStartRef.current = null;
-    }
-    return () => cancelAnimationFrame(animationFrameRef.current);
+    tick();
+    const id = window.setInterval(tick, 100);
+    return () => window.clearInterval(id);
   }, [isTimerRunning]);
 
   // Book the current slide's open segment into the recorder (idempotent).
@@ -388,6 +390,11 @@ export default function PresenterPage() {
     timerStartRef.current = null;
     accumulatedTimeRef.current = 0;
     setElapsedTime(0);
+    // The per-slide countdown restarts with the stopwatch: a baseline left at the
+    // old elapsed value would freeze the slide gauge at "full" until the new run
+    // caught up with it.
+    slideBaselineMsRef.current = 0;
+    recSegmentStartRef.current = 0;
   };
 
   // Closing the presenter mid-run must not lose the measurement: the message is
@@ -504,7 +511,9 @@ export default function PresenterPage() {
 
   // ---- Speaking-time bookkeeping for the footer + the shrinking bars ----------
   const elapsedSec = elapsedTime / 1000;
-  const onSlideSec = Math.max(0, (elapsedTime - slideBaselineMsRef.current) / 1000);
+  // Time on THIS slide since it was entered. The baseline can never lie in the
+  // future of the stopwatch (e.g. right after a reset), so clamp it.
+  const onSlideSec = Math.max(0, (elapsedTime - Math.min(slideBaselineMsRef.current, elapsedTime)) / 1000);
   const slideRemain = currentBudgetSec - onSlideSec;
   const totalRemain = deckSeconds - elapsedSec;
   // Pace: elapsed vs. where the schedule says we should be — every earlier
@@ -550,7 +559,7 @@ export default function PresenterPage() {
       <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
         {isOverview ? (
           <div style={{ position: 'absolute', inset: 0, display: 'flex' }}>
-            <SlideOverviewGrid slides={slides} currentSlideIndex={currentIndex} slideSize={slideSize} drawings={drawings} onSelectSlide={sendSelectSlide} />
+            <SlideOverviewGrid slides={slides} currentSlideIndex={currentIndex} slideSize={slideSize} drawings={drawings} onSelectSlide={sendSelectSlide} basePath={basePath} />
           </div>
         ) : (
         <>
@@ -583,6 +592,8 @@ export default function PresenterPage() {
                 {currentSlide && (
                   <SlideView
                       html={currentSlide.html}
+                      raw={currentSlide.raw}
+                      basePath={basePath}
                       pageNumber={currentSlide.pageNumber}
                       isActive={true}
                       className={currentSlide.className}
@@ -622,6 +633,8 @@ export default function PresenterPage() {
                         {nextSlide ? (
                           <SlideView
                               html={nextSlide.html}
+                              raw={nextSlide.raw}
+                              basePath={basePath}
                               pageNumber={nextSlide.pageNumber}
                               isActive={true}
                               className={nextSlide.className}
@@ -778,18 +791,25 @@ export default function PresenterPage() {
       <div className="presenter-timebars" style={{ flexShrink: 0, padding: '5px 20px 3px', background: '#2b2b2b', borderTop: '1px solid #444', display: 'flex', flexDirection: 'column', gap: 4 }}>
         {([
           { label: 'SLIDE', remain: slideRemain, budget: currentBudgetSec, plan: undefined,
-            last: lastSlideSec != null && currentBudgetSec > 0 ? frac(currentBudgetSec - lastSlideSec, currentBudgetSec) : undefined },
+            // "Last time" mark only when the previous run stayed inside the budget
+            // (otherwise it would sit on the left edge and look like a glitch).
+            last: lastSlideSec != null && currentBudgetSec > 0 && lastSlideSec <= currentBudgetSec ? frac(currentBudgetSec - lastSlideSec, currentBudgetSec) : undefined },
           { label: 'TOTAL', remain: totalRemain, budget: deckSeconds, plan: frac(deckSeconds - plannedElapsedSec, deckSeconds),
-            last: lastTotalSec != null && deckSeconds > 0 ? frac(deckSeconds - lastTotalSec, deckSeconds) : undefined },
+            last: lastTotalSec != null && deckSeconds > 0 && lastTotalSec <= deckSeconds ? frac(deckSeconds - lastTotalSec, deckSeconds) : undefined },
         ] as { label: string; remain: number; budget: number; plan?: number; last?: number }[]).map((b) => {
-          const over = b.remain < 0;
-          const width = frac(b.remain, b.budget) * 100;
-          const color = col(b.remain, b.budget);
+          // A slide without a budget (e.g. `@time 0s` backup slides) has nothing to
+          // count down: neutral empty track, no "over" alarm.
+          const noBudget = b.budget <= 0;
+          const over = !noBudget && b.remain < 0;
+          const width = noBudget ? 0 : frac(b.remain, b.budget) * 100;
+          const color = noBudget ? '#666' : col(b.remain, b.budget);
           return (
             <div key={b.label} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <span style={{ fontSize: '0.62rem', color: '#888', letterSpacing: 1, width: 44, textAlign: 'right', flexShrink: 0 }}>{b.label}</span>
               <div style={{ position: 'relative', flex: 1, height: 7, borderRadius: 4, background: over ? 'rgba(240,71,71,0.35)' : 'rgba(255,255,255,0.10)', overflow: 'visible' }}>
-                <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${width}%`, borderRadius: 4, background: color, transition: 'width 0.25s linear' }} />
+                {/* No CSS transition: the width is recomputed every animation frame
+                    while the stopwatch runs, and a slide change must snap to full. */}
+                <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${width}%`, borderRadius: 4, background: color }} />
                 {b.plan != null && b.budget > 0 && elapsedTime > 0 && (
                   <div title="Where the plan says you should be" style={{ position: 'absolute', left: `${b.plan * 100}%`, top: -3, width: 2, height: 13, background: '#fff', transform: 'translateX(-1px)' }} />
                 )}
@@ -797,7 +817,7 @@ export default function PresenterPage() {
                   <div title="Time left at this point in the last rehearsal" style={{ position: 'absolute', left: `${b.last * 100}%`, top: -2, width: 2, height: 11, background: '#5ea0ff', transform: 'translateX(-1px)' }} />
                 )}
               </div>
-              <span style={{ fontSize: '0.68rem', fontFamily: 'monospace', color, width: 58, flexShrink: 0, textAlign: 'right' }}>{formatClock(b.remain)}</span>
+              <span style={{ fontSize: '0.68rem', fontFamily: 'monospace', color, width: 58, flexShrink: 0, textAlign: 'right' }}>{noBudget ? '—' : formatClock(b.remain)}</span>
             </div>
           );
         })}

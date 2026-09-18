@@ -58,6 +58,23 @@ mainWindow = new BrowserWindow({
     }
   });
 
+  // Windows the renderer opens with window.open (presenter tool, output window)
+  // inherit the main window's preferences. On top of that, keep their timers and
+  // animation frames running while hidden or covered (e.g. the presenter behind
+  // a full-screen slideshow on one display): the stopwatch, countdowns and the
+  // rehearsal recorder must not freeze when the window is not on top.
+  mainWindow.webContents.setWindowOpenHandler(() => ({
+    action: 'allow',
+    overrideBrowserWindowOptions: {
+      webPreferences: {
+        preload: path.join(__dirname, 'preload.cjs'),
+        nodeIntegration: false,
+        contextIsolation: true,
+        backgroundThrottling: false,
+      },
+    },
+  }));
+
   mainWindow.on('close', (e) => {
     if (isModified && !forceClose) {
       e.preventDefault();

@@ -10,9 +10,14 @@ type ContentProps = {
   header?: string;
   footer?: string;
   drawings?: Stroke[];
+  // The deck's folder: SlideView resolves relative image/SVG paths against it,
+  // and inlines workspace `.svg` (drawio) files from the resulting path. Without
+  // it a `./figs/x.drawio.svg` is looked up at the workspace root and stays blank.
+  basePath?: string;
+  raw?: string;
 };
 
-const ThumbnailContent = React.memo<ContentProps>(({ htmlContent, slideSize, className, header, footer, drawings }) => {
+const ThumbnailContent = React.memo<ContentProps>(({ htmlContent, slideSize, className, header, footer, drawings, basePath, raw }) => {
   return (
     <div
       className="thumbnail-frame"
@@ -21,6 +26,8 @@ const ThumbnailContent = React.memo<ContentProps>(({ htmlContent, slideSize, cla
       <SlideScaler width={slideSize.width} height={slideSize.height}>
         <SlideView
           html={htmlContent}
+          raw={raw}
+          basePath={basePath}
           isActive={true}
           className={className}
           slideSize={slideSize}
@@ -47,9 +54,11 @@ type Props = {
   header?: string;
   footer?: string;
   drawings?: Stroke[];
+  basePath?: string;
+  raw?: string;
 };
 
-export const SlideThumbnail: React.FC<Props> = ({ htmlContent, slideSize, className, isActive, onClick, pageNumber, isHidden, isCover, header, footer, drawings }) => {
+export const SlideThumbnail: React.FC<Props> = ({ htmlContent, slideSize, className, isActive, onClick, pageNumber, isHidden, isCover, header, footer, drawings, basePath, raw }) => {
   return (
     <div
       className={`thumbnail-wrapper ${isActive ? 'active' : ''}`}
@@ -64,7 +73,7 @@ export const SlideThumbnail: React.FC<Props> = ({ htmlContent, slideSize, classN
       {isCover && (
         <div className="thumbnail-cover"></div>
       )}
-      <ThumbnailContent htmlContent={htmlContent} slideSize={slideSize} className={className} header={header} footer={footer} drawings={drawings} />
+      <ThumbnailContent htmlContent={htmlContent} slideSize={slideSize} className={className} header={header} footer={footer} drawings={drawings} basePath={basePath} raw={raw} />
     </div>
   );
 };

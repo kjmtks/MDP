@@ -706,7 +706,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   style={{ opacity: slide.isHidden ? 0.5 : 1, marginBottom: '20px' }}
                 >
                   <SlideThumbnail
-                    htmlContent={slide.html} slideSize={slideSize} className={slide.className}
+                    htmlContent={slide.html} raw={slide.raw} slideSize={slideSize} className={slide.className}
+                    basePath={currentFileName.includes('/') ? currentFileName.slice(0, currentFileName.lastIndexOf('/')) : ''}
                     isActive={index === currentSlideIndex} onClick={() => onSlideSelect(index)}
                     isCover={slide.isCover} isHidden={slide.isHidden} pageNumber={slide.pageNumber}
                     header={slide.header} footer={slide.footer} drawings={drawings[index]}
