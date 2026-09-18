@@ -6,6 +6,7 @@ import { mdpBus } from '../../bus/mdpBus';
 import { loadedModules } from '../../modules/moduleManager';
 import { loadedEffects } from '../../effects/effectManager';
 import type { RasterizeResult } from '../capture/captureTypes';
+import type { RehearsalRun } from '../../rehearsal/rehearsalStore';
 
 type Rasterize = (
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -39,6 +40,10 @@ export const usePresentationSync = (
   historyBack?: () => void,
   historyForward?: () => void,
   handleUpdateScript?: (pageIndex: number, scripts: string[]) => void,
+  // Rehearsal runs measured on the presenter come back here to be persisted; the
+  // latest saved run travels to the presenter so it can show "last time" marks.
+  onRehearsalRun?: (run: RehearsalRun) => void,
+  lastRehearsal?: RehearsalRun | null,
 ) => {
   const [channelId] = useState<string>(() => {
     const query = window.location.hash.split('?')[1] || window.location.search;
@@ -66,10 +71,10 @@ export const usePresentationSync = (
       type: 'SYNC_STATE',
       // `basePath` travels too: a mirror needs it to resolve a slide's drawio/SVG
       // and image paths (SlideView builds those from `raw` + basePath).
-      payload: { slides, index: currentSlideIndex, step: step ?? 0, slideSize, globalContext, baseUrl, basePath, themeCssUrl, lastUpdated, allDrawings: drawings, isOverview: isSlideOverview, modules: Object.values(loadedModules), effects: Object.values(loadedEffects) },
+      payload: { slides, index: currentSlideIndex, step: step ?? 0, slideSize, globalContext, baseUrl, basePath, themeCssUrl, lastUpdated, allDrawings: drawings, isOverview: isSlideOverview, modules: Object.values(loadedModules), effects: Object.values(loadedEffects), lastRehearsal: lastRehearsal ?? null },
       channelId,
     }, 'local');
-  }, [slides, currentSlideIndex, step, slideSize, globalContext, baseUrl, basePath, themeCssUrl, lastUpdated, drawings, channelId, isSlideOverview]);
+  }, [slides, currentSlideIndex, step, slideSize, globalContext, baseUrl, basePath, themeCssUrl, lastUpdated, drawings, channelId, isSlideOverview, lastRehearsal]);
 
   const nextVisibleIndex = useCallback((from: number) => {
     let n = from + 1;
@@ -171,6 +176,9 @@ export const usePresentationSync = (
         if (handleUpdateScript && Array.isArray(msg.scripts)) {
           handleUpdateScript(msg.pageIndex, msg.scripts);
         }
+        break;
+      case 'REHEARSAL_RUN':
+        if (onRehearsalRun && msg.run && Array.isArray(msg.run.slides)) onRehearsalRun(msg.run);
         break;
       case 'TOGGLE_OVERVIEW':
         toggleSlideOverview?.();

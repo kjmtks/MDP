@@ -19,6 +19,8 @@ import { ACTIONS_BY_SCOPE } from '../../features/settings/shortcuts/registry';
 import { DrawioEditor } from '../../features/drawio/components/DrawioEditor';
 import { ConnectDialog } from '../../features/remote/components/ConnectDialog';
 import { RehearsalDialog } from '../../features/rehearsal/RehearsalDialog';
+import { readRehearsals, upsertRehearsal, latestRun, type RehearsalRun } from '../../features/rehearsal/rehearsalStore';
+import { formatClock } from '../../features/slide/talkTime';
 import { SuggestModuleDialog } from '../../features/modules/components/SuggestModuleDialog';
 import { AutoPlayView } from '../../features/autoplay/AutoPlayView';
 import { PrintContainer } from '../../features/slide/components/PrintContainer';
@@ -61,7 +63,7 @@ import { useDeckIndexBuilder } from '../../features/search/useDeckIndexBuilder';
 import { deckIndexStore } from '../../features/search/deckIndexStore';
 import { allTagsOf } from '../../features/search/searchEngine';
 import { TagSettingsDialog } from '../../features/search/components/TagSettingsDialog';
-import { prewarmSvgs } from '../../features/slide/inlineSvg';
+import { prewarmSvgs, invalidateSvg } from '../../features/slide/inlineSvg';
 import type { ManipRuntime } from '../../features/slide/components/ManipulationLayer';
 import { storeLibraryImage, inlineLibraryImage, updateRegistry, deleteLibraryFile, rebaseLibraryValue } from '../../features/images/imageLibraryStore';
 import { useBookmarks } from './hooks/useBookmarks';
@@ -1096,11 +1098,35 @@ export default function EditorPage() {
     slides, currentFileName, currentSlideIndex, setCurrentSlideIndex, setStep, openDeck: handleOpenDeck,
   });
 
+  // Rehearsal history of the PREVIEWED deck (the one the presenter mirrors): the
+  // latest run is shipped to the presenter for "last time" marks, and runs the
+  // presenter measures come back through `handleRehearsalRun` to be persisted in
+  // the deck's `.rehearsals.json` sidecar (see features/rehearsal/rehearsalStore).
+  const [lastRehearsal, setLastRehearsal] = useState<RehearsalRun | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    if (!previewFileName || !/\.md$/i.test(previewFileName)) { setLastRehearsal(null); return; }
+    readRehearsals(previewFileName).then((f) => { if (!cancelled) setLastRehearsal(latestRun(f)); });
+    return () => { cancelled = true; };
+  }, [previewFileName]);
+  const handleRehearsalRun = useCallback(async (run: RehearsalRun) => {
+    if (!previewFileName || !/\.md$/i.test(previewFileName)) return;
+    try {
+      const file = await upsertRehearsal(previewFileName, run);
+      setLastRehearsal(run);
+      const n = file.runs.findIndex((r) => r.id === run.id) + 1;
+      notify(`Rehearsal #${n} saved: ${formatClock(Math.round(run.totalSec))} spoken vs ${formatClock(Math.round(run.plannedTotalSec))} planned` +
+        (run.complete ? '' : ` (stopped at slide ${run.lastSlide}/${run.slideCount})`), { title: 'Rehearsal' });
+    } catch (e) {
+      reportError('Failed to save the rehearsal run.', { detail: e });
+    }
+  }, [previewFileName]);
+
   const { channelId, token, send, imagePrep } = usePresentationSync(
     syncSlides, currentSlideIndex, slideSize, globalContext, baseUrl, themeCssUrl, lastUpdated, drawings,
     moveSlide, addStroke, clear, undo, redo, handleAddBlankSlide, updateStrokes, handleUpdateNote,
     remotePort, rasterize, remoteActive, basePath, isSlideOverview, toggleSlideOverview, selectSlideFromOverview,
-    step, navLink, navBack, navForward, handleUpdateScript
+    step, navLink, navBack, navForward, handleUpdateScript, handleRehearsalRun, lastRehearsal
   );
 
   const handleUpdateStrokes = useCallback((pageIndex: number, indices: number[], dx: number, dy: number) => {
@@ -1108,15 +1134,20 @@ export default function EditorPage() {
     if (channelId) send({ type: 'UPDATE_STROKES', pageIndex, indices, dx, dy, channelId });
   }, [updateStrokes, channelId, send]);
 
-  const handleEditDirectDrawio = useCallback(async () => {
-    if (!currentFileName) return;
+  // Open a `.drawio.svg` FILE in the draw.io editor. Defaults to the active tab
+  // (toolbar "Edit Diagram" button — which passes a click event, hence the type
+  // guard); the file tree passes an explicit path so a diagram can be edited
+  // without first opening it as an image preview.
+  const handleEditDirectDrawio = useCallback(async (pathArg?: unknown) => {
+    const target = typeof pathArg === 'string' ? pathArg : currentFileName;
+    if (!target) return;
     try {
-      const text = await apiClient.readFileText(currentFileName);
+      const text = await apiClient.readFileText(target);
       const bytes = new TextEncoder().encode(text);
       const binString = Array.from(bytes, (byte) => String.fromCodePoint(byte)).join("");
       const base64 = btoa(binString);
 
-      setDirectDrawio({ path: currentFileName, content: base64 });
+      setDirectDrawio({ path: target, content: base64 });
     } catch (e) {
       reportError('Failed to open the diagram for editing.', { detail: e });
     }
@@ -1140,8 +1171,13 @@ export default function EditorPage() {
       }
       await apiClient.saveFile(directDrawio.path, svgText);
       setDirectDrawio(null);
+      // Decks that inline this SVG re-fetch it (the inline cache is keyed by
+      // workspace path), so the preview shows the edited diagram at once.
+      invalidateSvg(directDrawio.path);
       handleManualRefresh();
-      loadFile(directDrawio.path, true);
+      // Refresh an image-preview tab of the file when one is open; a diagram
+      // edited straight from the file tree does not get a tab forced open.
+      if (tabs.some((t) => t.path === directDrawio.path)) loadFile(directDrawio.path, true);
     } catch (e) {
       reportError('Failed to save the diagram.', { detail: e });
     }
@@ -1380,8 +1416,12 @@ export default function EditorPage() {
       url.searchParams.delete('url');
       window.history.replaceState({}, '', url.toString() || window.location.pathname);
     }
+    // A draw.io diagram is a thing you EDIT, not a picture to look at: selecting
+    // one opens it in the draw.io editor (saving writes the .drawio.svg back and
+    // refreshes any deck that embeds it) instead of an image-preview tab.
+    if (/\.drawio\.svg$/i.test(path)) { void handleEditDirectDrawio(path); return; }
     loadFile(path, isBinary);
-  }, [loadFile]);
+  }, [loadFile, handleEditDirectDrawio]);
 
   useEffect(() => {
     const handleOpenThemeSelector = (e: Event) => {
@@ -1963,7 +2003,7 @@ export default function EditorPage() {
 
       <ConnectDialog open={isConnectDialogOpen} onClose={() => setIsConnectDialogOpen(false)} channelId={channelId} token={token} ipCandidates={remoteIps} port={remotePort} />
 
-      <RehearsalDialog open={rehearseOpen} onClose={() => setRehearseOpen(false)} slides={mdSlides.map((s) => ({ raw: (s as { raw?: string }).raw || '', scriptHtml: (s as { scriptHtml?: string }).scriptHtml || '' }))} />
+      <RehearsalDialog open={rehearseOpen} onClose={() => setRehearseOpen(false)} onRun={handleRehearsalRun} slides={mdSlides.map((s) => ({ raw: (s as { raw?: string }).raw || '', scriptHtml: (s as { scriptHtml?: string }).scriptHtml || '' }))} />
 
       <SuggestModuleDialog open={suggestOpen} onClose={() => setSuggestOpen(false)} text={suggestText} onInsert={handleInsertText} />
 

@@ -419,6 +419,29 @@ function outlineDeck(text, cpm) {
   };
 }
 
+// Rehearsal history sidecar: `<deck minus .md>.rehearsals.json` next to the deck,
+// written by the app (presenter stopwatch / TTS dry run) \u2014 see the renderer's
+// features/rehearsal/rehearsalStore.ts for the record shape. Missing \u2192 no runs.
+const rehearsalPathFor = (deckPath) => deckPath.replace(/\.md$/i, '') + '.rehearsals.json';
+async function readRehearsalRuns(baseDir, deckPath) {
+  try {
+    const parsed = JSON.parse(await mdplink.vfsReadText(vres(baseDir, rehearsalPathFor(deckPath))));
+    return Array.isArray(parsed && parsed.runs) ? parsed.runs.filter((r) => r && typeof r === 'object' && Array.isArray(r.slides)) : [];
+  } catch { return []; }
+}
+// The run's record for a slide of the CURRENT deck: same position when the
+// headings agree (or one side has none); else the one record with that heading
+// (the slide was moved since the run); else nothing — an inserted slide must not
+// inherit its neighbour's time.
+function findRunSlide(records, slideNo, heading) {
+  const h = String(heading || '').trim();
+  const rh = (r) => String(r.heading || '').trim();
+  const at = records.find((r) => r.slide === slideNo);
+  if (at && (!h || !rh(at) || rh(at) === h)) return at;
+  if (h) { const same = records.filter((r) => rh(r) === h); if (same.length === 1) return same[0]; }
+  return null;
+}
+
 // Design / consistency LINT over a deck \u2014 advisory, complements validate_deck
 // (syntax) and measure_slides (overflow). Pure text analysis: per-slide density &
 // structure checks plus a few deck-level consistency checks. severity: 'warn' =
@@ -919,7 +942,49 @@ async function callToolInner(method, p, baseDir) {
     case 'get_deck_outline': {
       const deckPath = p.path ? requireDeckPath(p.path) : await activeDeckPath(baseDir);
       const { text } = await currentDeckText(baseDir, deckPath);
-      return { path: deckPath, ...outlineDeck(text, readingCpm(baseDir)), note: '`slide` is the 1-based POSITION in the file; `page` is the number PRINTED bottom-right on the slide — they differ because covers and hidden slides carry no number. Cite `page` to the user and to readers; pass `slide` to tools that take a slide number. `id` is the slide\'s `@id` anchor, which `[](#id)` renders as that page number. Per-slide `seconds` and total `estimatedMinutes` are a rough talk-time estimate: a slide\'s `<!-- @time … -->` if set (explicitTime), else read time of its `<!-- @script: … -->` at the user\'s reading speed, else a complexity estimate (base + bullets + visuals). @note does NOT affect time (it\'s supplementary). Set @time or write an @script for accuracy. Hidden slides excluded.' };
+      const outline = outlineDeck(text, readingCpm(baseDir));
+      // Measured time from the most recent rehearsal, when the deck has one.
+      const runs = await readRehearsalRuns(baseDir, deckPath);
+      const last = runs.length ? runs[runs.length - 1] : null;
+      if (last) {
+        outline.slides = outline.slides.map((s) => {
+          const r = findRunSlide(last.slides, s.slide, s.heading);
+          return r ? { ...s, rehearsalSec: r.actualSec } : s;
+        });
+        outline.lastRehearsal = { at: last.endedAt, source: last.source, totalSec: last.totalSec, plannedTotalSec: last.plannedTotalSec, complete: !!last.complete, runs: runs.length };
+      }
+      return { path: deckPath, ...outline, note: '`slide` is the 1-based POSITION in the file; `page` is the number PRINTED bottom-right on the slide — they differ because covers and hidden slides carry no number. Cite `page` to the user and to readers; pass `slide` to tools that take a slide number. `id` is the slide\'s `@id` anchor, which `[](#id)` renders as that page number. Per-slide `seconds` and total `estimatedMinutes` are a rough talk-time estimate: a slide\'s `<!-- @time … -->` if set (explicitTime), else read time of its `<!-- @script: … -->` at the user\'s reading speed, else a complexity estimate (base + bullets + visuals). @note does NOT affect time (it\'s supplementary). Set @time or write an @script for accuracy. Hidden slides excluded.' + (last ? ' `rehearsalSec` = seconds the speaker ACTUALLY spent on the slide in the last recorded rehearsal (get_rehearsals has every run, planned vs actual).' : '') };
+    }
+
+    case 'get_rehearsals': {
+      const deckPath = p.path ? requireDeckPath(p.path) : await activeDeckPath(baseDir);
+      const want = Math.max(1, Math.min(20, Number(p.last) || 3));
+      const all = await readRehearsalRuns(baseDir, deckPath);
+      const { text } = await currentDeckText(baseDir, deckPath);
+      const outline = outlineDeck(text, readingCpm(baseDir));
+      const current = outline.slides.map((s) => ({ slide: s.slide, heading: s.heading, plannedSec: s.seconds, ...(s.explicitTime ? { explicitTime: s.explicitTime } : {}), ...(s.hidden ? { hidden: true } : {}) }));
+      const r1 = (v) => Math.round(v * 10) / 10;
+      const runs = all.slice(-want).reverse().map((run) => {
+        const slides = run.slides.map((r) => ({
+          slide: r.slide, heading: r.heading, plannedSec: r.plannedSec, actualSec: r1(r.actualSec),
+          diffSec: r1(r.actualSec - r.plannedSec), ...(r.visits > 1 ? { visits: r.visits } : {}),
+        }));
+        const spokenTotal = slides.reduce((a, s) => a + s.actualSec, 0);
+        return {
+          id: run.id, source: run.source, startedAt: run.startedAt, endedAt: run.endedAt,
+          totalSec: r1(run.totalSec), plannedTotalSec: run.plannedTotalSec, diffSec: r1(run.totalSec - run.plannedTotalSec),
+          slideCount: run.slideCount, lastSlide: run.lastSlide, complete: !!run.complete,
+          ...(run.readingCpm ? { readingCpm: run.readingCpm } : {}),
+          spokenSlides: slides.length, spokenTotalSec: r1(spokenTotal), slides,
+        };
+      });
+      return {
+        path: deckPath, sidecar: rehearsalPathFor(deckPath), totalRuns: all.length, runs,
+        currentPlan: { totalSec: Math.round(outline.estimatedMinutes * 60), slides: current },
+        note: runs.length
+          ? 'Newest run first. Per slide: plannedSec = the budget at the time of the run (from @time, else the script/complexity estimate), actualSec = measured, diffSec = actual − planned (positive = over). A "presenter" run is a live stopwatch (revisits summed; a slide not visited is absent); a "tts" run is a synthetic read of the @script and only has slides with a script. `complete:false` = stopped before the last slide, so its total is partial. `currentPlan` is the deck as it is NOW (budgets may have changed since the run). To adjust: set `@time` to what the speaker actually needs (set_time / batch_set_slides) and/or trim or expand the `@script` of slides that consistently over/under-run; keep the deck total inside the talk\'s limit.'
+          : 'No rehearsal has been recorded for this deck yet. Runs are saved when the user times a run with the presenter tool (▶ then ‖ / reset) or completes the TTS Rehearse dialog.',
+      };
     }
 
     case 'lint_deck': {

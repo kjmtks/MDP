@@ -162,8 +162,13 @@ const TOOLS = [
   },
   {
     name: 'get_deck_outline',
-    description: 'LOW-TOKEN structure map of a deck (default: the active one): per slide its heading, bullet count, modules used, note volume and estimated `seconds` (from its `<!-- @time … -->` if set, else notes/complexity), plus deck title/tags and total estimatedMinutes. Prefer this over read_deck for orientation and style sampling of long decks. To make talk-time accurate, set `<!-- @time 90s -->` on slides.',
+    description: 'LOW-TOKEN structure map of a deck (default: the active one): per slide its heading, bullet count, modules used, note volume and estimated `seconds` (from its `<!-- @time … -->` if set, else notes/complexity), plus deck title/tags and total estimatedMinutes. When the deck has recorded rehearsals, each slide also carries `rehearsalSec` (seconds actually spent in the LAST run) and the deck a `lastRehearsal` summary — call get_rehearsals for the full history. Prefer this over read_deck for orientation and style sampling of long decks. To make talk-time accurate, set `<!-- @time 90s -->` on slides.',
     inputSchema: S({ path: str('Deck path (default: the active deck)') }),
+  },
+  {
+    name: 'get_rehearsals',
+    description: 'Rehearsal history of a deck as MEASURED by MDP — presenter-tool stopwatch runs (source "presenter": seconds per slide while the timer ran, summed over revisits) and TTS dry runs of the @script text (source "tts"). Each run keeps the PLANNED budget of every slide at that time, so per slide you get planned vs actual vs `diffSec`, plus totals and whether the run reached the last slide. The CURRENT plan (from @time / @script) is returned alongside so you can rebalance: move `<!-- @time … -->` budgets toward what the speaker actually needs (set_time / batch_set_slides), and shorten or lengthen the `@script` of slides that consistently over/under-run. Newest runs first; nothing recorded → empty `runs`.',
+    inputSchema: S({ path: str('Deck path (default: the active deck)'), last: num('How many recent runs to return (default 3, max 20)') }),
   },
   {
     name: 'search_decks',

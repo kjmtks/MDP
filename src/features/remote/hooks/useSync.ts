@@ -2,6 +2,7 @@ import { WEB_BASE } from '../../../api/base';
 import { useEffect, useRef, useCallback } from 'react';
 import { isElectron } from '../../../api/apiClient';
 import type { SlideLinkRect } from '../capture/captureTypes';
+import type { RehearsalRun } from '../../rehearsal/rehearsalStore';
 
 declare const __API_PORT__: string;
 
@@ -45,6 +46,10 @@ export type SyncMessage =
   // Presenter-side edit of the read-aloud `@script` blocks of a slide. One entry
   // per source `<!-- @script: … -->` block, in document order (raw text, markers kept).
   | { type: 'UPDATE_SCRIPT'; pageIndex: number; scripts: string[]; channelId?: string }
+  // A rehearsal run measured by the presenter tool's stopwatch (mirror→host): the
+  // host owns the deck path and writes it to the deck's rehearsal sidecar. Sent
+  // every time the timer pauses (same run id → upsert) and on reset/close.
+  | { type: 'REHEARSAL_RUN'; run: RehearsalRun; channelId?: string }
   | { type: 'TOGGLE_OVERVIEW'; channelId?: string }
   | { type: 'SELECT_SLIDE'; index: number; channelId?: string }
   // Hyperlink navigation (mirror→host): jump to a link target / move through history.

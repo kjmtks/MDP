@@ -8,6 +8,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import { useAppSettings } from '../settings/AppSettingsContext';
 import { explicitSlideSeconds, slideSecondsFromRaw, formatClock } from '../slide/talkTime';
+import { newRunId, type RehearsalRun } from './rehearsalStore';
 import {
   speak, listWebSpeechVoices, loadWebSpeechVoices, webSpeechAvailable,
   listVoicevoxSpeakers, type Utterance, type VoicevoxStyle,
@@ -46,7 +47,10 @@ export const RehearsalDialog: React.FC<{
   open: boolean;
   onClose: () => void;
   slides: RehearsalSlide[];
-}> = ({ open, onClose, slides }) => {
+  /** Receives the finished (or stopped) dry run so it can be persisted with the
+   *  deck's rehearsal history, like a presenter-tool run. */
+  onRun?: (run: RehearsalRun) => void;
+}> = ({ open, onClose, slides, onRun }) => {
   const { settings, update, appThemeVariant } = useAppSettings();
   const muiTheme = useMemo(() => createTheme({ palette: { mode: appThemeVariant } }), [appThemeVariant]);
   const tts = settings.tts;
@@ -103,9 +107,29 @@ export const RehearsalDialog: React.FC<{
   useEffect(() => () => { cancelRef.current = true; stopTick(); stopSpeech(); }, []);
   useEffect(() => { if (!open) { cancelRef.current = true; stopTick(); stopSpeech(); setRunning(false); } }, [open]);
 
+  // Hand the measured run to the host (persisted next to the deck). Only the
+  // slides that were actually spoken carry an `actualSec`; the rest are omitted
+  // so an aborted run is not mistaken for a fast one.
+  const runStartRef = useRef<string>('');
+  const reportRun = (acc: number[], complete: boolean) => {
+    const spoken = acc.map((s, i) => (s != null ? { step: steps[i], secs: s } : null)).filter((x): x is { step: Step; secs: number } => !!x);
+    if (!spoken.length || !onRun) return;
+    const total = spoken.reduce((a, x) => a + x.secs, 0);
+    const planned = steps.reduce((a, s) => a + s.budget, 0);
+    onRun({
+      id: newRunId(), source: 'tts',
+      startedAt: runStartRef.current || new Date().toISOString(), endedAt: new Date().toISOString(),
+      totalSec: Math.round(total * 10) / 10, plannedTotalSec: Math.round(planned),
+      slideCount: slides.length, lastSlide: spoken[spoken.length - 1].step.index + 1, complete,
+      readingCpm: cpm,
+      slides: spoken.map(({ step, secs }) => ({ slide: step.index + 1, heading: step.title, plannedSec: Math.round(step.budget), actualSec: Math.round(secs * 10) / 10, visits: 1 })),
+    });
+  };
+
   const runFrom = async (startIdx: number, prior: number[]) => {
     cancelRef.current = false;
     setRunning(true); setDone(false);
+    runStartRef.current = new Date().toISOString();
     const acc = prior.slice();
     for (let i = startIdx; i < steps.length; i++) {
       if (cancelRef.current) break;
@@ -129,6 +153,9 @@ export const RehearsalDialog: React.FC<{
     }
     stopTick(); setRunning(false);
     if (!cancelRef.current) setDone(true);
+    // Report once per run — a stop mid-run also lands here (the awaited speech
+    // resolves, the loop breaks), so Stop needs no separate report.
+    reportRun(acc, !cancelRef.current);
   };
 
   const start = () => { setSpent([]); void runFrom(0, []); };

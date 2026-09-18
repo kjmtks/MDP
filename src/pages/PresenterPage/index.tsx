@@ -19,6 +19,7 @@ import type { ModuleData } from '../../utils/moduleParser';
 import type { EffectData } from '../../utils/effectParser';
 import { useDrawing } from '../../features/drawing/hooks/useDrawing';
 import { estimateDeckSeconds, slideSeconds, explicitSlideSeconds, formatClock } from '../../features/slide/talkTime';
+import { firstHeading, newRunId, type RehearsalRun } from '../../features/rehearsal/rehearsalStore';
 import { SlideControls, type AppMode } from '../../features/drawing/components/SlideControls';
 import type { Stroke } from '../../features/drawing/components/DrawingOverlay';
 
@@ -42,6 +43,9 @@ interface SyncData {
   isOverview?: boolean;
   modules?: ModuleData[];
   effects?: EffectData[];
+  // The deck's most recent saved rehearsal run (host-side sidecar), for the
+  // "last time" marks on the countdowns.
+  lastRehearsal?: RehearsalRun | null;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -130,6 +134,20 @@ export default function PresenterPage() {
   // per-slide countdown measures time spent on THIS slide.
   const slideBaselineMsRef = useRef<number>(0);
 
+  // ---- Rehearsal recorder ----------------------------------------------------
+  // While the stopwatch runs, the time spent on each slide is accumulated (summed
+  // over revisits) and the run is sent to the host — which owns the deck path and
+  // writes the `.rehearsals.json` sidecar — every time the timer pauses (same run
+  // id → the saved run is updated), on reset, and when this window closes.
+  const recMsRef = useRef<number[]>([]);          // ms spent per slide index
+  const recVisitsRef = useRef<number[]>([]);      // visits per slide index
+  const recSegmentStartRef = useRef<number>(0);   // elapsed ms when the current slide's segment began
+  const recRunRef = useRef<{ id: string; startedAt: string } | null>(null);
+  const [recStatus, setRecStatus] = useState<'idle' | 'recording' | 'paused' | 'saved'>('idle');
+  const [lastRehearsal, setLastRehearsal] = useState<RehearsalRun | null>(null);
+  // Latest render values for handlers that must not go stale (beforeunload).
+  const latestRef = useRef({ elapsedTime: 0, currentIndex: 0, slides: [] as any[], readingCpm: 320, deckSeconds: 0 }); // eslint-disable-line @typescript-eslint/no-explicit-any
+
   // Speaking-time budgets (seconds): whole deck + the current slide. From each
   // slide's `<!-- @time … -->` when set, else `@script` read time, else estimate.
   const readingCpm = appSettings.readingCharsPerMin;
@@ -177,6 +195,7 @@ export default function PresenterPage() {
         if (data.slideSize) setSlideSize(data.slideSize);
         if (data.allDrawings) syncDrawings(data.allDrawings);
         setIsOverview(!!data.isOverview);
+        if ('lastRehearsal' in data) setLastRehearsal(data.lastRehearsal ?? null);
 
         setThemeCssUrl(data.themeCssUrl);
         setLastUpdated(data.lastUpdated);
@@ -216,7 +235,14 @@ export default function PresenterPage() {
     setScriptDrafts(extractScriptBlocks(currentSlide));
     // Restart the per-slide countdown from the current elapsed value.
     slideBaselineMsRef.current = elapsedTime;
+    // Book the time spent on the slide we are leaving to the recorder.
+    if (recRunRef.current) {
+      recMsRef.current[prevIndex] = (recMsRef.current[prevIndex] || 0) + Math.max(0, elapsedTime - recSegmentStartRef.current);
+      recVisitsRef.current[currentIndex] = (recVisitsRef.current[currentIndex] || 0) + 1;
+    }
+    recSegmentStartRef.current = elapsedTime;
   }
+  latestRef.current = { elapsedTime, currentIndex, slides, readingCpm, deckSeconds };
 
   const handleToggleEditNote = useCallback(() => {
     if (isEditingNote) {
@@ -287,19 +313,90 @@ export default function PresenterPage() {
     return () => cancelAnimationFrame(animationFrameRef.current);
   }, [isTimerRunning]);
 
+  // Book the current slide's open segment into the recorder (idempotent).
+  const flushSegment = useCallback(() => {
+    const { elapsedTime: el, currentIndex: idx } = latestRef.current;
+    if (!recRunRef.current) return;
+    recMsRef.current[idx] = (recMsRef.current[idx] || 0) + Math.max(0, el - recSegmentStartRef.current);
+    recSegmentStartRef.current = el;
+  }, []);
+
+  // Snapshot the run so far: only slides that were visited, each with the budget
+  // that applied at the time, so the comparison survives later @time edits.
+  const buildRun = useCallback((): RehearsalRun | null => {
+    const run = recRunRef.current;
+    if (!run) return null;
+    const { elapsedTime: el, slides: sl, readingCpm: cpm, deckSeconds: total } = latestRef.current;
+    let lastSlide = 0;
+    const recs = sl.map((s, i) => {
+      const actual = (recMsRef.current[i] || 0) / 1000;
+      const visits = recVisitsRef.current[i] || 0;
+      if (visits > 0 || actual > 0) lastSlide = i + 1;
+      return {
+        slide: i + 1, heading: firstHeading(s?.raw || '') || undefined,
+        plannedSec: s?.isHidden ? 0 : Math.round(slideSeconds(s, cpm)),
+        actualSec: Math.round(actual * 10) / 10, visits,
+      };
+    }).filter((r) => r.visits > 0 || r.actualSec > 0);
+    let lastVisible = sl.length;
+    while (lastVisible > 0 && sl[lastVisible - 1]?.isHidden) lastVisible--;
+    return {
+      id: run.id, source: 'presenter', startedAt: run.startedAt, endedAt: new Date().toISOString(),
+      totalSec: Math.round(el / 100) / 10, plannedTotalSec: Math.round(total),
+      slideCount: sl.length, lastSlide, complete: lastVisible > 0 && lastSlide >= lastVisible,
+      readingCpm: cpm, slides: recs,
+    };
+  }, []);
+
+  const sendRun = useCallback(() => {
+    flushSegment();
+    const run = buildRun();
+    if (run && run.slides.length && channelId) send({ type: 'REHEARSAL_RUN', run, channelId });
+    return !!run;
+  }, [flushSegment, buildRun, channelId, send]);
+
   const toggleTimer = () => {
     if (isTimerRunning) {
       accumulatedTimeRef.current = elapsedTime;
+      // Pause = a checkpoint: the run so far is saved (updated on later pauses).
+      if (recRunRef.current) { sendRun(); setRecStatus('paused'); }
+    } else {
+      if (!recRunRef.current) {
+        // A fresh run starts with the stopwatch: from now on every slide change
+        // books time to the slide being left.
+        recRunRef.current = { id: newRunId(), startedAt: new Date().toISOString() };
+        recMsRef.current = [];
+        recVisitsRef.current = [];
+        recVisitsRef.current[currentIndex] = 1;
+      }
+      recSegmentStartRef.current = elapsedTime;
+      setRecStatus('recording');
     }
     setIsTimerRunning(!isTimerRunning);
   };
 
   const resetTimer = () => {
+    // Reset ends the run: save its final state, then start a clean slate.
+    if (recRunRef.current) {
+      const saved = elapsedTime > 0 && sendRun();
+      recRunRef.current = null;
+      recMsRef.current = [];
+      recVisitsRef.current = [];
+      setRecStatus(saved ? 'saved' : 'idle');
+    }
     setIsTimerRunning(false);
     timerStartRef.current = null;
     accumulatedTimeRef.current = 0;
     setElapsedTime(0);
   };
+
+  // Closing the presenter mid-run must not lose the measurement: the message is
+  // posted synchronously over the BroadcastChannel before the window unloads.
+  useEffect(() => {
+    const onUnload = () => { if (recRunRef.current && latestRef.current.elapsedTime > 0) sendRun(); };
+    window.addEventListener('beforeunload', onUnload);
+    return () => window.removeEventListener('beforeunload', onUnload);
+  }, [sendRun]);
 
   const formatTime = (ms: number) => {
     const totalSec = Math.floor(ms / 1000);
@@ -404,6 +501,36 @@ export default function PresenterPage() {
 
   if (!channelId) return <div style={{padding:20, color:'white'}}>Invalid Channel ID</div>;
   if (slides.length === 0) return <div style={{padding:20, color:'white'}}>Waiting for connection...</div>;
+
+  // ---- Speaking-time bookkeeping for the footer + the shrinking bars ----------
+  const elapsedSec = elapsedTime / 1000;
+  const onSlideSec = Math.max(0, (elapsedTime - slideBaselineMsRef.current) / 1000);
+  const slideRemain = currentBudgetSec - onSlideSec;
+  const totalRemain = deckSeconds - elapsedSec;
+  // Pace: elapsed vs. where the schedule says we should be — every earlier
+  // slide's budget, plus the part of THIS slide's budget already consumed
+  // (capped, so lingering past the budget counts as falling behind, and
+  // simply being on this slide does not).
+  const plannedElapsedSec = budgetBeforeSec + Math.min(onSlideSec, currentBudgetSec);
+  const paceSec = elapsedSec - plannedElapsedSec;
+  const behind = paceSec > 0;
+  const onTime = Math.abs(paceSec) < 5;
+  const col = (rem: number, budget: number) => rem < 0 ? '#f04747' : (budget > 0 && rem < budget * 0.2) ? '#f0a020' : '#4caf50';
+  const paceCol = elapsedTime === 0 ? '#666' : onTime ? '#8a8a8a' : behind ? '#f0a020' : '#4caf50';
+  const frac = (v: number, of: number) => (of > 0 ? Math.max(0, Math.min(1, v / of)) : 0);
+  // "Last time" marks from the deck's most recent saved run (this slide, whole
+  // deck). The record is matched by position when the headings agree, else by a
+  // unique heading — so a slide inserted since the run gets no stale mark.
+  const lastSlideRec = (() => {
+    const recs = lastRehearsal?.slides || [];
+    const h = firstHeading(currentSlide?.raw || '');
+    const at = recs.find((r) => r.slide === currentIndex + 1);
+    if (at && (!h || !at.heading || at.heading === h)) return at;
+    if (h) { const same = recs.filter((r) => r.heading === h); if (same.length === 1) return same[0]; }
+    return undefined;
+  })();
+  const lastSlideSec = lastSlideRec ? lastSlideRec.actualSec : null;
+  const lastTotalSec = lastRehearsal ? lastRehearsal.totalSec : null;
 
   return (
     <div className="presenter-container" style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100vw', overflow: 'hidden', touchAction: 'none' }}>
@@ -642,36 +769,63 @@ export default function PresenterPage() {
         )}
       </div>
 
+      {/* Shrinking time bars: the budget of THIS SLIDE and of the WHOLE TALK,
+          drawn as the fraction still left (each bar empties as time passes; over
+          budget it turns red). The TOTAL bar carries a white tick at the point
+          the plan says you should be at right now — bar ending right of the tick
+          = ahead of schedule, left of it = behind. A blue tick marks how much
+          was left at this point in the last saved rehearsal. */}
+      <div className="presenter-timebars" style={{ flexShrink: 0, padding: '5px 20px 3px', background: '#2b2b2b', borderTop: '1px solid #444', display: 'flex', flexDirection: 'column', gap: 4 }}>
+        {([
+          { label: 'SLIDE', remain: slideRemain, budget: currentBudgetSec, plan: undefined,
+            last: lastSlideSec != null && currentBudgetSec > 0 ? frac(currentBudgetSec - lastSlideSec, currentBudgetSec) : undefined },
+          { label: 'TOTAL', remain: totalRemain, budget: deckSeconds, plan: frac(deckSeconds - plannedElapsedSec, deckSeconds),
+            last: lastTotalSec != null && deckSeconds > 0 ? frac(deckSeconds - lastTotalSec, deckSeconds) : undefined },
+        ] as { label: string; remain: number; budget: number; plan?: number; last?: number }[]).map((b) => {
+          const over = b.remain < 0;
+          const width = frac(b.remain, b.budget) * 100;
+          const color = col(b.remain, b.budget);
+          return (
+            <div key={b.label} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: '0.62rem', color: '#888', letterSpacing: 1, width: 44, textAlign: 'right', flexShrink: 0 }}>{b.label}</span>
+              <div style={{ position: 'relative', flex: 1, height: 7, borderRadius: 4, background: over ? 'rgba(240,71,71,0.35)' : 'rgba(255,255,255,0.10)', overflow: 'visible' }}>
+                <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${width}%`, borderRadius: 4, background: color, transition: 'width 0.25s linear' }} />
+                {b.plan != null && b.budget > 0 && elapsedTime > 0 && (
+                  <div title="Where the plan says you should be" style={{ position: 'absolute', left: `${b.plan * 100}%`, top: -3, width: 2, height: 13, background: '#fff', transform: 'translateX(-1px)' }} />
+                )}
+                {b.last != null && (
+                  <div title="Time left at this point in the last rehearsal" style={{ position: 'absolute', left: `${b.last * 100}%`, top: -2, width: 2, height: 11, background: '#5ea0ff', transform: 'translateX(-1px)' }} />
+                )}
+              </div>
+              <span style={{ fontSize: '0.68rem', fontFamily: 'monospace', color, width: 58, flexShrink: 0, textAlign: 'right' }}>{formatClock(b.remain)}</span>
+            </div>
+          );
+        })}
+      </div>
+
       <div className="presenter-footer" style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div className="presenter-timer-controls" style={{display:'flex', alignItems:'center'}}>
           <span style={{fontSize:'2rem', fontWeight:'bold', color: isTimerRunning ? '#4caf50' : '#eee', width:'160px', fontFamily:'monospace'}}>
             {formatTime(elapsedTime)}
           </span>
-          <button onClick={toggleTimer} title={isTimerRunning ? "Pause" : "Start"}>
+          <button onClick={toggleTimer} title={isTimerRunning ? "Pause (saves the rehearsal so far)" : "Start (records a rehearsal run)"}>
             {isTimerRunning ? <PauseIcon /> : <PlayArrowIcon />}
           </button>
-          <button onClick={resetTimer} title="Reset">
+          <button onClick={resetTimer} title="Reset (ends and saves the run)">
             <RefreshIcon />
           </button>
+          {/* Recorder state: every timed run is saved next to the deck as a
+              rehearsal (per-slide seconds vs. budget) for later adjustment. */}
+          <span style={{ marginLeft: 10, fontSize: '0.66rem', letterSpacing: 1, whiteSpace: 'nowrap',
+            color: recStatus === 'recording' ? '#f04747' : recStatus === 'idle' ? '#555' : '#8a8a8a' }}>
+            {recStatus === 'recording' ? '● REC' : recStatus === 'paused' ? '‖ PAUSED · saved' : recStatus === 'saved' ? '✓ RUN SAVED' : 'REHEARSAL: press ▶'}
+          </span>
         </div>
 
         {/* Speaking-time countdowns: this slide's remaining budget + the whole
             deck's remaining. Green → amber (<20% left) → red (over). A third,
             smaller column says how far AHEAD/BEHIND schedule the talk is. */}
         {(() => {
-          const elapsedSec = elapsedTime / 1000;
-          const onSlideSec = Math.max(0, (elapsedTime - slideBaselineMsRef.current) / 1000);
-          const slideRemain = currentBudgetSec - onSlideSec;
-          const totalRemain = deckSeconds - elapsedSec;
-          // Pace: elapsed vs. where the schedule says we should be — every earlier
-          // slide's budget, plus the part of THIS slide's budget already consumed
-          // (capped, so lingering past the budget counts as falling behind, and
-          // simply being on this slide does not).
-          const paceSec = elapsedSec - (budgetBeforeSec + Math.min(onSlideSec, currentBudgetSec));
-          const behind = paceSec > 0;
-          const onTime = Math.abs(paceSec) < 5;
-          const col = (rem: number, budget: number) => rem < 0 ? '#f04747' : (budget > 0 && rem < budget * 0.2) ? '#f0a020' : '#4caf50';
-          const paceCol = elapsedTime === 0 ? '#666' : onTime ? '#8a8a8a' : behind ? '#f0a020' : '#4caf50';
           const Cell = ({ label, value, valueColor, valueSize, sub, width }: { label: string; value: string; valueColor: string; valueSize: string; sub: string; width: number }) => (
             <div style={{ textAlign: 'center', minWidth: width }}>
               <div style={{ fontSize: '0.68rem', color: '#888', letterSpacing: 1 }}>{label}</div>
@@ -686,9 +840,9 @@ export default function PresenterPage() {
           return (
             <div style={{ display: 'flex', gap: 24, alignItems: 'center', paddingRight: 12 }}>
               <Cell label="THIS SLIDE" value={formatClock(slideRemain)} valueColor={col(slideRemain, currentBudgetSec)} valueSize="1.7rem" width={110}
-                sub={`${currentHasExplicit ? '' : '≈ '}budget ${formatClock(currentBudgetSec)}`} />
+                sub={`${currentHasExplicit ? '' : '≈ '}budget ${formatClock(currentBudgetSec)}${lastSlideSec != null ? ` · last ${formatClock(Math.round(lastSlideSec))}` : ''}`} />
               <Cell label="TOTAL LEFT" value={formatClock(totalRemain)} valueColor={col(totalRemain, deckSeconds)} valueSize="1.7rem" width={110}
-                sub={`of ${formatClock(deckSeconds)}`} />
+                sub={`of ${formatClock(deckSeconds)}${lastTotalSec != null ? ` · last ${formatClock(Math.round(lastTotalSec))}` : ''}`} />
               {/* Pace sits BESIDE the deck clock (its own column), a size down, so
                   the footer keeps its three-line height. */}
               <Cell label="PACE" valueColor={paceCol} valueSize="1.2rem" width={96}

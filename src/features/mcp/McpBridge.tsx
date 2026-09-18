@@ -375,6 +375,9 @@ export const McpBridge: React.FC<{ ctx: McpCtx }> = ({ ctx }) => {
   reading speed. Use set_notes only for brief supplementary reminders (they do NOT
   affect time). To hit a target talk length, distribute set_time budgets across
   slides. get_deck_outline reports each slide's scriptChars/noteChars/seconds.
+  When the user has rehearsed (presenter stopwatch or the Rehearse dialog),
+  get_rehearsals gives MEASURED seconds per slide vs the plan — trust those over
+  estimates: rebalance @time and trim/expand @script where the speaker over/under-runs.
 - **Verify in three passes.** After writing or editing: (1) validate_deck — fixes
   unknown modules/themes/effects and bad parameters deterministically; (2)
   measure_slides — overflowX/overflowY > 0 px means clipped content (split or
