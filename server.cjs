@@ -211,7 +211,13 @@ const assertWritable = (req, rel) => {
     const e = new Error('not found'); e.status = 404; throw e;
   }
   if (!webspaces.canWrite(SPACES, req, loc)) {
-    const e = new Error('read-only here'); e.status = 403; throw e;
+    // A space ROOT ('@homes', '@personal', ...) is a listing, not a folder:
+    // there is no single directory to write into. Say so instead of the
+    // generic read-only message, which reads like a permission problem.
+    const e = new Error(loc.dir
+      ? 'this is a space listing, not a folder — open one inside it'
+      : 'read-only here');
+    e.status = 403; throw e;
   }
 };
 
@@ -311,7 +317,9 @@ app.post('/api/rename', async (req, res) => {
 app.post('/api/delete', async (req, res) => {
   try {
     for (const p of req.body.paths) assertWritable(req, p);
-    for (const p of req.body.paths) await mdplink.vfsRemove(vresSelf(req, p));
+    // `vres` (not a `vresSelf` — that name was never defined, so every delete
+    // in shared mode threw ReferenceError and the file simply stayed).
+    for (const p of req.body.paths) await mdplink.vfsRemove(vres(req, p));
     if (MULTI) pokeClients(); res.json({ success: true });
   }
   catch (e) { res.status(e.status || 500).json({ error: e.message }); }

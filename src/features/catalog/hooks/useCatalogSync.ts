@@ -22,13 +22,6 @@ const saveSkippedStale = async (map: Record<string, string>): Promise<void> => {
   catch (e) { console.error('Failed to record skipped asset updates', e); }
 };
 
-const collectFilePaths = (nodes: FileNode[], acc: Set<string>) => {
-  for (const n of nodes) {
-    if (n.type === 'file') acc.add(n.path);
-    if (n.children) collectFilePaths(n.children, acc);
-  }
-};
-
 export function useCatalogSync(
   fileTree: FileNode[],
   onManualRefresh: () => void
@@ -57,8 +50,21 @@ export function useCatalogSync(
           return;
         }
 
-        const localPaths = new Set<string>();
-        collectFilePaths(fileTree, localPaths);
+        // ASK THE SERVER, don't trust the tree. In shared (multi-user) mode the
+        // workspace root can be configured not to list its own files at all
+        // (`rootListing: "spaces-only"` — the roots shown are `@homes`,
+        // `@personal`, … while assets are written to the ROOT space). The tree
+        // then never contains `.mdp/...`, so every asset looked "missing" on
+        // every reload even right after a successful download (2026-09-24).
+        // Reading each file answers both questions (present? current?) and is
+        // correct in every mode; we already read the present ones to hash them.
+        const wanted: Array<{ local: string; remote: string; hash: string }> = [];
+        for (const [category, items] of Object.entries(catalog)) {
+          for (const item of items) {
+            wanted.push({ local: catalogLocalPath(category, item),
+                          remote: item.path, hash: item.hash || '' });
+          }
+        }
 
         const missing: string[] = [];
         // Present locally, but no longer the official content: the catalog carries
@@ -66,26 +72,20 @@ export function useCatalogSync(
         // used to be invisible — e.g. a module predating a new capability, whose
         // slides then silently do nothing.
         const stale: string[] = [];
-        const present: Array<{ local: string; remote: string; hash: string }> = [];
-        for (const [category, items] of Object.entries(catalog)) {
-          for (const item of items) {
-            const local = catalogLocalPath(category, item);
-            if (!localPaths.has(local)) missing.push(item.path);
-            else if (item.hash) present.push({ local, remote: item.path, hash: item.hash });
-          }
-        }
-
-        // Hash the local copies (skipping ones the user chose to keep — see below).
         // A few at a time: a workspace can be a `.mdplink` over SFTP, where a
         // hundred simultaneous reads would be rude. This runs in the background —
         // nothing waits on it but the prompt.
         const skipped = await loadSkippedStale();
-        const todo = present.filter((f) => skipped[f.remote] !== f.hash);
-        for (let i = 0; i < todo.length; i += 8) {
-          await Promise.all(todo.slice(i, i + 8).map(async (f) => {
-            try {
-              if (assetHash(await apiClient.readFileText(f.local)) !== f.hash) stale.push(f.remote);
-            } catch { /* unreadable — treat as up to date rather than nagging */ }
+        const present: Array<{ local: string; remote: string; hash: string }> = [];
+        for (let i = 0; i < wanted.length; i += 8) {
+          await Promise.all(wanted.slice(i, i + 8).map(async (f) => {
+            let text: string | null = null;
+            try { text = await apiClient.readFileText(f.local); }
+            catch { missing.push(f.remote); return; }
+            if (!f.hash) return;                 // no hash to compare against
+            present.push(f);
+            if (skipped[f.remote] === f.hash) return;   // deliberately kept
+            if (assetHash(text) !== f.hash) stale.push(f.remote);
           }));
         }
 
