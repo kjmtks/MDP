@@ -35,6 +35,15 @@
 //     requester's own instance on sight, only if its PARENT already exists.
 //     MDP never fabricates user homes; their creation is a deployment concern.
 //
+//   "rootListing": "home+spaces" (default) | "spaces-only"
+//     Where the requester's own files appear in the tree. By default the
+//     root space is spread across the root, with the "@x" folders beside it.
+//     With "spaces-only" the root holds ONLY the "@x" folders, so a file
+//     named like a space cannot hide it -- useful when the same tree is also
+//     mounted as a plain filesystem. The root space is still created and
+//     still resolves, so reach it through an "@x" space that shares its
+//     `root` (give that space "owner" in `read`/`write`).
+//
 // Everything resolves to PLAIN local paths -- `.mdplink` indirection is
 // deliberately not honoured in shared mode.
 
@@ -69,10 +78,15 @@ function load(configPath) {
     if (!s.root) throw new Error('mdp-web.config: every space needs a root');
     if (s.path === '' && placeholderOf(s.root) !== 'user') throw new Error('mdp-web.config: the root space needs {user} in its root');
   }
+  const rootListing = String(raw.rootListing || 'home+spaces');
+  if (rootListing !== 'home+spaces' && rootListing !== 'spaces-only') {
+    throw new Error(`mdp-web.config: rootListing must be "home+spaces" or "spaces-only": ${rootListing}`);
+  }
   return {
     userHeader: String(raw.userHeader || 'x-preferred-username').toLowerCase(),
     admins: new Set(Array.isArray(raw.admins) ? raw.admins : []),
     groupsFile: String(raw.groupsFile || ''),
+    rootListing,
     spaces,
     home: home[0],
   };
@@ -183,7 +197,8 @@ const reprefix = (nodes, prefix) => nodes.map((n) => ({
 function tree(cfg, req, walk) {
   ensureOwn(cfg, req);
   const me = userOf(cfg, req);
-  const out = walk(instanceDir(cfg.home, me));
+  const out = cfg.rootListing === 'spaces-only'
+    ? [] : walk(instanceDir(cfg.home, me));
   for (const space of cfg.spaces) {
     if (!space.path) continue;
     // Group-root template: one TOP-LEVEL '@<group>' per group of the user.
