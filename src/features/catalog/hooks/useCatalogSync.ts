@@ -79,7 +79,7 @@ export function useCatalogSync(
         const present: Array<{ local: string; remote: string; hash: string }> = [];
         for (let i = 0; i < wanted.length; i += 8) {
           await Promise.all(wanted.slice(i, i + 8).map(async (f) => {
-            let text: string | null = null;
+            let text: string;
             try { text = await apiClient.readFileText(f.local); }
             catch { missing.push(f.remote); return; }
             if (!f.hash) return;                 // no hash to compare against
