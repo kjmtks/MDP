@@ -56,6 +56,9 @@ const SAFE_SPACE = /^@[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 // A space whose `path` is exactly this expands into ONE TOP-LEVEL folder
 // per group the requester belongs to: '@<group>'. (vs a static '@name'.)
 const GROUP_ROOT = '@{group}';
+// The app-managed content-profile folder. Must match MDP_DIR in
+// src/features/workspace/specialFolders.ts.
+const MDP_DIR = '.mdp';
 
 const placeholderOf = (root) => {
   const r = String(root || '');
@@ -194,11 +197,30 @@ const reprefix = (nodes, prefix) => nodes.map((n) => ({
   ...(n.children ? { children: reprefix(n.children, prefix) } : {}),
 }));
 
+// The root space's `.mdp/` alone, as a top-level node with its subtree (or
+// nothing when there isn't one). See the note in tree().
+function mdpOnly(dir, walk) {
+  const abs = path.join(dir, MDP_DIR);
+  try { if (!fs.statSync(abs).isDirectory()) return []; } catch { return []; }
+  return [{ name: MDP_DIR, path: MDP_DIR, type: 'directory', slideIgnored: true,
+            children: reprefix(walk(abs), MDP_DIR) }];
+}
+
 function tree(cfg, req, walk) {
   ensureOwn(cfg, req);
   const me = userOf(cfg, req);
+  // "spaces-only" hides the root space's FILES (a file named "@homes" would
+  // otherwise hide that space). Its `.mdp/` is NOT content, though: it is the
+  // workspace's content profile (modules / themes / effects / templates), and
+  // the client finds it by walking the TREE from the root down
+  // (src/features/workspace/mdpScope.ts). Hiding it left every deck under
+  // "@homes/…", "@groups/…" and "@projects/…" with no modules, themes or
+  // effects at all, while the official assets sat downloaded in the root space
+  // — "ダウンロードしたはずなのに存在しない" (2026-09-24 先生). A dot folder
+  // cannot collide with an "@x" space name, so listing just this one does not
+  // bring the hiding problem back.
   const out = cfg.rootListing === 'spaces-only'
-    ? [] : walk(instanceDir(cfg.home, me));
+    ? mdpOnly(instanceDir(cfg.home, me), walk) : walk(instanceDir(cfg.home, me));
   for (const space of cfg.spaces) {
     if (!space.path) continue;
     // Group-root template: one TOP-LEVEL '@<group>' per group of the user.

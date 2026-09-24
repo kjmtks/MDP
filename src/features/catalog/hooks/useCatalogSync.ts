@@ -9,6 +9,11 @@ import { reportError, notify, confirmDialog } from '../../../components/error/er
 // NEWER official version (different hash) asks again.
 const SKIP_FILE = '.mdp/.asset-update-skip.json';
 
+// "This workspace doesn't want the official assets at all" (written when the
+// user declines the FIRST-TIME setup). It sits at the workspace ROOT, not under
+// `.mdp/`, because it predates that folder.
+const IGNORE_FILE = '.mdp_sync_ignored';
+
 const loadSkippedStale = async (): Promise<Record<string, string>> => {
   try {
     const raw = await apiClient.readFileText(SKIP_FILE);
@@ -33,7 +38,13 @@ export function useCatalogSync(
 
     const checkAndPromptSync = async () => {
       try {
-        const isIgnored = fileTree.some(node => node.name === '.mdp_sync_ignored');
+        // ASK THE SERVER, not the tree — for the same reason as the asset check
+        // below: under `rootListing: "spaces-only"` the tree never shows the
+        // root space's own files, so this sentinel was invisible and a
+        // workspace that had opted out was asked again on every reload.
+        let isIgnored = false;
+        try { await apiClient.readFileText(IGNORE_FILE); isIgnored = true; }
+        catch { /* no sentinel: this workspace has not opted out */ }
         if (isIgnored) return;
 
         // Only run the network check once per session.
@@ -116,7 +127,7 @@ export function useCatalogSync(
           // Declining the FIRST-TIME setup means this workspace doesn't want
           // official assets at all — unchanged behaviour.
           try {
-            await apiClient.saveFile('.mdp_sync_ignored', '');
+            await apiClient.saveFile(IGNORE_FILE, '');
             onManualRefresh();
           } catch (e) {
             console.error('Failed to create ignore file', e);
