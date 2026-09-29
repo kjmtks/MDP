@@ -95,7 +95,8 @@ const ImagePickRow: React.FC<{ entry: ImageEntry; src: string; onPick: () => voi
   const [broken, setBroken] = useState(false);
   return (
     <Box onClick={onPick} sx={{ display: 'flex', gap: 1, alignItems: 'flex-start', px: 1, py: 0.75, cursor: 'pointer', '&:hover': { bgcolor: 'var(--app-bg-hover)' } }}>
-      <Box sx={{ width: 40, height: 40, flexShrink: 0, bgcolor: '#fff', borderRadius: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+      <Box className={broken ? undefined : 'mdp-transparency-checker mdp-transparency-checker--sm'}
+        sx={{ width: 40, height: 40, flexShrink: 0, borderRadius: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
         {broken
           ? <BrokenImageIcon sx={{ color: 'var(--app-text-disabled)' }} />
           : <img src={src} alt={entry.alias} onError={() => setBroken(true)} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />}

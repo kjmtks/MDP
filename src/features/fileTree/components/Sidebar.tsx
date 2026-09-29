@@ -83,8 +83,10 @@ interface SidebarProps {
 
 // App-managed folders now live under a single `.mdp/` directory (e.g.
 // `.mdp/modules`). The special SUBFOLDER names (no leading dot) get the
-// specialized "New X File" treatment + placeholders; `.mdp/images` is hidden
-// (managed via the Images panel).
+// specialized "New X File" treatment + placeholders. `.mdp/images` is NOT one
+// of them: its files are binaries added through the Images panel, so a "New
+// image File" entry would be meaningless. It still shows in the tree as an
+// ordinary folder so the backing files can be browsed.
 const SPECIAL_PATHS = SPECIAL_SUBFOLDERS.map((s) => `${MDP_DIR}/${s}`);
 
 const SECTION_INDEX: Record<'thumbnail' | 'files' | 'bookmarks', number> = {
@@ -175,14 +177,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
     // Keep `.mdp` (the app-managed container) AT ANY LEVEL — a per-folder `.mdp`
     // (including inside a `.mdplink` target) must be visible so it can be browsed
-    // and right-clicked → "Configure (.mdp)…". Keep all non-dot entries; hide every
-    // other dotfile, plus the managed `images` store inside any `.mdp`. `.mdpignore`
-    // (the search-exclusion marker) is kept visible so users can see / manage it.
+    // and right-clicked → "Configure (.mdp)…". Keep all non-dot entries — including
+    // the `images` store, whose backing files must be browsable even though they
+    // are normally managed from the Images panel. Hide every other dotfile, except
+    // `.mdpignore` (the search-exclusion marker), kept visible so it is manageable.
     const filterNodes = (nodes: FileNode[], parentPath: string): FileNode[] => {
-      const inMdp = parentPath === MDP_DIR || parentPath.endsWith(`/${MDP_DIR}`);
       return nodes
         .filter(n => {
-          if (inMdp && n.name === 'images') return false;
           if (n.name === '.mdpignore') return true;
           // Show `.mdp`, `.git`, and any sealed dotfolder; hide other dotfiles.
           return n.name === MDP_DIR || n.name === '.git' || n.sealed || !n.name.startsWith('.');

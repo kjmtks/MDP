@@ -248,14 +248,16 @@ const ImageRow: React.FC<{
           {broken
             ? <BrokenImageIcon sx={{ color: 'var(--app-text-disabled)', width: 40, height: 40 }} />
             : <img src={src} onError={() => setBroken(true)} alt={entry.alias}
-                style={{ width: 40, height: 40, objectFit: 'contain', background: '#fff', borderRadius: 4, cursor: 'zoom-in' }} />}
+                className="mdp-transparency-checker mdp-transparency-checker--sm"
+                style={{ width: 40, height: 40, objectFit: 'contain', borderRadius: 4, cursor: 'zoom-in' }} />}
         </Box>
         {!broken && (
           <Popover open={!!hoverEl} anchorEl={hoverEl} onClose={() => setHoverEl(null)} disableRestoreFocus
             sx={{ pointerEvents: 'none' }} anchorOrigin={{ vertical: 'center', horizontal: 'right' }}
             transformOrigin={{ vertical: 'center', horizontal: 'left' }}
             slotProps={{ paper: { sx: { p: 0.5, ml: 1, bgcolor: 'var(--app-bg-editor)', border: '1px solid var(--app-border-strong)' } } }}>
-            <img src={src} alt={entry.alias} style={{ maxWidth: 320, maxHeight: 320, objectFit: 'contain', background: '#fff', display: 'block' }} />
+            <img src={src} alt={entry.alias} className="mdp-transparency-checker"
+              style={{ maxWidth: 320, maxHeight: 320, objectFit: 'contain', display: 'block' }} />
           </Popover>
         )}
       </TableCell>
@@ -460,7 +462,8 @@ export const ImagesPanel: React.FC = () => {
             </Box>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               {dialog?.value
-                ? <img src={img.resolveThumb(dialog.value)} alt="preview" style={{ width: 48, height: 48, objectFit: 'contain', background: '#fff', borderRadius: 4 }} />
+                ? <img src={img.resolveThumb(dialog.value)} alt="preview" className="mdp-transparency-checker mdp-transparency-checker--sm"
+                    style={{ width: 48, height: 48, objectFit: 'contain', borderRadius: 4 }} />
                 : <Box sx={{ width: 48, height: 48, bgcolor: 'var(--app-bg-editor)', borderRadius: 1 }} />}
               <Button component="label" size="small" startIcon={<UploadFileIcon />} sx={{ color: 'var(--app-accent)' }}>
                 Upload
@@ -584,7 +587,8 @@ export const PreviewPanel: React.FC = () => {
             <Typography sx={{ color: 'var(--app-text-disabled)', fontSize: '0.7rem', ml: 1 }}>Image preview</Typography>
           </Box>
           <Box sx={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', p: 2 }}>
-            <img src={p.previewImage} alt="preview" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', background: '#fff', borderRadius: 4 }} />
+            <img src={p.previewImage} alt="preview" className="mdp-transparency-checker"
+              style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: 4 }} />
           </Box>
         </Box>
       ) : p.effectiveFileType === 'pdf' && p.pdfPath ? (
