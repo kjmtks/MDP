@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { apiClient } from '../../../api/apiClient';
 import { syncOfficialCatalog, fetchCatalog, catalogLocalPath, assetHash } from '../syncService';
 import type { FileNode } from '../../../types';
+import { MDP_DIR } from '../../workspace/specialFolders';
 import { reportError, notify, confirmDialog } from '../../../components/error/errorReporter';
 
 // Versions the user chose NOT to update, as `{ 'modules/x.mdpmod.xml': hash }`.
@@ -49,6 +50,11 @@ export function useCatalogSync(
 
         // Only run the network check once per session.
         hasPrompted.current = true;
+
+        // A root `.mdp` shared by a whole deployment and read-only for this user
+        // (app/webspaces.cjs) is kept current by its maintainers: offering to
+        // download into it would only end in a failed write.
+        if (fileTree.some((n) => n.name === MDP_DIR && n.type === 'directory' && n.readOnly)) return;
 
         // Compare the official catalog against local files and prompt when any
         // asset is missing — including newly added themes/templates, even if

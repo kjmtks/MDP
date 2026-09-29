@@ -198,14 +198,22 @@ const joinBlocks = (blocks) => blocks.join('\n---\n');
 
 // `.mdp` cascade chain for a deck (root→nearest), same rule as the frontend
 // resolver: ancestor dirs (bounded by the workspace root) that contain `.mdp`.
+// Directories are matched by PATH: a `.mdplink` node is displayed without its
+// extension, so a name match never entered a link. A deferred (SSH) subtree the
+// tree hasn't listed is asked about directly instead.
 async function mdpChainDirs(baseDir, deckPath) {
   const tree = await vtree(baseDir);
+  // children of `dir`; null = not there; undefined = not listed yet (lazy)
   const childrenAt = (dir) => {
     if (!dir) return tree;
     let nodes = tree;
+    let cur = '';
     for (const seg of dir.split('/')) {
-      const f = nodes.find((n) => n.type === 'directory' && n.name === seg);
-      if (!f || !f.children) return null;
+      cur = cur ? `${cur}/${seg}` : seg;
+      const f = nodes.find((n) => n.type === 'directory' && n.path === cur);
+      if (!f) return null;
+      if (f.lazy) return undefined;
+      if (!f.children) return null;
       nodes = f.children;
     }
     return nodes;
@@ -215,10 +223,18 @@ async function mdpChainDirs(baseDir, deckPath) {
   const dirs = [''];
   let cur = '';
   for (const s of segs) { cur = cur ? `${cur}/${s}` : s; dirs.push(cur); }
-  const chain = dirs.filter((d) => {
+  const onDisk = async (d) => {
+    try { return await mdplink.vfsExists(vres(baseDir, d ? `${d}/.mdp` : '.mdp')); }
+    catch { return false; }
+  };
+  const chain = [];
+  for (const d of dirs) {
     const kids = childrenAt(d);
-    return !!kids && kids.some((n) => n.name === '.mdp' && n.type === 'directory');
-  });
+    const has = kids === undefined
+      ? await onDisk(d)
+      : !!kids && kids.some((n) => n.name === '.mdp' && n.type === 'directory');
+    if (has) chain.push(d);
+  }
   return chain.length ? chain.map((d) => (d ? `${d}/.mdp` : '.mdp')) : ['.mdp'];
 }
 

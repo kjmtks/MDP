@@ -7,7 +7,7 @@ import { type SnippetsCategory, type ThemeOption, type FileType, getCustomItemSt
 
 import { MainHeader } from '../../components/layout/MainHeader';
 import { MODULES_DIR, EFFECTS_DIR, IMAGES_DIR, SNIPPETS_DIR, TEMPLATES_DIR, THEMES_DIR } from '../../features/workspace/specialFolders';
-import { scopeConfigDirs, collectScopedAssetPaths } from '../../features/workspace/mdpScope';
+import { scopeConfigDirs, collectScopedAssetPaths, lazyScopeDirs } from '../../features/workspace/mdpScope';
 import { useEditLock } from '../../features/editor/hooks/useEditLock';
 import { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
@@ -304,6 +304,19 @@ export default function EditorPage() {
     scopeDirsPrevRef.current = next;
     return next;
   }, [fileTree, currentFileName]);
+  // A deck behind an SSH `.mdplink` lives in a subtree that is listed only as it
+  // is expanded — and a tab restored at startup expands nothing. Load exactly the
+  // deferred directories its `.mdp` scope needs (see lazyScopeDirs) so the chain
+  // above can see them. One request per path at a time; a load clears the node's
+  // `lazy` flag (even on failure), so this settles by itself.
+  const scopeLoadsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    for (const p of lazyScopeDirs(fileTree, currentFileName)) {
+      if (scopeLoadsRef.current.has(p)) continue;
+      scopeLoadsRef.current.add(p);
+      loadLinkChildren(p).finally(() => scopeLoadsRef.current.delete(p));
+    }
+  }, [fileTree, currentFileName, loadLinkChildren]);
   // Publish the active deck's `.mdp` scope so the Settings overlay's AI-prompt
   // section (a sibling surface) can build a scope-correct themes list.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

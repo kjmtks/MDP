@@ -39,6 +39,9 @@ export interface FileNode {
   // No local filesystem path (an SSH link, or anything beneath one) — used to hide
   // "Reveal in Explorer", which can only reveal local paths.
   remote?: boolean;
+  // Shared mode: a folder this user may read but not write — e.g. a deployment-wide
+  // root `.mdp` (see app/webspaces.cjs) that only its maintainers change.
+  readOnly?: boolean;
 }
 
 export interface TabPanelProps {

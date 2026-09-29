@@ -57,10 +57,12 @@ export const FileTreeItem: React.FC<FileTreeItemProps> = ({
     else Icon = node.linkType === 'ssh' ? CloudIcon : FolderSpecialIcon;
   }
 
-  // A `.mdp` content-profile folder at ANY level gets the same purple as the root
-  // one (root is also `isSpecial`); per-folder `.mdp`s should look identical. The
-  // app-managed `.mdp/mcp-backups` folder shares that purple so it reads as MDP's.
-  const isMdp = isDir && (node.name === '.mdp' || /(^|\/)\.mdp\/mcp-backups$/.test(node.path || ''));
+  // A `.mdp` content-profile folder at ANY level — and EVERY folder inside one —
+  // gets the same purple as the root one (root is also `isSpecial`), so a whole
+  // profile reads as MDP's at a glance. Coloring only the names in
+  // SPECIAL_SUBFOLDERS left `images`, `taxonomy` and every nested `.mdp`'s own
+  // subfolders as plain blue folders among purple ones.
+  const isMdp = isDir && /(^|\/)\.mdp(\/|$)/.test(node.path || '');
 
   let iconColor = 'var(--app-text-secondary)';
   if (node.isSpecial || isMdp) iconColor = '#a855f7';

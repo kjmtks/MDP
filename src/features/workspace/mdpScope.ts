@@ -14,19 +14,39 @@ import { MDP_DIR } from './specialFolders';
 // Resolution is purely tree-based (the loaded FileNode[] already includes `.mdp`
 // dirs — buildTree keeps `.mdp` while hiding other dotfolders), so it needs no
 // backend round-trips and stays fast even over a (NAS-mounted) network tree.
+//
+// Directories are looked up by PATH, never by display name: a `.mdplink` is SHOWN
+// without its extension (`KJNAS`) while its path keeps it (`KJNAS.mdplink/…`), so
+// a name match never entered a link — no `.mdp` behind a `.mdplink` ever joined a
+// deck's chain (its image library, themes and modules were all missing). A remote
+// (SSH) subtree is also only listed on demand; `lazyScopeDirs` names the deferred
+// directories this walk still needs, for the caller to load.
 // ---------------------------------------------------------------------------
+
+// The directory node at a workspace-relative path, or null if it isn't present in
+// the tree (or sits below a directory whose children aren't loaded yet).
+function dirNodeAt(tree: FileNode[], dirPath: string): FileNode | null {
+  let nodes: FileNode[] = tree;
+  let found: FileNode | null = null;
+  let cur = '';
+  for (const seg of dirPath.split('/').filter(Boolean)) {
+    cur = cur ? `${cur}/${seg}` : seg;
+    if (found) {
+      if (!found.children) return null;
+      nodes = found.children;
+    }
+    found = nodes.find((n) => n.type === 'directory' && n.path === cur) || null;
+    if (!found) return null;
+  }
+  return found;
+}
 
 // The child nodes at a workspace-relative directory ('' = root), or null if that
 // directory isn't present/loaded in the tree.
 export function childrenAtDir(tree: FileNode[], dirPath: string): FileNode[] | null {
   if (!dirPath) return tree;
-  let nodes: FileNode[] = tree;
-  for (const seg of dirPath.split('/')) {
-    const found = nodes.find((n) => n.type === 'directory' && n.name === seg);
-    if (!found || !found.children) return null;
-    nodes = found.children;
-  }
-  return nodes;
+  const found = dirNodeAt(tree, dirPath);
+  return found && found.children ? found.children : null;
 }
 
 // Does `dirPath` directly contain a `.mdp/` folder?
@@ -78,6 +98,33 @@ export function scopeConfigDirs(tree: FileNode[], deckPath: string | null): stri
   if (dirs.length) return dirs;
   const rootKids = childrenAtDir(tree, '');
   return rootKids && rootKids.some((n) => n.name === MDP_DIR && n.type === 'directory') ? [MDP_DIR] : [];
+}
+
+// The DEFERRED (not yet listed) directories that resolving `deckPath`'s scope still
+// needs — a deck behind an SSH `.mdplink` sits in a subtree that is only listed as
+// it is expanded. In order: the first unlisted ancestor of the deck (a tab restored
+// at startup opens it without expanding anything; each load reveals the next
+// level), each applicable `.mdp`, and the `.mdp` folders whose FILES are taken
+// from the tree (modules / effects — the rest are read from disk by path).
+export function lazyScopeDirs(tree: FileNode[], deckPath: string | null): string[] {
+  if (!deckPath) return [];
+  const out: string[] = [];
+  for (const d of ancestorDirs(deckPath)) {
+    if (!d) continue;
+    const node = dirNodeAt(tree, d);
+    if (!node) break;                              // not in the tree (yet)
+    if (node.lazy) { out.push(node.path); break; } // deeper levels follow its load
+  }
+  for (const cdir of resolveMdpConfigDirs(tree, deckPath)) {
+    const mdp = dirNodeAt(tree, cdir);
+    if (!mdp) continue;
+    if (mdp.lazy) { out.push(mdp.path); continue; }
+    for (const sub of ['modules', 'effects']) {
+      const node = dirNodeAt(tree, `${cdir}/${sub}`);
+      if (node && node.lazy) out.push(node.path);
+    }
+  }
+  return out;
 }
 
 // Collect asset file paths of one kind (subdir e.g. 'modules', ext '.mdpmod.xml')
