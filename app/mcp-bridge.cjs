@@ -11,6 +11,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const mdplink = require('./mdplink.cjs');
+const skillsLib = require('./skills.cjs');
 
 let ctx = null;         // { getBaseDir, getWindow, getAssetPath }
 
@@ -44,6 +45,7 @@ const ASSET_KINDS = {
   effect:  { sub: 'effects',  ext: '.mdpfx.xml'  },
   theme:   { sub: 'themes',   ext: '.css'        },
   snippet: { sub: 'snippets', ext: '.json'       },
+  skill:   { sub: 'skills',   ext: '/SKILL.md'   },   // a folder per skill
 };
 
 // Detailed authoring contract per asset kind — what get_asset_templates teaches so an
@@ -93,13 +95,219 @@ const ASSET_GUIDES = {
     'Each item: label (menu text), text (inserted verbatim at the cursor — use \\n for newlines), description (optional). A category whose name matches a built-in group MERGES into it.',
     'FIND existing: list_snippets.',
   ].join('\n'),
+  skill: [
+    'SKILL (.mdp/skills/<name>/SKILL.md) — the author\'s GUIDE for making slides in this folder. The slide spec lists every skill of a deck\'s folder, and an AI reads the ones that fit with get_skill before writing. Same format as Agent Skills (Claude Code / claude.ai can use the folder as-is):',
+    '• Frontmatter between `---` lines: `name` (= the folder name), `description` — ONE line saying WHAT it covers and WHEN to read it; it is all the index shows, so be specific ("Read before writing or revising lecture slides: notation, definitions, one message per slide"). Optional `always: true` puts the whole text into the slide spec — reserve it for the folder\'s main expression guide and keep that one short.',
+    '• Body: concrete, checkable rules, each with a short good/bad example ("Title = the slide\'s claim as a sentence — ✗ 実験結果 ✓ 提案法は誤差を半減した") — not general advice. Organise by topic (message & structure, wording, numbers & math, figures & tables, emphasis & colour, which MDP modules to use for what).',
+    '• End with a `## Checklist` section of 5–12 yes/no items: check_deck / verify:true hand them back so every deck gets reviewed against them.',
+    '• Optional reference files next to SKILL.md (an exemplary deck, a glossary) — name them in the body; get_skill(name, file) reads them.',
+    '• A nearer .mdp\'s skill of the same name REPLACES a parent\'s (a subfolder can override the house guide).',
+    '• When the user corrects your slides ("don\'t …", "always …"), offer to record the rule in the folder\'s skill so the next deck gets it right: patch_skill with `append` adds it under the right heading.',
+    'WRITE with write_skill (new skill / full rewrite), patch_skill (exact-text edits, `append` a rule, `description` / `always`), delete_skill. Overwritten and deleted files are backed up to .mdp/mcp-backups.',
+    'FIND existing: get_skill() (no name) lists the skills for a deck\'s folder.',
+  ].join('\n'),
 };
+
+// ---- slide skills: what the AI has read --------------------------------------
+// The spec INDEXES a folder's skills (and inlines the `always` ones); the AI is told
+// to read the ones that fit with get_skill. Remember what it read — per workspace,
+// for a few hours (an MCP session has no id here) — so the write tools can remind
+// it of skipped skills and check_deck can hand back the checklists in play.
+const SKILL_READ_TTL = 3 * 60 * 60 * 1000;
+const SKILL_REMIND_EVERY = 10 * 60 * 1000;
+const skillReads = new Map();      // `${workspace}\0${skill path}` → ms
+const skillReminded = new Map();   // `${workspace}\0${chain}` → ms
+const wsKeyOf = (b) => (typeof b === 'string' ? b : b.key);
+function markSkillsRead(baseDir, skills) {
+  const now = Date.now();
+  for (const s of skills) skillReads.set(`${wsKeyOf(baseDir)}\0${s.path}`, now);
+  if (skillReads.size > 5000) {
+    for (const [k, t] of skillReads) if (now - t > SKILL_READ_TTL) skillReads.delete(k);
+  }
+}
+const skillWasRead = (baseDir, s) => Date.now() - (skillReads.get(`${wsKeyOf(baseDir)}\0${s.path}`) || 0) < SKILL_READ_TTL;
+const readerOf = (baseDir) => (rel) => vres(baseDir, rel);
+
+async function skillsForChain(baseDir, chain) {
+  try { return await skillsLib.listSkills(chain, readerOf(baseDir), mdplink); } catch { return []; }
+}
+
+// After a write: name the skills of the deck's folder the AI has not read — at most
+// every SKILL_REMIND_EVERY per folder, so it stays a nudge, not noise.
+async function skillNudge(baseDir, deckPath) {
+  const chain = await mdpChainDirs(baseDir, deckPath).catch(() => null);
+  if (!chain) return null;
+  const unread = (await skillsForChain(baseDir, chain)).filter((s) => !skillWasRead(baseDir, s));
+  if (!unread.length) return null;
+  const key = `${wsKeyOf(baseDir)}\0${chain.join('|')}`;
+  if (Date.now() - (skillReminded.get(key) || 0) < SKILL_REMIND_EVERY) return null;
+  skillReminded.set(key, Date.now());
+  return {
+    unread: unread.map((s) => ({ name: s.name, description: s.description })),
+    note: 'This deck\'s folder has slide skills (the author\'s guides) you have not read in this session. Read the ones that fit with get_skill(name) and revise what you wrote to follow them.',
+  };
+}
+
+// For check_deck / verify: the checklists of the skills in play (always-applied or
+// read), plus the names of the ones not read yet.
+async function skillReview(baseDir, deckPath) {
+  const chain = await mdpChainDirs(baseDir, deckPath).catch(() => null);
+  if (!chain) return null;
+  const skills = await skillsForChain(baseDir, chain);
+  const inPlay = skills.filter((s) => s.always || skillWasRead(baseDir, s));
+  const checklist = inPlay.filter((s) => s.checklist.length).map((s) => ({ skill: s.name, items: s.checklist }));
+  const unread = skills.filter((s) => !inPlay.includes(s)).map((s) => s.name);
+  if (!checklist.length && !unread.length) return null;
+  return {
+    ...(checklist.length ? { checklist, note: 'Review the deck against every item (look at render_slides where needed) and fix what fails before reporting done.' } : {}),
+    ...(unread.length ? { unread, unreadNote: 'Skills of this folder you have not read — get_skill(name) and check whether they apply.' } : {}),
+  };
+}
+
+// ---- slide skills: writing (write_skill / patch_skill / delete_skill) ------------
+const SKILL_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
+
+// Where a skill change goes: an explicit `dir` (the folder whose .mdp; "" = the
+// workspace root), else the skill's current home in the deck's chain — edited in
+// place, which may be a PARENT folder's .mdp — else, for a new skill, the deck's
+// nearest .mdp.
+async function skillTarget(baseDir, p) {
+  const name = String(p.name ?? '').trim();
+  if (!SKILL_NAME_RE.test(name)) throw new Error('"name" must be the skill\'s folder name: letters, digits, - and _.');
+  const deckPath = p.deck ? requireDeckPath(p.deck) : await activeDeckPath(baseDir).catch(() => '');
+  const chain = await mdpChainDirs(baseDir, deckPath);
+  const found = skillsLib.findSkill(await skillsForChain(baseDir, chain), name);
+  let configDir;
+  if (typeof p.dir === 'string') {
+    const d = p.dir.trim().replace(/^[./\\]+$/, '').replace(/\/+$/, '');
+    configDir = d ? `${requireDeckPath(d)}/.mdp` : '.mdp';
+  } else {
+    configDir = found ? found.configDir : chain[chain.length - 1];
+  }
+  const current = found && found.configDir === configDir ? found : null;
+  const folder = current ? current.name : name;
+  return { name: folder, dir: `${configDir}/skills/${folder}`, configDir, chain, current, other: found && !current ? found : null };
+}
+
+// A YAML scalar for frontmatter: plain when that is unambiguous, else quoted.
+function yamlScalar(value) {
+  const s = String(value).replace(/\s+/g, ' ').trim();
+  return s && !/^[-?:,[\]{}#&*!|>'"%@`\s]/.test(s) && !/:\s|\s#|:$/.test(s) && !/^(true|false|yes|no|on|off|null|~|[\d.+-]+)$/i.test(s)
+    ? s : JSON.stringify(s);
+}
+
+// Set (or add) one scalar field in the frontmatter of LF-normalized SKILL.md text.
+function setFrontmatterField(text, key, value) {
+  const v = typeof value === 'boolean' ? String(value) : yamlScalar(value);
+  const m = /^---\n([\s\S]*?)\n---(\n|$)/.exec(text);
+  if (!m) return `---\n${key}: ${v}\n---\n\n${text}`;
+  const lines = m[1].split('\n');
+  const i = lines.findIndex((l) => new RegExp(`^${key}\\s*:`).test(l));
+  if (i >= 0) {
+    let j = i + 1;
+    while (j < lines.length && /^\s+\S/.test(lines[j])) j++;      // a block scalar's lines
+    lines.splice(i, j - i, `${key}: ${v}`);
+  } else if (key === 'name') {
+    lines.unshift(`${key}: ${v}`);                                 // name leads, as in Agent Skills
+  } else {
+    lines.push(`${key}: ${v}`);
+  }
+  return `---\n${lines.join('\n')}\n---${m[2]}${text.slice(m[0].length)}`;
+}
+
+// Append lines at the end of the section whose heading is `section` (any level,
+// case-insensitive); a missing section is created — before the Checklist, so the
+// checklist stays last. This is how a new rule gets recorded.
+function appendToSection(text, section, addition) {
+  const lines = text.split('\n');
+  const fm = /^---\n[\s\S]*?\n---(\n|$)/.exec(text);
+  const start = fm ? fm[0].split('\n').length - (fm[1] ? 1 : 0) : 0;
+  const title = String(section).trim().replace(/^#+\s*/, '');
+  const want = title.toLowerCase();
+  const heading = (l) => /^(#{1,6})\s+(.*?)\s*#*\s*$/.exec(l);
+  const add = String(addition).replace(/\r\n?/g, '\n').replace(/^\n+|\s+$/g, '').split('\n');
+  let inFence = false;
+  let hIdx = -1;
+  let level = 0;
+  let checklistIdx = -1;
+  for (let i = start; i < lines.length; i++) {
+    if (/^\s*(```|~~~)/.test(lines[i])) { inFence = !inFence; continue; }
+    if (inFence) continue;
+    const h = heading(lines[i]);
+    if (!h) continue;
+    if (hIdx < 0 && h[2].trim().toLowerCase() === want) { hIdx = i; level = h[1].length; }
+    if (checklistIdx < 0 && skillsLib.isChecklistHeading(h[2])) checklistIdx = i;
+  }
+  if (hIdx < 0) {
+    let at = checklistIdx >= 0 ? checklistIdx : lines.length;
+    while (at > start && !lines[at - 1].trim()) at--;          // right after the last text
+    const block = ['', `## ${title}`, '', ...add];
+    if (at < lines.length && lines[at].trim()) block.push('');   // keep a blank line before what follows
+    lines.splice(at, 0, ...block);
+    return lines.join('\n');
+  }
+  let end = lines.length;
+  inFence = false;
+  for (let i = hIdx + 1; i < lines.length; i++) {
+    if (/^\s*(```|~~~)/.test(lines[i])) { inFence = !inFence; continue; }
+    if (inFence) continue;
+    const h = heading(lines[i]);
+    if (h && h[1].length <= level) { end = i; break; }
+  }
+  let at = end;
+  while (at > hIdx + 1 && !lines[at - 1].trim()) at--;
+  lines.splice(at, 0, ...add);
+  return lines.join('\n');
+}
+
+function checkSkillText(text, name) {
+  const s = skillsLib.parseSkill(text, name);
+  if (s.problem || !s.description) {
+    throw new Error(`SKILL.md must start with frontmatter that gives at least a description:\n---\nname: ${name}\ndescription: what it covers and when to read it\n---\n(see get_asset_templates kind "skill"). Nothing was written.`);
+  }
+  return s;
+}
+
+// Keep the previous version of files an AI overwrites or deletes (like deck writes:
+// one `.bak` per file under the root .mdp/mcp-backups). Returns the backup paths.
+async function backupFiles(baseDir, paths) {
+  const saved = [];
+  for (const rel of paths) {
+    try {
+      const buf = await mdplink.vfsReadBuffer(vres(baseDir, rel));
+      const bak = `.mdp/mcp-backups/${rel.replace(/[\\/]/g, '__')}.bak`;
+      await mdplink.vfsWrite(vres(baseDir, bak, 'w'), buf);
+      saved.push(bak);
+    } catch { /* nothing there yet, or no writable backup folder */ }
+  }
+  return saved;
+}
+
+// The user reviews skill changes like other AI-authored assets (per the Settings →
+// MCP policy); a deletion always asks. Returns the renderer's note, if any.
+async function confirmSkillChange(baseDir, action, name, rel, content) {
+  const ok = await rly(baseDir, 'confirmAssetWrite', { kind: 'skill', action, name, rel, hasScript: false, content }, 300000);
+  if (!ok || !ok.approved) throw new Error(`The user declined to ${action} this skill. Nothing was changed.`);
+  return ok.note || '';
+}
+
+// Read a text file as LF text, remembering its BOM / CRLF so a write keeps them.
+async function readTextKeepingFormat(baseDir, rel) {
+  const raw = String(await mdplink.vfsReadText(vres(baseDir, rel)));
+  const bom = raw.startsWith(BOM);
+  const body = bom ? raw.slice(1) : raw;
+  return { text: body.replace(/\r\n?/g, '\n'), bom, crlf: /\r\n/.test(body) };
+}
+const withFormat = (text, fmt) => (fmt.bom ? BOM : '') + (fmt.crlf ? text.replace(/\n/g, '\r\n') : text);
 
 // List the assets of one kind that already exist in the workspace-root `.mdp`
 // (name + a short description) so the AI can see what's there before creating more.
 async function listWorkspaceAssets(baseDir, kind) {
   const spec = ASSET_KINDS[kind];
   if (!spec || !baseDir) return [];
+  if (kind === 'skill') {
+    return (await skillsForChain(baseDir, ['.mdp'])).map((s) => ({ name: s.name, description: s.description, ...(s.always ? { always: true } : {}) }));
+  }
   const out = [];
   let entries;
   try { entries = await mdplink.vfsList(vres(baseDir, `.mdp/${spec.sub}`)); }
@@ -174,6 +382,27 @@ function advanceComment(line, inComment) {
     }
   }
   return inComment;
+}
+
+// Exact-text edits `[{old_str, new_str, all?}]`, validated in order against the
+// running text: each old_str must match once (or all:true), else NOTHING changes.
+// The replacement is inserted literally — a string passed to String#replace would
+// turn `$$` into `$` and expand `$&` (LaTeX and prices do contain those).
+function applyExactEdits(text, edits, what) {
+  let out = text;
+  let replaced = 0;
+  edits.forEach((ed, i) => {
+    const oldStr = String(ed.old_str ?? '');
+    const newStr = String(ed.new_str ?? '');
+    const where = edits.length > 1 ? `edits[${i}]: ` : '';
+    if (!oldStr) throw new Error(`${where}"old_str" is required.`);
+    const count = out.split(oldStr).length - 1;
+    if (count === 0) throw new Error(`${where}old_str not found in ${what} (it must match exactly, including whitespace). Nothing was written.`);
+    if (count > 1 && !ed.all) throw new Error(`${where}old_str matches ${count} times — make it more specific, or pass all=true. Nothing was written.`);
+    out = ed.all ? out.split(oldStr).join(newStr) : out.replace(oldStr, () => newStr);
+    replaced += ed.all ? count : 1;
+  });
+  return { text: out, replaced };
 }
 
 // Fence- AND comment-aware split on `---` lines — mirrors the frontend slide parser
@@ -634,6 +863,8 @@ function withDeckLock(key, fn) {
 // save_deck/reload_deck take the lock too: flushing (or discarding) a deck's editor
 // buffer must not interleave with an in-flight read-modify-write of that same deck.
 const WRITE_METHODS = new Set(['write_deck', 'append_slide', 'replace_slide', 'patch_deck', 'edit_slides', 'set_notes', 'set_script', 'set_time', 'batch_set_slides', 'save_deck', 'reload_deck']);
+// Writes that author content — their result may carry a nudge about unread skills.
+const AUTHORING_METHODS = new Set(['write_deck', 'append_slide', 'replace_slide', 'patch_deck', 'edit_slides', 'set_notes', 'set_script', 'set_time', 'batch_set_slides']);
 
 // ---- tool implementations ------------------------------------------------------
 
@@ -652,8 +883,15 @@ async function callToolFor(baseDir, method, params) {
   // carries the workspace, because on a shared server the same relative path means
   // a different file for every user.
   if (WRITE_METHODS.has(method) && p.path && typeof p.path === 'string') {
-    const key = `${typeof baseDir === 'string' ? baseDir : baseDir.key}\u0000${requireDeckPath(p.path)}`;
-    return withDeckLock(key, () => callToolInner(method, p, baseDir));
+    const deckPath = requireDeckPath(p.path);
+    const key = `${typeof baseDir === 'string' ? baseDir : baseDir.key}\u0000${deckPath}`;
+    const out = await withDeckLock(key, () => callToolInner(method, p, baseDir));
+    // A verified write already reports the skills (verification.skills).
+    if (AUTHORING_METHODS.has(method) && out && typeof out === 'object' && !out.verification) {
+      const nudge = await skillNudge(baseDir, deckPath).catch(() => null);
+      if (nudge) out.skills = nudge;
+    }
+    return out;
   }
   return callToolInner(method, p, baseDir);
 }
@@ -663,14 +901,16 @@ async function callToolFor(baseDir, method, params) {
 // Used by check_deck and by the write tools' `verify: true`.
 async function verifyDeck(baseDir, deckPath) {
   const { text } = await currentDeckText(baseDir, deckPath);
-  const [validate, lint, measure] = await Promise.all([
+  const [validate, lint, measure, skills] = await Promise.all([
     rly(baseDir, 'validateDeck', { path: deckPath }, 30000).catch((e) => ({ error: String((e && e.message) || e) })),
     Promise.resolve(lintDeck(text)),
     rly(baseDir, 'measureSlides', { path: deckPath }, 120000).catch((e) => ({ error: String((e && e.message) || e) })),
+    skillReview(baseDir, deckPath).catch(() => null),
   ]);
   return {
     path: deckPath, validate, lint, measure,
-    note: 'validate = syntax/unknown modules/params/structure (errors block rendering); lint = design advisories (use judgment); measure = overflow/empty issues only (all clear when `issues` is empty). severity: warn = likely issue, info = style nudge.',
+    ...(skills ? { skills } : {}),
+    note: 'validate = syntax/unknown modules/params/structure (errors block rendering); lint = design advisories (use judgment); measure = overflow/empty issues only (all clear when `issues` is empty); skills = the checklists of this folder\'s slide skills — review the deck against them. severity: warn = likely issue, info = style nudge.',
   };
 }
 
@@ -1058,20 +1298,9 @@ async function callToolInner(method, p, baseDir) {
         : [{ old_str: p.old_str, new_str: p.new_str, all: p.all }];
       const cur = await currentDeckText(baseDir, deckPath);
       assertUtf8Writable(cur, deckPath);
-      let text = cur.text;
-      const replaced = [];
-      edits.forEach((ed, i) => {
-        const oldStr = String(ed.old_str ?? '');
-        const where = edits.length > 1 ? `edits[${i}]: ` : '';
-        if (!oldStr) throw new Error(`${where}"old_str" is required.`);
-        const count = text.split(oldStr).length - 1;
-        if (count === 0) throw new Error(`${where}old_str not found in the deck (it must match exactly, including whitespace). Nothing was written.`);
-        if (count > 1 && !ed.all) throw new Error(`${where}old_str matches ${count} times — make it more specific, or pass all=true. Nothing was written.`);
-        text = ed.all ? text.split(oldStr).join(String(ed.new_str ?? '')) : text.replace(oldStr, String(ed.new_str ?? ''));
-        replaced.push(ed.all ? count : 1);
-      });
+      const { text, replaced } = applyExactEdits(cur.text, edits, 'the deck');
       const res = await writeDeckBack(baseDir, deckPath, text, cur.open, cur);
-      const out = { path: deckPath, applied: edits.length, replaced: replaced.reduce((a, b) => a + b, 0), ...res };
+      const out = { path: deckPath, applied: edits.length, replaced, ...res };
       if (p.verify) out.verification = await verifyDeck(baseDir, deckPath);
       return out;
     }
@@ -1149,23 +1378,26 @@ async function callToolInner(method, p, baseDir) {
       const templateFor = (k) => k === 'module' ? read('default-module.mdpmod.xml')
         : k === 'effect' ? read('default-effect.mdpfx.xml')
         : k === 'theme' ? read('themes/default.css')
-        : k === 'snippet' ? SNIPPET_TEMPLATE : '';
+        : k === 'snippet' ? SNIPPET_TEMPLATE
+        : k === 'skill' ? read('default-skill.md') : '';
       const kind = p.kind ? String(p.kind) : null;
       // One kind → its template + authoring guide + what already exists (to imitate /
-      // avoid duplicating). No kind → all four, guides only (call again with a kind
-      // for a template + the existing list).
+      // avoid duplicating). No kind → all of them, guides only (call again with a
+      // kind for a template + the existing list).
       if (kind) {
-        if (!ASSET_GUIDES[kind]) throw new Error('"kind" must be module | effect | theme | snippet.');
+        if (!ASSET_GUIDES[kind]) throw new Error('"kind" must be module | effect | theme | snippet | skill.');
         return {
           kind,
           template: templateFor(kind),
           guide: ASSET_GUIDES[kind],
           existing: await listWorkspaceAssets(baseDir, kind),
-          note: 'Write with write_asset (kind, name, content). The `existing` list is this workspace\'s .mdp only — for the full merged set (incl. built-ins) use the FIND tool named at the end of the guide.',
+          note: kind === 'skill'
+            ? 'Write with write_skill (name, description, content = the Markdown body; dir = which folder\'s .mdp). The `existing` list is the workspace-root .mdp only — get_skill() lists what a deck\'s folder actually sees.'
+            : 'Write with write_asset (kind, name, content). The `existing` list is this workspace\'s .mdp only — for the full merged set (incl. built-ins) use the FIND tool named at the end of the guide.',
         };
       }
       return {
-        kinds: ['module', 'effect', 'theme', 'snippet'],
+        kinds: Object.keys(ASSET_GUIDES),
         guides: ASSET_GUIDES,
         note: 'Call again with a `kind` to get that asset\'s TEMPLATE plus the list of ones that already exist, then create it with write_asset.',
       };
@@ -1183,6 +1415,7 @@ async function callToolInner(method, p, baseDir) {
         theme: { sub: 'themes', ext: '.css', check: /./ },
         snippet: { sub: 'snippets', ext: '.json', check: null },
       }[kind];
+      if (kind === 'skill') throw new Error('Skills have their own tools: write_skill / patch_skill / delete_skill.');
       if (!spec) throw new Error('"kind" must be module | effect | theme | snippet.');
       if (kind === 'snippet') {
         let parsed;
@@ -1252,25 +1485,206 @@ async function callToolInner(method, p, baseDir) {
     }
     case 'bootstrap': {
       // Everything an authoring session needs, ONE response: the full slide spec
-      // (format + module/effect indexes + themes + cached style profile), plus the
-      // workspace's decks, templates and image aliases. Replaces ~6 opening calls.
+      // (format + module/effect indexes + themes + cached style profile + the
+      // folder's slide skills), plus the workspace's decks, templates and image
+      // aliases. Replaces ~6 opening calls.
       const deckPath = p.deck ? requireDeckPath(p.deck) : await activeDeckPath(baseDir).catch(() => null);
-      const [spec, decksR, templatesR, imagesR] = await Promise.all([
-        rly(baseDir, 'spec', {}, 30000),
+      const chain = await mdpChainDirs(baseDir, deckPath || '');
+      const [spec, decksR, templatesR, imagesR, skills] = await Promise.all([
+        rly(baseDir, 'spec', { skillDirs: chain }, 30000),
         callToolInner('list_decks', {}, baseDir),
         callToolInner('list_templates', deckPath ? { deck: deckPath } : {}, baseDir).catch(() => ({ templates: [] })),
         callToolInner('list_images', deckPath ? { deck: deckPath } : {}, baseDir).catch(() => ({ images: [] })),
+        skillsForChain(baseDir, chain),
       ]);
+      markSkillsRead(baseDir, skills.filter((s) => s.always));   // their text is in the spec
+      const toRead = skills.filter((s) => !s.always).map((s) => s.name);
       return {
         spec,
         decks: decksR.decks || [],
         templates: templatesR.templates || [],
         images: imagesR.images || [],
         activeDeck: deckPath || null,
-        note: 'One-shot environment: spec (authoring format + module/effect indexes + themes + style profile) + decks + templates + image aliases. Next: get_module_spec for the modules you pick; check_deck / verify:true after writing.',
+        ...(skills.length ? { skills: skills.map((s) => ({ name: s.name, description: s.description, ...(s.always ? { always: true } : {}) })) } : {}),
+        note: `One-shot environment: spec (authoring format + module/effect indexes + themes + style profile + slide skills) + decks + templates + image aliases. Next: ${toRead.length ? `get_skill for the skills that fit (${toRead.join(', ')}); ` : ''}get_module_spec for the modules you pick; check_deck / verify:true after writing.`,
       };
     }
-    case 'get_slide_spec': return await rly(baseDir, 'spec', {}, 30000);
+    case 'get_slide_spec': {
+      const deckPath = await activeDeckPath(baseDir).catch(() => '');
+      const chain = await mdpChainDirs(baseDir, deckPath);
+      const spec = await rly(baseDir, 'spec', { skillDirs: chain }, 30000);
+      markSkillsRead(baseDir, (await skillsForChain(baseDir, chain)).filter((s) => s.always));
+      return spec;
+    }
+    case 'get_skill': {
+      // The folder's slide skills (the author's guides): no name → the index; a name
+      // → that skill's guide + checklist + reference files; name + file → one file.
+      const deckPath = p.deck ? requireDeckPath(p.deck) : await activeDeckPath(baseDir).catch(() => '');
+      const chain = await mdpChainDirs(baseDir, deckPath);
+      const skills = await skillsLib.listSkills(chain, readerOf(baseDir), mdplink);
+      if (!p.name) {
+        return {
+          scope: chain,
+          skills: skills.map((s) => ({ name: s.name, ...(s.title ? { title: s.title } : {}), description: s.description, ...(s.always ? { always: true } : {}), path: s.path })),
+          note: skills.length
+            ? 'Read the skills that fit the task with get_skill(name) before writing; `always` ones are already in get_slide_spec.'
+            : 'This folder has no slide skills (.mdp/skills/<name>/SKILL.md). The generic rules of get_slide_spec apply.',
+        };
+      }
+      const s = skillsLib.findSkill(skills, p.name);
+      if (!s) throw new Error(`No skill "${p.name}" for this deck's folder. Available: ${skills.map((k) => k.name).join(', ') || '(none)'}.`);
+      if (p.file) return await skillsLib.readSkillFile(s, p.file, readerOf(baseDir), mdplink);
+      markSkillsRead(baseDir, [s]);
+      const files = await skillsLib.listSkillFiles(s, readerOf(baseDir), mdplink);
+      return {
+        name: s.name, ...(s.title ? { title: s.title } : {}),
+        description: s.description, ...(s.always ? { always: true } : {}),
+        path: s.path, from: s.configDir,
+        content: s.body,
+        ...(s.checklist.length ? { checklist: s.checklist } : {}),
+        ...(files.length ? { files } : {}),
+        ...(s.truncated ? { truncated: true } : {}),
+        note: `The author's guide for decks in this folder — follow it for everything you write here; where it disagrees with the generic spec, the guide wins (the file format does not change).${files.length ? ' Its reference files: get_skill(name, file).' : ''}${s.checklist.length ? ' check_deck / verify:true will hand the checklist back for review.' : ''}`,
+      };
+    }
+    case 'write_skill': {
+      // Create or replace a skill's SKILL.md (or, with `file`, one of its reference
+      // files). `content` is the Markdown body — or a whole SKILL.md with frontmatter.
+      const t = await skillTarget(baseDir, p);
+      const content = String(p.content ?? '').replace(/\r\n?/g, '\n');
+      if (!content.trim()) throw new Error('"content" is required.');
+      return await withDeckLock(`${wsKeyOf(baseDir)}\u0000skill:${t.dir}`, async () => {
+        if (p.file && String(p.file) !== skillsLib.SKILL_FILE) {
+          const rel = skillsLib.checkSkillFilePath(p.file);
+          if (!skillsLib.isSkillTextFile(rel)) throw new Error('A reference file must be text (.md, .slide.md, .txt, .csv, .json …).');
+          if (!t.current) throw new Error(`Skill "${t.name}" does not exist in ${t.configDir} — write its SKILL.md first.`);
+          const path = `${t.dir}/${rel}`;
+          const exists = await mdplink.vfsExists(vres(baseDir, path)).catch(() => false);
+          const note = await confirmSkillChange(baseDir, exists ? 'update' : 'create', t.name, path, content);
+          const backups = exists ? await backupFiles(baseDir, [path]) : [];
+          await mdplink.vfsWrite(vres(baseDir, path, 'w'), Buffer.from(content, 'utf-8'));
+          rly(baseDir, 'refreshTree', {}, 5000).catch(() => {});
+          return { saved: path, action: exists ? 'replaced' : 'created', ...(backups[0] ? { backup: backups[0] } : {}), note: [`Mention it in SKILL.md so readers know when to open it (get_skill(name, file) reads it).`, note].filter(Boolean).join(' ') };
+        }
+        let text = content.startsWith(BOM) ? content.slice(1) : content;
+        if (!/^---\n/.test(text)) {
+          if (!p.description) throw new Error('Give "description" (one line: what the skill covers and when to read it) — or pass a whole SKILL.md with frontmatter as "content".');
+          text = `---\nname: ${t.name}\ndescription: ${yamlScalar(p.description)}\n${p.always ? 'always: true\n' : ''}---\n\n${text.trim()}\n`;
+        } else {
+          if (p.description != null) text = setFrontmatterField(text, 'description', String(p.description));
+          if (typeof p.always === 'boolean') text = setFrontmatterField(text, 'always', p.always);
+        }
+        // Agent Skills want `name` = the folder name.
+        const fmName = skillsLib.parseFrontmatter(text).data.name;
+        const renamed = fmName !== undefined && fmName !== t.name;
+        if (fmName !== t.name) text = setFrontmatterField(text, 'name', t.name);
+        const parsed = checkSkillText(text, t.name);
+        const path = `${t.dir}/${skillsLib.SKILL_FILE}`;
+        const note = await confirmSkillChange(baseDir, t.current ? 'update' : 'create', t.name, path, text);
+        const backups = t.current ? await backupFiles(baseDir, [path]) : [];
+        await mdplink.vfsWrite(vres(baseDir, path, 'w'), Buffer.from(text, 'utf-8'));
+        markSkillsRead(baseDir, [{ path }]);
+        rly(baseDir, 'refreshTree', {}, 5000).catch(() => {});
+        return {
+          saved: path,
+          action: t.current ? 'replaced' : 'created',
+          ...(backups[0] ? { backup: backups[0] } : {}),
+          ...(renamed ? { renamed: `frontmatter name set to the folder name "${t.name}"` } : {}),
+          ...(parsed.checklist.length ? {} : { hint: 'Add a "## Checklist" section of yes/no items — check_deck / verify:true hand it back for review.' }),
+          ...(t.other ? { alsoIn: `A skill "${t.other.name}" also exists in ${t.other.configDir}; for each deck the nearer .mdp's copy wins.` } : {}),
+          note: ['Decks beneath this folder now get it in their slide spec.', note].filter(Boolean).join(' '),
+        };
+      });
+    }
+    case 'patch_skill': {
+      // Small changes without rewriting the guide: exact-text `edits` (like
+      // patch_deck), `append` lines under a heading (the way to add a rule), and the
+      // frontmatter `description` / `always`.
+      const t = await skillTarget(baseDir, p);
+      if (!t.current) {
+        throw new Error(`No skill "${String(p.name)}" in ${t.configDir}${t.other ? ` (there is one in ${t.other.configDir} — omit "dir" to edit that one)` : ''}. Create it with write_skill.`);
+      }
+      const file = p.file && String(p.file) !== skillsLib.SKILL_FILE ? skillsLib.checkSkillFilePath(p.file) : skillsLib.SKILL_FILE;
+      const isMain = file === skillsLib.SKILL_FILE;
+      if (!isMain && (p.description != null || typeof p.always === 'boolean')) throw new Error('"description" / "always" belong to SKILL.md — omit "file".');
+      const edits = (Array.isArray(p.edits) && p.edits.length ? p.edits : (p.old_str != null ? [{ old_str: p.old_str, new_str: p.new_str, all: p.all }] : []))
+        .map((ed) => ({ ...ed, old_str: String(ed.old_str ?? '').replace(/\r\n?/g, '\n'), new_str: String(ed.new_str ?? '').replace(/\r\n?/g, '\n') }));
+      const appends = Array.isArray(p.append) ? p.append : (p.append ? [p.append] : []);
+      if (!edits.length && !appends.length && p.description == null && typeof p.always !== 'boolean') {
+        throw new Error('Nothing to change — pass `edits`, `append`, `description` or `always`.');
+      }
+      appends.forEach((a, i) => {
+        if (!a || !String(a.section ?? '').trim() || !String(a.text ?? '').trim()) throw new Error(`append[${i}] needs "section" (a heading) and "text".`);
+      });
+      const path = `${t.dir}/${file}`;
+      return await withDeckLock(`${wsKeyOf(baseDir)}\u0000skill:${t.dir}`, async () => {
+        const fmt = await readTextKeepingFormat(baseDir, path).catch(() => { throw new Error(`"${file}" does not exist in skill "${t.name}".`); });
+        let text = fmt.text;
+        let replaced = 0;
+        if (edits.length) ({ text, replaced } = applyExactEdits(text, edits, path));
+        for (const a of appends) text = appendToSection(text, a.section, a.text);
+        if (isMain) {
+          if (p.description != null) text = setFrontmatterField(text, 'description', String(p.description));
+          if (typeof p.always === 'boolean') text = setFrontmatterField(text, 'always', p.always);
+          checkSkillText(text, t.name);
+        }
+        if (text === fmt.text) return { saved: null, note: 'No change — the skill already says that.' };
+        const preview = [
+          ...edits.map((ed) => `REPLACE:\n${ed.old_str}\nWITH:\n${ed.new_str}`),
+          ...appends.map((a) => `ADD under “${String(a.section).trim()}”:\n${String(a.text).trim()}`),
+          ...(p.description != null ? [`DESCRIPTION: ${p.description}`] : []),
+          ...(typeof p.always === 'boolean' ? [`ALWAYS: ${p.always}`] : []),
+        ].join('\n\n');
+        const note = await confirmSkillChange(baseDir, 'update', t.name, path, preview);
+        const backups = await backupFiles(baseDir, [path]);
+        await mdplink.vfsWrite(vres(baseDir, path, 'w'), Buffer.from(withFormat(text, fmt), 'utf-8'));
+        markSkillsRead(baseDir, [{ path: `${t.dir}/${skillsLib.SKILL_FILE}` }]);
+        rly(baseDir, 'refreshTree', {}, 5000).catch(() => {});
+        return {
+          saved: path,
+          ...(edits.length ? { replaced } : {}),
+          ...(appends.length ? { appended: appends.length } : {}),
+          ...(backups[0] ? { backup: backups[0] } : {}),
+          ...(note ? { note } : {}),
+        };
+      });
+    }
+    case 'delete_skill': {
+      // Remove a whole skill (its folder) or one reference file. Always confirmed in
+      // the desktop app; everything removed is backed up first.
+      const t = await skillTarget(baseDir, p);
+      if (!t.current) {
+        throw new Error(`No skill "${String(p.name)}" in ${t.configDir}${t.other ? ` (there is one in ${t.other.configDir} — omit "dir" to delete that one)` : ''}.`);
+      }
+      return await withDeckLock(`${wsKeyOf(baseDir)}\u0000skill:${t.dir}`, async () => {
+        if (p.file && String(p.file) !== skillsLib.SKILL_FILE) {
+          const rel = skillsLib.checkSkillFilePath(p.file);
+          const path = `${t.dir}/${rel}`;
+          if (!(await mdplink.vfsExists(vres(baseDir, path)).catch(() => false))) throw new Error(`"${rel}" does not exist in skill "${t.name}".`);
+          const note = await confirmSkillChange(baseDir, 'delete', t.name, path, `Delete the reference file ${rel} of the skill "${t.name}".`);
+          const backups = await backupFiles(baseDir, [path]);
+          await mdplink.vfsRemove(vres(baseDir, path, 'w'));
+          rly(baseDir, 'refreshTree', {}, 5000).catch(() => {});
+          return { deleted: path, ...(backups[0] ? { backup: backups[0] } : {}), ...(note ? { note } : {}) };
+        }
+        const files = [skillsLib.SKILL_FILE, ...(await skillsLib.listSkillFiles(t.current, readerOf(baseDir), mdplink))];
+        const note = await confirmSkillChange(baseDir, 'delete', t.name, t.dir,
+          `Delete the skill "${t.name}" (${t.dir}) — ${files.length} file(s):\n${files.join('\n')}\n\n${t.current.description}`);
+        const backups = await backupFiles(baseDir, files.map((f) => `${t.dir}/${f}`));
+        await mdplink.vfsRemove(vres(baseDir, t.dir, 'w'));
+        skillReads.delete(`${wsKeyOf(baseDir)}\u0000${t.dir}/${skillsLib.SKILL_FILE}`);
+        rly(baseDir, 'refreshTree', {}, 5000).catch(() => {});
+        // A parent's skill of the same name takes over again for these decks.
+        const fallback = skillsLib.findSkill(await skillsForChain(baseDir, t.chain), t.name);
+        return {
+          deleted: t.dir,
+          files: files.length,
+          ...(backups.length ? { backups } : {}),
+          ...(fallback ? { nowUsing: `${fallback.path} (a parent folder's skill of the same name now applies)` } : {}),
+          ...(note ? { note } : {}),
+        };
+      });
+    }
     case 'get_module_spec': {
       const names = Array.isArray(p.names) ? p.names.map((n) => String(n)) : (p.name ? [String(p.name)] : []);
       if (!names.length) throw new Error('Provide "names": an array of module names (from the get_slide_spec index).');

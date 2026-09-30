@@ -12,6 +12,7 @@ import { confirmDialog } from '../../components/error/errorReporter';
 import { apiClient, isMcpRenderer } from '../../api/apiClient';
 import type { OpenTab } from '../fileTree/hooks/useFileManager';
 import type { ThemeOption } from '../../types';
+import type { WorkspaceFont, MdpFontDefaults, FontRequirementStatus } from '../fonts/fontTypes';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Slide = any;
@@ -24,6 +25,17 @@ export interface McpCtx {
   currentSlideIndex: number;
   setCurrentSlideIndex: (i: number) => void;
   slides: Slide[];
+  // The editor text `slides` were generated from (null before the first build).
+  // Equal to `markdownRef.current` once the debounced, asynchronous re-parse has
+  // caught up with the latest edit.
+  slidesSource: string | null;
+  // Re-render the preview from the CURRENT editor text now.
+  applyPreview: () => void;
+  // Workspace fonts in this deck's scope, the folder's default fonts, and the
+  // fonts the scope declares (requirements.json) with their state here.
+  fonts: WorkspaceFont[];
+  fontDefaults: MdpFontDefaults;
+  fontRequirements: FontRequirementStatus[];
   slideSize: { width: number; height: number };
   basePath: string;
   themeCssUrl: string;
@@ -150,6 +162,15 @@ export function validateDeckText(text: string, themes: ThemeOption[]) {
   });
 
   return { ok: errors.length === 0, errors, warnings };
+}
+
+// Declared-but-missing fonts make every render and measurement here use the
+// fallback — the AI must know before trusting the numbers ('' when none).
+function missingFontNote(reqs: FontRequirementStatus[]): string {
+  const missing = reqs.filter((r) => r.state === 'missing').map((r) => `"${r.family}"`);
+  return missing.length
+    ? `Font(s) ${missing.join(', ')} are declared as required (.mdp/fonts/requirements.json) but not installed on this computer — renders and measurements here use the fallback fonts.`
+    : '';
 }
 
 // Renderer side of the MCP control bridge: executes "live" tools (spec, active
@@ -289,14 +310,40 @@ export const McpBridge: React.FC<{ ctx: McpCtx }> = ({ ctx }) => {
       };
     };
 
+    // Wait until the slides reflect the editor's CURRENT text. The re-parse is
+    // debounced (~300 ms) and the generation asynchronous, so a render / measure
+    // issued right after write_deck, patch_deck or reload_deck used to see the
+    // PREVIOUS version of the deck — e.g. a theme change that "did not apply".
+    // Comparing the slides' source text with the editor text (rather than, say,
+    // the slide count) also covers edits that keep the count unchanged. A frozen
+    // preview (live preview off, or a layout-edit suppression) never catches up on
+    // its own, so it is applied once the debounce window has passed.
+    const waitForFreshSlides = async () => {
+      const fresh = () => ctxRef.current.slidesSource === ctxRef.current.markdownRef.current;
+      if (fresh()) return;
+      const start = Date.now();
+      let applied = false;
+      while (Date.now() - start < 20000) {
+        await new Promise((r) => setTimeout(r, 50));
+        if (fresh()) return;
+        if (!applied && Date.now() - start > 600) { ctxRef.current.applyPreview(); applied = true; }
+      }
+      throw new Error('The editor did not finish re-rendering the deck (timed out after 20 s) — try again, or check the deck for markup that fails to render.');
+    };
+
     // Open `path` (if given and not already active) and WAIT until the parse
-    // pipeline has actually produced that deck's slides. This is what lets the
-    // measure/render tools take an explicit `path` instead of silently operating on
-    // whatever tab happens to be active (the "wrong deck" token sink: the user
-    // switches tabs between MCP calls and every subsequent measurement/render
-    // targets the wrong deck). Throws — never falls back to another deck.
+    // pipeline has actually produced that deck's slides — from its CURRENT text.
+    // This is what lets the measure/render tools take an explicit `path` instead of
+    // silently operating on whatever tab happens to be active (the "wrong deck"
+    // token sink: the user switches tabs between MCP calls and every subsequent
+    // measurement/render targets the wrong deck). Throws — never falls back to
+    // another deck.
     const ensureDeck = async (path?: string) => {
-      if (!path) return activeDeck();
+      if (!path) {
+        activeDeck();                  // throws when no deck is active
+        await waitForFreshSlides();
+        return activeDeck();
+      }
       const want = String(path);
       if (ctxRef.current.currentFileName !== want) {
         await ctxRef.current.loadFile(want);
@@ -310,6 +357,7 @@ export const McpBridge: React.FC<{ ctx: McpCtx }> = ({ ctx }) => {
       if (ctxRef.current.currentFileName !== want) {
         throw new Error(`Could not open "${want}" in the editor — the active deck is "${ctxRef.current.currentFileName || 'none'}". Check the path (list_decks).`);
       }
+      await waitForFreshSlides();
       return activeDeck();
     };
 
@@ -357,10 +405,20 @@ export const McpBridge: React.FC<{ ctx: McpCtx }> = ({ ctx }) => {
           const modules = Object.values(loadedModules).map((m) => m.config).filter((m) => !isModuleDisabled(m.name));
           const effects = Object.values(loadedEffects).map((e) => e.config);
           const taxonomy = await loadTaxonomy(c.scopeDirs);
-          return buildSlideSpecPrompt(modules, { effects, themes, aiNotes: c.aiNotes, styleProfile: c.styleProfile, taxonomy }) + `
+          // The bridge names the deck's `.mdp` chain (bootstrap may target a deck
+          // other than the active one; the shared server has no active deck).
+          const skillDirs: string[] = Array.isArray(params?.skillDirs) && params.skillDirs.length ? params.skillDirs.map(String) : c.scopeDirs;
+          const skills = await apiClient.getSkills(skillDirs).catch(() => []);
+          return buildSlideSpecPrompt(modules, { effects, themes, fonts: c.fonts, fontDefaults: c.fontDefaults, fontRequirements: c.fontRequirements, aiNotes: c.aiNotes, styleProfile: c.styleProfile, taxonomy, skills }) + `
 
 ## MCP workflow tips
 
+- **Follow the folder's slide skills.** When the spec has a "Slide skills for this
+  folder" section, read the skills that fit the task with get_skill BEFORE the
+  outline, apply them to every slide, and review the result against their
+  checklists (check_deck / verify:true return them). A rule the user gives you
+  mid-session ("見出しに句点を付けない") belongs in the skill: offer to record it with
+  patch_skill (\`append\` under the right heading); write_skill creates a new skill.
 - **Match the user's style.** If the spec already contains "The author's writing
   style" section, it is a CACHED profile — just follow it (no need to re-read decks).
   If it's absent (or looks stale), call get_style_samples, distill a concise profile,
@@ -542,13 +600,12 @@ Match the user's style throughout (cached profile if present, else get_style_sam
           if (wasModified && !params.discardUnsaved) {
             throw new Error(`"${d.path}" has UNSAVED changes in the editor — reloading would discard them. Save first (save_deck), or call again with discardUnsaved: true.`);
           }
-          const text = await ctxRef.current.reloadFileFromDisk(d.path);
-          // Wait out the debounced re-parse so slideCount describes the RELOADED text.
-          const expected = Math.max(0, splitMarkdownToBlocks(text).length - 1);
-          const deadline = Date.now() + 5000;
-          while (Date.now() < deadline && ctxRef.current.slides.length !== expected) {
-            await new Promise((r) => setTimeout(r, 100));
-          }
+          await ctxRef.current.reloadFileFromDisk(d.path);
+          // Wait out the debounced re-parse so slideCount — and every render or
+          // measurement that follows — describes the RELOADED text. (Waiting for the
+          // slide COUNT to match was not enough: a reload that keeps the count
+          // returned at once, and the next render showed the old content.)
+          await waitForFreshSlides();
           return {
             path: d.path,
             reloaded: true,
@@ -594,14 +651,22 @@ Match the user's style throughout (cached profile if present, else get_style_sam
           return { ok: true };
         }
         case 'confirmAssetWrite': {
-          if (c.assetWritePolicy === 'auto') return { approved: true };
+          // create / update follow the Settings → MCP policy; a DELETE always asks.
+          const action: 'create' | 'update' | 'delete' = params.action === 'update' || params.action === 'delete' ? params.action : 'create';
+          if (c.assetWritePolicy === 'auto' && action !== 'delete') return { approved: true };
           const scriptWarn = params.hasScript
             ? '\n\n⚠️ This module contains a <script> that will RUN inside MDP. Only approve it if you trust the source.'
             : '';
+          const kind = String(params.kind || 'asset');
           const preview = String(params.content || '').slice(0, 1200);
           const approved = await confirmDialog(
-            `An MCP client wants to create a ${params.kind} at:\n${params.rel}${scriptWarn}\n\n— preview —\n${preview}${String(params.content || '').length > 1200 ? '\n…(truncated)' : ''}`,
-            { title: 'Allow AI to create this asset?', confirmText: 'Save', cancelText: 'Decline', severity: 'warning' },
+            `An MCP client wants to ${action} ${kind === 'skill' ? `the skill "${params.name}"` : `a ${kind}`} at:\n${params.rel}${scriptWarn}\n\n— ${action === 'delete' ? 'details' : action === 'update' ? 'change' : 'preview'} —\n${preview}${String(params.content || '').length > 1200 ? '\n…(truncated)' : ''}${action !== 'create' ? '\n\n(The previous version is kept in .mdp/mcp-backups.)' : ''}`,
+            {
+              title: action === 'delete' ? `Allow AI to delete this ${kind}?` : action === 'update' ? `Allow AI to update this ${kind}?` : 'Allow AI to create this asset?',
+              confirmText: action === 'delete' ? 'Delete' : 'Save',
+              cancelText: 'Decline',
+              severity: 'warning',
+            },
           );
           return { approved };
         }
@@ -609,11 +674,15 @@ Match the user's style throughout (cached profile if present, else get_style_sam
           const themes = await apiClient.getThemes(c.scopeDirs).catch(() => []);
           // Dry-run: validate CANDIDATE text without writing it anywhere (check_deck
           // with `text`) — the iteration stays inside the AI, the editor stays clean.
-          if (typeof params.text === 'string') return { dryRun: true, ...validateDeckText(params.text, themes) };
+          const withFonts = (r: ReturnType<typeof validateDeckText>) => {
+            const note = missingFontNote(c.fontRequirements || []);
+            return note ? { ...r, warnings: [...r.warnings, note] } : r;
+          };
+          if (typeof params.text === 'string') return { dryRun: true, ...withFonts(validateDeckText(params.text, themes)) };
           const target = params.path || activeDeck().path;
           const tab = c.tabs.find((t) => t.path === target);
           const text = tab ? tab.content : await apiClient.readFileText(target);
-          return { path: target, ...validateDeckText(text, themes) };
+          return { path: target, ...withFonts(validateDeckText(text, themes)) };
         }
         case 'readImage': {
           const maxW = Math.min(Math.max(Number(params.maxWidth) || 800, 100), 1400);
@@ -698,9 +767,11 @@ Match the user's style throughout (cached profile if present, else get_style_sam
           const isIssue = (r: { overflowX?: number; overflowY?: number; empty?: boolean }) =>
             (r.overflowX || 0) > 0 || (r.overflowY || 0) > 0 || !!r.empty;
           const issues = rows.filter(isIssue);
+          const fontNote = missingFontNote(cc.fontRequirements || []);
           const head = {
             deck: d.path, totalSlides: d.slideCount, measured: rows.length,
             slideSize: measured?.slideSize, note: measured?.note,
+            ...(fontNote ? { fonts: fontNote } : {}),
           };
           if (params.all) return { ...head, rows };
           return {

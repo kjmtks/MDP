@@ -30,7 +30,9 @@ const INSTRUCTIONS = [
   'MDP — Markdown presentation decks (*.slide.md), shared server.',
   'Paths are workspace-relative, exactly as they appear in MDP: your own folder at the',
   'root, other people\'s and your groups\' under the "@" folders. Start with bootstrap',
-  '(spec + decks + templates + images), then get_module_spec for the modules you pick.',
+  '(spec + decks + templates + images); read the folder\'s slide skills that fit the task',
+  'with get_skill (the author\'s guides — follow them, and review against their checklists;',
+  'record a rule the user gives you with patch_skill), then get_module_spec for the modules you pick.',
   'There is no editor window here: always pass an explicit `path` / `deck`.',
 ].join(' ');
 

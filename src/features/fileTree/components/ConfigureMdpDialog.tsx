@@ -5,7 +5,11 @@ import CloudDownloadIcon from '@mui/icons-material/CloudDownload';
 import { apiClient } from '../../../api/apiClient';
 import { reportError, notify } from '../../../components/error/errorReporter';
 import { loadedModules } from '../../modules/moduleManager';
-import { type MdpContent, parseContent, contentPath, effectiveDisabledModules, effectiveAiNotes, effectiveStyleProfile } from '../../workspace/mdpContent';
+import { type MdpContent, parseContent, contentPath, effectiveDisabledModules, effectiveAiNotes, effectiveStyleProfile, effectiveFonts } from '../../workspace/mdpContent';
+import { FontsSection } from '../../fonts/FontsSection';
+import { SkillsSection } from '../../skills/SkillsSection';
+import { mergeRequirements, requirementStatuses } from '../../fonts/fontRequirements';
+import { isFontInstalledLocally } from '../../fonts/fontRuntime';
 import { resolveMdpConfigDirs, collectScopedAssetPaths } from '../../workspace/mdpScope';
 import { buildSlideSpecPrompt } from '../../ai/slideSpecPrompt';
 import { loadTaxonomy } from '../../ai/loadTaxonomy';
@@ -21,6 +25,8 @@ interface Props {
   // The workspace tree (for resolving this `.mdp`'s cascade chain).
   fileTree: FileNode[];
   onClose: () => void;
+  // Open a workspace file in the editor (e.g. a skill's SKILL.md); closes the dialog.
+  onOpenFile?: (path: string) => void;
 }
 
 const rowSx = {
@@ -39,7 +45,7 @@ const authorFieldSx = {
 // for the decks beneath it). Choices are written to `<configDir>/content.json` and
 // cascade (nearest `.mdp` wins). Read-only-aware: a save that fails (e.g. a NAS share
 // you don't own) is reported and the dialog stays open.
-export const ConfigureMdpDialog: React.FC<Props> = ({ open, configDir, fileTree, onClose }) => {
+export const ConfigureMdpDialog: React.FC<Props> = ({ open, configDir, fileTree, onClose, onOpenFile }) => {
   const [content, setContent] = useState<MdpContent>({});
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -59,9 +65,13 @@ export const ConfigureMdpDialog: React.FC<Props> = ({ open, configDir, fileTree,
     if (!configDir || promptBusy) return;
     setPromptBusy(true);
     try {
-      const [allMods, allFx, themes] = await Promise.all([
+      const [allMods, allFx, themes, fonts, reqFiles, skills] = await Promise.all([
         apiClient.getModules(), apiClient.getEffects(), apiClient.getThemes(chain),
+        apiClient.getFonts(chain).catch(() => []),
+        apiClient.getFontRequirements(chain).catch(() => []),
+        apiClient.getSkills(chain).catch(() => []),
       ]);
+      const fontRequirements = requirementStatuses(mergeRequirements(reqFiles).fonts, fonts, (f) => isFontInstalledLocally(f));
       const modByName = new Map<string, ModuleConfig>();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await Promise.all(allMods.filter((m: any) => !m.isCustom).map(async (m: any) => {
@@ -89,6 +99,9 @@ export const ConfigureMdpDialog: React.FC<Props> = ({ open, configDir, fileTree,
         // Ancestors' saved notes/style + THIS dialog's live (possibly unsaved) values.
         {
           effects: [...fxByName.values()], themes, taxonomy,
+          fonts, fontDefaults: effectiveFonts([...contents.slice(0, -1), content]), fontRequirements,
+          // A copied prompt has no get_skill tool — the skills go in full.
+          skills, skillsInline: true,
           aiNotes: effectiveAiNotes([...contents.slice(0, -1), content]),
           styleProfile: effectiveStyleProfile([...contents.slice(0, -1), content]).text,
         },
@@ -158,10 +171,13 @@ export const ConfigureMdpDialog: React.FC<Props> = ({ open, configDir, fileTree,
       const author = Object.fromEntries(Object.entries(content.author || {}).filter(([, v]) => String(v || '').trim()));
       const aiNotes = (content.aiNotes || '').trim();
       const styleText = (content.styleProfile?.text || '').trim();
+      // Keep '' (= "theme's own font") — only absent keys mean "inherit".
+      const fonts = Object.fromEntries(Object.entries(content.fonts || {}).filter(([, v]) => typeof v === 'string'));
       const payload: MdpContent = {
         version: 1,
         modules: Object.fromEntries(Object.entries(mods).filter(([, v]) => v === false)),
         ...(Object.keys(author).length ? { author } : {}),
+        ...(Object.keys(fonts).length ? { fonts } : {}),
         ...(aiNotes ? { aiNotes } : {}),
         // Preserve existing freshness metadata; a hand-edit just updates the text.
         ...(styleText ? { styleProfile: { ...content.styleProfile, text: styleText } } : {}),
@@ -211,9 +227,27 @@ export const ConfigureMdpDialog: React.FC<Props> = ({ open, configDir, fileTree,
           <TextField label="Email" size="small" value={content.author?.email || ''} onChange={(e) => setAuthorField('email', e.target.value)} sx={{ ...authorFieldSx, flex: 1 }} />
         </Stack>
 
+        {configDir && !loading && (
+          <FontsSection
+            configDir={configDir}
+            chain={chain.length ? chain : [configDir]}
+            ownerDir={ownerDir}
+            value={content.fonts || {}}
+            onChange={(fonts) => setContent((prev) => ({ ...prev, fonts }))}
+          />
+        )}
+
+        {configDir && !loading && (
+          <SkillsSection
+            configDir={configDir}
+            chain={chain.length ? chain : [configDir]}
+            onOpenFile={onOpenFile}
+          />
+        )}
+
         <Typography sx={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--app-text-strong)', mt: 2, mb: 0.5 }}>AI instructions (this folder)</Typography>
         <Typography sx={{ fontSize: '0.72rem', color: 'var(--app-text-disabled)', mb: 1 }}>
-          House style for AIs authoring decks under this folder — appended to the slide spec (the “Copy AI prompt” button below and the MCP integration both include it). Accumulates with the parent <code>.mdp</code>'s instructions. E.g. “Use the lab template, keep to 12 slides, cite sources on each data slide.”
+          House style for AIs authoring decks under this folder — appended to the slide spec (the “Copy AI prompt” button below and the MCP integration both include it). Accumulates with the parent <code>.mdp</code>'s instructions. E.g. “Use the lab template, keep to 12 slides, cite sources on each data slide.” Longer guides belong in a slide skill (above).
         </Typography>
         <TextField
           multiline minRows={3} maxRows={10} fullWidth size="small"
@@ -258,7 +292,7 @@ export const ConfigureMdpDialog: React.FC<Props> = ({ open, configDir, fileTree,
         </Stack>
         <Typography sx={{ fontSize: '0.72rem', color: 'var(--app-text-disabled)', mt: 1 }}>
           The prompt covers exactly what decks under this folder can use (its cascade: {chain.join(' → ') || '—'}).
-          The download writes modules/themes/templates/snippets into this <code>.mdp</code> (internet required).
+          The download writes modules/themes/fonts/templates/snippets into this <code>.mdp</code> (internet required).
         </Typography>
       </DialogContent>
       <DialogActions>

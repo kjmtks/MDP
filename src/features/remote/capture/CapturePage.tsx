@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { SlideView } from '../../slide/components/SlideView';
 import { waitForRenderReady } from './captureReady';
 import type { CaptureSlideData } from './captureTypes';
+import { applyFontCss, loadWorkspaceFonts } from '../../fonts/fontRuntime';
 
 export default function CapturePage() {
   const [data, setData] = useState<CaptureSlideData | null>(null);
@@ -40,9 +41,15 @@ export default function CapturePage() {
       }
       style.textContent = data.moduleCss || '';
     }
+    // Workspace fonts — same text left alone, so the loaded faces are reused
+    // across captures.
+    applyFontCss(document, data.fontCss || '');
 
     let cancelled = false;
     (async () => {
+      // Load the workspace fonts explicitly before the capture: `document.fonts.ready`
+      // alone can resolve before the first layout has even started a font load.
+      await loadWorkspaceFonts(document, data.fontCss || '', undefined, nodeRef.current?.textContent ?? undefined);
       if (nodeRef.current) await waitForRenderReady(nodeRef.current);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       if (!cancelled) (window as any).electronAPI?.sendCaptureReady?.(data.id);

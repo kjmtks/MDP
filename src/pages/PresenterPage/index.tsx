@@ -17,6 +17,7 @@ import { registerParsedModule, clearAllModules } from '../../features/modules/mo
 import { registerParsedEffect, clearAllEffects } from '../../features/effects/effectManager';
 import type { ModuleData } from '../../utils/moduleParser';
 import type { EffectData } from '../../utils/effectParser';
+import { applyFontCss } from '../../features/fonts/fontRuntime';
 import { useDrawing } from '../../features/drawing/hooks/useDrawing';
 import { estimateDeckSeconds, slideSeconds, explicitSlideSeconds, formatClock } from '../../features/slide/talkTime';
 import { firstHeading, newRunId, type RehearsalRun } from '../../features/rehearsal/rehearsalStore';
@@ -38,6 +39,8 @@ interface SyncData {
   step?: number;
   slideSize: { width: number; height: number };
   themeCssUrl?: string;
+  // Workspace-font CSS (@font-face + folder font variables) from the main window.
+  fontCss?: string;
   lastUpdated: number;
   allDrawings?: Record<number, Stroke[]>;
   isOverview?: boolean;
@@ -202,6 +205,8 @@ export default function PresenterPage() {
         if ('lastRehearsal' in data) setLastRehearsal(data.lastRehearsal ?? null);
 
         setThemeCssUrl(data.themeCssUrl);
+        // Workspace fonts (same text left alone, so loaded faces are kept).
+        applyFontCss(document, data.fontCss || '');
         setLastUpdated(data.lastUpdated);
         break;
       }

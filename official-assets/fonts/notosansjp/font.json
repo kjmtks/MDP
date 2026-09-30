@@ -1,0 +1,11 @@
+{
+  "family": "Noto Sans JP",
+  "category": "sans-serif",
+  "faces": [
+    { "file": "NotoSansJP-VF.woff2", "weight": "100 900", "style": "normal" }
+  ],
+  "license": "OFL-1.1",
+  "licenseFile": "OFL.txt",
+  "source": "https://github.com/google/fonts/tree/main/ofl/notosansjp",
+  "version": "2.004"
+}

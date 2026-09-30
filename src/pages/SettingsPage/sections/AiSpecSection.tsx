@@ -28,12 +28,25 @@ export const AiSpecSection: React.FC = () => {
     const aiNotes = (window as any).__mdpScopeAiNotes as string | undefined;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const styleProfile = (window as any).__mdpScopeStyleProfile as string | undefined;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const scopeFonts = (window as any).__mdpScopeFonts as {
+      fonts?: { family: string; category: string }[];
+      defaults?: Record<string, string>;
+      requirements?: { family: string; category?: string; state: string; fallback?: string[]; note?: string }[];
+    } | undefined;
     let themes: ThemeOption[] = [];
     try { themes = await apiClient.getThemes(scopeDirs); } catch { /* themes optional */ }
     const taxonomy = await loadTaxonomy(scopeDirs || []).catch(() => undefined);
+    // A copied prompt has no get_skill tool — the folder's skills go in full.
+    const skills = await apiClient.getSkills(scopeDirs).catch(() => []);
     const modules = Object.values(loadedModules).map((m) => m.config).filter((c) => !isModuleDisabled(c.name));
     const effects = Object.values(loadedEffects).map((e) => e.config);
-    setPrompt(buildSlideSpecPrompt(modules, { effects, themes, aiNotes, styleProfile, taxonomy }));
+    setPrompt(buildSlideSpecPrompt(modules, {
+      effects, themes, aiNotes, styleProfile, taxonomy,
+      fonts: scopeFonts?.fonts || [], fontDefaults: scopeFonts?.defaults || {},
+      fontRequirements: scopeFonts?.requirements || [],
+      skills, skillsInline: true,
+    }));
     setCopied(false);
   }, []);
 

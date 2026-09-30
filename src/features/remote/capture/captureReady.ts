@@ -1,5 +1,12 @@
+import { loadWorkspaceFonts } from '../../fonts/fontRuntime';
+
 export async function waitForRenderReady(node: HTMLElement, settleMs = 350): Promise<void> {
   try {
+    // Workspace fonts (`.mdp/fonts`) are loaded EXPLICITLY: `document.fonts.ready`
+    // resolves as soon as no load is pending, which can be before the first layout
+    // has even started one — a measurement or capture would then see the fallback.
+    // (Of a split font, only the slices this slide's text needs.)
+    await loadWorkspaceFonts(document, undefined, undefined, node.textContent || '');
     if (document.fonts && document.fonts.ready) await document.fonts.ready;
   } catch {
     /* ignore */

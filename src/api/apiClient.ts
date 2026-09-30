@@ -1,4 +1,6 @@
 import { WEB_BASE } from './base';
+import type { WorkspaceFont, FontInspection, RequirementsFile, FontInstallResult } from '../features/fonts/fontTypes';
+import type { SlideSkill } from '../features/skills/skillTypes';
 declare const __APP_VERSION__: string;
 // Baked in at build time (Vite `define`). Falls back gracefully if undefined.
 const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.0.0';
@@ -375,6 +377,70 @@ export const apiClient = {
       if (res.ok) return await res.json();
     } catch (e) { console.error(e); }
     return [];
+  },
+
+  // Font packages (`<dir>/fonts/<id>/`) across the same `.mdp` chain as themes,
+  // NEAREST winning on a family-name clash.
+  getFonts: async (dirs?: string[]): Promise<WorkspaceFont[]> => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (isElectron()) return await (window as any).electronAPI.getFonts(dirs);
+    const qs = dirs && dirs.length ? `?dirs=${encodeURIComponent(dirs.join(','))}` : '';
+    const res = await fetch(`${WEB_BASE}/api/fonts${qs}`);
+    if (!res.ok) throw new Error(`fonts: HTTP ${res.status}`);
+    return await res.json();
+  },
+
+  // Slide skills of a `.mdp` chain (nearest wins by name), with their text.
+  getSkills: async (dirs?: string[]): Promise<SlideSkill[]> => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (isElectron()) return await (window as any).electronAPI.getSkills(dirs);
+    const qs = dirs && dirs.length ? `?dirs=${encodeURIComponent(dirs.join(','))}` : '';
+    const res = await fetch(`${WEB_BASE}/api/skills${qs}`);
+    if (!res.ok) throw new Error(`skills: HTTP ${res.status}`);
+    return await res.json();
+  },
+
+  // The fonts the chain's `.mdp`s declare (raw requirements.json per `.mdp`).
+  getFontRequirements: async (dirs?: string[]): Promise<RequirementsFile[]> => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (isElectron()) return await (window as any).electronAPI.getFontRequirements(dirs);
+    const qs = dirs && dirs.length ? `?dirs=${encodeURIComponent(dirs.join(','))}` : '';
+    const res = await fetch(`${WEB_BASE}/api/fontRequirements${qs}`);
+    if (!res.ok) throw new Error(`fontRequirements: HTTP ${res.status}`);
+    return await res.json();
+  },
+
+  // Download a declared font into `configDir` as a font package (needs internet;
+  // only on a user action). Resolves to { error } on failure.
+  installFont: async (configDir: string, entry: object): Promise<FontInstallResult> => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (isElectron()) return await (window as any).electronAPI.installFont({ configDir, entry });
+    const res = await fetch(`${WEB_BASE}/api/installFont`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ configDir, entry }),
+    });
+    try { return await res.json(); } catch { return { error: `installFont: HTTP ${res.status}` }; }
+  },
+
+  // Read a font file's own description (family, weight, licence, embedding rights).
+  inspectFont: async (base64: string): Promise<FontInspection> => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (isElectron()) return await (window as any).electronAPI.inspectFont(base64);
+    const res = await fetch(`${WEB_BASE}/api/inspectFont`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ base64 }),
+    });
+    if (!res.ok) throw new Error(`inspectFont: HTTP ${res.status}`);
+    return await res.json();
+  },
+
+  // Existence + size of workspace files, without reading their contents.
+  statFiles: async (paths: string[]): Promise<{ path: string; exists: boolean; isDir?: boolean; size?: number }[]> => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (isElectron()) return await (window as any).electronAPI.statFiles(paths);
+    const res = await fetch(`${WEB_BASE}/api/statFiles`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ paths }),
+    });
+    if (!res.ok) throw new Error(`statFiles: HTTP ${res.status}`);
+    return await res.json();
   },
 
   getAppVersion: async (): Promise<string> => {

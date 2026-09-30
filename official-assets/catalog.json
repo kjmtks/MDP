@@ -85,6 +85,47 @@
       "hash": "4b34c911"
     }
   ],
+  "fonts": [
+    {
+      "path": "fonts/jetbrainsmono/JetBrainsMono-VF.woff2",
+      "hash": "e9bfd6e9",
+      "size": 71560
+    },
+    {
+      "path": "fonts/jetbrainsmono/OFL.txt",
+      "hash": "0a250ecb"
+    },
+    {
+      "path": "fonts/jetbrainsmono/font.json",
+      "hash": "c04555bf"
+    },
+    {
+      "path": "fonts/notosansjp/NotoSansJP-VF.woff2",
+      "hash": "0d8003d2",
+      "size": 4350212
+    },
+    {
+      "path": "fonts/notosansjp/OFL.txt",
+      "hash": "8de2856f"
+    },
+    {
+      "path": "fonts/notosansjp/font.json",
+      "hash": "a817d78a"
+    },
+    {
+      "path": "fonts/notoserifjp/NotoSerifJP-VF.woff2",
+      "hash": "54aa2339",
+      "size": 5965648
+    },
+    {
+      "path": "fonts/notoserifjp/OFL.txt",
+      "hash": "09e96a1c"
+    },
+    {
+      "path": "fonts/notoserifjp/font.json",
+      "hash": "40640a54"
+    }
+  ],
   "modules": [
     {
       "path": "modules/addclass.mdpmod.xml",
@@ -388,7 +429,7 @@
     },
     {
       "path": "modules/references.mdpmod.xml",
-      "hash": "6146553b"
+      "hash": "bdade898"
     },
     {
       "path": "modules/roadmap.mdpmod.xml",
@@ -527,23 +568,23 @@
   "themes": [
     {
       "path": "themes/academic.css",
-      "hash": "58bb392b"
+      "hash": "c85a7666"
     },
     {
       "path": "themes/dark.css",
-      "hash": "67a23fc3"
+      "hash": "347dd054"
     },
     {
       "path": "themes/forest.css",
-      "hash": "af330e5b"
+      "hash": "5ebd91e4"
     },
     {
       "path": "themes/midnight.css",
-      "hash": "55dbb0d4"
+      "hash": "5bc935e3"
     },
     {
       "path": "themes/minimal.css",
-      "hash": "8dc21e9f"
+      "hash": "13426d32"
     },
     {
       "path": "themes/poster.css",
@@ -551,15 +592,15 @@
     },
     {
       "path": "themes/sepia.css",
-      "hash": "28d99a18"
+      "hash": "63ce7041"
     },
     {
       "path": "themes/sunset.css",
-      "hash": "4f35dba7"
+      "hash": "957ef680"
     },
     {
       "path": "themes/terminal.css",
-      "hash": "e333dffb"
+      "hash": "0b0f2b60"
     }
   ]
 }

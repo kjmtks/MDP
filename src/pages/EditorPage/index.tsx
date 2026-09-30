@@ -6,12 +6,14 @@ import FolderOpenIcon from '@mui/icons-material/FolderOpen';
 import { type SnippetsCategory, type ThemeOption, type FileType, getCustomItemStyle } from '../../types';
 
 import { MainHeader } from '../../components/layout/MainHeader';
-import { MODULES_DIR, EFFECTS_DIR, IMAGES_DIR, SNIPPETS_DIR, TEMPLATES_DIR, THEMES_DIR } from '../../features/workspace/specialFolders';
+import { MODULES_DIR, EFFECTS_DIR, IMAGES_DIR, SNIPPETS_DIR, TEMPLATES_DIR, THEMES_DIR, FONTS_DIR } from '../../features/workspace/specialFolders';
 import { scopeConfigDirs, collectScopedAssetPaths, lazyScopeDirs } from '../../features/workspace/mdpScope';
 import { useEditLock } from '../../features/editor/hooks/useEditLock';
 import { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
-import { type MdpContent, parseContent, effectiveDisabledModules, effectiveAiNotes, effectiveStyleProfile, contentPath } from '../../features/workspace/mdpContent';
+import { type MdpContent, type MdpFontDefaults, parseContent, effectiveDisabledModules, effectiveAiNotes, effectiveStyleProfile, effectiveFonts, contentPath } from '../../features/workspace/mdpContent';
+import { useWorkspaceFonts } from '../../features/fonts/useWorkspaceFonts';
+import { useFontRequirementNotice } from '../../features/fonts/useFontRequirementNotice';
 import { McpBridge, validateDeckText } from '../../features/mcp/McpBridge';
 import { useAppSettings } from '../../features/settings/AppSettingsContext';
 import { matchAction } from '../../features/settings/shortcuts/matcher';
@@ -214,18 +216,26 @@ export default function EditorPage() {
       handleManualRefresh();
     };
 
+    // The Configure (.mdp) dialog added or removed a workspace font (which re-reads
+    // the font list, and so the @font-face CSS) or a skill: refresh the tree.
+    const handleFontsChanged = () => handleManualRefresh();
+
     window.addEventListener('mdp-sync-start', handleSyncStart);
     window.addEventListener('mdp-sync-end', handleSyncEnd);
+    window.addEventListener('mdp-fonts-changed', handleFontsChanged);
+    window.addEventListener('mdp-refresh-tree', handleFontsChanged);
 
     return () => {
       window.removeEventListener('mdp-sync-start', handleSyncStart);
       window.removeEventListener('mdp-sync-end', handleSyncEnd);
+      window.removeEventListener('mdp-fonts-changed', handleFontsChanged);
+      window.removeEventListener('mdp-refresh-tree', handleFontsChanged);
     };
   }, [handleManualRefresh]);
 
   const handleManualSync = useCallback(async () => {
     const wantsToSync = await confirmDialog(
-      'Download and update to the latest official assets (modules, themes, templates, snippets) from GitHub?',
+      'Download and update to the latest official assets (modules, themes, fonts, templates, snippets) from GitHub?',
       { title: 'Sync Official Assets', confirmText: 'Download', cancelText: 'Cancel' }
     );
     if (!wantsToSync) return;
@@ -427,6 +437,8 @@ export default function EditorPage() {
   }, []);
   const [scopeAiNotes, setScopeAiNotes] = useState('');
   const [scopeStyleProfile, setScopeStyleProfile] = useState('');
+  // The folder's default fonts (content.json `fonts`, per-field cascade).
+  const [scopeFontDefaults, setScopeFontDefaults] = useState<MdpFontDefaults>({});
   const disabledPrevRef = useRef<string>('');
   useEffect(() => {
     let cancelled = false;
@@ -440,14 +452,16 @@ export default function EditorPage() {
       const disabled = effectiveDisabledModules(chain).sort();
       const aiNotes = effectiveAiNotes(chain);
       const style = effectiveStyleProfile(chain).text;
+      const fontDefaults = effectiveFonts(chain);
       // Unchanged content → skip the moduleEpoch bump (it would re-parse the whole
       // deck) — this effect re-runs on every scope/tree change.
-      const key = `${disabled.join('\n')} | ${aiNotes} | ${style}`;
+      const key = `${disabled.join('\n')} | ${aiNotes} | ${style} | ${JSON.stringify(fontDefaults)}`;
       if (key === disabledPrevRef.current) return;
       disabledPrevRef.current = key;
       setDisabledModules(disabled);
       setScopeAiNotes(aiNotes);
       setScopeStyleProfile(style);
+      setScopeFontDefaults((prev) => (JSON.stringify(prev) === JSON.stringify(fontDefaults) ? prev : fontDefaults));
       // Published for the Settings → AI prompt overlay (a separate component) to read.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (window as any).__mdpScopeAiNotes = aiNotes;
@@ -458,6 +472,28 @@ export default function EditorPage() {
     })();
     return () => { cancelled = true; };
   }, [scopeDirs, contentEpoch, refreshModuleSnippets]);
+
+  // Workspace fonts (`.mdp/fonts` along the scope chain) + the folder's default
+  // fonts → @font-face rules and variables, applied to this document and shared
+  // with the capture / presenter / output windows (features/fonts).
+  const { fonts: scopeFonts, fontSignature, requirements: fontRequirements, requirementsScope } =
+    useWorkspaceFonts(scopeDirs, fileTree, scopeFontDefaults);
+  // Fonts the folder declares (`.mdp/fonts/requirements.json`) but this computer
+  // lacks: say so once, and offer to download the ones that can be.
+  useFontRequirementNotice(fontRequirements, requirementsScope, scopeDirs);
+  // Charts and mermaid diagrams bake text into images when a slide is generated —
+  // regenerate once the font setup changes so they are drawn with the new fonts.
+  const fontSigPrevRef = useRef(fontSignature);
+  useEffect(() => {
+    if (fontSigPrevRef.current === fontSignature) return;
+    fontSigPrevRef.current = fontSignature;
+    setModuleEpoch((e) => e + 1);
+  }, [fontSignature]);
+  // Published for the Settings → AI prompt overlay (a separate component).
+  useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).__mdpScopeFonts = { fonts: scopeFonts, defaults: scopeFontDefaults, requirements: fontRequirements };
+  }, [scopeFonts, scopeFontDefaults, fontRequirements]);
 
   // Settings overlay (a separate component) asks the editor to sync the official
   // catalog or reload snippets via window events — the editor owns the file tree
@@ -705,8 +741,8 @@ export default function EditorPage() {
     // the new module <render>/<script> output live, not just its <style>.
   }, [previewMarkdown, imageLibrary, moduleEpoch, previewFileName]);
 
-  const { baseUrl, globalContext, slides: mdSlides, docHtml, slideSize: mdSlideSize, slideStyleVariables, themeCssUrl } = useSlideProcessor(
-    previewFileName, previewFileType, processedMarkdown, lastUpdated, themes, moduleEpoch
+  const { baseUrl, globalContext, slides: mdSlides, docHtml, slideSize: mdSlideSize, slideStyleVariables, themeCssUrl, slidesSource } = useSlideProcessor(
+    previewFileName, previewFileType, processedMarkdown, lastUpdated, themes, moduleEpoch, previewMarkdown
   );
 
   const imageSlides = useMemo(() => {
@@ -928,7 +964,7 @@ export default function EditorPage() {
           setLibraryImages(map);
           setModuleEpoch((e) => e + 1);
         } catch { /* ignore malformed registry */ }
-      } else if (path.includes(`${SNIPPETS_DIR}/`) || path.includes(`${TEMPLATES_DIR}/`) || path.includes(`${THEMES_DIR}/`)) {
+      } else if (path.includes(`${SNIPPETS_DIR}/`) || path.includes(`${TEMPLATES_DIR}/`) || path.includes(`${THEMES_DIR}/`) || path.includes(`${FONTS_DIR}/`)) {
         scheduleRefresh();
       }
     };
@@ -2140,6 +2176,11 @@ export default function EditorPage() {
         <McpBridge ctx={{
           currentFileName, markdownRef, currentSlideIndex, setCurrentSlideIndex,
           slides, slideSize, basePath, themeCssUrl, scopeDirs, aiNotes: scopeAiNotes, styleProfile: scopeStyleProfile,
+          slidesSource,
+          fonts: scopeFonts, fontDefaults: scopeFontDefaults, fontRequirements,
+          // Force the preview onto the current editor text (a frozen preview — live
+          // preview off, or a layout-edit suppression — never catches up by itself).
+          applyPreview: () => setPreviewSource({ fileName: currentFileName, fileType: effectiveFileType, md: markdownRef.current }),
           assetWritePolicy: appSettings.mcpAssetWrite,
           modulesReady: assetsReady,
           loadFile, handleInsertText, tabs, updateTabContent,

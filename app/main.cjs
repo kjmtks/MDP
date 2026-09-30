@@ -5,6 +5,9 @@ const fsSync = require('fs');
 const isMac = process.platform === 'darwin';
 const { pathToFileURL } = require('url');
 const mdplink = require('./mdplink.cjs');
+const fontsLib = require('./fonts.cjs');
+const fontInstall = require('./fontInstall.cjs');
+const skillsLib = require('./skills.cjs');
 // Resolve a workspace-relative path through any `.mdplink` it crosses.
 const vresolve = (rel) => mdplink.resolve(currentBaseDir, rel || '');
 // Resolve to the FILE itself when the path is a `.mdplink` (so delete/rename act on
@@ -63,17 +66,25 @@ mainWindow = new BrowserWindow({
   // animation frames running while hidden or covered (e.g. the presenter behind
   // a full-screen slideshow on one display): the stopwatch, countdowns and the
   // rehearsal recorder must not freeze when the window is not on top.
-  mainWindow.webContents.setWindowOpenHandler(() => ({
-    action: 'allow',
-    overrideBrowserWindowOptions: {
-      webPreferences: {
-        preload: path.join(__dirname, 'preload.cjs'),
-        nodeIntegration: false,
-        contextIsolation: true,
-        backgroundThrottling: false,
+  // Web links (e.g. a required font's homepage) go to the system browser instead —
+  // an app window would hand the page the preload's file API.
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:/i.test(url)) {
+      shell.openExternal(url).catch(() => {});
+      return { action: 'deny' };
+    }
+    return {
+      action: 'allow',
+      overrideBrowserWindowOptions: {
+        webPreferences: {
+          preload: path.join(__dirname, 'preload.cjs'),
+          nodeIntegration: false,
+          contextIsolation: true,
+          backgroundThrottling: false,
+        },
       },
-    },
-  }));
+    };
+  });
 
   mainWindow.on('close', (e) => {
     if (isModified && !forceClose) {
@@ -126,6 +137,26 @@ app.on('web-contents-created', (_e, wc) => {
   });
 });
 
+// Versioned workspace font files, kept in memory (see the mdp-file handler).
+const fontCache = new Map();
+let fontCacheBytes = 0;
+const FONT_CACHE_MAX = 200 * 1024 * 1024;
+function fontCacheGet(key) {
+  const buf = fontCache.get(key);
+  if (!buf) return null;
+  fontCache.delete(key); fontCache.set(key, buf);          // most recently used last
+  return buf;
+}
+function fontCachePut(key, buf) {
+  if (fontCache.has(key) || buf.length > FONT_CACHE_MAX / 4) return;
+  fontCache.set(key, buf);
+  fontCacheBytes += buf.length;
+  for (const [k, b] of fontCache) {
+    if (fontCacheBytes <= FONT_CACHE_MAX) break;
+    fontCache.delete(k); fontCacheBytes -= b.length;
+  }
+}
+
 app.whenReady().then(async () => {
   const { session } = require('electron');
   await session.defaultSession.clearCache();
@@ -143,14 +174,37 @@ app.whenReady().then(async () => {
       // host-form URLs (`mdp-file://sub/f`) still resolve (2 slashes stripped too).
       const urlStr = request.url.replace(/^mdp-file:\/\/+/, '');
       const cleanPath = decodeURIComponent(urlStr.split('?')[0]);
-
-      // Route through the VFS so files behind a `.mdplink` (local or remote) serve too.
-      const data = await mdplink.vfsReadBuffer(vresolve(cleanPath));
-
-      let mimeType = 'application/octet-stream';
       const ext = path.extname(cleanPath).toLowerCase();
 
+      // Workspace fonts (`.mdp/fonts`) are requested with a version token (`?v=`,
+      // see src/features/fonts) that changes whenever the file does, so a versioned
+      // font URL always means the same bytes: serve it from memory and let Chromium
+      // keep it. Every window (main, presenter, output, capture) asks for the fonts
+      // — over an SSH link that would otherwise re-download megabytes each time.
+      const fontMime = Object.prototype.hasOwnProperty.call(fontsLib.FONT_MIME, ext.slice(1)) ? fontsLib.FONT_MIME[ext.slice(1)] : '';
+      const version = fontMime ? new URLSearchParams(urlStr.split('?')[1] || '').get('v') : null;
+      const fontKey = version ? `${cleanPath}?v=${version}` : '';
+      let data = fontKey ? fontCacheGet(fontKey) : null;
+      if (!data) {
+        // Route through the VFS so files behind a `.mdplink` (local or remote) serve too.
+        data = await mdplink.vfsReadBuffer(vresolve(cleanPath));
+        if (fontKey) fontCachePut(fontKey, data);
+      }
+      if (fontKey) {
+        return new Response(data, {
+          headers: {
+            'Content-Type': fontMime,
+            'Content-Length': String(data.length),
+            'Access-Control-Allow-Origin': '*',
+            'Cache-Control': 'public, max-age=31536000, immutable',
+          },
+        });
+      }
+
+      let mimeType = 'application/octet-stream';
+
       if (ext === '.svg' || cleanPath.endsWith('.drawio.svg')) mimeType = 'image/svg+xml';
+      else if (fontMime) mimeType = fontMime;
       else if (ext === '.png') mimeType = 'image/png';
       else if (ext === '.jpg' || ext === '.jpeg') mimeType = 'image/jpeg';
       else if (ext === '.gif') mimeType = 'image/gif';
@@ -957,6 +1011,60 @@ ipcMain.handle('getThemes', async (event, dirs) => {
     }
   }
   return [...byName.values()];
+});
+
+// Workspace font packages (`<cdir>/fonts/<id>/`) across the active deck's `.mdp`
+// chain (root→nearest), NEAREST winning on a family-name clash. See app/fonts.cjs.
+ipcMain.handle('getFonts', async (event, dirs) => {
+  if (!currentBaseDir) return [];
+  const chain = Array.isArray(dirs) && dirs.length ? dirs : ['.mdp'];
+  return await fontsLib.listFonts(chain, vresolve, mdplink);
+});
+
+// Slide skills (`<cdir>/skills/<name>/SKILL.md` — the author's guides for AI
+// authoring) across the deck's `.mdp` chain, NEAREST winning by name.
+ipcMain.handle('getSkills', async (event, dirs) => {
+  if (!currentBaseDir) return [];
+  const chain = Array.isArray(dirs) && dirs.length ? dirs : ['.mdp'];
+  return await skillsLib.listSkills(chain, vresolve, mdplink);
+});
+
+// The fonts the chain's `.mdp`s DECLARE (`<cdir>/fonts/requirements.json`, raw
+// text per `.mdp`; the renderer parses and merges them).
+ipcMain.handle('getFontRequirements', async (event, dirs) => {
+  if (!currentBaseDir) return [];
+  const chain = Array.isArray(dirs) && dirs.length ? dirs : ['.mdp'];
+  return await fontsLib.listFontRequirements(chain, vresolve, mdplink);
+});
+
+// Download a declared font (a requirements.json entry with a `source`) into a
+// `.mdp` as a font package — only ever on a user action (offline-first). net.fetch
+// goes through the system proxy settings. Returns { error } on failure.
+ipcMain.handle('installFont', async (event, { configDir, entry } = {}) => {
+  if (!currentBaseDir) return { error: 'No workspace is open.' };
+  try {
+    return await fontInstall.installFont({
+      entry, configDir, resolveTarget: vresolve, vfs: mdplink,
+      fetchImpl: (url, init) => net.fetch(url, init),
+    });
+  } catch (e) { return { error: e.message || String(e) }; }
+});
+
+// Describe a font file the user is about to add (family, weight, licence,
+// embedding permission). Returns { error } for a file that is not a font.
+ipcMain.handle('inspectFont', async (event, base64) => {
+  try { return fontsLib.inspectFontBuffer(Buffer.from(String(base64 || ''), 'base64')); }
+  catch (e) { return { error: e.message || String(e) }; }
+});
+
+// Existence + size of workspace files, without reading them (the official-asset
+// check uses it for the large binary fonts).
+ipcMain.handle('statFiles', async (event, paths) => {
+  if (!currentBaseDir || !Array.isArray(paths)) return [];
+  return await Promise.all(paths.map(async (p) => {
+    try { const s = await mdplink.vfsStat(vresolve(String(p))); return { path: p, exists: true, isDir: s.isDir, size: s.size }; }
+    catch { return { path: p, exists: false }; }
+  }));
 });
 
 ipcMain.handle('getModules', async () => {

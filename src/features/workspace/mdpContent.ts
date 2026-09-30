@@ -1,3 +1,6 @@
+import type { MdpFontDefaults } from '../fonts/fontTypes';
+export type { MdpFontDefaults };
+
 // Per-`.mdp` CONTENT config — `<configDir>/content.json`. It carries the content
 // profile that cascades (rule B): which modules are enabled/disabled for the
 // subtree, and the author profile used to fill new decks created there. `modules`
@@ -28,6 +31,9 @@ export interface MdpContent {
   // (appended to the slide spec). Accumulates: parent notes then child notes both apply.
   aiNotes?: string;
   styleProfile?: MdpStyleProfile;
+  // Default fonts for decks under this folder — family names of workspace fonts
+  // (`.mdp/fonts`). Per field: absent = inherit, '' = the theme's own font.
+  fonts?: MdpFontDefaults;
 }
 
 export const CONTENT_FILE = 'content.json';
@@ -70,6 +76,19 @@ export function moduleEnabledIn(chain: MdpContent[], name: string): boolean {
   let enabled = true;
   for (const c of chain) if (c.modules && name in c.modules) enabled = !!c.modules[name];
   return enabled;
+}
+
+// Effective default fonts: per-field cascade root→nearest. A field PRESENT in a
+// nearer `.mdp` wins even when empty ('' = back to the theme's own font).
+export function effectiveFonts(chain: MdpContent[]): MdpFontDefaults {
+  const out: MdpFontDefaults = {};
+  for (const c of chain) {
+    if (!c.fonts || typeof c.fonts !== 'object') continue;
+    for (const k of ['body', 'heading', 'mono'] as const) {
+      if (typeof c.fonts[k] === 'string') out[k] = c.fonts[k]!.trim();
+    }
+  }
+  return out;
 }
 
 // Effective author profile: per-field cascade root→nearest (a nearer `.mdp` may

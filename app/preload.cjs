@@ -48,6 +48,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getTemplates: (dirs) => ipcRenderer.invoke('getTemplates', dirs),
   getTemplateContent: (path) => ipcRenderer.invoke('getTemplateContent', path),
   getThemes: (dirs) => ipcRenderer.invoke('getThemes', dirs),
+  getFonts: (dirs) => ipcRenderer.invoke('getFonts', dirs),
+  getFontRequirements: (dirs) => ipcRenderer.invoke('getFontRequirements', dirs),
+  getSkills: (dirs) => ipcRenderer.invoke('getSkills', dirs),
+  installFont: (args) => ipcRenderer.invoke('installFont', args),
+  inspectFont: (base64) => ipcRenderer.invoke('inspectFont', base64),
+  statFiles: (paths) => ipcRenderer.invoke('statFiles', paths),
   getAppVersion: () => ipcRenderer.invoke('getAppVersion'),
   setModified: (modified) => ipcRenderer.send('set-modified', modified),
   onAppCloseRequest: (cb) => {

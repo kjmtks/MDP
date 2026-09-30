@@ -91,10 +91,23 @@
  * Base Slide Layout & Typography
  * ========================================= */
 
+/* Slide text font. Workspace fonts (`.mdp/fonts`) make it identical on every
+ * machine: a folder's choice arrives as --mdp-font-body; otherwise Noto Sans JP
+ * when the workspace has it, then the platform fonts this stack always used.
+ * Set on the wrapper so the header, footer and page number share it. */
+.slide-content-wrapper {
+  font-family: var(--mdp-font-body, "Noto Sans JP", "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "Hiragino Sans", Meiryo, sans-serif);
+}
+
 .slide-content {
   background-color: var(--bg-color);
   color: var(--text-color);
   font-size: var(--base-font-size);
+}
+
+/* Headings follow the body font unless a folder picks a heading font. */
+.slide-content :is(h1, h2, h3, h4, h5, h6) {
+  font-family: var(--mdp-font-heading, inherit);
 }
 
 /* Headings */
@@ -233,7 +246,7 @@
 .slide-content.cover .contact a:active {
   color: var(--text-color);
   text-decoration: none;
-  font-family: 'Consolas', 'Monaco', 'Courier New', Courier, monospace;
+  font-family: var(--mdp-font-mono, "JetBrains Mono", Consolas, Monaco, "Courier New", Courier, "Noto Sans JP", monospace);
 }
 
 /* =========================================
@@ -313,7 +326,7 @@
 .slide-page-number {
   font-size: 0.6em;
   color: var(--muted-color);
-  font-family: sans-serif;
+  font-family: inherit;
 }
 
 /* =========================================
@@ -325,7 +338,10 @@
   border-radius: calc(8 * var(--mdp-px, 1px));
   background-color: var(--code-bg);
   box-shadow: 0 calc(4 * var(--mdp-px, 1px)) calc(6 * var(--mdp-px, 1px)) rgba(0, 0, 0, 0.3);
-  font-family: 'Consolas', 'Monaco', 'Andale Mono', 'Ubuntu Mono', monospace;
+  /* Code font: a folder's --mdp-font-mono, else JetBrains Mono when the workspace
+   * has it, else the platform monospace faces. Noto Sans JP sits AFTER them so
+   * Japanese in code matches the text while Latin letters stay monospaced. */
+  font-family: var(--mdp-font-mono, "JetBrains Mono", Consolas, Monaco, "Andale Mono", "Ubuntu Mono", "Noto Sans JP", monospace);
   font-size: var(--code-font-size);
   line-height: var(--code-line-height);
 }
@@ -385,7 +401,7 @@
   background-color: var(--code-filename-bg);
   color: var(--code-filename-text);
   padding: calc(0.3 * var(--mdp-u, 1rem)) calc(0.8 * var(--mdp-u, 1rem));
-  font-family: 'Consolas', 'Monaco', monospace;
+  font-family: var(--mdp-font-mono, "JetBrains Mono", Consolas, Monaco, "Noto Sans JP", monospace);
   font-size: 0.85em;
   border-bottom-left-radius: calc(6 * var(--mdp-px, 1px));
   box-shadow: -2px calc(2 * var(--mdp-px, 1px)) calc(4 * var(--mdp-px, 1px)) rgba(0,0,0,0.2);
@@ -397,7 +413,7 @@
   color: var(--inline-code-text);
   padding: 0.2em 0.4em;
   border-radius: calc(4 * var(--mdp-px, 1px));
-  font-family: 'Consolas', 'Monaco', monospace;
+  font-family: var(--mdp-font-mono, "JetBrains Mono", Consolas, Monaco, "Noto Sans JP", monospace);
   font-size: 0.9em;
 }
 

@@ -7,6 +7,9 @@ const WebSocket = require('ws');
 const { WebSocketServer } = require('ws');
 const chokidar = require('chokidar');
 const mdplink = require('./app/mdplink.cjs');
+const fontsLib = require('./app/fonts.cjs');
+const fontInstall = require('./app/fontInstall.cjs');
+const skillsLib = require('./app/skills.cjs');
 // Machine-local SSH state (jump-host bypass toggle, cache config) + offline cache
 // dir, kept next to the server.
 mdplink.initLocalState(path.join(__dirname, '.mdp-local.json'), path.join(__dirname, '.mdp-cache'));
@@ -422,8 +425,12 @@ app.get('/files/*path', async (req, res) => {
     // VFS-aware: serves files behind a `.mdplink` (local or remote SFTP) too.
     const buf = await mdplink.vfsReadBuffer(vres(req, virtualPath));
     const ext = path.extname(virtualPath).toLowerCase().replace('.', '');
-    res.set('Content-Type', MIME_BY_EXT[ext] || 'application/octet-stream');
-    res.set('Cache-Control', 'no-store');
+    const fontMime = Object.prototype.hasOwnProperty.call(fontsLib.FONT_MIME, ext) ? fontsLib.FONT_MIME[ext] : '';
+    res.set('Content-Type', MIME_BY_EXT[ext] || fontMime || 'application/octet-stream');
+    // Workspace fonts carry a version token (`?v=`) that changes with the file, so
+    // a versioned font URL is immutable — let the browser keep it instead of
+    // downloading megabytes on every page load.
+    res.set('Cache-Control', fontMime && req.query.v ? 'public, max-age=31536000, immutable' : 'no-store');
     res.send(buf);
   } catch (e) {
     res.status(404).send('Not found');
@@ -566,6 +573,57 @@ app.get('/api/themes', async (req, res) => {
     } catch (e) { /* themes dir absent */ }
   }
   res.json([...byName.values()]);
+});
+
+// Workspace font packages across the `.mdp` chain (site-wide dirs first, then
+// root→nearest; NEAREST wins by family). See app/fonts.cjs.
+app.get('/api/fonts', async (req, res) => {
+  try { res.json(await fontsLib.listFonts(assetChain(req.query.dirs), (rel) => vres(req, rel), mdplink)); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Slide skills (`<cdir>/skills/<name>/SKILL.md`) across the chain (site-wide dirs
+// first, then root→nearest; NEAREST wins by name). See app/skills.cjs.
+app.get('/api/skills', async (req, res) => {
+  try { res.json(await skillsLib.listSkills(assetChain(req.query.dirs), (rel) => vres(req, rel), mdplink)); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Declared fonts (`<cdir>/fonts/requirements.json`, raw text per `.mdp`).
+app.get('/api/fontRequirements', async (req, res) => {
+  try { res.json(await fontsLib.listFontRequirements(assetChain(req.query.dirs), (rel) => vres(req, rel), mdplink)); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Download a declared font into a `.mdp` as a font package (user action only).
+// Body: { configDir, entry }. The shared deployment only fetches from known font
+// hosts (see app/fontInstall.cjs) so it cannot be used as a download proxy.
+app.post('/api/installFont', async (req, res) => {
+  try {
+    const { configDir, entry } = req.body || {};
+    assertWritable(req, `${configDir}/fonts`);
+    const result = await fontInstall.installFont({
+      entry, configDir, resolveTarget: (rel) => vres(req, rel), vfs: mdplink,
+      fetchImpl: (url, init) => fetch(url, init), sharedMode: MULTI,
+    });
+    if (MULTI) pokeClients();
+    res.json(result);
+  } catch (e) { res.status(e.status || 500).json({ error: e.message || String(e) }); }
+});
+
+// Describe a font file the user is about to add. Body: { base64 }.
+app.post('/api/inspectFont', (req, res) => {
+  try { res.json(fontsLib.inspectFontBuffer(Buffer.from(String((req.body && req.body.base64) || ''), 'base64'))); }
+  catch (e) { res.json({ error: e.message || String(e) }); }
+});
+
+// Existence + size of workspace files without reading them. Body: { paths }.
+app.post('/api/statFiles', async (req, res) => {
+  const paths = Array.isArray(req.body && req.body.paths) ? req.body.paths.slice(0, 500) : [];
+  res.json(await Promise.all(paths.map(async (p) => {
+    try { const s = await mdplink.vfsStat(vres(req, String(p))); return { path: p, exists: true, isDir: s.isDir, size: s.size }; }
+    catch { return { path: p, exists: false }; }
+  })));
 });
 
 app.get('/api/modules', async (req, res) => {

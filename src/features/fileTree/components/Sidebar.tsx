@@ -36,6 +36,7 @@ import defaultThemeContent from '../../../../public/themes/default.css?raw';
 import defaultTemplateContent from '../../../../public/templates/default.slide.md?raw';
 import defaultModuleContent from '../../../../public/default-module.mdpmod.xml?raw';
 import defaultEffectContent from '../../../../public/default-effect.mdpfx.xml?raw';
+import { skillSlug, skillTemplate } from '../../skills/skillTemplates';
 import { MDP_DIR, SPECIAL_SUBFOLDERS } from '../../workspace/specialFolders';
 import BookmarkIcon from '@mui/icons-material/Bookmark';
 import BookmarkBorderIcon from '@mui/icons-material/BookmarkBorder';
@@ -423,6 +424,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
       } else if (sub === 'effects') {
         if (!finalName.endsWith('.mdpfx.xml')) finalName += '.mdpfx.xml';
         content = defaultEffectContent;
+      } else if (sub === 'skills') {
+        // A skill is a folder: skills/<name>/SKILL.md, from the expression guide.
+        const slug = skillSlug(finalName.replace(/\/?SKILL\.md$/i, ''));
+        if (!slug) return;
+        finalName = `${slug}/SKILL.md`;
+        content = skillTemplate(slug, 'starter');
       }
       const newPath = `${folder}/${finalName}`;
       if (allPaths.has(newPath)) {
@@ -784,10 +791,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
         anchorReference="anchorPosition"
         anchorPosition={contextMenu ? { top: contextMenu.mouseY, left: contextMenu.mouseX } : undefined}
       >
-        {contextMenu?.node?.isSpecial && !ctxIsMdpRoot ? (
+        {contextMenu?.node?.isSpecial && !ctxIsMdpRoot && contextMenu.node.name !== 'fonts' ? (
+          // (fonts are added through Configure (.mdp) → Fonts, not as blank files)
           <MenuItem onClick={() => handleOpenDialog('special')}>
             <ListItemIcon><NoteAddIcon fontSize="small" color="secondary" /></ListItemIcon>
-            New {contextMenu.node.name.replace(/s$/, '')} File
+            {contextMenu.node.name === 'skills' ? 'New Skill' : `New ${contextMenu.node.name.replace(/s$/, '')} File`}
           </MenuItem>
         ) : ctxFileInSpecial ? (
           <MenuItem onClick={() => handleOpenDialog('special')}>
@@ -994,7 +1002,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
         onCreated={onManualRefresh}
       />
       <OfflineCacheDialog open={cacheDialogOpen} onClose={() => setCacheDialogOpen(false)} />
-      <ConfigureMdpDialog open={configureMdp.open} configDir={configureMdp.configDir} fileTree={fileTree} onClose={() => setConfigureMdp({ open: false, configDir: null })} />
+      <ConfigureMdpDialog open={configureMdp.open} configDir={configureMdp.configDir} fileTree={fileTree}
+        onClose={() => setConfigureMdp({ open: false, configDir: null })}
+        onOpenFile={(p) => { setConfigureMdp({ open: false, configDir: null }); onFileSelect(p); }} />
     </Box>
   );
 };

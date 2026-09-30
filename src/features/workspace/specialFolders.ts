@@ -14,6 +14,10 @@ export const THEMES_DIR = `${MDP_DIR}/themes`;
 export const MODULES_DIR = `${MDP_DIR}/modules`;
 export const EFFECTS_DIR = `${MDP_DIR}/effects`;
 export const IMAGES_DIR = `${MDP_DIR}/images`;
+// Workspace fonts: one folder per family (font files + font.json + licence).
+export const FONTS_DIR = `${MDP_DIR}/fonts`;
+// Slide skills: the author's guides for AI authoring, one folder per skill (SKILL.md).
+export const SKILLS_DIR = `${MDP_DIR}/skills`;
 
 // Special subfolder names (no leading dot) shown under `.mdp/` in the sidebar.
-export const SPECIAL_SUBFOLDERS = ['templates', 'snippets', 'themes', 'modules', 'effects'] as const;
+export const SPECIAL_SUBFOLDERS = ['templates', 'snippets', 'themes', 'modules', 'effects', 'fonts', 'skills'] as const;

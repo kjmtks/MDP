@@ -1,0 +1,11 @@
+{
+  "family": "JetBrains Mono",
+  "category": "monospace",
+  "faces": [
+    { "file": "JetBrainsMono-VF.woff2", "weight": "100 800", "style": "normal" }
+  ],
+  "license": "OFL-1.1",
+  "licenseFile": "OFL.txt",
+  "source": "https://github.com/google/fonts/tree/main/ofl/jetbrainsmono",
+  "version": "2.211"
+}

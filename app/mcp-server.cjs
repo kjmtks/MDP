@@ -19,6 +19,15 @@ const http = require('http');
 
 const SERVER_INFO = { name: 'mdp', version: '1.0.0' };
 const DEFAULT_PROTOCOL = '2024-11-05';
+// Shown to the AI by hosts that support server instructions.
+const INSTRUCTIONS = [
+  'MDP — Markdown presentation decks (*.slide.md) in the running MDP app.',
+  'Start with bootstrap (or get_slide_spec). The folder\'s SLIDE SKILLS listed there are the',
+  'author\'s own guides for making slides: read every skill that fits the task with get_skill',
+  'BEFORE planning or writing, follow it, and review the result against its checklist',
+  '(check_deck / verify:true). When the user corrects your slides, offer to record the rule',
+  'in the skill (patch_skill with `append`) so later decks get it right.',
+].join(' ');
 
 // ---- bridge ----------------------------------------------------------------
 
@@ -79,6 +88,7 @@ async function handle(msg) {
       protocolVersion: (params && params.protocolVersion) || DEFAULT_PROTOCOL,
       capabilities: { tools: {} },
       serverInfo: SERVER_INFO,
+      instructions: INSTRUCTIONS,
     });
   }
   if (typeof method === 'string' && method.startsWith('notifications/')) return; // no response

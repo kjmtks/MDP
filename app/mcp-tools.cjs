@@ -17,8 +17,28 @@ const num = (description) => ({ type: 'number', description });
 const TOOLS = [
   {
     name: 'get_slide_spec',
-    description: 'The complete MDP slide-authoring specification: file format, directives, authoring rules, plus every theme AVAILABLE FOR THE CURRENT DECK\'S FOLDER, and COMPACT INDEXES of the available modules and animation effects (one line each, grouped). Call this FIRST before writing or editing any .slide.md content. To keep it small, modules and effects appear only as indexes — after picking the ones you\'ll use, call get_module_spec / get_effect_spec for their full parameters/examples (or suggest_modules / suggest_effects to pick by content/mood).',
+    description: 'The complete MDP slide-authoring specification: file format, directives, authoring rules, plus every theme AVAILABLE FOR THE CURRENT DECK\'S FOLDER, COMPACT INDEXES of the available modules and animation effects (one line each, grouped), and the folder\'s SLIDE SKILLS — the author\'s own guides for making slides there (always-applied ones in full). Call this FIRST before writing or editing any .slide.md content. To keep it small, modules, effects and most skills appear only as indexes — read the skills that fit the task with get_skill, and call get_module_spec / get_effect_spec for the full parameters/examples of what you pick (or suggest_modules / suggest_effects to pick by content/mood).',
     inputSchema: S({}),
+  },
+  {
+    name: 'get_skill',
+    description: 'Read one of the folder\'s SLIDE SKILLS — the author\'s guide for making slides in that folder (.mdp/skills/<name>/SKILL.md): how to phrase titles, how dense a slide may be, how to show math and figures, which modules to use for what, plus a checklist. The spec (get_slide_spec / bootstrap) lists the skills with a one-line description; read EVERY skill whose description fits the task BEFORE planning or writing slides, and follow it — where it disagrees with the generic spec, the skill wins. No `name` → the list for the deck\'s folder. `file` → one of the skill\'s reference files (e.g. an exemplary deck). When the user corrects your slides, offer to record the rule in the skill (patch_skill with `append`).',
+    inputSchema: S({ name: str('Skill name from the spec\'s "Slide skills" list (omit to list them)'), file: str('A reference file inside the skill folder, as listed in its `files`'), deck: str('Deck whose folder\'s skills to use (default: the active deck, else the workspace root)') }),
+  },
+  {
+    name: 'write_skill',
+    description: 'CREATE a slide skill, or REPLACE one wholesale (.mdp/skills/<name>/SKILL.md) — or, with `file`, write one of its reference files (a text file such as an exemplary .slide.md or a glossary). Give `description` (one line: what it covers and WHEN to read it — the index shows only this) and `content` = the Markdown guide (or a whole SKILL.md with frontmatter). `always: true` puts the full text into every slide spec (for the folder\'s main guide; keep it short). End the guide with a "## Checklist" of yes/no items. Where: `dir` = the folder whose .mdp gets it ("" = workspace root); default = where that skill already lives in the deck\'s chain, else the deck\'s nearest .mdp. For small changes use patch_skill instead. The user may be asked to confirm; a replaced file is backed up to .mdp/mcp-backups. Read get_asset_templates (kind "skill") for the template and how to write a guide AIs follow.',
+    inputSchema: S({ name: str('Skill folder name (letters/digits/-/_)'), description: str('One line: what the skill covers and when to read it'), content: str('The Markdown guide (body), or a whole SKILL.md incl. frontmatter; with `file`, that file\'s text'), always: { type: 'boolean', description: 'Include the whole guide in every slide spec (default false)' }, file: str('Write this reference file inside the skill folder instead of SKILL.md'), dir: str('Folder whose .mdp to write into ("" = workspace root)'), deck: str('Deck whose folder chain decides the default location (default: the active deck)') }, ['name', 'content']),
+  },
+  {
+    name: 'patch_skill',
+    description: 'UPDATE a slide skill without rewriting it: `append` = [{section, text}] adds lines at the end of the section with that heading (created before the Checklist if missing) — the way to RECORD A NEW RULE the user just gave; `edits` = [{old_str, new_str, all?}] exact-text replacements (atomic, like patch_deck; old_str must match exactly once); `description` / `always` change the frontmatter. `file` targets a reference file instead of SKILL.md. The skill is found in the deck\'s chain (a parent folder\'s skill is edited in place; pass `dir` to address one .mdp exactly). The user may be asked to confirm; the previous version is backed up to .mdp/mcp-backups.',
+    inputSchema: S({ name: str('Skill name'), append: { type: 'array', description: 'Lines to add under headings', items: { type: 'object', properties: { section: str('Heading text, e.g. "文字" or "Checklist"'), text: str('Markdown to add, e.g. "- 見出しは半角コロン＋スペースで区切る"') }, required: ['section', 'text'] } }, edits: { type: 'array', description: 'Exact-text replacements, applied atomically in order', items: { type: 'object', properties: { old_str: str('Exact existing text'), new_str: str('Replacement text'), all: { type: 'boolean', description: 'Replace every occurrence' } }, required: ['old_str', 'new_str'] } }, description: str('New one-line description (frontmatter)'), always: { type: 'boolean', description: 'Include the whole guide in every slide spec' }, file: str('A reference file of the skill instead of SKILL.md'), dir: str('Folder whose .mdp holds the skill (default: found in the deck\'s chain)'), deck: str('Deck whose folder chain to search (default: the active deck)') }, ['name']),
+  },
+  {
+    name: 'delete_skill',
+    description: 'DELETE a slide skill (its whole folder) or, with `file`, one of its reference files. Found in the deck\'s chain like patch_skill (`dir` addresses one .mdp exactly); if a parent folder has a skill of the same name, that one applies again afterwards. The desktop app always asks the user to confirm; everything removed is backed up to .mdp/mcp-backups first. Delete only when the user asks.',
+    inputSchema: S({ name: str('Skill name'), file: str('Delete only this reference file'), dir: str('Folder whose .mdp holds the skill (default: found in the deck\'s chain)'), deck: str('Deck whose folder chain to search (default: the active deck)') }, ['name']),
   },
   {
     name: 'get_module_spec',
@@ -227,18 +247,18 @@ const TOOLS = [
   },
   {
     name: 'check_deck',
-    description: 'ONE-SHOT full inspection — validate (syntax/unknown modules/params/unbalanced @end) + lint (design advisories incl. script-step-mismatch and math-in-plain-field) + measure (overflow, issues only) in a single response, replacing 3 separate calls. DRY RUN: pass `text` instead of `path` to check candidate content BEFORE writing it (validate+lint only; nothing touches the editor or disk).',
+    description: 'ONE-SHOT full inspection — validate (syntax/unknown modules/params/unbalanced @end) + lint (design advisories incl. script-step-mismatch and math-in-plain-field) + measure (overflow, issues only) in a single response, replacing 3 separate calls; `skills` hands back the checklists of the folder\'s slide skills to review the deck against. DRY RUN: pass `text` instead of `path` to check candidate content BEFORE writing it (validate+lint only; nothing touches the editor or disk).',
     inputSchema: S({ path: str('Deck path to inspect (default: the active deck)'), text: str('Candidate deck markdown to check WITHOUT writing (dry run; validate+lint only)') }),
   },
   {
     name: 'bootstrap',
-    description: 'START HERE: one call returning everything an authoring session needs — the full slide spec (format + module/effect indexes + themes + cached style profile) plus the workspace\'s deck list, templates and image aliases. Replaces the get_slide_spec + list_decks + list_templates + list_images opening sequence. Then: get_module_spec for the modules you pick; write with verify:true; check visually with render_slides.',
+    description: 'START HERE: one call returning everything an authoring session needs — the full slide spec (format + module/effect indexes + themes + cached style profile + the folder\'s SLIDE SKILLS, the author\'s guides) plus the workspace\'s deck list, templates and image aliases. Replaces the get_slide_spec + list_decks + list_templates + list_images opening sequence. Then: get_skill for the skills that fit the task; get_module_spec for the modules you pick; write with verify:true; check visually with render_slides.',
     inputSchema: S({ deck: str('Deck path whose .mdp scope to use for templates/images (default: the active deck)') }),
   },
   {
     name: 'get_asset_templates',
-    description: 'How to AUTHOR a workspace asset. Call with a `kind` (module | effect | theme | snippet) to get: its reference TEMPLATE, a detailed authoring GUIDE (schema, the render/CSS/script contract and pitfalls, the design tokens / file format), and the list of ones that ALREADY EXIST in the workspace (so you imitate conventions and avoid duplicates). Omit `kind` for a guide overview of all four. Read this before write_asset.',
-    inputSchema: S({ kind: { type: 'string', enum: ['module', 'effect', 'theme', 'snippet'], description: 'Asset kind to get the template + guide + existing list for. Omit for an overview of all kinds.' } }),
+    description: 'How to AUTHOR a workspace asset. Call with a `kind` (module | effect | theme | snippet | skill) to get: its reference TEMPLATE, a detailed authoring GUIDE (schema, the render/CSS/script contract and pitfalls, the design tokens / file format — for a skill: how to write a slide guide an AI follows reliably), and the list of ones that ALREADY EXIST in the workspace (so you imitate conventions and avoid duplicates). Omit `kind` for a guide overview of all kinds. Read this before write_asset.',
+    inputSchema: S({ kind: { type: 'string', enum: ['module', 'effect', 'theme', 'snippet', 'skill'], description: 'Asset kind to get the template + guide + existing list for. Omit for an overview of all kinds.' } }),
   },
   {
     name: 'list_snippets',
@@ -247,7 +267,7 @@ const TOOLS = [
   },
   {
     name: 'write_asset',
-    description: 'CREATE or update a workspace asset: kind "module" (.mdpmod.xml — reusable slide component; self-describe it for AIs via <aiSpec>), "effect" (.mdpfx.xml — transition/build animation), "theme" (.css — slide design-token overrides) or "snippet" (.json — insertable text snippets grouped by category). Saved under the workspace .mdp and registered live. The user should review scripts you write. Study get_asset_templates (with this kind) and an existing asset first (get_slide_spec / get_module_spec / read_module / read_theme / list_snippets).',
+    description: 'CREATE or update a workspace asset: kind "module" (.mdpmod.xml — reusable slide component; self-describe it for AIs via <aiSpec>), "effect" (.mdpfx.xml — transition/build animation), "theme" (.css — slide design-token overrides) or "snippet" (.json — insertable text snippets grouped by category). Saved under the workspace .mdp and registered live. The user should review scripts you write. Study get_asset_templates (with this kind) and an existing asset first (get_slide_spec / get_module_spec / read_module / read_theme / list_snippets). Slide skills have their own tools (write_skill / patch_skill / delete_skill).',
     inputSchema: S({ kind: { type: 'string', enum: ['module', 'effect', 'theme', 'snippet'], description: 'Asset kind' }, name: str('Asset name (letters/digits/-/_)'), content: str('Full file content (XML for module/effect, CSS for theme, a JSON array of {category,items} for snippet)'), dir: str('Folder whose .mdp to write into (default: workspace root)') }, ['kind', 'name', 'content']),
   },
 ];

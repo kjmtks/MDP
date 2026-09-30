@@ -322,8 +322,14 @@ async function vfsList(target) {
     try {
       const sftp = await getSftp(target.cfg);
       const list = await sftpCall(sftp, 'readdir', target.rpath);
-      // longname[0] === 'd' marks a directory; fall back to attrs.mode.
-      const mapped = list.map((e) => ({ name: e.filename, isDir: (e.longname || '')[0] === 'd' || ((e.attrs.mode & 0o170000) === 0o040000) }));
+      // longname[0] === 'd' marks a directory; fall back to attrs.mode. Size and
+      // mtime (ms) come for free here — callers that need them skip a stat per file.
+      const mapped = list.map((e) => ({
+        name: e.filename,
+        isDir: (e.longname || '')[0] === 'd' || ((e.attrs.mode & 0o170000) === 0o040000),
+        size: e.attrs.size,
+        mtime: (e.attrs.mtime || 0) * 1000,
+      }));
       if (key) cachePutListing(key, mapped, { rpath: target.rpath, host: target.cfg.host });
       return mapped;
     } catch (e) {
@@ -401,9 +407,10 @@ const childOf = (target, name) => target.kind === 'ssh'
   ? { kind: 'ssh', cfg: target.cfg, rpath: posixJoin(target.rpath, [name]) }
   : { kind: 'local', abs: path.join(target.abs, name) };
 
+// `mtime` is in milliseconds (SFTP reports seconds).
 async function vfsStat(target) {
-  if (target.kind === 'ssh') { const sftp = await getSftp(target.cfg); const s = await sftpCall(sftp, 'stat', target.rpath); return { isDir: s.isDirectory(), size: s.size }; }
-  const s = await fsp.stat(target.abs); return { isDir: s.isDirectory(), size: s.size };
+  if (target.kind === 'ssh') { const sftp = await getSftp(target.cfg); const s = await sftpCall(sftp, 'stat', target.rpath); return { isDir: s.isDirectory(), size: s.size, mtime: (s.mtime || 0) * 1000 }; }
+  const s = await fsp.stat(target.abs); return { isDir: s.isDirectory(), size: s.size, mtime: s.mtimeMs };
 }
 async function vfsExists(target) { try { await vfsStat(target); return true; } catch { return false; } }
 

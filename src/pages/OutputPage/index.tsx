@@ -14,6 +14,7 @@ import { useAppSettings } from '../../features/settings/AppSettingsContext';
 import { matchAction } from '../../features/settings/shortcuts/matcher';
 import { ACTIONS_BY_SCOPE } from '../../features/settings/shortcuts/registry';
 import { isElectron } from '../../api/apiClient';
+import { applyFontCss } from '../../features/fonts/fontRuntime';
 import type { ModuleData } from '../../utils/moduleParser';
 import type { EffectData } from '../../utils/effectParser';
 import type { Stroke } from '../../features/drawing/components/DrawingOverlay';
@@ -38,6 +39,8 @@ interface SyncData {
   step?: number;
   slideSize: { width: number; height: number };
   themeCssUrl?: string;
+  // Workspace-font CSS (@font-face + folder font variables) from the main window.
+  fontCss?: string;
   lastUpdated: number;
   allDrawings?: Record<number, Stroke[]>;
   isOverview?: boolean;
@@ -105,6 +108,8 @@ export default function OutputPage() {
         setBasePath(data.basePath);
         setGlobalTransition(data.globalContext?.transition);
         setThemeCssUrl(data.themeCssUrl);
+        // Same text is left alone, so loaded faces survive every state broadcast.
+        applyFontCss(document, data.fontCss || '');
         setLastUpdated(data.lastUpdated);
         break;
       }

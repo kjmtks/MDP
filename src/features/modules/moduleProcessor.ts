@@ -264,7 +264,14 @@ interface StackContext {
 export const applyModulesToMarkdown = (markdown: string, baseUrl: string = ''): string => {
   if (!markdown) return '';
   const codeBlocks: string[] = [];
-  const processed = markdown.replace(/```[\s\S]*?```|`[^`]+`/g, (match) => {
+  // Mask code so a directive written AS code is not expanded. An inline code span is
+  // matched on ONE line, with a closing backtick run of the SAME length as the
+  // opening one (neither touching another backtick) — the single-line rule of
+  // protectFences in slideParser. The old `[^`]+` crossed newlines, and EditorPage
+  // runs this on the WHOLE deck: two stray backticks slides apart (e.g. BibTeX
+  // ``…'' quotes) masked everything between them, so a module could close on
+  // another slide's @end and its output swallowed the slides in between.
+  const processed = markdown.replace(/```[\s\S]*?```|(?<!`)(`+)(?!`)[^\n]*?(?<!`)\1(?!`)/g, (match) => {
     const index = codeBlocks.length;
     codeBlocks.push(match);
     return `__MDP_CODE_BLOCK_${index}__`;

@@ -1,15 +1,16 @@
 <module>
   <name>references</name>
   <type>block</type>
-  <description>Bibliography from raw BibTeX. Independent knobs: layout (list|cards), notation (ieee|apa), marker (number|key|bullet|none), and a custom/omittable header. Handles any entry type with type-aware formatting (place: publisher, In ... for chapters/proceedings, thesis/report types), @string macros, # concatenation, crossref/xdata inheritance, biblatex fields, LaTeX accents and $math$.</description>
+  <description>Bibliography from raw BibTeX. Independent knobs: layout (list|cards), notation (ieee|apa), marker (number|key|bullet|none), and a custom/omittable header. Handles any entry type with type-aware formatting (place: publisher, In ... for chapters/proceedings, thesis/report types), @string macros, # concatenation, crossref/xdata inheritance, biblatex fields, LaTeX accents, LaTeX quotes (``…'') and $math$.</description>
   <tags>reference, list</tags>
   <aiSpec><![CDATA[
 Use to render a bibliography / reference list on a slide. Block module: the body
 (between the opening tag and `<!-- @end -->`) is RAW BibTeX entries pasted verbatim
 (@article{...}, @book{...}, @inproceedings{...}, etc.) — NOT markdown and NOT split into
 sections. Each BibTeX entry becomes one formatted reference; the chosen notation is applied
-automatically. @string macros, # concatenation, crossref/xdata inheritance, LaTeX accents and
-$math$ are all handled. (For a single inline citation in running text, this module is not it.)
+automatically. @string macros, # concatenation, crossref/xdata inheritance, LaTeX accents,
+LaTeX quotes (``…'' becomes “…”) and $math$ are all handled. (For a single inline citation
+in running text, this module is not it.)
 
 Parameters:
   `layout`   — list | cards (default list). list = numbered/tagged lines; cards = a grid of boxes.
@@ -134,6 +135,10 @@ Example:
       out = out.replace(/\\(['`^"~=.])\s*\{?\\?([A-Za-z])\}?/g,
         function (m, a, l) { return ACC[a + l] || l; });
       out = out.replace(/\\([&%#_${}])/g, '$1');
+      // LaTeX quotes (the accent rules above already consumed \' and \`):
+      // ``…'' -> “…”, `…' -> ‘…’; a remaining ' is an apostrophe -> ’.
+      out = out.replace(/``/g, '“').replace(/''/g, '”')
+        .replace(/`/g, '‘').replace(/'/g, '’');
       out = out.replace(/\\,/g, ' ').replace(/\\ /g, ' ');
       out = out.replace(/\\[A-Za-z]+\s*\{([^{}]*)\}/g, '$1');
       out = out.replace(/\\[A-Za-z]+/g, '');

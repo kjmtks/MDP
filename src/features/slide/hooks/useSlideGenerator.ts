@@ -75,9 +75,14 @@ export const useSlideGenerator = (
   globalContext: SlideContext,
   baseUrl: string,
   lastUpdated: number,
-  moduleEpoch: number = 0
-): SlideData[] => {
-  const [slides, setSlides] = useState<SlideData[]>([]);
+  moduleEpoch: number = 0,
+  // Identifies the source text `blocks` came from. It is handed back as `builtKey`
+  // together with the slides generated from it, so a consumer can tell whether the
+  // slides it holds reflect the latest text: the parse is debounced and the
+  // generation asynchronous, so right after an edit the previous slides linger.
+  sourceKey: string | null = null,
+): { slides: SlideData[]; builtKey: string | null } => {
+  const [state, setState] = useState<{ slides: SlideData[]; builtKey: string | null }>({ slides: [], builtKey: null });
   const managerRef = useRef<SlideCacheManager>(new SlideCacheManager());
 
   useEffect(() => {
@@ -87,7 +92,7 @@ export const useSlideGenerator = (
       try {
         const newSlides = await managerRef.current.process(blocks, globalContext, baseUrl, lastUpdated, moduleEpoch);
         if (isMounted) {
-          setSlides(newSlides);
+          setState({ slides: newSlides, builtKey: sourceKey });
         }
       } catch (e) {
         console.error("Slide generation error:", e);
@@ -97,7 +102,7 @@ export const useSlideGenerator = (
     generate();
 
     return () => { isMounted = false; };
-  }, [blocks, globalContext, baseUrl, lastUpdated, moduleEpoch]);
+  }, [blocks, globalContext, baseUrl, lastUpdated, moduleEpoch, sourceKey]);
 
-  return slides;
+  return state;
 };

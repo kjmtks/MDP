@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { apiClient } from '../../../api/apiClient';
-import { syncOfficialCatalog, fetchCatalog, catalogLocalPath, assetHash } from '../syncService';
+import { syncOfficialCatalog, fetchCatalog, catalogLocalPath, assetHash, isBinaryAsset } from '../syncService';
 import type { FileNode } from '../../../types';
 import { MDP_DIR } from '../../workspace/specialFolders';
 import { reportError, notify, confirmDialog } from '../../../components/error/errorReporter';
@@ -76,10 +76,15 @@ export function useCatalogSync(
         // Reading each file answers both questions (present? current?) and is
         // correct in every mode; we already read the present ones to hash them.
         const wanted: Array<{ local: string; remote: string; hash: string }> = [];
+        // Binary assets (fonts, megabytes each) are checked by existence + size via
+        // a stat — reading them back on every workspace load just to hash them
+        // would be wasteful (and slow over an SSH link).
+        const binaries: Array<{ local: string; remote: string; size?: number }> = [];
         for (const [category, items] of Object.entries(catalog)) {
           for (const item of items) {
-            wanted.push({ local: catalogLocalPath(category, item),
-                          remote: item.path, hash: item.hash || '' });
+            const local = catalogLocalPath(category, item);
+            if (isBinaryAsset(item.path)) binaries.push({ local, remote: item.path, size: item.size });
+            else wanted.push({ local, remote: item.path, hash: item.hash || '' });
           }
         }
 
@@ -105,6 +110,19 @@ export function useCatalogSync(
             if (assetHash(text) !== f.hash) stale.push(f.remote);
           }));
         }
+        if (binaries.length) {
+          try {
+            const stats = await apiClient.statFiles(binaries.map((b) => b.local));
+            binaries.forEach((b, k) => {
+              const st = stats[k];
+              if (!st || !st.exists) { missing.push(b.remote); return; }
+              if (!b.size || st.size === b.size) return;
+              // A declined update is remembered by the official file's size.
+              present.push({ local: b.local, remote: b.remote, hash: `size:${b.size}` });
+              if (skipped[b.remote] !== `size:${b.size}`) stale.push(b.remote);
+            });
+          } catch { /* backend without statFiles — skip the binary check */ }
+        }
 
         if (missing.length === 0 && stale.length === 0) return;
 
@@ -116,7 +134,7 @@ export function useCatalogSync(
           `Official MDP assets: ${what}.\n` +
           (stale.length ? `Out of date: ${stale.slice(0, 6).map((p) => p.split('/').pop()).join(', ')}` +
             `${stale.length > 6 ? `, +${stale.length - 6} more` : ''}\n` : '') +
-          'Download the latest modules, themes, templates and snippets?\n' +
+          'Download the latest modules, themes, fonts, templates and snippets?\n' +
           'Local edits to these files WILL be overwritten.',
           { title: 'Update Official Assets', confirmText: 'Update', cancelText: 'Not now' }
         );

@@ -1,4 +1,5 @@
 import PptxGenJS from 'pptxgenjs';
+import { parseFontFamilies } from '../fonts/fontCss';
 
 // PowerPoint export. Two strategies:
 //  - IMAGE: one high-res snapshot per slide, placed full-bleed. Pixel-perfect for
@@ -111,8 +112,13 @@ export async function addEditableSlide(
     if (TEXT_TAGS.has(tag) && !hasVisual(el)) {
       const cs = getComputedStyle(el);
       const heading = /^h[1-6]$/.test(tag);
+      // The first family of the element's font stack (e.g. the workspace font
+      // "Noto Sans JP"). PowerPoint uses it when that font is installed where the
+      // file is opened; otherwise it substitutes (PptxGenJS cannot embed fonts).
+      const fontFace = parseFontFamilies(cs.fontFamily)[0];
       const opts = {
         ...pos,
+        ...(fontFace && !/^(serif|sans-serif|monospace|system-ui|-apple-system)$/i.test(fontFace) ? { fontFace } : {}),
         fontSize: pxToPt(parseFloat(cs.fontSize) || 18),
         color: rgbToHex(cs.color),
         bold: (parseInt(cs.fontWeight, 10) || 400) >= 600 || heading,

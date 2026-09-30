@@ -1,6 +1,7 @@
 import mermaid from 'mermaid';
+import { ensureSlideFontsReady } from '../../fonts/fontRuntime';
 
-mermaid.initialize({
+const BASE_CONFIG = {
   theme: 'neutral',
   securityLevel: 'loose',
   startOnLoad: true,
@@ -17,7 +18,10 @@ mermaid.initialize({
   // subtrees so the math glyph fonts survive the font-var rewrite.
   flowchart: { htmlLabels: true },
   er: { useMaxWidth: false },
-});
+} as const;
+mermaid.initialize(BASE_CONFIG);
+// The font stack mermaid is currently configured with (see processMermaid).
+let configuredStack = '';
 
 // Remove any mermaid temp/error nodes that leaked to <body> (e.g. from a render
 // that errored before suppressErrorRendering, or older app versions). Mermaid
@@ -38,15 +42,26 @@ const showError = (node: Element, message: string, code: string) => {
 export const processMermaid = async (div: HTMLElement) => {
   sweepOrphanMermaidNodes();
   const mermaidNodes = Array.from(div.querySelectorAll('.mermaid'));
+  if (!mermaidNodes.length) return;
+  // Mermaid sizes every box by MEASURING its label text, and the inlined SVG then
+  // shows the labels in the slide's font (processSvg rewrites them to inherit).
+  // Measure with that same font — loaded first — or boxes fit a fallback font and
+  // the real labels overflow them. The stack is part of the cache key.
+  const fontStack = await ensureSlideFontsReady(document, mermaidNodes.map((n) => n.textContent || '').join('\n'));
+  if (fontStack !== configuredStack) {
+    mermaid.initialize({ ...BASE_CONFIG, fontFamily: fontStack, themeVariables: { fontFamily: fontStack } });
+    configuredStack = fontStack;
+  }
   for (const node of mermaidNodes) {
     const code = (node.textContent || '').trim();
     // An empty/whitespace block (often a half-typed diagram) is NOT an error —
     // drop it silently instead of letting mermaid throw a syntax error.
     if (!code) { node.remove(); continue; }
-    if (mermaidCache.has(code)) {
+    const cacheKey = `${fontStack}\n${code}`;
+    if (mermaidCache.has(cacheKey)) {
       const wrapper = document.createElement('div');
       wrapper.className = "mermaid-img-wrapper";
-      wrapper.innerHTML = mermaidCache.get(code)!;
+      wrapper.innerHTML = mermaidCache.get(cacheKey)!;
       node.replaceWith(wrapper);
       continue;
     }
@@ -74,7 +89,7 @@ export const processMermaid = async (div: HTMLElement) => {
       wrapper.className = "mermaid-img-wrapper";
       wrapper.innerHTML = imgTag;
       node.replaceWith(wrapper);
-      mermaidCache.set(code, imgTag);
+      mermaidCache.set(cacheKey, imgTag);
     } catch (error) {
       console.warn("Mermaid render error", error);
       showError(node, (error as Error).message, code);

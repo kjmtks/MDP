@@ -16,6 +16,10 @@ export const useSlideProcessor = (
   // Bumped when modules/effects finish (re)loading, to force a slide re-parse so
   // slides rendered before registration get their module/build transforms.
   moduleEpoch: number = 0,
+  // The editor text the slides are generated from (before image/module expansion).
+  // Returned as `slidesSource` once slides built from it are ready — see
+  // useSlideGenerator's `sourceKey`.
+  sourceKey: string | null = null,
 ) => {
   const baseUrl = useMemo(() => {
     const prefix = isElectron() ? 'mdp-file://' : FILES_PREFIX;
@@ -56,7 +60,7 @@ export const useSlideProcessor = (
     catch (e) { console.error('[MDP] meta parse failed:', e); return parseGlobalContext(""); }
   }, [blocks]);
 
-  const rawSlides = useSlideGenerator(blocks, globalContext, baseUrl, lastUpdated, moduleEpoch);
+  const { slides: rawSlides, builtKey: slidesSource } = useSlideGenerator(blocks, globalContext, baseUrl, lastUpdated, moduleEpoch, sourceKey);
 
   // Rendered HTML for a plain markdown document (empty unless type === 'doc').
   const docHtml = useMemo(() => (currentFileType === 'doc' ? (rawSlides[0]?.html || '') : ''), [currentFileType, rawSlides]);
@@ -176,5 +180,5 @@ export const useSlideProcessor = (
     }
   }, [themeCssUrl, lastUpdated]);
 
-  return { baseUrl, globalContext, slides, docHtml, slideSize, slideStyleVariables, themeCssUrl };
+  return { baseUrl, globalContext, slides, docHtml, slideSize, slideStyleVariables, themeCssUrl, slidesSource };
 };

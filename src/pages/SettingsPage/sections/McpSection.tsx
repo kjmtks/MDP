@@ -235,10 +235,12 @@ export const McpSection: React.FC = () => {
       </div>
 
       <div className="settings-field">
-        <div className="settings-field-label">Creating modules / themes / effects</div>
+        <div className="settings-field-label">Creating modules / themes / effects / skills</div>
         <div className="settings-field-hint">
-          An AI can author new workspace assets (write_asset). A module can carry a <code>&lt;script&gt;</code>
-          that runs inside MDP, so by default MDP asks you to review each one before saving.
+          An AI can author new workspace assets (write_asset) and create or update your slide skills
+          (write_skill / patch_skill). A module can carry a <code>&lt;script&gt;</code> that runs inside MDP, so by
+          default MDP asks you to review each one before saving. Deleting a skill (delete_skill) always asks;
+          an overwritten or deleted skill file is kept in <code>.mdp/mcp-backups</code>.
         </div>
         <ToggleButtonGroup
           exclusive size="small" sx={{ mt: 0.5 }}
@@ -256,7 +258,8 @@ export const McpSection: React.FC = () => {
           get_slide_spec (format + module/effect indexes) · get_module_spec / get_effect_spec (full spec for chosen ones) · find_modules · suggest_modules / suggest_effects (recommend by content/mood) · list_decks / read_deck (also for style imitation) ·
           write_deck / append_slide / replace_slide (edits open decks live, unsaved) · list_modules / read_module ·
           list_themes · get_active_deck / open_deck / save_deck (commit editor changes to disk) / reload_deck (re-read from disk) / goto_slide / insert_at_cursor ·
-          measure_slides (overflow &amp; fill check, low token) · lint_deck (design/consistency advisories) · render_slide_image (visual check, higher token).
+          measure_slides (overflow &amp; fill check, low token) · lint_deck (design/consistency advisories) · render_slide_image (visual check, higher token) ·
+          get_skill / write_skill / patch_skill / delete_skill (the folder&apos;s slide skills — your guides the AI follows; Configure (.mdp) → Slide skills).
         </div>
       </div>
     </div>

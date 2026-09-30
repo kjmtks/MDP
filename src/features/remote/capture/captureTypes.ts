@@ -10,6 +10,9 @@ export interface CaptureSlideData {
   // its own document (no module CSS), so it must be shipped in for the rasterized
   // image to reflect module styling.
   moduleCss?: string;
+  // Workspace-font CSS (@font-face + the folder's font variables), for the same
+  // reason — without it the capture falls back to the OS fonts.
+  fontCss?: string;
   width: number;
   height: number;
 }

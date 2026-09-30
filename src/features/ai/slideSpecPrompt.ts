@@ -344,6 +344,9 @@ Math & references
 - Math is KaTeX with \`\\( … \\)\` (inline) and \`\\[ … \\]\` (display) — NOT \`$ … $\`.
   Paste LaTeX sources unchanged; if the source uses \`$…$\`, only convert the
   delimiters, never the math itself.
+- Math works inside Markdown TABLE cells too: \`|\` and \`\\|\` inside \`\\( … \\)\` /
+  \`\\[ … \\]\` do NOT split the cell (MDP rewrites them to \`\\vert\` / \`\\Vert\` before the
+  table is parsed). \`$ … $\` math in a table is not protected — use \`\\( … \\)\`.
 - Render citations with \`@references\` and BibTeX entries in its body — don't retype
   references by hand (it mis-attributes sources).
 
@@ -808,9 +811,115 @@ function describeThemesForAI(themes: ThemeOption[]): string {
     .join('\n');
 }
 
+/** Fonts section: which font families render identically on every machine here,
+ *  and how slides / themes should name them. */
+function describeFontsForAI(
+  fonts: { family: string; category: string }[],
+  defaults: { body?: string; heading?: string; mono?: string },
+  required: { family: string; category?: string; state: string; fallback?: string[]; note?: string }[] = [],
+): string {
+  const role = (family: string) => {
+    const roles = (['body', 'heading', 'mono'] as const).filter((k) => (defaults[k] || '').toLowerCase() === family.toLowerCase());
+    return roles.length ? ` — this folder's ${roles.join(' / ')} font` : '';
+  };
+  const list = fonts.length
+    ? [...fonts].sort((a, b) => a.family.localeCompare(b.family))
+      .map((f) => `- \`${f.family}\` (${f.category})${role(f.family)}`).join('\n')
+    : '_(None — this folder has no `.mdp/fonts`, so text uses whatever fonts the viewer\'s computer has.)_';
+  // Declared in `.mdp/fonts/requirements.json` but not stored as a package: the
+  // deck needs them, yet each viewer must have them installed.
+  const unpackaged = required.filter((r) => r.state !== 'packaged');
+  const declared = unpackaged.length
+    ? `\n\nDeclared as REQUIRED but not stored with the deck (\`.mdp/fonts/requirements.json\`) — ` +
+      `usable only because the folder says viewers must install them:\n\n` +
+      unpackaged.map((r) => `- \`${r.family}\`${r.category ? ` (${r.category})` : ''}${role(r.family)} — ` +
+        `${r.state === 'local' ? 'installed on this computer' : 'NOT installed on this computer: renders and measures with the fallback here'}` +
+        `${r.fallback?.length ? `; fallback ${r.fallback.map((f) => `\`${f}\``).join(', ')}` : ''}${r.note ? `; note: ${r.note}` : ''}`).join('\n') +
+      `\n\nWhen naming one of these, always add its fallback, e.g. \`font-family: "${unpackaged[0].family}"${unpackaged[0].fallback?.length ? `, "${unpackaged[0].fallback[0]}"` : ''}, sans-serif\`.`
+    : '';
+  return (
+    `## Fonts\n\n` +
+    `Fonts stored in the folder's \`.mdp/fonts\` render the SAME on every machine, offline. ` +
+    `Available families:\n\n${list}${declared}\n\n` +
+    `- The base stylesheet and the official themes read the variables \`--mdp-font-body\`, ` +
+    `\`--mdp-font-heading\` and \`--mdp-font-mono\` (set per folder in "Configure (.mdp)" → Fonts), ` +
+    `and otherwise prefer Noto Sans JP / Noto Serif JP / JetBrains Mono when present. Do not ` +
+    `override fonts deck-wide without a reason.\n` +
+    `- To set the font of ONE slide or element, use \`@addstyle\` with a family from the list, ` +
+    `e.g. \`.slide-content blockquote { font-family: "Noto Serif JP", serif; }\`.\n` +
+    `- A theme you write (write_asset) should use \`font-family: var(--mdp-font-body, "Noto Sans JP", sans-serif)\` ` +
+    `for text and \`var(--mdp-font-mono, "JetBrains Mono", monospace)\` for code, so the folder's settings apply.\n` +
+    `- Never name a family that is not listed above: it is neither stored with the deck nor ` +
+    `declared as required, so each viewer would get a different substitute.`
+  );
+}
+
+interface SkillForAI {
+  name: string;
+  description: string;
+  always: boolean;
+  body: string;
+}
+const MAX_INLINE_SKILL = 16000;
+
+// Nest a skill's own headings under its "### Skill" heading (`#` → `####`, capped
+// at `######`) so its "## Checklist" does not read as a section of the spec itself.
+function demoteHeadings(md: string, by = 3): string {
+  let fence = false;
+  return md.split('\n').map((line) => {
+    if (/^\s*(```|~~~)/.test(line)) fence = !fence;
+    if (fence) return line;
+    const m = /^(#{1,6})(\s.*)$/.exec(line);
+    return m ? `${'#'.repeat(Math.min(6, m[1].length + by))}${m[2]}` : line;
+  }).join('\n');
+}
+
+/** The folder's slide skills (`.mdp/skills/<name>/SKILL.md`, the author's guides).
+ *  For MCP: an index plus the full text of the `always` ones — the AI reads the rest
+ *  with get_skill. `inlineAll` (a prompt pasted into a chat, where there are no
+ *  tools): every skill in full. */
+function describeSkillsForAI(skills: SkillForAI[], inlineAll = false): string {
+  if (!skills.length) return '';
+  const inline = skills.filter((s) => inlineAll || s.always);
+  const index = skills
+    .map((s) => `- \`${s.name}\` — ${s.description || '(no description)'}${!inlineAll && s.always ? ' **(always applied — full text below)**' : ''}`)
+    .join('\n');
+  const full = inline.map((s) => {
+    const body = s.body.length > MAX_INLINE_SKILL
+      ? `${s.body.slice(0, MAX_INLINE_SKILL)}\n\n…(truncated${inlineAll ? '' : ` — get_skill("${s.name}") returns the rest`})`
+      : s.body;
+    return `### Skill \`${s.name}\`${inlineAll ? '' : ' (always applied)'}\n\n${demoteHeadings(body)}`;
+  });
+  const howTo = inlineAll
+    ? 'Follow every skill below for everything you write, and before answering review the deck against each skill\'s **Checklist**.'
+    : 'Before planning or writing ANY slide, read every skill whose description fits the task with `get_skill(name)` ' +
+      '(when unsure, read it — they are short); always-applied ones are included below. After writing, review the deck ' +
+      'against each skill\'s **Checklist** — `check_deck` / `verify: true` hand the checklists back — and fix what fails. ' +
+      'When the user corrects your slides, offer to record the rule in the skill (`patch_skill` with `append`).';
+  return [
+    '## Slide skills for this folder',
+    'The author keeps GUIDES for making slides in this folder (`.mdp/skills/<name>/SKILL.md`). They are the author\'s ' +
+    'own rules: where a skill and the generic rules above disagree, FOLLOW THE SKILL (the file format itself does not change).',
+    index,
+    howTo,
+    ...full,
+  ].join('\n\n');
+}
+
 export interface SlideSpecExtras {
   effects?: EffectConfig[];
   themes?: ThemeOption[];
+  // The folder's slide skills (the author's guides) and whether to inline all of
+  // them (a copied prompt has no get_skill tool) or only the `always` ones (MCP).
+  skills?: SkillForAI[];
+  skillsInline?: boolean;
+  // Workspace fonts stored in the folder's `.mdp/fonts` chain, and the folder's
+  // default-font choices (content.json `fonts`).
+  fonts?: { family: string; category: string }[];
+  fontDefaults?: { body?: string; heading?: string; mono?: string };
+  // Fonts the chain declares in `.mdp/fonts/requirements.json`, with where each
+  // stands on this computer (packaged / local / missing).
+  fontRequirements?: { family: string; category?: string; state: string; fallback?: string[]; note?: string }[];
   // Folder-specific house style / instructions (from the `.mdp` chain's aiNotes).
   aiNotes?: string;
   // The author's cached WRITING-STYLE profile (from the `.mdp` chain) — distilled
@@ -830,6 +939,7 @@ export function buildSlideSpecPrompt(modules: ModuleConfig[], extras: SlideSpecE
   if (extras.themes && extras.themes.length) {
     parts.push(`## Themes\n\nApply with \`<!-- @theme NAME -->\` on the meta page. Installed themes:\n\n${describeThemesForAI(extras.themes)}`);
   }
+  parts.push(describeFontsForAI(extras.fonts || [], extras.fontDefaults || {}, extras.fontRequirements || []));
   if (extras.effects && extras.effects.length) {
     parts.push(
       `## Animation effects (${extras.effects.length})\n\n` +
@@ -866,7 +976,9 @@ export function buildSlideSpecPrompt(modules: ModuleConfig[], extras: SlideSpecE
     parts.push(`## Installed modules\n\n_(No modules are available for this folder.)_`);
   }
 
-  // Folder-specific style + instructions come LAST so they override anything above.
+  // Folder-specific guides, style + instructions come LAST so they override anything above.
+  const skillsPart = describeSkillsForAI(extras.skills || [], !!extras.skillsInline);
+  if (skillsPart) parts.push(skillsPart);
   if (extras.styleProfile && extras.styleProfile.trim()) {
     parts.push(`## The author's writing style\n\nA style profile distilled from this author's existing decks — WRITE IN THIS VOICE (wording, density, structure). It is current; you do not need to re-read their decks:\n\n${extras.styleProfile.trim()}`);
   }

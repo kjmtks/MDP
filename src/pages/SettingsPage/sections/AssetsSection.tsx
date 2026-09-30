@@ -29,7 +29,7 @@ export const AssetsSection: React.FC = () => {
     setStatus(null);
     try {
       await syncOfficialCatalog();
-      setStatus({ ok: true, text: 'Official assets updated (modules, themes, templates, snippets).' });
+      setStatus({ ok: true, text: 'Official assets updated (modules, themes, fonts, templates, snippets).' });
     } catch {
       setStatus({ ok: false, text: 'Update failed — check your internet connection and try again.' });
     } finally {
@@ -51,7 +51,7 @@ export const AssetsSection: React.FC = () => {
   return (
     <div>
       <h2 className="settings-section-title">Assets</h2>
-      <p className="settings-section-desc">Get the latest official assets (modules, themes, templates, snippets) and reload snippets.</p>
+      <p className="settings-section-desc">Get the latest official assets (modules, themes, fonts, templates, snippets) and reload snippets.</p>
 
       <div className="settings-field">
         <div className="settings-field-label">Official assets</div>

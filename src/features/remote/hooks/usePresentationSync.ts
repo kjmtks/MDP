@@ -1,4 +1,5 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback, useSyncExternalStore } from 'react';
+import { getFontState, subscribeFontState } from '../../fonts/fontRuntime';
 import { useSync, type SyncMessage } from './useSync';
 import type { Stroke } from '../../drawing/components/DrawingOverlay';
 import { moduleSyncBus } from '../../modules/moduleSyncBus';
@@ -58,6 +59,9 @@ export const usePresentationSync = (
   });
 
   const [imagePrep, setImagePrep] = useState<{ done: number; total: number } | null>(null);
+  // Workspace-font CSS: the presenter / output windows are separate documents and
+  // render live HTML, so it travels with the state (like the theme URL).
+  const fontCss = useSyncExternalStore(subscribeFontState, () => getFontState().css);
 
   const sendRef = useRef<((msg: SyncMessage, target?: 'all' | 'local' | 'remote') => void) | null>(null);
   const cacheRef = useRef<Map<string, RasterizeResult>>(new Map());
@@ -71,10 +75,10 @@ export const usePresentationSync = (
       type: 'SYNC_STATE',
       // `basePath` travels too: a mirror needs it to resolve a slide's drawio/SVG
       // and image paths (SlideView builds those from `raw` + basePath).
-      payload: { slides, index: currentSlideIndex, step: step ?? 0, slideSize, globalContext, baseUrl, basePath, themeCssUrl, lastUpdated, allDrawings: drawings, isOverview: isSlideOverview, modules: Object.values(loadedModules), effects: Object.values(loadedEffects), lastRehearsal: lastRehearsal ?? null },
+      payload: { slides, index: currentSlideIndex, step: step ?? 0, slideSize, globalContext, baseUrl, basePath, themeCssUrl, fontCss, lastUpdated, allDrawings: drawings, isOverview: isSlideOverview, modules: Object.values(loadedModules), effects: Object.values(loadedEffects), lastRehearsal: lastRehearsal ?? null },
       channelId,
     }, 'local');
-  }, [slides, currentSlideIndex, step, slideSize, globalContext, baseUrl, basePath, themeCssUrl, lastUpdated, drawings, channelId, isSlideOverview, lastRehearsal]);
+  }, [slides, currentSlideIndex, step, slideSize, globalContext, baseUrl, basePath, themeCssUrl, fontCss, lastUpdated, drawings, channelId, isSlideOverview, lastRehearsal]);
 
   const nextVisibleIndex = useCallback((from: number) => {
     let n = from + 1;
@@ -86,7 +90,7 @@ export const usePresentationSync = (
     if (!rasterize) return Promise.resolve(null);
     const slide = slides[i];
     if (!slide) return Promise.resolve(null);
-    const key = `${i}:${hashStr(slide.html || '')}:${themeCssUrl || ''}:${slideSize.width}x${slideSize.height}`;
+    const key = `${i}:${hashStr(slide.html || '')}:${themeCssUrl || ''}:${hashStr(fontCss)}:${slideSize.width}x${slideSize.height}`;
     const cached = cacheRef.current.get(key);
     if (cached) return Promise.resolve(cached);
     const run = () => rasterize(slide, { width: slideSize.width, height: slideSize.height, basePath, themeCssUrl })
@@ -94,7 +98,7 @@ export const usePresentationSync = (
     const p = queueRef.current.then(run, run) as Promise<RasterizeResult>;
     queueRef.current = p.catch(() => undefined);
     return p;
-  }, [rasterize, slides, themeCssUrl, slideSize.width, slideSize.height, basePath]);
+  }, [rasterize, slides, themeCssUrl, fontCss, slideSize.width, slideSize.height, basePath]);
 
   const sendRemoteImages = useCallback(async () => {
     if (!rasterize || !remoteActive) return;
@@ -211,10 +215,10 @@ export const usePresentationSync = (
     sendLocalState();
   }, [sendLocalState]);
 
-  // Remote image cache invalidation on theme/size change.
+  // Remote image cache invalidation on theme/font/size change.
   useEffect(() => {
     cacheRef.current.clear();
-  }, [themeCssUrl, slideSize.width, slideSize.height]);
+  }, [themeCssUrl, fontCss, slideSize.width, slideSize.height]);
 
   // Pre-render all slides (with progress) once remote becomes active or content changes.
   const prevActive = useRef(false);
@@ -247,7 +251,7 @@ export const usePresentationSync = (
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [remoteActive, isSlideOverview, slides, themeCssUrl, slideSize.width, slideSize.height]);
+  }, [remoteActive, isSlideOverview, slides, themeCssUrl, fontCss, slideSize.width, slideSize.height]);
 
   return { channelId, token, send, imagePrep };
 };

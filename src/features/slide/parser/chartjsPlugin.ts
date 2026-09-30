@@ -1,3 +1,5 @@
+import { ensureSlideFontsReady } from '../../fonts/fontRuntime';
+
 // Bake `@chartjs` placeholders into a static <img> directly in the slide HTML —
 // the SAME model as mermaid/plantuml (see slidePostProcessing). Doing it here, at
 // slide-GENERATION time, means `slide.html` already contains the rendered chart,
@@ -11,20 +13,32 @@
 const RENDER_W = 1280;
 const RENDER_H = 400;
 
-const chartCache = new Map<string, string>(); // base64 config -> <img> tag
+const chartCache = new Map<string, string>(); // font stack + base64 config -> <img> tag
+
+// The chart config's text (labels, titles) — which glyphs the chart will draw.
+const decodeConfigText = (base64: string | null): string => {
+  if (!base64) return '';
+  try { return new TextDecoder().decode(Uint8Array.from(atob(base64), (c) => c.charCodeAt(0))); } catch { return ''; }
+};
 
 export const processCharts = async (div: HTMLElement): Promise<void> => {
   const nodes = Array.from(div.querySelectorAll<HTMLElement>('.chartjs-render'));
   if (!nodes.length) return;
 
   const { default: Chart } = await import('chart.js/auto');
+  // The chart's text is baked into the PNG, so draw it with the SLIDE's font —
+  // loaded first (workspace fonts, `.mdp/fonts`), or a fallback gets baked in.
+  // The stack is part of the cache key: a font change re-draws the chart.
+  const fontStack = await ensureSlideFontsReady(document, nodes.map((n) => decodeConfigText(n.getAttribute('data-chart'))).join('\n'));
+  Chart.defaults.font.family = fontStack;
 
   for (const node of nodes) {
     const base64 = node.getAttribute('data-chart');
     if (!base64) continue;
+    const cacheKey = `${fontStack}\n${base64}`;
 
-    if (chartCache.has(base64)) {
-      node.innerHTML = chartCache.get(base64)!;
+    if (chartCache.has(cacheKey)) {
+      node.innerHTML = chartCache.get(cacheKey)!;
       node.removeAttribute('data-chart');
       continue;
     }
@@ -65,7 +79,7 @@ export const processCharts = async (div: HTMLElement): Promise<void> => {
       imgTag = `<div style="color:red">Chart Render Error</div>`;
     }
 
-    if (ok) chartCache.set(base64, imgTag); // never cache an error — let it retry
+    if (ok) chartCache.set(cacheKey, imgTag); // never cache an error — let it retry
     node.innerHTML = imgTag;
     node.removeAttribute('data-chart');
   }

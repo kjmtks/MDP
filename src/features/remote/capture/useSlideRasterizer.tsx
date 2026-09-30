@@ -4,6 +4,7 @@ import { isElectron } from '../../../api/apiClient';
 import { loadedModules } from '../../modules/moduleManager';
 import { waitForRenderReady, dataUrlToWebp } from './captureReady';
 import type { RasterizeOptions, RasterizeResult, SlideLinkRect } from './captureTypes';
+import { getFontState } from '../../fonts/fontRuntime';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Slide = any;
@@ -52,6 +53,8 @@ export function useSlideRasterizer() {
           basePath,
           themeCssUrl,
           moduleCss,
+          // …and the workspace fonts, so the capture is drawn with them.
+          fontCss: getFontState().css,
           width,
           height,
         });
