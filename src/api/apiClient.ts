@@ -306,15 +306,18 @@ export const apiClient = {
     return !!(await (window as any).electronAPI.writeBinaryToPath({ filePath, content: base64 }));
   },
 
+  // `outsideWorkspace`: start the Electron dialog in Downloads, not the workspace
+  // (personal data such as voice recordings).
   saveBinaryWithDialog: async (
     suggestedName: string,
     base64: string,
     filter: { name: string; ext: string; mime: string },
+    opts: { outsideWorkspace?: boolean } = {},
   ): Promise<boolean> => {
     if (isElectron()) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const res = await (window as any).electronAPI.saveBinaryDialog({
-        suggestedName, content: base64, filterName: filter.name, ext: filter.ext,
+        suggestedName, content: base64, filterName: filter.name, ext: filter.ext, outsideWorkspace: !!opts.outsideWorkspace,
       });
       return !!(res && res.saved);
     }

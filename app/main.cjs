@@ -347,6 +347,14 @@ ipcMain.handle('getRemoteInfo', () => remoteServer.getRemoteInfo());
 
 ipcMain.handle('getAppVersion', () => app.getVersion());
 
+// Irodori-TTS calls from the renderer: that server sends no CORS headers by
+// default, so the page's own fetch is blocked. The relay only forwards to its
+// API paths (see ttsRelay.cjs).
+const { relayTtsHttp, abortTtsHttp } = require('./ttsRelay.cjs');
+ipcMain.handle('ttsHttp', (_event, req) => relayTtsHttp(req));
+// Stop / cancel in the renderer: cut the request off so the server stops too.
+ipcMain.handle('ttsHttpAbort', (_event, id) => abortTtsHttp(id));
+
 // The output window (`#/output`) asks to keep its CONTENT at the deck's aspect
 // ratio, so a drag-resize can never letterbox what a screen share captures.
 // Electron applies the constraint to the drag itself; the window frame is
@@ -970,14 +978,18 @@ ipcMain.on('export-pdf', async (event, filename) => {
 
 // Save arbitrary BASE64 binary content via a native "Save As" dialog (used by the
 // PowerPoint/PPTX export). Returns { saved, filePath } or { saved:false, canceled }.
-ipcMain.handle('saveBinaryDialog', async (event, { suggestedName, content, filterName, ext }) => {
+// The dialog opens in the workspace folder, or in Downloads when `outsideWorkspace`
+// is set — for personal data such as voice recordings, which must not land in a
+// synced or shared workspace just because the user pressed Enter.
+ipcMain.handle('saveBinaryDialog', async (event, { suggestedName, content, filterName, ext, outsideWorkspace }) => {
   const { BrowserWindow, dialog } = require('electron');
   const win = BrowserWindow.fromWebContents(event.sender);
   if (!win || win.isDestroyed()) return { saved: false };
   try {
+    const dir = outsideWorkspace ? app.getPath('downloads') : currentBaseDir;
     const { filePath, canceled } = await dialog.showSaveDialog(win, {
       title: 'Export',
-      defaultPath: currentBaseDir ? path.join(currentBaseDir, suggestedName || 'export') : (suggestedName || 'export'),
+      defaultPath: dir ? path.join(dir, suggestedName || 'export') : (suggestedName || 'export'),
       filters: [{ name: filterName || 'File', extensions: [ext || 'bin'] }],
     });
     if (canceled || !filePath) return { saved: false, canceled: true };

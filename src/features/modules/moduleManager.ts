@@ -103,6 +103,33 @@ export interface ModuleScriptContext {
 let instanceCounter = 0;
 
 /**
+ * Run `fn` (a module's init) while recording every DOM listener it registers, and
+ * return the matching removals. Teardown then removes them even when the module
+ * forgot to (the documented rule is to pair each addEventListener with a
+ * removeEventListener in ctx.onCleanup, but official and user modules alike have
+ * missed it). This matters because init can run again on the SAME DOM — SlideView
+ * re-runs a slide's scripts right after mount and when the owner/mirror role flips
+ * — and a leftover listener then fires twice per click: a toggle (timer start)
+ * undoes itself, a play button starts and stops. Only listeners added during the
+ * synchronous init are captured; ones added later (from inside a handler, a
+ * timeout) remain the module's own responsibility. Removals go straight into
+ * `cleanups`, so a listener added before an init that throws is still removed.
+ */
+function captureListeners<T>(cleanups: Array<() => void>, fn: () => T): T {
+  const proto = EventTarget.prototype;
+  const original = proto.addEventListener;
+  proto.addEventListener = function (this: EventTarget, type: string, listener: EventListenerOrEventListenerObject | null, options?: boolean | AddEventListenerOptions) {
+    original.call(this, type, listener, options);
+    if (listener) cleanups.push(() => this.removeEventListener(type, listener, options));
+  };
+  try {
+    return fn();
+  } finally {
+    proto.addEventListener = original;
+  }
+}
+
+/**
  * Run module `<script>`s against a freshly-rendered slide container and return
  * a teardown function (call it when the slide unmounts/changes).
  *
@@ -191,13 +218,13 @@ export const executeModuleScripts = (
       if (exported && typeof exported === 'object' && typeof exported.init === 'function') {
         elements.forEach((el, i) => {
           const ctx = makeCtx(el, i);
-          const ret = exported.init(el, ctx);
+          const ret = captureListeners(cleanups, () => exported.init(el, ctx));
           el.classList.add('mdp-mod-inited');
           if (typeof ret === 'function') cleanups.push(ret);
           if (typeof exported.destroy === 'function') cleanups.push(() => exported.destroy(el, ctx));
         });
       } else if (typeof exported === 'function') {
-        const ret = exported(elements);
+        const ret = captureListeners(cleanups, () => exported(elements));
         if (typeof ret === 'function') cleanups.push(ret);
       }
     } catch (e) {

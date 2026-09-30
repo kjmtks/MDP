@@ -183,8 +183,17 @@ Example: <!-- @timer minutes: 5, size: lg, label: Break, autostart: true -->
         // Every surface re-renders on shared-state changes and routes clicks
         // through actions (the owner is the single source of truth).
         ctx.onShared(paint);
-        startBtn.addEventListener('click', function () { ctx.sendAction('toggle'); });
-        resetBtn.addEventListener('click', function () { ctx.sendAction('reset'); });
+        // init can run again on the SAME DOM (re-init after mount / a role flip):
+        // a listener left behind would send 'toggle' twice per click, so the timer
+        // would start and immediately stop. Remove both on cleanup.
+        const onStart = function () { ctx.sendAction('toggle'); };
+        const onReset = function () { ctx.sendAction('reset'); };
+        startBtn.addEventListener('click', onStart);
+        resetBtn.addEventListener('click', onReset);
+        ctx.onCleanup(function () {
+          startBtn.removeEventListener('click', onStart);
+          resetBtn.removeEventListener('click', onReset);
+        });
 
         if (ctx.role === 'owner') {
           let timer = null;

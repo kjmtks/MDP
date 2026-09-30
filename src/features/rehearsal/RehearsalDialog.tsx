@@ -11,8 +11,9 @@ import { explicitSlideSeconds, slideSecondsFromRaw, formatClock } from '../slide
 import { newRunId, type RehearsalRun } from './rehearsalStore';
 import {
   speak, listWebSpeechVoices, loadWebSpeechVoices, webSpeechAvailable,
-  listVoicevoxSpeakers, type Utterance, type VoicevoxStyle,
+  listVoicevoxSpeakers, engineLabel, type Utterance, type VoicevoxStyle,
 } from '../tts/ttsService';
+import { IrodoriControls } from '../tts/IrodoriControls';
 
 // Minimal shape we need from a parsed slide.
 interface RehearsalSlide { raw: string; scriptHtml: string }
@@ -55,6 +56,7 @@ export const RehearsalDialog: React.FC<{
   const muiTheme = useMemo(() => createTheme({ palette: { mode: appThemeVariant } }), [appThemeVariant]);
   const tts = settings.tts;
   const cpm = settings.readingCharsPerMin || 320;
+  const slideRaws = useMemo(() => slides.map((s) => s.raw), [slides]);   // what to read when recording a voice
   // TWO independent speeds: the READING speed (chars/min) sets each slide's time
   // BUDGET (and the talk-time estimate); the VOICE speed (tts.rate ×) is how fast the
   // synthesized narrator actually speaks — a synthetic voice may differ from a person,
@@ -140,9 +142,9 @@ export const RehearsalDialog: React.FC<{
       const u = speak(steps[i].script, ttsCfg);
       utterRef.current = u;
       try { await u.done; } catch (e) {
-        // Engine failed (e.g. VOICEVOX not running) — stop the whole run and report.
+        // Engine failed (e.g. VOICEVOX / Irodori not running) — stop the whole run and report.
         stopTick(); setRunning(false);
-        setVvError(e instanceof Error ? e.message : 'Speech failed.');
+        setVvError(e instanceof Error ? e.message : `${engineLabel(tts.engine)} speech failed.`);
         return;
       }
       stopTick();
@@ -168,9 +170,10 @@ export const RehearsalDialog: React.FC<{
   const engineControls = (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-        <ToggleButtonGroup exclusive size="small" value={tts.engine} onChange={(_, v) => v && patchTts({ engine: v })}>
+        <ToggleButtonGroup exclusive size="small" value={tts.engine} onChange={(_, v) => { if (v) { setVvError(''); patchTts({ engine: v }); } }}>
           <ToggleButton value="webspeech" sx={{ textTransform: 'none' }}>Web Speech</ToggleButton>
           <ToggleButton value="voicevox" sx={{ textTransform: 'none' }}>VOICEVOX</ToggleButton>
+          <ToggleButton value="irodori" sx={{ textTransform: 'none' }}>Irodori-TTS</ToggleButton>
         </ToggleButtonGroup>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <Tooltip title="Sets each slide's time BUDGET & the talk-time estimate (General)"><span style={{ fontSize: 13, color: 'var(--app-text-muted)' }}>Reading speed</span></Tooltip>
@@ -189,7 +192,12 @@ export const RehearsalDialog: React.FC<{
         <b>Reading speed</b> sets the time budget / talk-time estimate (shared with General). <b>Voice speed</b> is how fast the TTS voice actually reads — adjust it separately from your target pace.
       </div>
 
-      {tts.engine === 'webspeech' ? (
+      {tts.engine === 'irodori' ? (
+        <>
+          <IrodoriControls tts={tts} patchTts={patchTts} slideRaws={slideRaws} />
+          {vvError && <span style={{ color: '#dc2626', fontSize: 13 }}>{vvError}</span>}
+        </>
+      ) : tts.engine === 'webspeech' ? (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 13, color: 'var(--app-text-muted)', width: 46 }}>Voice</span>
           <Select size="small" value={voices.find((v) => v.voiceURI === tts.webspeechVoiceURI) ? tts.webspeechVoiceURI : ''}

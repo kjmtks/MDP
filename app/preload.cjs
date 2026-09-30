@@ -20,6 +20,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   exportPdf: (filename) => ipcRenderer.send('export-pdf', filename),
   // Lock THIS window's content aspect ratio (output window); no-op elsewhere.
   setWindowAspectRatio: (ratio) => ipcRenderer.send('window-set-aspect-ratio', ratio),
+  // Irodori-TTS request relayed through the main process (the server has no CORS).
+  ttsHttp: (req) => ipcRenderer.invoke('ttsHttp', req),
+  ttsHttpAbort: (id) => ipcRenderer.invoke('ttsHttpAbort', id),
   saveBinaryDialog: (args) => ipcRenderer.invoke('saveBinaryDialog', args),
   getLinkConfig: (relPath) => ipcRenderer.invoke('getLinkConfig', relPath),
   setLinkConfig: (args) => ipcRenderer.invoke('setLinkConfig', args),

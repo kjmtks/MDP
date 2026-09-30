@@ -5,20 +5,25 @@
 //   window.mdpTts.speak('Water boils at 100 degrees.', { lang: 'en' })
 //   window.mdpTts.speak('Hello', { voice: 'Zira', rate: 0.9 })
 //   window.mdpTts.speak('こんにちは', { engine: 'voicevox', speaker: 3 })
+//   window.mdpTts.speak('やったね！', { caption: '明るく弾んだ若い女性の声' })  // Irodori
 //   window.mdpTts.stop()
 //   await window.mdpTts.voices()            // installed Web Speech narrators
 //   await window.mdpTts.voicevoxSpeakers()  // VOICEVOX styles (engine must run)
+//   await window.mdpTts.irodoriVoices()     // Irodori-TTS voice ids (server must run)
 //
 // Defaults track the app's TTS settings live: AppSettingsContext mirrors every
 // settings change here via setModuleTtsDefaults(). Engine auto-selection: VOICEVOX
-// is a Japanese-only engine, so a call with a non-Japanese `lang` (and no explicit
-// engine) always uses Web Speech; and if VOICEVOX is configured but unreachable,
-// speak() falls back to Web Speech so a presentation never goes silent.
+// and Irodori are Japanese-only engines, so a call with a non-Japanese `lang` (and
+// no explicit engine) always uses Web Speech; and if either is configured but
+// unreachable, speak() falls back to Web Speech so a presentation never goes silent.
 import {
   DEFAULT_TTS,
+  irodoriServerOf,
+  listIrodoriVoices,
   listVoicevoxSpeakers,
   loadWebSpeechVoices,
   speak as ttsSpeak,
+  synthesizesAudio,
   ttsLog,
   webSpeechAvailable,
   type SpeakProgressCallback,
@@ -36,11 +41,13 @@ export interface MdpTtsSpeakOptions {
   rate?: number;        // speaking rate (default: settings)
   pitch?: number;       // Web Speech pitch (default: settings)
   speaker?: number;     // VOICEVOX style id (default: settings)
-  url?: string;         // VOICEVOX engine URL (default: settings)
+  irodoriVoice?: string; // Irodori-TTS voice id, or 'none' (default: settings)
+  caption?: string;     // Irodori-TTS Voice Design text: the voice / delivery wanted
+  url?: string;         // URL of the chosen engine — VOICEVOX or Irodori (default: settings)
   exclusive?: boolean;  // default true: stop the previous mdpTts utterance first
   // Spoken-position callback for read-along highlighting. Web Speech reports
-  // { charIndex, charLength? } per word; VOICEVOX reports { fraction } (0..1 of
-  // playback time). Indices refer to the trimmed text passed to speak().
+  // { charIndex, charLength? } per word; VOICEVOX / Irodori report { fraction }
+  // (0..1 of playback time). Indices refer to the trimmed text passed to speak().
   onProgress?: SpeakProgressCallback;
 }
 
@@ -53,6 +60,7 @@ export interface MdpTtsApi {
   stop(): void;
   voices(): Promise<MdpTtsVoice[]>;
   voicevoxSpeakers(url?: string): Promise<VoicevoxStyle[]>;
+  irodoriVoices(url?: string): Promise<string[]>;
   config(): TtsConfig;
 }
 
@@ -69,13 +77,27 @@ const NOOP: Utterance = { done: Promise.resolve(), stop: () => {} };
 // a lecture slide should not layer two narrations).
 let current: Utterance | null = null;
 
+// Normalized "which server" of an Irodori URL (scheme, host, port, path).
+const serverKey = (url: string): string | null => {
+  try { const u = new URL(url.trim()); return `${u.origin}${u.pathname.replace(/\/+$/, '')}`; } catch { return null; }
+};
+/** The Irodori API key to send for a module-supplied `url`: the user's key when
+ *  that URL is the server the user configured (or none was given), else nothing. */
+function keyFor(url: string | undefined): string {
+  if (!url) return defaults.irodoriApiKey;
+  const mine = serverKey(defaults.irodoriUrl);
+  return mine !== null && serverKey(url) === mine ? defaults.irodoriApiKey : '';
+}
+
 function pickEngine(opts: MdpTtsSpeakOptions): TtsEngine {
   if (opts.engine) return opts.engine;
   // An explicit Web-Speech narrator implies webspeech; an explicit VOICEVOX
-  // speaker implies voicevox (whichever the settings default is).
+  // speaker implies voicevox; an Irodori voice or caption implies irodori
+  // (whichever the settings default is).
   if (opts.voice) return 'webspeech';
   if (typeof opts.speaker === 'number') return 'voicevox';
-  // VOICEVOX only speaks Japanese — any other language hint means Web Speech.
+  if (opts.irodoriVoice || opts.caption) return 'irodori';
+  // VOICEVOX and Irodori only speak Japanese — any other language hint means Web Speech.
   if (opts.lang && !/^ja\b|^ja[-_]/i.test(opts.lang.trim())) return 'webspeech';
   return defaults.engine;
 }
@@ -97,8 +119,15 @@ const api: MdpTtsApi = {
         engine,
         rate: typeof opts.rate === 'number' ? opts.rate : defaults.rate,
         pitch: typeof opts.pitch === 'number' ? opts.pitch : defaults.pitch,
-        voicevoxUrl: opts.url || defaults.voicevoxUrl,
+        voicevoxUrl: (engine === 'voicevox' && opts.url) || defaults.voicevoxUrl,
         voicevoxSpeaker: typeof opts.speaker === 'number' ? opts.speaker : defaults.voicevoxSpeaker,
+        irodoriUrl: (engine === 'irodori' && opts.url) || defaults.irodoriUrl,
+        // The user's API key only ever goes to the server the USER configured: a
+        // module script (possibly from someone else's shared `.mdp`) that names
+        // its own `url` must not be able to collect the key from its requests.
+        irodoriApiKey: keyFor(opts.url),
+        irodoriVoice: opts.irodoriVoice || defaults.irodoriVoice,
+        irodoriCaption: typeof opts.caption === 'string' ? opts.caption : defaults.irodoriCaption,
       };
       const sel: VoiceSelect = { voice: opts.voice, lang: opts.lang };
       const onProgress = typeof opts.onProgress === 'function' ? opts.onProgress : undefined;
@@ -112,8 +141,8 @@ const api: MdpTtsApi = {
         await inner.done;
       } catch (err) {
         ttsLog('engine error → fallback?', { engine: cfg.engine, err: String(err) });
-        // VOICEVOX unreachable → Web Speech fallback (same text, language hint).
-        if (cfg.engine === 'voicevox' && webSpeechAvailable() && !stopped) {
+        // VOICEVOX / Irodori unreachable → Web Speech fallback (same text, language hint).
+        if (synthesizesAudio(cfg.engine) && webSpeechAvailable() && !stopped) {
           await loadWebSpeechVoices();
           if (stopped) return;
           inner = ttsSpeak(t, { ...cfg, engine: 'webspeech' }, sel, onProgress);
@@ -146,8 +175,14 @@ const api: MdpTtsApi = {
     return listVoicevoxSpeakers(url || defaults.voicevoxUrl);
   },
 
+  irodoriVoices(url?: string): Promise<string[]> {
+    // Same rule as speak(): the key goes only to the configured server.
+    return listIrodoriVoices(url ? { url, apiKey: keyFor(url) } : irodoriServerOf(defaults));
+  },
+
   config(): TtsConfig {
-    return { ...defaults };
+    // Module scripts may read the settings, but never the Irodori API key.
+    return { ...defaults, irodoriApiKey: '' };
   },
 };
 

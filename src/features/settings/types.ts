@@ -36,16 +36,26 @@ export interface AppSettings {
   // Rehearsal read-aloud (TTS) preferences — the selected engine and its options.
   // Persisted so the rehearsal dialog remembers the user's voice/engine choice.
   tts: {
-    engine: 'webspeech' | 'voicevox';
+    engine: 'webspeech' | 'voicevox' | 'irodori';
     rate: number;
     pitch: number;
     webspeechVoiceURI: string;
     voicevoxUrl: string;
     voicevoxSpeaker: number;
+    // Irodori-TTS server (Aratako/Irodori-TTS-Server): its URL, its API key (the
+    // server's IRODORI_API_KEY; '' when it has none), the voice id to speak with
+    // (a reference clip in the server's voices/ folder, or 'none'), and an
+    // optional Voice Design caption describing the voice / delivery. The key lives
+    // only here, in the machine-local app settings — never in a workspace `.mdp`,
+    // and it is withheld from module scripts (see moduleTtsApi.ts).
+    irodoriUrl: string;
+    irodoriApiKey: string;
+    irodoriVoice: string;
+    irodoriCaption: string;
     // Narrated auto-play: synthesize the WHOLE show's audio BEFORE starting it
     // (progress bar), instead of synthesizing each segment as it plays. Slow
     // machines stutter on real-time synthesis; pre-generating trades a wait up
-    // front for gap-free playback. VOICEVOX only — Web Speech cannot be
+    // front for gap-free playback. VOICEVOX / Irodori only — Web Speech cannot be
     // pre-synthesized (the browser gives no audio data, only live playback).
     pregenerate: boolean;
   };
@@ -78,7 +88,12 @@ export const DEFAULT_SETTINGS: AppSettings = {
   mcpEnabled: false,
   mcpAssetWrite: 'confirm',
   mcpHostConfigPaths: {},
-  tts: { engine: 'webspeech', rate: 1, pitch: 1, webspeechVoiceURI: '', voicevoxUrl: 'http://127.0.0.1:50021', voicevoxSpeaker: 1, pregenerate: false },
+  tts: {
+    engine: 'webspeech', rate: 1, pitch: 1, webspeechVoiceURI: '',
+    voicevoxUrl: 'http://127.0.0.1:50021', voicevoxSpeaker: 1,
+    irodoriUrl: 'http://127.0.0.1:8088', irodoriApiKey: '', irodoriVoice: 'none', irodoriCaption: '',
+    pregenerate: false,
+  },
   readingCharsPerMin: 320,
   readingCalibrationText:
     'それでは発表を始めます。本日は、私たちの研究の背景と目的、提案手法、実験結果、そして今後の課題について順にご説明します。' +
@@ -110,12 +125,16 @@ export function normalizeSettings(raw: unknown): AppSettings {
       const d = DEFAULT_SETTINGS.tts;
       const t = (r.tts && typeof r.tts === 'object') ? r.tts as Partial<AppSettings['tts']> : {};
       return {
-        engine: t.engine === 'voicevox' ? 'voicevox' : 'webspeech',
+        engine: t.engine === 'voicevox' || t.engine === 'irodori' ? t.engine : 'webspeech',
         rate: typeof t.rate === 'number' && t.rate > 0 ? t.rate : d.rate,
         pitch: typeof t.pitch === 'number' && t.pitch >= 0 ? t.pitch : d.pitch,
         webspeechVoiceURI: typeof t.webspeechVoiceURI === 'string' ? t.webspeechVoiceURI : d.webspeechVoiceURI,
         voicevoxUrl: typeof t.voicevoxUrl === 'string' && t.voicevoxUrl ? t.voicevoxUrl : d.voicevoxUrl,
         voicevoxSpeaker: typeof t.voicevoxSpeaker === 'number' ? t.voicevoxSpeaker : d.voicevoxSpeaker,
+        irodoriUrl: typeof t.irodoriUrl === 'string' && t.irodoriUrl ? t.irodoriUrl : d.irodoriUrl,
+        irodoriApiKey: typeof t.irodoriApiKey === 'string' ? t.irodoriApiKey : d.irodoriApiKey,
+        irodoriVoice: typeof t.irodoriVoice === 'string' && t.irodoriVoice ? t.irodoriVoice : d.irodoriVoice,
+        irodoriCaption: typeof t.irodoriCaption === 'string' ? t.irodoriCaption : d.irodoriCaption,
         pregenerate: typeof t.pregenerate === 'boolean' ? t.pregenerate : d.pregenerate,
       };
     })(),

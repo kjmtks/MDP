@@ -17,9 +17,11 @@ import renderMathInElement from 'katex/contrib/auto-render';
 import {
   synthesize, type Clip, type Utterance,
   webSpeechAvailable, loadWebSpeechVoices, listVoicevoxSpeakers, type VoicevoxStyle,
+  synthesizesAudio, engineLabel,
 } from '../tts/ttsService';
 import { scriptSegments, slideDwellMs, scriptUnits, segmentParts, type ScriptAction } from './autoplay';
 import { mdpBus } from '../bus/mdpBus';
+import { IrodoriControls } from '../tts/IrodoriControls';
 
 // One playable step of the narration: which slide + build step to show, the text to
 // SPEAK (`text`; null = a silent dwell), and the CAPTION to show (`caption`; may carry
@@ -52,14 +54,16 @@ export const AutoPlayView: React.FC<{
 }> = ({ open, onClose, slides, slideSize, basePath }) => {
   const { settings, update } = useAppSettings();
   const cpm = settings.readingCharsPerMin || 320;      // human reading speed → only the script-less dwell
+  const slideRaws = useMemo(() => slides.map((s) => s.raw), [slides]);   // what to read when recording a voice
   // The synthesized-voice speed is its OWN setting (settings.tts.rate), independent of
   // the human reading speed — a synthetic narrator can run faster/slower than a person.
   const ttsCfg = useMemo(() => ({ ...settings.tts }), [settings.tts]);
   const patchTts = (p: Partial<typeof settings.tts>) => update({ tts: { ...settings.tts, ...p } });
-  // Pre-generate the whole show before starting it? Only meaningful for VOICEVOX:
-  // Web Speech exposes no audio data — it synthesizes while it speaks, so there is
-  // nothing to prepare in advance.
-  const pregenMode = settings.tts.engine === 'voicevox' && settings.tts.pregenerate;
+  // Pre-generate the whole show before starting it? Only meaningful for engines
+  // that return audio (VOICEVOX / Irodori): Web Speech exposes no audio data — it
+  // synthesizes while it speaks, so there is nothing to prepare in advance.
+  const canPregen = synthesizesAudio(settings.tts.engine);
+  const pregenMode = canPregen && settings.tts.pregenerate;
 
   // Flatten the deck into narration steps: one per @script segment (split at
   // `[[step]]`), plus dwell items for script-less slides / trailing build reveals.
@@ -157,6 +161,10 @@ export const AutoPlayView: React.FC<{
   }, [caption, showCaptions]);
 
   const tokenRef = useRef(0);       // bumped to cancel the running loop
+  // Aborts the running loop's syntheses (the line being made + the prefetched next
+  // one) so pause / skip / close stop the TTS server too, not just the playback.
+  const runAbortRef = useRef<AbortController | null>(null);
+  const pregenAbortRef = useRef<AbortController | null>(null);
   const itemIdxRef = useRef(0);     // current playlist index (for resume)
   const utterRef = useRef<Utterance | null>(null);
   const sleepCtl = useRef<{ id: number; resolve: () => void } | null>(null);
@@ -175,6 +183,7 @@ export const AutoPlayView: React.FC<{
 
   const stopAll = () => {
     tokenRef.current++;
+    runAbortRef.current?.abort(); runAbortRef.current = null;
     utterRef.current?.stop(); utterRef.current = null;
     if (sleepCtl.current) { window.clearTimeout(sleepCtl.current.id); const r = sleepCtl.current.resolve; sleepCtl.current = null; r(); }
   };
@@ -204,9 +213,9 @@ export const AutoPlayView: React.FC<{
     // Closing frees the pre-generated audio: it is the only place the cache can
     // outlive the playlist it was built for (the view is modal — the deck cannot
     // be edited while it is open).
-    else { stopAll(); setPlaying(false); prepTokenRef.current++; setPrep(null); setUsingPregen(false); disposeCache(); }
+    else { stopAll(); setPlaying(false); prepTokenRef.current++; pregenAbortRef.current?.abort(); setPrep(null); setUsingPregen(false); disposeCache(); }
   }, [open]);
-  useEffect(() => () => { stopAll(); disposeCache(); }, []);
+  useEffect(() => () => { stopAll(); pregenAbortRef.current?.abort(); disposeCache(); }, []);
 
   // On the setup screen, populate the Web Speech voice list (loads asynchronously).
   useEffect(() => {
@@ -287,8 +296,10 @@ export const AutoPlayView: React.FC<{
     if (!await wait) warnNoReply('emit-wait', a.topic, timeoutMs);
   };
 
-  // Kick off synthesis for one item (empty text → an instant no-op clip).
-  const synthClip = (item: PlayItem): Promise<Clip> => synthesize(item?.text || '', ttsCfg);
+  // Kick off synthesis for one item (empty text → an instant no-op clip), abortable
+  // with the running loop.
+  const synthClip = (item: PlayItem): Promise<Clip> =>
+    synthesize(item?.text || '', ttsCfg, undefined, undefined, runAbortRef.current?.signal);
   // The clip for playlist index `i`: the PRE-GENERATED one when the show was
   // prepared up front, else a fresh synthesis (streamed during the previous item).
   const clipFor = (i: number): Promise<Clip> | null => {
@@ -305,6 +316,8 @@ export const AutoPlayView: React.FC<{
 
   const run = async (fromItem: number) => {
     const my = ++tokenRef.current;
+    runAbortRef.current?.abort();
+    runAbortRef.current = new AbortController();
     setPlaying(true); setFinished(false); setError('');
     // Prefetch the first item's audio; thereafter each iteration hands its
     // prefetched-next clip to the following one, so VOICEVOX synthesis of the NEXT
@@ -324,6 +337,9 @@ export const AutoPlayView: React.FC<{
         let clip: Clip;
         try { clip = await (curClip ?? synthClip(item)); }
         catch (e) {
+          // Paused / skipped / closed while this line was being synthesized: the
+          // abort is ours, not a failure to report.
+          if (tokenRef.current !== my) { await releaseTemp(i + 1, nextClip); return; }
           setError(e instanceof Error ? e.message : 'Speech failed.');
           setPlaying(false); tokenRef.current++;
           await releaseTemp(i + 1, nextClip); return;
@@ -348,11 +364,14 @@ export const AutoPlayView: React.FC<{
 
   // Synthesize the WHOLE show before it starts. Resolves true when every clip is
   // ready, false if the user cancelled or the engine failed (the caller then stays
-  // on the setup screen). Cancelling takes effect at the next segment boundary.
+  // on the setup screen). Cancelling aborts the line in progress at once.
   const pregenAll = async (): Promise<boolean> => {
     const targets: { i: number; text: string }[] = [];
     playlist.forEach((it, i) => { if (it.text) targets.push({ i, text: it.text }); });
     const my = ++prepTokenRef.current;
+    pregenAbortRef.current?.abort();
+    const ac = new AbortController();
+    pregenAbortRef.current = ac;
     disposeCache();
     setError('');
     setPrep({ done: 0, total: targets.length, etaSec: null });
@@ -360,10 +379,12 @@ export const AutoPlayView: React.FC<{
     for (let k = 0; k < targets.length; k++) {
       if (prepTokenRef.current !== my) { disposeCache(); setPrep(null); return false; }
       try {
-        clipsRef.current[targets[k].i] = await synthesize(targets[k].text, ttsCfg);
+        clipsRef.current[targets[k].i] = await synthesize(targets[k].text, ttsCfg, undefined, undefined, ac.signal);
       } catch (e) {
         disposeCache();
         setPrep(null);
+        // Cancelled (or the view closed): our own abort, not an error to show.
+        if (prepTokenRef.current !== my) return false;
         setError(e instanceof Error ? e.message : 'Speech synthesis failed.');
         return false;
       }
@@ -377,7 +398,7 @@ export const AutoPlayView: React.FC<{
     setUsingPregen(true);
     return true;
   };
-  const cancelPregen = () => { prepTokenRef.current++; };
+  const cancelPregen = () => { prepTokenRef.current++; pregenAbortRef.current?.abort(); };
 
   const play = () => { if (finished) { itemIdxRef.current = 0; setSlideIdx(0); run(0); } else run(itemIdxRef.current); };
   // Leave the setup screen: go TRUE fullscreen (ignored if the browser refuses) and
@@ -475,7 +496,11 @@ export const AutoPlayView: React.FC<{
             <div style={{ marginBottom: 16 }}>
               <div style={{ fontWeight: 700, marginBottom: 7 }}>Voice engine</div>
               <div style={{ display: 'flex', gap: 8 }}>
-                {([['webspeech', 'Web Speech', 'Built-in OS voices · no setup'], ['voicevox', 'VOICEVOX', 'Local engine · natural JP voices']] as const).map(([id, label, sub]) => {
+                {([
+                  ['webspeech', 'Web Speech', 'Built-in OS voices · no setup'],
+                  ['voicevox', 'VOICEVOX', 'Local engine · natural JP voices'],
+                  ['irodori', 'Irodori-TTS', 'Local AI server · expressive JP voices'],
+                ] as const).map(([id, label, sub]) => {
                   const sel = engine === id;
                   const avail = id === 'webspeech' ? webSpeechAvailable() : true;
                   return (
@@ -495,7 +520,12 @@ export const AutoPlayView: React.FC<{
             </div>
 
             {/* Voice / speaker */}
-            {engine === 'webspeech' ? (
+            {engine === 'irodori' ? (
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontWeight: 700, marginBottom: 9 }}>Irodori-TTS server</div>
+                <IrodoriControls tts={settings.tts} patchTts={patchTts} dark slideRaws={slideRaws} />
+              </div>
+            ) : engine === 'webspeech' ? (
               <div style={{ marginBottom: 16 }}>
                 <div style={{ fontWeight: 700, marginBottom: 7 }}>Voice</div>
                 <select style={selectStyle} value={settings.tts.webspeechVoiceURI}
@@ -544,13 +574,13 @@ export const AutoPlayView: React.FC<{
               <label
                 style={{
                   display: 'flex', alignItems: 'center', gap: 8, userSelect: 'none',
-                  cursor: engine === 'voicevox' ? 'pointer' : 'not-allowed', opacity: engine === 'voicevox' ? 1 : 0.5,
+                  cursor: canPregen ? 'pointer' : 'not-allowed', opacity: canPregen ? 1 : 0.5,
                 }}
-                title={engine === 'voicevox'
+                title={canPregen
                   ? 'Synthesize every line BEFORE the show starts, then play from memory. Slower to start, but no stutter on machines that cannot synthesize in real time.'
-                  : 'VOICEVOX only — Web Speech synthesizes while it speaks, so there is nothing to prepare in advance.'}>
-                <input type="checkbox" disabled={engine !== 'voicevox'}
-                  checked={engine === 'voicevox' && settings.tts.pregenerate}
+                  : 'VOICEVOX / Irodori-TTS only — Web Speech synthesizes while it speaks, so there is nothing to prepare in advance.'}>
+                <input type="checkbox" disabled={!canPregen}
+                  checked={pregenMode}
                   onChange={(e) => patchTts({ pregenerate: e.target.checked })} />
                 Pre-generate audio
               </label>
@@ -594,7 +624,7 @@ export const AutoPlayView: React.FC<{
                   Cancel
                 </button>
                 <div style={{ textAlign: 'center', color: '#787e88', fontSize: 11.5, marginTop: 10 }}>
-                  Cancelling stops after the line being synthesized
+                  Cancel stops the synthesis right away
                 </div>
               </div>
             ) : (
@@ -665,7 +695,7 @@ export const AutoPlayView: React.FC<{
           {slideIdx + 1} / {slides.length}
         </div>
         <div style={{ fontSize: 12, color: '#9aa', marginLeft: 12 }}>
-          {settings.tts.engine === 'voicevox' ? 'VOICEVOX' : 'Web Speech'}
+          {engineLabel(settings.tts.engine)}
           {usingPregen ? <span style={{ color: '#86efac', marginLeft: 8 }}>· pre-generated</span> : null}
           {error ? <span style={{ color: '#f87171', marginLeft: 10 }}>{error}</span> : null}
           {finished && !error ? <span style={{ color: '#86efac', marginLeft: 10 }}>Finished</span> : null}

@@ -200,7 +200,12 @@ layout; the position/size/rotation are written back as x/y/w/h/rot args.
           if (trigger === 'auto') tryPlay();
           else if (!controls) showOv();
           ctx.onCleanup(() => {
-            if (!controls) el.removeEventListener('click', toggle);
+            if (!controls) {
+              el.removeEventListener('click', toggle);
+              video.removeEventListener('play', hideOv);
+              video.removeEventListener('pause', showOv);
+              video.removeEventListener('ended', showOv);
+            }
             try { video.pause(); video.currentTime = 0; } catch (e) {}
           });
         } else {
@@ -208,13 +213,17 @@ layout; the position/size/rotation are written back as x/y/w/h/rot args.
           const post = (func) => {
             try { if (iframe && iframe.contentWindow) iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: func, args: [] }), '*'); } catch (e) {}
           };
+          const onOverlay = (e) => { e.stopPropagation(); hideOv(); post('playVideo'); };
           if (trigger === 'click' && overlay) {
             showOv();
-            overlay.addEventListener('click', (e) => { e.stopPropagation(); hideOv(); post('playVideo'); });
+            overlay.addEventListener('click', onOverlay);
           } else {
             hideOv();
           }
-          ctx.onCleanup(() => { post('pauseVideo'); });
+          ctx.onCleanup(() => {
+            if (overlay) overlay.removeEventListener('click', onOverlay);
+            post('pauseVideo');
+          });
         }
       }
     }
