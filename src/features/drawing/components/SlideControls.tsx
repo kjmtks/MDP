@@ -1,5 +1,10 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { ToggleButton, ToggleButtonGroup, IconButton, Stack, Tooltip, Divider } from '@mui/material';
+import { ToggleButton, ToggleButtonGroup, IconButton, Stack, Tooltip, Divider, Menu, MenuItem, CircularProgress } from '@mui/material';
+import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord';
+import StopCircleIcon from '@mui/icons-material/StopCircle';
+import MicIcon from '@mui/icons-material/Mic';
+import CheckIcon from '@mui/icons-material/Check';
+import { listMicrophones, preferredMic, setPreferredMic, type RecordingStatus } from '../../recording/slideRecorder';
 import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew';
 import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
@@ -44,7 +49,54 @@ interface SlideControlsProps {
   onHistoryForward?: () => void;
   canHistoryBack?: boolean;
   canHistoryForward?: boolean;
+  // Recording the live presentation (desktop app): its state and the REC toggle.
+  // The mic button picks the microphone (remembered per computer).
+  recording?: { status: RecordingStatus; seconds: number; error?: string };
+  onToggleRecording?: () => void;
 }
+
+const clock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+
+// REC + elapsed time + microphone menu.
+const RecordControls: React.FC<{ recording: NonNullable<SlideControlsProps['recording']>; onToggle: () => void }> = ({ recording, onToggle }) => {
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  const [mics, setMics] = useState<Array<{ deviceId: string; label: string }>>([]);
+  const [mic, setMic] = useState(preferredMic);
+  const busy = recording.status === 'starting' || recording.status === 'stopping';
+  const on = recording.status === 'recording';
+  const openMics = (el: HTMLElement) => {
+    setAnchor(el);
+    listMicrophones().then(setMics, () => setMics([]));
+  };
+  const pick = (id: string) => { setPreferredMic(id); setMic(id); setAnchor(null); };
+  const title = on ? 'Stop recording (saved beside the deck)'
+    : `Record this presentation — the audience window (the output window if open) and the microphone${recording.error ? `\nLast attempt: ${recording.error}` : ''}`;
+  return (
+    <Stack direction="row" spacing={0.25} alignItems="center">
+      <Tooltip title={<span style={{ whiteSpace: 'pre-line' }}>{title}</span>}>
+        <span>
+          <IconButton onClick={onToggle} disabled={busy} size="small" aria-label={on ? 'Stop recording' : 'Start recording'}
+            sx={{ color: on ? '#ff4d4f' : recording.error ? '#f0a020' : '#aaa', '&:hover': { color: on ? '#ff7875' : '#fff' } }}>
+            {busy ? <CircularProgress size={16} sx={{ color: '#aaa' }} /> : on ? <StopCircleIcon fontSize="small" /> : <FiberManualRecordIcon fontSize="small" />}
+          </IconButton>
+        </span>
+      </Tooltip>
+      {on && <span style={{ color: '#ff4d4f', fontSize: 12, fontVariantNumeric: 'tabular-nums', minWidth: 34 }}>{clock(recording.seconds)}</span>}
+      {!on && (
+        <Tooltip title="Microphone for recording">
+          <span><IconButton size="small" disabled={busy} aria-label="Microphone for recording" onClick={(e) => openMics(e.currentTarget)} sx={{ color: '#aaa', '&:hover': { color: '#fff' } }}><MicIcon fontSize="small" /></IconButton></span>
+        </Tooltip>
+      )}
+      <Menu anchorEl={anchor} open={!!anchor} onClose={() => setAnchor(null)} sx={{ zIndex: 3200 }}>
+        {[{ deviceId: '', label: 'System default' }, ...mics].map((m) => (
+          <MenuItem key={m.deviceId || 'default'} dense onClick={() => pick(m.deviceId)}>
+            <CheckIcon fontSize="small" sx={{ mr: 1, visibility: m.deviceId === mic ? 'visible' : 'hidden' }} />{m.label}
+          </MenuItem>
+        ))}
+      </Menu>
+    </Stack>
+  );
+};
 
 export const SlideControls: React.FC<SlideControlsProps> = ({
   mode, setMode,
@@ -54,7 +106,8 @@ export const SlideControls: React.FC<SlideControlsProps> = ({
   canUndo, canRedo, onUndo, onRedo,
   containerStyle, useLaserPointerMode,
   stylusOnly, setStylusOnly,
-  onHistoryBack, onHistoryForward, canHistoryBack, canHistoryForward
+  onHistoryBack, onHistoryForward, canHistoryBack, canHistoryForward,
+  recording, onToggleRecording,
 }) => {
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const isDragging = useRef(false);
@@ -256,6 +309,13 @@ export const SlideControls: React.FC<SlideControlsProps> = ({
             </Tooltip>
           )}
         </Stack>
+
+        {recording && onToggleRecording && (
+          <>
+            <Divider orientation="vertical" flexItem sx={{ bgcolor: 'rgba(255,255,255,0.2)', mx: 1, my: 1 }} />
+            <RecordControls recording={recording} onToggle={onToggleRecording} />
+          </>
+        )}
 
         {onClose && (
            <>

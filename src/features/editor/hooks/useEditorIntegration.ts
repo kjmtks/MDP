@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback, useMemo } from 'react';
 import { ViewUpdate } from '@uiw/react-codemirror';
 import { markdown as markdownLang } from '@codemirror/lang-markdown';
-import { StateField, StateEffect, Prec, type Extension, type Text } from '@codemirror/state';
+import { EditorSelection, StateField, StateEffect, Prec, type Extension, type Text } from '@codemirror/state';
 import { Decoration, type DecorationSet, EditorView, keymap } from '@codemirror/view';
 import { loadLanguage } from '@uiw/codemirror-extensions-langs';
 
@@ -194,6 +194,32 @@ export const useEditorIntegration = ({
     [handleSave, settings],
   );
 
+  // Give each selection a reading for the TTS: `[[selection|]]` with the cursor
+  // where the reading goes (a ruby — spoken by the narrator, never displayed). No
+  // selection: `[[|]]` with the cursor on the base.
+  const readingKeymap = useMemo(() => keymap.of(
+    resolveKeys(actionById('editor.addReading')!, settings).map((key) => ({
+      key,
+      preventDefault: true,
+      run: (v: EditorView) => {
+        v.dispatch(v.state.update(v.state.changeByRange((range) => {
+          // Only the words are the base: spaces / a line break caught in the
+          // selection (a triple-click takes the newline) stay outside — a ruby's
+          // base cannot span lines.
+          const text = v.state.sliceDoc(range.from, range.to);
+          const lead = /^\s*/.exec(text)![0];
+          const core = text.slice(lead.length).replace(/\s+$/, '');
+          const trail = text.slice(lead.length + core.length);
+          const ruby = `[[${core}|]]`;
+          const insert = lead + ruby + trail;
+          const cursor = range.from + lead.length + (core ? ruby.length - 2 : 2);
+          return { changes: { from: range.from, to: range.to, insert }, range: EditorSelection.cursor(cursor) };
+        }), { scrollIntoView: true, userEvent: 'input' }));
+        return true;
+      },
+    })),
+  ), [settings]);
+
   const slideNavKeymap = useMemo(() => {
     const isSlide = !!currentFileName?.endsWith('.slide.md');
     const prevKeys = resolveKeys(actionById('editor.slidePrev')!, settings);
@@ -208,6 +234,7 @@ export const useEditorIntegration = ({
     const baseExts: Extension[] = [
       EditorView.lineWrapping,
       saveKeymap,
+      readingKeymap,
       slideNavKeymap,
       drawioCollapsePlugin,
       drawingCollapsePlugin,
@@ -238,7 +265,7 @@ export const useEditorIntegration = ({
     }
 
     return baseExts;
-  }, [saveKeymap, slideNavKeymap, currentFileName]);
+  }, [saveKeymap, readingKeymap, slideNavKeymap, currentFileName]);
 
   useEffect(() => {
     const view = editorRef.current?.view;

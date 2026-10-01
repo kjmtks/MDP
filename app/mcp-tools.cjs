@@ -107,7 +107,7 @@ const TOOLS = [
   },
   {
     name: 'set_script',
-    description: 'Write the READ-ALOUD SCRIPT (the manuscript the presenter will speak, verbatim) for one slide, WITHOUT touching its visible content. Shown prominently in the presenter view; its length drives the slide\'s talk-time estimate; the narrated auto-play speaks it with subtitles. IN-SCRIPT MARKERS: put one `[[step]]` where each in-slide @build should advance (exactly one per @build step, in order — lint flags mismatches); write maths as KaTeX `\\(…\\)` (rendered in the subtitle) followed by its spoken reading `[[say: よみ]]` (a formula without [[say]] is shown, not spoken) — do NOT spell maths out phonetically in plain text. script="" clears. Markdown, multi-line OK (must not contain "-->").',
+    description: 'Write the READ-ALOUD SCRIPT (the manuscript the presenter will speak, verbatim) for one slide, WITHOUT touching its visible content. Shown prominently in the presenter view; its length drives the slide\'s talk-time estimate; the narrated auto-play speaks it with subtitles. IN-SCRIPT MARKERS: put one `[[step]]` where each in-slide @build should advance (exactly one per @build step, in order — lint flags mismatches). READINGS for the narrator are rubies `[[base|reading]]` — the base is exactly what is written before the `|`, e.g. `ルビの[[仕様|しよう]]を[[改良|かいりょう]]したい。`, `[[SVD|エスブイディー]]`; the TTS says the reading, while the presenter view, the subtitles and the talk-time estimate use only the base — give hard or ambiguous words one. Write maths as KaTeX with its spoken reading as a ruby, `[[\\(x^2\\)|エックスの二乗]]` (the subtitle renders the maths; a formula without a reading is shown, not spoken; the older `\\(…\\)[[say: よみ]]` means the same) — do NOT spell maths out phonetically in plain text. Cues for modules during the narration: `[[emit: cmd:TAG ACTION | label]]` fires the command to the module whose directive has `tag: TAG`, `[[emit-wait: cmd:TAG ACTION timeout=30s | label]]` also pauses the narration until the module finishes, `[[pause: 2s]]` holds (see get_slide_spec). script="" clears. Markdown, multi-line OK (must not contain "-->").',
     inputSchema: S({ path: str('Deck path'), slide: num('Slide number (1-based)'), script: str('Read-aloud Markdown ("" clears)'), mode: { type: 'string', enum: ['replace', 'append'], description: 'replace (default) or append' } }, ['path', 'slide', 'script']),
   },
   {
@@ -117,7 +117,7 @@ const TOOLS = [
   },
   {
     name: 'batch_set_slides',
-    description: 'TOKEN-SAVER: set @note / @script / @time on MANY slides in ONE call (one write), instead of calling set_notes/set_script/set_time per slide. Ideal for generating a whole talk manuscript or distributing @time across a deck. `edits` = [{slide, note?, script?, time?, mode?}] (only the fields you pass are changed; "" clears one; mode="append" for note/script). Scripts support the narration markers — `[[step]]` per @build step, KaTeX `\\(…\\)` + `[[say: よみ]]` for maths (see set_script). Atomic: any invalid edit aborts the whole batch.',
+    description: 'TOKEN-SAVER: set @note / @script / @time on MANY slides in ONE call (one write), instead of calling set_notes/set_script/set_time per slide. Ideal for generating a whole talk manuscript or distributing @time across a deck. `edits` = [{slide, note?, script?, time?, mode?}] (only the fields you pass are changed; "" clears one; mode="append" for note/script). Scripts support the narration markers — `[[step]]` per @build step, rubies `[[語|よみ]]` for readings and `[[\\(…\\)|よみ]]` for maths, `[[emit…]]` cues for modules (see set_script). Atomic: any invalid edit aborts the whole batch.',
     inputSchema: S({ path: str('Deck path'), edits: { type: 'array', description: 'Per-slide edits', items: { type: 'object', properties: { slide: num('1-based'), note: str('@note ("" clears)'), script: str('@script ("" clears)'), time: str('@time ("" clears)'), mode: { type: 'string', enum: ['replace', 'append'] } }, required: ['slide'] } }, verify: { type: 'boolean', description: 'Also run check_deck (validate+lint+measure) and include `verification` in the response' } }, ['path', 'edits']),
   },
   {
@@ -270,6 +270,29 @@ const TOOLS = [
     description: 'CREATE or update a workspace asset: kind "module" (.mdpmod.xml — reusable slide component; self-describe it for AIs via <aiSpec>), "effect" (.mdpfx.xml — transition/build animation), "theme" (.css — slide design-token overrides) or "snippet" (.json — insertable text snippets grouped by category). Saved under the workspace .mdp and registered live. The user should review scripts you write. Study get_asset_templates (with this kind) and an existing asset first (get_slide_spec / get_module_spec / read_module / read_theme / list_snippets). Slide skills have their own tools (write_skill / patch_skill / delete_skill).',
     inputSchema: S({ kind: { type: 'string', enum: ['module', 'effect', 'theme', 'snippet'], description: 'Asset kind' }, name: str('Asset name (letters/digits/-/_)'), content: str('Full file content (XML for module/effect, CSS for theme, a JSON array of {category,items} for snippet)'), dir: str('Folder whose .mdp to write into (default: workspace root)') }, ['kind', 'name', 'content']),
   },
+  {
+    name: 'export_video',
+    description: 'Queue a NARRATED VIDEO of a deck — the narrated auto-play: each slide\'s @script read aloud by the user\'s TTS voice, the slides following along, subtitles burned in — saved beside the deck as <deck>.mp4 (REPLACING an earlier one), optionally with <deck>.vtt. mode "exact" (default) records the REAL auto-play in a hidden window: module scripts, slide transitions, build effects and `[[emit…]]` cues exactly as they run; it takes as long as the show plus the narration synthesis. mode "fast" renders still pictures joined by cross-fades, much quicker than real time, but module scripts and transitions do not play. Needs the desktop app and a narrator that produces audio (VOICEVOX or a TTS server, set in MDP — not Web Speech); hidden slides are left out unless includeHidden. Returns a jobId at once; the job runs in the background, one at a time — poll get_video_jobs for its progress and output path. Tell the user a video is being made (it appears in MDP\'s video queue panel).',
+    inputSchema: S({
+      path: str('Deck path (default: the active deck)'),
+      mode: { type: 'string', enum: ['exact', 'fast'], description: 'exact (default): record the real auto-play; fast: still pictures + cross-fades' },
+      height: { type: 'number', enum: [720, 1080, 2160], description: 'Frame height in pixels (default 1080); the width follows the deck\'s aspect' },
+      subtitles: { type: 'boolean', description: 'Burn the subtitles into the picture (default true)' },
+      vtt: { type: 'boolean', description: 'Also save the subtitles as <deck>.vtt (default false)' },
+      includeHidden: { type: 'boolean', description: 'Include hidden slides (default false)' },
+      fade: { type: 'boolean', description: 'fast mode only: cross-fade picture changes (default true)' },
+    }),
+  },
+  {
+    name: 'get_video_jobs',
+    description: 'The narrated-video export queue (cheap — poll it after export_video): per job its id, deck, mode, status (queued / running / done / failed / cancelled), stage (prepare = synthesizing the narration, record = recording the exact auto-play, render = fast rendering, finish = closing the file), progress (done/total narration lines or stretches), video seconds so far, and when done the output path(s) — or the error.',
+    inputSchema: S({}),
+  },
+  {
+    name: 'cancel_video',
+    description: 'Cancel a queued or running narrated-video export (jobId from export_video / get_video_jobs), or every queued and running one with all:true. A cancelled job leaves no half-written file; an earlier finished video of the same deck stays.',
+    inputSchema: S({ jobId: str('The job to cancel'), all: { type: 'boolean', description: 'Cancel every queued and running job' } }),
+  },
 ];
 
 // Tools that only make sense in the desktop app: they act on the editor window the
@@ -278,6 +301,8 @@ const TOOLS = [
 // the visual tools go through a headless renderer (app/mcp-render.cjs).
 const DESKTOP_ONLY = new Set([
   'get_active_deck', 'open_deck', 'save_deck', 'reload_deck', 'goto_slide', 'insert_at_cursor',
+  // The narrated-video export runs in the desktop app (hidden window, streamed file).
+  'export_video', 'get_video_jobs', 'cancel_video',
 ]);
 
 // Tools whose answer can only come from MDP's renderer: the live module / effect

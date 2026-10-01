@@ -13,6 +13,10 @@ import { apiClient, isMcpRenderer } from '../../api/apiClient';
 import type { OpenTab } from '../fileTree/hooks/useFileManager';
 import type { ThemeOption } from '../../types';
 import type { WorkspaceFont, MdpFontDefaults, FontRequirementStatus } from '../fonts/fontTypes';
+import { cancelAllVideos, cancelVideo, getVideoJobs } from '../video/videoQueue';
+import { videoBaseOf, videoExportSupported, type VideoOptions } from '../video/videoTypes';
+import { synthesizesAudio, type TtsEngine } from '../tts/ttsService';
+import { estimateDeckSeconds } from '../slide/talkTime';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Slide = any;
@@ -57,6 +61,10 @@ export interface McpCtx {
   // Discard the active tab's edits and re-read the file from disk.
   reloadFileFromDisk: (path: string) => Promise<string>;
   onRefreshTree: () => void;
+  // Narrated video export (export_video): queues the ACTIVE deck, as the Export menu does.
+  queueVideo: (options: VideoOptions) => string | null;
+  ttsEngine: TtsEngine;
+  readingCpm: number;
 }
 
 interface MeasureJob {
@@ -436,6 +444,12 @@ export const McpBridge: React.FC<{ ctx: McpCtx }> = ({ ctx }) => {
   When the user has rehearsed (presenter stopwatch or the Rehearse dialog),
   get_rehearsals gives MEASURED seconds per slide vs the plan — trust those over
   estimates: rebalance @time and trim/expand @script where the speaker over/under-runs.
+  For the TTS narrator, give hard or ambiguous words a ruby \`[[語|よみ]]\` and
+  formulas a spoken reading \`[[\\(…\\)|よみ]]\` — readings are spoken, never shown.
+- **Narrated video.** export_video queues a video of the narrated auto-play beside
+  the deck (exact = the real auto-play recorded, as long as the show; fast = still
+  pictures); follow it with get_video_jobs. The narrator must produce audio
+  (VOICEVOX or a TTS server, not Web Speech).
 - **Verify in three passes.** After writing or editing: (1) validate_deck — fixes
   unknown modules/themes/effects and bad parameters deterministically; (2)
   measure_slides — overflowX/overflowY > 0 px means clipped content (split or
@@ -622,6 +636,54 @@ Match the user's style throughout (cached profile if present, else get_style_sam
         case 'insertAtCursor': {
           c.handleInsertText(String(params.text ?? ''));
           return { inserted: true };
+        }
+        // Narrated video export: the deck (opened if a path is given) as it is NOW goes
+        // into the Export menu's queue; the job runs in the background.
+        case 'exportVideo': {
+          if (!videoExportSupported()) throw new Error('Video export needs the MDP desktop app.');
+          const d = await ensureDeck(params?.path ? String(params.path) : undefined);
+          const cc = ctxRef.current;
+          if (!synthesizesAudio(cc.ttsEngine)) {
+            throw new Error('The narrator is Web Speech, which gives no audio data to put in a video — ask the user to choose VOICEVOX or a TTS server in MDP (auto-play or rehearsal panel) first.');
+          }
+          const h = Number(params?.height);
+          const options: VideoOptions = {
+            mode: params?.mode === 'fast' ? 'fast' : 'exact',
+            height: h === 720 || h === 2160 ? h : 1080,
+            subtitles: params?.subtitles !== false,
+            vtt: params?.vtt === true,
+            includeHidden: params?.includeHidden === true,
+            fade: params?.fade !== false,
+          };
+          const jobId = cc.queueVideo(options);
+          if (!jobId) throw new Error('The deck could not be queued.');
+          const showSec = estimateDeckSeconds(cc.slides, cc.readingCpm);
+          return {
+            jobId, deck: d.path, mode: options.mode, output: `${videoBaseOf(d.path)}.mp4`,
+            ...(options.vtt ? { subtitlesFile: `${videoBaseOf(d.path)}.vtt` } : {}),
+            estimatedShowSeconds: showSec,
+            note: options.mode === 'exact'
+              ? 'Queued. An exact export records the real auto-play: expect about the show\'s length (plus synthesizing the narration first). Poll get_video_jobs.'
+              : 'Queued. A fast export renders faster than real time. Poll get_video_jobs.',
+          };
+        }
+        case 'videoJobs': {
+          const jobs = getVideoJobs().map((j) => ({
+            id: j.id, deck: j.deckPath, status: j.status,
+            ...(j.progress ? { stage: j.progress.stage, done: j.progress.done, total: j.progress.total, videoSeconds: Math.round(j.progress.seconds) } : {}),
+            ...(j.result ? { output: j.result.path, videoSeconds: Math.round(j.result.seconds), ...(j.result.vttPath ? { subtitlesFile: j.result.vttPath } : {}) } : {}),
+            ...(j.error ? { error: j.error } : {}),
+          }));
+          return { jobs, ...(jobs.length ? {} : { note: 'The queue is empty.' }) };
+        }
+        case 'cancelVideo': {
+          if (params?.all) { cancelAllVideos(); return { cancelled: 'all' }; }
+          const id = String(params?.jobId || '');
+          const job = getVideoJobs().find((j) => j.id === id);
+          if (!job) throw new Error(`No video job "${id}" — get_video_jobs lists them.`);
+          if (job.status !== 'queued' && job.status !== 'running') return { jobId: id, status: job.status, note: 'Already finished — nothing to cancel.' };
+          cancelVideo(id);
+          return { cancelled: id };
         }
         case 'getDeckText': {
           const tab = c.tabs.find((t) => t.path === params.path);

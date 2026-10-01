@@ -106,6 +106,13 @@ const getSafePath = (targetPath) => {
 const webspaces = require('./app/webspaces.cjs');
 const SPACES = webspaces.load(process.env.MDP_WEB_CONFIG || '');
 const MULTI = !!SPACES;
+// What the administrator allows, and to whom (video export…): in shared mode the
+// deployment config, re-read when it changes; single-user: config.cjs / env.
+const features = require('./app/webFeatures.cjs').create({
+  configFile: MULTI ? process.env.MDP_WEB_CONFIG : '',
+  webspaces, spaces: SPACES,
+  single: { videoExport: config.videoExport, videoExportMaxMB: config.videoExportMaxMB },
+});
 // Group membership snapshot {group:[user,...]}, maintained by the
 // deployment (the lab portal writes it from LDAP). Re-read on mtime
 // change; membership rarely changes so this is cheap and robust.
@@ -305,6 +312,116 @@ app.post('/api/save', async (req, res) => {
     await mdplink.vfsWrite(vres(req, req.body.filename), content);
     res.json({ success: true });
   } catch (e) { res.status(e.status || 500).json({ success: false, error: e.message }); }
+});
+
+// What this user may do here (the administrator's switches) — the client offers a
+// feature only when it is allowed; every route behind one checks again.
+app.get('/api/features', (req, res) => {
+  res.json({ videoExport: features.allowed(req, 'videoExport'), ...features.limits() });
+});
+
+// ---- Streamed binary writes (the web video export) -------------------------------
+// The browser encodes the video itself and sends it in chunks, each at its byte
+// position (the MP4 muxer comes back to patch earlier bytes), into `<name>.part`
+// beside the deck; close either commits it under the real name or deletes it.
+// Only for users the administrator allows ('videoExport'), only .mp4 / .webm, only
+// into a folder the user may write and that is local, at most videoMaxBytes, and
+// one export per video at a time (app/partFile.cjs). The encoder may write nothing
+// for minutes, so the client touches its stream every 30 s; a stream not heard
+// from for STREAM_IDLE_MS (its tab is gone) is dropped with its part file.
+const { openPartFile, touchPartFile, STALE_MS } = require('./app/partFile.cjs');
+const streams = new Map();   // id -> { fh, part, abs, user, touched }
+const STREAM_IDLE_MS = STALE_MS;
+const dropStream = async (id, commit) => {
+  const s = streams.get(id);
+  if (!s) return false;
+  streams.delete(id);
+  await s.fh.close().catch(() => {});
+  if (!commit) { await fs.promises.unlink(s.part).catch(() => {}); return true; }
+  try {
+    await fs.promises.rename(s.part, s.abs);
+  } catch (e) {
+    await fs.promises.unlink(s.part).catch(() => {});
+    throw new Error(`Could not save ${path.basename(s.abs)} — is it open somewhere? (${e.code || e.message})`);
+  }
+  return true;
+};
+const streamOf = (req) => {
+  const s = streams.get(String(req.params.id || ''));
+  // A stream belongs to the user who opened it.
+  if (!s || (MULTI && s.user !== webspaces.userOf(SPACES, req))) {
+    const e = new Error('no such stream'); e.status = 404; throw e;
+  }
+  return s;
+};
+setInterval(() => {
+  for (const [id, s] of streams) if (Date.now() - s.touched > STREAM_IDLE_MS) void dropStream(id, false);
+}, 30 * 1000).unref();
+
+app.post('/api/stream/open', async (req, res) => {
+  try {
+    if (!features.allowed(req, 'videoExport')) return res.status(403).json({ error: 'Video export is not allowed on this server.' });
+    const rel = String((req.body && req.body.path) || '');
+    if (!/\.(mp4|webm)$/i.test(rel)) return res.status(400).json({ error: 'only .mp4 / .webm files' });
+    assertWritable(req, rel);
+    const target = vres(req, rel);
+    if (target.kind !== 'local') return res.status(400).json({ error: 'videos can only be written into a local folder' });
+    const me = MULTI ? webspaces.userOf(SPACES, req) : '';
+    const holder = MULTI ? lockHolder(target.abs) : null;
+    if (holder && holder !== me) return res.status(409).json({ error: `${holder} is editing this file`, owner: holder });
+    // One export per video: say who is making it (partFile.cjs refuses it anyway).
+    const running = [...streams.values()].find((x) => x.abs === target.abs);
+    if (running) {
+      const who = running.user && running.user !== me ? running.user : '';
+      return res.status(409).json(who
+        ? { error: `${who} is exporting this video right now — wait for it to finish.`, owner: who }
+        : { error: 'This video is already being exported (in another tab?) — wait for it to finish, or cancel it there. If that tab was closed, try again in a few minutes.' });
+    }
+    let opened;
+    try {
+      opened = await openPartFile(target.abs);
+    } catch (e) {
+      if (e.code === 'EXPORT_BUSY') return res.status(409).json({ error: e.message });
+      throw e;
+    }
+    const id = require('crypto').randomBytes(16).toString('hex');
+    streams.set(id, { fh: opened.fh, part: opened.part, abs: target.abs, user: me, touched: Date.now() });
+    res.json({ id });
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
+app.put('/api/stream/:id', express.raw({ type: () => true, limit: '64mb' }), async (req, res) => {
+  try {
+    const s = streamOf(req);
+    const pos = Number(req.query.pos);
+    if (!Number.isSafeInteger(pos) || pos < 0) return res.status(400).json({ error: 'bad position' });
+    const data = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+    if (pos + data.length > features.limits().videoMaxBytes) {
+      await dropStream(req.params.id, false);
+      return res.status(413).json({ error: 'The video is larger than this server allows.' });
+    }
+    await s.fh.write(data, 0, data.length, pos);
+    s.touched = Date.now();
+    res.json({ ok: true });
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
+// Keep-alive while the encoder has nothing to write yet: the stream stays, and so
+// does its part file's mtime (how another process tells it is still in use).
+app.post('/api/stream/:id/touch', async (req, res) => {
+  try {
+    const s = streamOf(req);
+    s.touched = Date.now();
+    await touchPartFile(s.fh).catch(() => { /* the mtime is a hint */ });
+    res.json({ ok: true });
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
+app.post('/api/stream/:id/close', async (req, res) => {
+  try {
+    streamOf(req);
+    const commit = !!(req.body && req.body.commit);
+    await dropStream(req.params.id, commit);
+    if (commit && MULTI) pokeClients();
+    res.json({ ok: true });
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 });
 
 app.post('/api/rename', async (req, res) => {

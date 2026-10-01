@@ -8,6 +8,8 @@ const mdplink = require('./mdplink.cjs');
 const fontsLib = require('./fonts.cjs');
 const fontInstall = require('./fontInstall.cjs');
 const skillsLib = require('./skills.cjs');
+const sshTunnel = require('./sshTunnel.cjs');
+const { openPartFile } = require('./partFile.cjs');
 // Resolve a workspace-relative path through any `.mdplink` it crosses.
 const vresolve = (rel) => mdplink.resolve(currentBaseDir, rel || '');
 // Resolve to the FILE itself when the path is a `.mdplink` (so delete/rename act on
@@ -68,6 +70,9 @@ mainWindow = new BrowserWindow({
   // rehearsal recorder must not freeze when the window is not on top.
   // Web links (e.g. a required font's homepage) go to the system browser instead —
   // an app window would hand the page the preload's file API.
+  // window.open's width/height are the PAGE's size, as in a browser (not the frame's):
+  // the output window then opens exactly at the deck's shape — no bars in a screen
+  // share or a recording of it.
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:/i.test(url)) {
       shell.openExternal(url).catch(() => {});
@@ -76,6 +81,7 @@ mainWindow = new BrowserWindow({
     return {
       action: 'allow',
       overrideBrowserWindowOptions: {
+        useContentSize: true,
         webPreferences: {
           preload: path.join(__dirname, 'preload.cjs'),
           nodeIntegration: false,
@@ -99,6 +105,7 @@ mainWindow = new BrowserWindow({
   mainWindow.on('closed', () => {
     mainWindow = null;
     if (captureWin && !captureWin.isDestroyed()) { try { captureWin.destroy(); } catch (e) { /* ignore */ } }
+    for (const w of showExportWins.values()) { if (!w.isDestroyed()) { try { w.destroy(); } catch (e) { /* ignore */ } } }
     if (process.platform !== 'darwin') app.quit();
   });
 
@@ -164,6 +171,9 @@ app.whenReady().then(async () => {
   // Machine-local SSH state (jump-host bypass toggle, cache config) + offline cache
   // dir — kept out of the workspace.
   mdplink.initLocalState(path.join(app.getPath('userData'), 'mdp-local.json'), path.join(app.getPath('userData'), 'mdp-cache'));
+  // SSH jump host for the TTS-server relay: pinned host keys and secrets encrypted with
+  // the OS keystore, machine-local (see sshTunnel.cjs).
+  sshTunnel.init({ file: path.join(app.getPath('userData'), 'mdp-ssh.json'), safeStorage: require('electron').safeStorage });
 
   protocol.handle('mdp-file', async (request) => {
     try {
@@ -347,18 +357,29 @@ ipcMain.handle('getRemoteInfo', () => remoteServer.getRemoteInfo());
 
 ipcMain.handle('getAppVersion', () => app.getVersion());
 
-// Irodori-TTS calls from the renderer: that server sends no CORS headers by
-// default, so the page's own fetch is blocked. The relay only forwards to its
-// API paths (see ttsRelay.cjs).
+// TTS-server calls from the renderer (an OpenAI-compatible speech API): such
+// servers usually send no CORS headers, so the page's own fetch is blocked. The
+// relay only forwards to the speech API's paths (see ttsRelay.cjs).
 const { relayTtsHttp, abortTtsHttp } = require('./ttsRelay.cjs');
 ipcMain.handle('ttsHttp', (_event, req) => relayTtsHttp(req));
 // Stop / cancel in the renderer: cut the request off so the server stops too.
 ipcMain.handle('ttsHttpAbort', (_event, id) => abortTtsHttp(id));
+// The SSH jump host those calls may go through: the settings panel stores or
+// clears a secret and learns WHETHER one is stored — it can never read one back —
+// and pins the bastion's host key after the user compared the fingerprint.
+const sshReply = (fn) => async (_event, req) => {
+  try { return { ok: true, info: fn(req) }; }
+  catch (e) { return { ok: false, problem: (e && e.sshProblem) || { code: 'error', message: String((e && e.message) || e) } }; }
+};
+ipcMain.handle('ttsSshInfo', sshReply((req) => sshTunnel.info(req)));
+ipcMain.handle('ttsSshSecret', sshReply((req) => sshTunnel.setSecret(req)));
+ipcMain.handle('ttsSshTrust', sshReply((req) => sshTunnel.trust(req)));
+ipcMain.handle('ttsSshForget', sshReply((req) => sshTunnel.forget(req)));
 
 // The output window (`#/output`) asks to keep its CONTENT at the deck's aspect
 // ratio, so a drag-resize can never letterbox what a screen share captures.
-// Electron applies the constraint to the drag itself; the window frame is
-// accounted for by the API.
+// Electron applies the constraint to the drag itself — on Windows to the whole
+// window, frame included, so the page trims its height once a resize settles.
 ipcMain.on('window-set-aspect-ratio', (event, ratio) => {
   const win = BrowserWindow.fromWebContents(event.sender);
   const r = Number(ratio);
@@ -435,34 +456,125 @@ async function ensureCaptureWin() {
   return captureWin;
 }
 
-ipcMain.handle('captureSlide', async (event, data) => {
+// The window the audience sees, for recording a live presentation: the output
+// window when one is open (aspect-locked — made for capture), else the window that
+// asks (its slideshow). Recorded as a TAB (getUserMedia chromeMediaSource 'tab',
+// `id` valid for 10 s and only for the asking page): the page's own pixels, never
+// the window frame, re-rendered at the capture size, and it keeps recording while
+// the window is covered, minimised or on another display. `width`/`height` = the
+// page's size (its shape decides the video's).
+ipcMain.handle('getSlideWindowSource', (event) => {
+  const output = BrowserWindow.getAllWindows().find((w) =>
+    !w.isDestroyed() && w !== captureWin && /#\/output/.test(w.webContents.getURL()));
+  const win = output || BrowserWindow.fromWebContents(event.sender);
+  if (!win) throw new Error('There is no window to record.');
+  const [width, height] = win.getContentSize();
+  return { id: win.webContents.getMediaSourceId(event.sender), which: output ? 'output' : 'main', width, height };
+});
+
+// The "exact" video export records the REAL narrated auto-play: it runs in a hidden
+// window of its own (`#/show-export?job=…`, the deck handed over by the page that
+// asked), is recorded as a tab by that page (picture and sound), and is closed
+// when the job ends. Never shown, but painting (paintWhenInitiallyHidden) and never
+// throttled; its sound is muted here — a tab capture still receives it — so a
+// background export never plays aloud. Sized to the slide's CSS size: the capture
+// re-renders it at the video's size.
+const showExportWins = new Map();   // job id → BrowserWindow
+ipcMain.handle('openShowExport', async (_event, req) => {
+  const jobId = String((req && req.jobId) || '');
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(jobId)) throw new Error('invalid job id');
+  const width = Math.max(320, Math.min(7680, Math.round(Number(req.width) || 1280)));
+  const height = Math.max(180, Math.min(4320, Math.round(Number(req.height) || 720)));
+  const old = showExportWins.get(jobId);
+  if (old && !old.isDestroyed()) old.destroy();
+  const win = new BrowserWindow({
+    show: false,
+    paintWhenInitiallyHidden: true,
+    useContentSize: true,
+    width, height,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.cjs'),
+      nodeIntegration: false,
+      contextIsolation: true,
+      backgroundThrottling: false,
+      autoplayPolicy: 'no-user-gesture-required',
+    },
+  });
+  showExportWins.set(jobId, win);
+  win.on('closed', () => { if (showExportWins.get(jobId) === win) showExportWins.delete(jobId); });
+  win.webContents.setAudioMuted(true);
+  await win.loadFile(path.join(app.getAppPath(), 'dist', 'index.html'), { hash: `/show-export?job=${jobId}` });
+  return true;
+});
+// A tab-capture source id of that window for the asking page (valid 10 s).
+ipcMain.handle('showExportSource', (event, jobId) => {
+  const win = showExportWins.get(String(jobId));
+  if (!win || win.isDestroyed()) throw new Error('The export window is gone.');
+  return { id: win.webContents.getMediaSourceId(event.sender) };
+});
+ipcMain.handle('closeShowExport', (_event, jobId) => {
+  const win = showExportWins.get(String(jobId));
+  if (win && !win.isDestroyed()) win.destroy();
+  showExportWins.delete(String(jobId));
+  return true;
+});
+
+// One capture window serves every caller (remote images, PowerPoint, video frames):
+// captures run one at a time, or two callers would resize and re-render the window
+// under each other.
+let captureChain = Promise.resolve();
+ipcMain.handle('captureSlide', (event, data) => {
+  const run = captureChain.then(() => captureSlideNow(data));
+  captureChain = run.catch(() => {});
+  return run;
+});
+
+async function captureSlideNow(data) {
   const win = await ensureCaptureWin();
   // A hidden window CAN be sized past the display (verified: 2038x2880 on a
   // 2560x1392 work area captures fine), so no clamping workaround is needed —
   // but an empty capture must not be passed on as a "data:," that only fails
   // several layers later, in an image decoder.
-  const wantW = Math.round(data.width);
-  const wantH = Math.round(data.height);
+  // `outWidth`/`outHeight` = a video frame: the page scales the slide up to that
+  // size, and PNG bytes of exactly that many pixels come back (not a data URL).
+  const out = data.outWidth && data.outHeight ? { w: Math.round(data.outWidth), h: Math.round(data.outHeight) } : null;
+  const wantW = out ? out.w : Math.round(data.width);
+  const wantH = out ? out.h : Math.round(data.height);
   win.setContentSize(wantW, wantH);
   win.webContents.send('capture-render', data);
   // Bounded wait: if the offscreen renderer errors/reloads and never reports
   // ready, resolve anyway — an un-timed listener would leak (one per capture)
   // and hang the invoking IPC forever.
-  await new Promise((resolve) => {
-    const timer = setTimeout(() => { ipcMain.removeListener('capture-ready', handler); resolve(); }, 20000);
+  const ready = await new Promise((resolve) => {
+    const timer = setTimeout(() => { ipcMain.removeListener('capture-ready', handler); resolve(false); }, 20000);
     const handler = (e, id) => {
-      if (id === data.id) { clearTimeout(timer); ipcMain.removeListener('capture-ready', handler); resolve(); }
+      if (id === data.id) { clearTimeout(timer); ipcMain.removeListener('capture-ready', handler); resolve(true); }
     };
     ipcMain.on('capture-ready', handler);
   });
+  // A frame baked into a video must not be a half-rendered slide.
+  if (!ready && out) throw new Error('The slide did not finish rendering within 20 s.');
   const img = await win.webContents.capturePage();
   if (img.isEmpty()) throw new Error(`captureSlide produced an empty image (requested ${wantW}x${wantH}, window ${win.getContentSize().join('x')})`);
+  if (out) {
+    // capturePage returns device pixels (×1.5 on a 150 % display): resample to the frame size.
+    const size = img.getSize();
+    const frame = size.width === out.w && size.height === out.h ? img : img.resize({ width: out.w, height: out.h, quality: 'best' });
+    return frame.toPNG();
+  }
   return img.toDataURL();
-});
+}
 
 app.on('before-quit', () => {
   remoteServer.stopRemoteServer();
   mdplink.closeAll();
+  sshTunnel.closeAll();
+  // A video export cut off by quitting leaves no half-written file behind.
+  for (const w of streamWrites.values()) {
+    try { fsSync.closeSync(w.fh.fd); } catch { /* ignore */ }
+    try { fsSync.rmSync(w.tmp, { force: true }); } catch { /* ignore */ }
+  }
+  streamWrites.clear();
   try { require('./mcp-bridge.cjs').stop(); } catch { /* ignore */ }
   if (captureWin && !captureWin.isDestroyed()) captureWin.destroy();
 });
@@ -699,6 +811,53 @@ ipcMain.handle('pickFile', async (event, options) => {
 // comes from a native folder dialog and may sit anywhere on disk.
 ipcMain.handle('writeBinaryToPath', async (event, { filePath, content }) => {
   await fs.writeFile(filePath, Buffer.from(content, 'base64'));
+  return true;
+});
+
+// Streamed writes for the video export (hundreds of MB — never one base64 string).
+// A workspace file is opened as `<name>.part`, written in chunks at the positions
+// the MP4 muxer asks for (it patches its header last), then renamed into place —
+// or deleted when the export is cancelled or fails. Video / subtitle files only.
+// The part file is opened exclusively (app/partFile.cjs): another export of the same
+// video — the web server writing into the same folder — is not overwritten.
+const streamWrites = new Map();   // id → { fh, tmp, final }
+ipcMain.handle('streamFileOpen', async (_event, relPath) => {
+  if (!/\.(mp4|webm|vtt)$/i.test(String(relPath || ''))) throw new Error('Only a video or subtitle file can be written this way.');
+  const target = vresolve(relPath);
+  if (target.kind !== 'local') throw new Error('Videos can only be written to a local folder (not through an SSH link).');
+  // This app exports one video at a time, so a stream still open on the same file
+  // was left by a page reloaded mid-export: drop it rather than wait for it.
+  for (const [oldId, w] of streamWrites) {
+    if (w.final !== target.abs) continue;
+    streamWrites.delete(oldId);
+    await w.fh.close().catch(() => {});
+    await fs.rm(w.tmp, { force: true }).catch(() => {});
+  }
+  const { part: tmp, fh } = await openPartFile(target.abs);
+  const id = `w${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+  streamWrites.set(id, { fh, tmp, final: target.abs });
+  return id;
+});
+ipcMain.handle('streamFileWrite', async (_event, { id, position, data }) => {
+  const w = streamWrites.get(id);
+  if (!w) throw new Error('This file is no longer open.');
+  const buf = Buffer.from(data.buffer, data.byteOffset, data.byteLength);
+  await w.fh.write(buf, 0, buf.length, position);
+  return true;
+});
+ipcMain.handle('streamFileClose', async (_event, { id, commit }) => {
+  const w = streamWrites.get(id);
+  if (!w) return false;
+  streamWrites.delete(id);
+  await w.fh.close();
+  if (!commit) { await fs.rm(w.tmp, { force: true }); return false; }
+  try {
+    await fs.rm(w.final, { force: true });
+    await fs.rename(w.tmp, w.final);
+  } catch (e) {
+    await fs.rm(w.tmp, { force: true }).catch(() => {});
+    throw new Error(`Could not replace ${path.basename(w.final)} — is it open (e.g. playing in the preview)? ${e.code || e.message}`);
+  }
   return true;
 });
 

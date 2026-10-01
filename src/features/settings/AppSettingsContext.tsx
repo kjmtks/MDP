@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
 import { apiClient } from '../../api/apiClient';
-import { type AppSettings, DEFAULT_SETTINGS, SETTINGS_PATH, normalizeSettings } from './types';
+import { type AppSettings, DEFAULT_SETTINGS, SETTINGS_PATH, legacyTtsKeys, normalizeSettings } from './types';
 import { appThemeVariant } from '../../styles/appThemes';
 import { setModuleTtsDefaults } from '../tts/moduleTtsApi';
 
@@ -78,7 +78,8 @@ export const AppSettingsProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const persist = useCallback((next: AppSettings) => {
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(() => {
-      apiClient.setAppSettings(next).catch(() => { /* ignore write errors */ });
+      // Also under the TTS keys an older install on this computer reads (legacyTtsKeys).
+      apiClient.setAppSettings({ ...next, tts: { ...next.tts, ...legacyTtsKeys(next.tts) } }).catch(() => { /* ignore write errors */ });
       loadedRef.current = true;
     }, 300);
   }, []);

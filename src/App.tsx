@@ -4,6 +4,7 @@ import PresenterPage from './pages/PresenterPage';
 import RemotePage from './pages/RemotePage';
 import OutputPage from './pages/OutputPage';
 import CapturePage from './features/remote/capture/CapturePage';
+import ShowExportPage from './features/video/ShowExportPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { NotificationHost } from './components/error/NotificationHost';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -13,6 +14,8 @@ function CurrentPage() {
   const hash = window.location.hash;
 
   if (hash.includes('#/capture')) return <CapturePage />;
+  // The hidden window of an "exact" video export (the narrated auto-play, recorded).
+  if (hash.includes('#/show-export')) return <ShowExportPage />;
   if (path.endsWith('/presenter') || hash.includes('#/presenter')) return <PresenterPage />;
   if (path.endsWith('/remote') || hash.includes('#/remote')) return <RemotePage />;
   // The audience-facing output window: slide only, no chrome (see OutputPage).

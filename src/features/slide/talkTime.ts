@@ -14,6 +14,8 @@
 //
 // Reading speed (chars/min) is per-person → passed in (from the app setting, which
 // can be calibrated). Defaults to 320 (Japanese ≈300–350).
+import { stripScriptMarkers } from '../autoplay/autoplay';
+
 export const DEFAULT_READING_CPM = 320;
 const BASE_SEC = 20;        // per improvised slide, before content
 const BULLET_SEC = 7;
@@ -23,8 +25,12 @@ const BODY_WEIGHT = 0.5;    // improvised body text isn't read verbatim
 const nonWs = (s: string): number => s.replace(/\s+/g, '').length;
 const stripComments = (raw: string): string => raw.replace(/<!--[\s\S]*?-->/g, ' ');
 const bodyChars = (raw: string): number => nonWs(stripComments(raw));
-const scriptChars = (raw: string): number =>
-  nonWs([...raw.matchAll(/<!--\s*@script:\s*([\s\S]*?)-->/g)].map((m) => m[1]).join(''));
+// What a script COUNTS: the text the presenter reads — ruby readings (`[[語|よみ]]`)
+// and `[[say:…]]` / `[[step]]` / event markers are not counted, so annotating a
+// script for the TTS never lengthens its estimate. Exported for the reading-speed
+// calibration, which must count a passage exactly the way the estimate does.
+export const scriptChars = (raw: string): number =>
+  nonWs(stripScriptMarkers([...raw.matchAll(/<!--\s*@script:\s*([\s\S]*?)-->/g)].map((m) => m[1]).join('')));
 
 // Parse a human time string to seconds: `90s`, `90`, `2m`, `1m30s`, `1.5m`, `1:30`
 // (mm:ss), `1h`. Bare integer = seconds. Returns null if unparseable.

@@ -40,6 +40,7 @@ export const ACTIONS: ActionDef[] = [
   { id: 'editor.save', label: 'Save file', scope: 'editor', defaultKeys: ['Mod-s'] },
   { id: 'editor.slidePrev', label: 'Jump to previous slide', scope: 'editor', defaultKeys: ['PageUp'] },
   { id: 'editor.slideNext', label: 'Jump to next slide', scope: 'editor', defaultKeys: ['PageDown'] },
+  { id: 'editor.addReading', label: 'Give the selection a reading for the narrator (ruby [[…|よみ]])', scope: 'editor', defaultKeys: ['Mod-Alt-r'] },
 
   // ---- slideshow -----------------------------------------------------------
   { id: 'slideshow.toggleControls', label: 'Toggle controls', scope: 'slideshow', defaultKeys: ['p'] },

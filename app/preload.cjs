@@ -20,9 +20,28 @@ contextBridge.exposeInMainWorld('electronAPI', {
   exportPdf: (filename) => ipcRenderer.send('export-pdf', filename),
   // Lock THIS window's content aspect ratio (output window); no-op elsewhere.
   setWindowAspectRatio: (ratio) => ipcRenderer.send('window-set-aspect-ratio', ratio),
-  // Irodori-TTS request relayed through the main process (the server has no CORS).
+  // TTS-server request relayed through the main process (such servers send no CORS headers).
   ttsHttp: (req) => ipcRenderer.invoke('ttsHttp', req),
   ttsHttpAbort: (id) => ipcRenderer.invoke('ttsHttpAbort', id),
+  // Its optional SSH jump host: what is stored (never the secrets), store/clear a
+  // password or key passphrase, pin / forget the bastion's host key.
+  ttsSshInfo: (req) => ipcRenderer.invoke('ttsSshInfo', req),
+  ttsSshSecret: (req) => ipcRenderer.invoke('ttsSshSecret', req),
+  ttsSshTrust: (req) => ipcRenderer.invoke('ttsSshTrust', req),
+  ttsSshForget: (req) => ipcRenderer.invoke('ttsSshForget', req),
+  // Streamed binary writes (the video export): open a workspace file, write
+  // chunks at positions, then commit (rename into place) or discard.
+  streamFileOpen: (relPath) => ipcRenderer.invoke('streamFileOpen', relPath),
+  streamFileWrite: (req) => ipcRenderer.invoke('streamFileWrite', req),
+  streamFileClose: (req) => ipcRenderer.invoke('streamFileClose', req),
+  // Recording a live presentation: the tab-capture source of the window the
+  // audience sees (the output window if open, else this window).
+  getSlideWindowSource: () => ipcRenderer.invoke('getSlideWindowSource'),
+  // The "exact" video export: a hidden window running the narrated auto-play of a
+  // deck (`#/show-export?job=…`), recorded as a tab by the page that opened it.
+  openShowExport: (req) => ipcRenderer.invoke('openShowExport', req),
+  showExportSource: (jobId) => ipcRenderer.invoke('showExportSource', jobId),
+  closeShowExport: (jobId) => ipcRenderer.invoke('closeShowExport', jobId),
   saveBinaryDialog: (args) => ipcRenderer.invoke('saveBinaryDialog', args),
   getLinkConfig: (relPath) => ipcRenderer.invoke('getLinkConfig', relPath),
   setLinkConfig: (args) => ipcRenderer.invoke('setLinkConfig', args),

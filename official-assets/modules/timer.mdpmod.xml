@@ -1,7 +1,7 @@
 <module>
   <name>timer</name>
   <type>inline</type>
-  <description>Countdown timer with start / pause / reset. Self-contained inline element (no closing tag). Movable on the preview in Edit layout; resize is horizontal-only. Interactive: clicking it does not advance the slide. Auto-starts when presenting if autostart:true.</description>
+  <description>Countdown timer with start / pause / reset. Self-contained inline element (no closing tag). Movable on the preview in Edit layout; resize is horizontal-only. Interactive: clicking it does not advance the slide. Auto-starts when presenting if autostart:true. With tag: NAME the @script can command it (cmd:NAME start / pause / reset / set; emit-wait on start waits for 0:00).</description>
   <tags>interactive</tags>
   <aiSpec><![CDATA[
 Use to drop a live countdown timer on a slide (e.g. for exercises, breaks, timed Q&A).
@@ -23,6 +23,15 @@ Parameters:
   align     — alignment when placed in Edit layout: left | center (default) | right.
 
 Example: <!-- @timer minutes: 5, size: lg, label: Break, autostart: true -->
+
+Commands from the @script (give the directive `tag: NAME`, then fire `cmd:NAME`):
+  start | pause (= stop) | toggle | reset | set 90 (or set 1:30 — a new starting time).
+  [[emit-wait: cmd:NAME start timeout=70s | 考える時間]] starts it and PAUSES the narration
+  until it reaches 0:00 (the other commands reply at once). The presenter view shows the
+  markers as clickable chips.
+
+<!-- @timer tag: think, minutes: 1, size: lg -->
+<!-- @script: 一分間考えてみてください。[[emit-wait: cmd:think start timeout=70s | 1分]] では答えです。 -->
 ]]></aiSpec>
   <interactive>true</interactive>
 
@@ -196,42 +205,84 @@ Example: <!-- @timer minutes: 5, size: lg, label: Break, autostart: true -->
         });
 
         if (ctx.role === 'owner') {
+          // ONE instance per window runs the countdown: the editor preview and a
+          // narrated auto-play can both own the same timer (two intervals would count
+          // twice as fast, and a click would toggle it twice) — the presenting one
+          // wins, else whichever there is.
+          const OWNERS = window.__mdpTimerOwners || (window.__mdpTimerOwners = {});
+          const me = { presenting: !!ctx.presenting };
+          const cur = OWNERS[ctx.syncId];
+          if (!cur || me.presenting || !cur.presenting) OWNERS[ctx.syncId] = me;
+          const acting = function () {
+            if (!OWNERS[ctx.syncId]) OWNERS[ctx.syncId] = me;
+            return OWNERS[ctx.syncId] === me;
+          };
+
           let timer = null;
+          let waiters = [];     // emit-wait replies to `start`: sent when it reaches 0:00
+          const release = function () { const w = waiters; waiters = []; w.forEach(function (d) { d(); }); };
           const get = function () { return ctx.getShared() || { remaining: total, running: false, done: false }; };
+          const left = function (st) { return typeof st.remaining === 'number' ? st.remaining : total; };
           const stopInterval = function () { if (timer) { clearInterval(timer); timer = null; } };
           const startInterval = function () {
             if (timer) return;
             timer = setInterval(function () {
-              const st = get();
-              const next = (typeof st.remaining === 'number' ? st.remaining : total) - 1;
-              if (next <= 0) { stopInterval(); ctx.setShared({ remaining: 0, running: false, done: true }); }
+              if (!acting()) { stopInterval(); return; }
+              const next = left(get()) - 1;
+              if (next <= 0) { stopInterval(); ctx.setShared({ remaining: 0, running: false, done: true }); release(); }
               else { ctx.setShared({ remaining: next }); }
             }, 1000);
+          };
+          const start = function () {
+            const st = get();
+            if (st.running) { startInterval(); return true; }
+            if (left(st) <= 0) return false;
+            ctx.setShared({ running: true, done: false }); startInterval();
+            return true;
+          };
+          const pause = function () { stopInterval(); if (get().running) ctx.setShared({ running: false }); };
+          const reset = function (to) {
+            stopInterval(); ctx.setShared({ remaining: to || total, running: false, done: false }); release();
           };
 
           // Initialise the shared state once (first owner to mount wins).
           if (!ctx.getShared()) ctx.setShared({ remaining: total, running: false, done: false });
 
           ctx.onAction(function (type) {
-            const st = get();
-            if (type === 'toggle') {
-              if (st.running) { stopInterval(); ctx.setShared({ running: false }); }
-              else if ((typeof st.remaining === 'number' ? st.remaining : total) > 0) {
-                ctx.setShared({ running: true, done: false }); startInterval();
-              }
-            } else if (type === 'reset') {
-              stopInterval(); ctx.setShared({ remaining: total, running: false, done: false });
-            }
+            if (!acting()) return;
+            if (type === 'toggle') { if (get().running) pause(); else start(); }
+            else if (type === 'reset') reset();
+          });
+
+          // Commands from the narration or a presenter chip — `[[emit: cmd:TAG …]]`
+          // with `tag: TAG` on the directive: start | pause (stop) | toggle | reset |
+          // set 90 / set 1:30 (a new starting time, not running). emit-wait on
+          // `start` replies when the countdown reaches 0:00; the rest at once.
+          ctx.onCommand(function (action, args, done) {
+            if (!acting()) return;             // the acting instance replies
+            if (action === 'start' || action === 'play' || action === '') {
+              if (start()) waiters.push(done); else done();
+            } else if (action === 'pause' || action === 'stop') { pause(); done(); }
+            else if (action === 'toggle') { if (get().running) pause(); else start(); done(); }
+            else if (action === 'reset') { reset(); done(); }
+            else if (action === 'set') {
+              const m = /^(\d+):(\d{1,2})$/.exec(String(args[0] || ''));
+              const n = m ? parseInt(m[1], 10) * 60 + parseInt(m[2], 10) : parseInt(args[0], 10);
+              if (n > 0) reset(n);
+              done();
+            } else done();
           });
 
           // Resume ticking if state says we are mid-run (owner re-mounted), then
           // honour autostart in the slideshow.
-          if (get().running) startInterval();
-          else if (ctx.presenting && el.dataset.autostart === 'true' && !get().done) {
-            ctx.setShared({ running: true, done: false }); startInterval();
-          }
+          if (get().running) { if (acting()) startInterval(); }
+          else if (ctx.presenting && el.dataset.autostart === 'true' && !get().done && acting()) start();
 
-          ctx.onCleanup(stopInterval);
+          ctx.onCleanup(function () {
+            stopInterval();
+            release();                         // a narration waiting on it goes on
+            if (OWNERS[ctx.syncId] === me) delete OWNERS[ctx.syncId];
+          });
         }
 
         paint();

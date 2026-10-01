@@ -3,7 +3,7 @@
   <type>block</type>
   <selfClosing>true</selfClosing>
   <interactive>true</interactive>
-  <description>A video player: plays a local video FILE (deck-relative path / @alias / URL / data-URI) or a YouTube URL. Autoplay-on-show or play-on-click, optional loop and mute, click to pause/resume. Movable, resizable and rotatable on the preview. Self-contained (no @end).</description>
+  <description>A video player: plays a local video FILE (deck-relative path / @alias / URL / data-URI) or a YouTube URL. Autoplay-on-show or play-on-click, optional loop and mute, click to pause/resume. Movable, resizable and rotatable on the preview. Self-contained (no @end). With tag: NAME the @script can command it (cmd:NAME play / pause / restart / seek; emit-wait on play waits for the end).</description>
   <tags>media, mockup</tags>
   <aiSpec><![CDATA[
 A VIDEO PLAYER. Self-contained directive (NO body, NO `<!-- @end -->`) — all options are
@@ -29,6 +29,18 @@ layout; the position/size/rotation are written back as x/y/w/h/rot args.
 
 <!-- @video src: ./movie/clip.mp4, trigger: auto, loop: true, muted: true, width: 640 -->
 <!-- @video src: https://youtu.be/dQw4w9WgXcQ, trigger: click, width: 560 -->
+
+Across surfaces: the main window plays it with sound; the presenter view and the output
+window follow it muted (a click on any of them plays/pauses it for all).
+
+Commands from the @script (give the directive `tag: NAME`, then fire `cmd:NAME`):
+  play | pause | toggle | restart | stop (pause + back to the start) | seek 12.5 |
+  mute | unmute. [[emit-wait: cmd:NAME play | 動画]] plays it and PAUSES the narration
+  until a video FILE ends (a looping video, or YouTube, replies at once) — then the
+  narration goes on. The presenter view shows the markers as clickable chips.
+
+<!-- @video tag: demo, src: ./movie/clip.mp4, width: 640 -->
+<!-- @script: 実際の動きを見てみましょう。[[emit-wait: cmd:demo play timeout=120s | 再生]] いかがでしたか。 -->
 ]]></aiSpec>
 
   <manipulate position="xy" size="xy" rotation="true" minW="10" maxW="100" minH="6" maxH="100" />
@@ -165,6 +177,17 @@ layout; the position/size/rotation are written back as x/y/w/h/rot args.
     .mdp-manip[data-lifted="1"] .mdp-mod-video { width: 100%; height: 100%; aspect-ratio: auto; margin: 0; }
   ]]></style>
 
+  <!--
+    One copy of the sound, the picture everywhere: the OWNER plays the video (with
+    sound) and shares its playback state { playing, t, at }; every other surface
+    (presenter view, output window) follows it MUTED. A click on any surface asks
+    the owner to toggle (so the presenter view drives what the audience sees).
+    Within one window only one owner acts — the editor preview and a narrated
+    auto-play can both own the same video; the presenting one wins.
+    Commands (`[[emit: cmd:TAG …]]`, `tag: TAG` on the directive): play | pause |
+    toggle | restart | stop | seek 12.5 | mute | unmute. emit-wait on play/restart
+    replies when a video FILE ends (at once when it loops, and for YouTube).
+  -->
   <script><![CDATA[
     export default {
       init(el, ctx) {
@@ -174,8 +197,26 @@ layout; the position/size/rotation are written back as x/y/w/h/rot args.
         const showOv = () => { if (overlay) overlay.style.display = 'flex'; };
         const hideOv = () => { if (overlay) overlay.style.display = 'none'; };
         const video = el.querySelector('video');
+        const iframe = el.querySelector('iframe');
+
+        const isOwner = ctx.role === 'owner';
+        const OWNERS = window.__mdpVideoOwners || (window.__mdpVideoOwners = {});
+        const me = { presenting: !!ctx.presenting };
+        if (isOwner) {
+          const cur = OWNERS[ctx.syncId];
+          if (!cur || me.presenting || !cur.presenting) OWNERS[ctx.syncId] = me;
+        }
+        const acting = () => {
+          if (!isOwner) return false;
+          if (!OWNERS[ctx.syncId]) OWNERS[ctx.syncId] = me;
+          return OWNERS[ctx.syncId] === me;
+        };
+        let waiters = [];     // emit-wait replies to play / restart: sent when it ends
+        const release = () => { const w = waiters; waiters = []; w.forEach((d) => d()); };
+        const toSec = (v) => { const n = parseFloat(v); return Number.isFinite(n) && n >= 0 ? n : 0; };
 
         if (video) {
+          if (!acting()) video.muted = true;
           const tryPlay = () => {
             const p = video.play();
             if (p && typeof p.then === 'function') {
@@ -187,42 +228,132 @@ layout; the position/size/rotation are written back as x/y/w/h/rot args.
               });
             } else { hideOv(); }
           };
-          const toggle = (e) => {
+          const publish = () => {
+            if (acting()) ctx.setShared({ playing: !video.paused && !video.ended, t: video.currentTime || 0, at: Date.now() });
+          };
+          // A follower mirrors the owner's state (muted): play / pause, and the
+          // position when it has drifted.
+          const follow = (st) => {
+            if (!st || acting()) return;
+            const want = st.playing ? toSec(st.t) + (Date.now() - (st.at || Date.now())) / 1000 : toSec(st.t);
+            if (Math.abs((video.currentTime || 0) - want) > 0.5) { try { video.currentTime = want; } catch (e) {} }
+            if (st.playing && (video.paused || video.ended)) { video.muted = true; tryPlay(); }
+            else if (!st.playing && !video.paused) video.pause();
+          };
+          const toggle = () => { if (video.paused || video.ended) tryPlay(); else video.pause(); };
+          const onClick = (e) => {
             if (e) e.stopPropagation();
-            if (video.paused) tryPlay(); else video.pause();
+            if (acting()) toggle(); else ctx.sendAction('toggle');
           };
-          if (!controls) {
-            el.addEventListener('click', toggle);
-            video.addEventListener('play', hideOv);
-            video.addEventListener('pause', showOv);
-            video.addEventListener('ended', showOv);
+          const onPlay = () => { hideOv(); publish(); };
+          const onPause = () => { if (!controls) showOv(); publish(); };
+          const onEnded = () => { if (!controls) showOv(); publish(); release(); };
+          const onSeeked = () => publish();
+          if (!controls) el.addEventListener('click', onClick);
+          video.addEventListener('play', onPlay);
+          video.addEventListener('pause', onPause);
+          video.addEventListener('ended', onEnded);
+          video.addEventListener('seeked', onSeeked);
+          ctx.onShared(follow);
+
+          if (isOwner) {
+            ctx.onAction((type) => { if (acting() && type === 'toggle') toggle(); });
+            ctx.onCommand((action, args, done) => {
+              if (!acting()) return;           // the acting instance replies
+              const a = action || 'play';
+              if (a === 'play' || a === 'restart') {
+                if (a === 'restart') { try { video.currentTime = 0; } catch (e) {} }
+                if (video.loop) done(); else waiters.push(done);
+                tryPlay();
+              } else if (a === 'pause') { video.pause(); done(); }
+              else if (a === 'stop') { video.pause(); try { video.currentTime = 0; } catch (e) {} release(); done(); }
+              else if (a === 'toggle') { toggle(); done(); }
+              else if (a === 'seek') { try { video.currentTime = toSec(args[0]); } catch (e) {} done(); }
+              else if (a === 'mute' || a === 'unmute') { video.muted = a === 'mute'; done(); }
+              else done();
+            });
           }
-          if (trigger === 'auto') tryPlay();
-          else if (!controls) showOv();
+
+          if (acting()) {
+            ctx.setShared({ playing: false, t: 0, at: Date.now() });
+            if (trigger === 'auto') tryPlay();
+            else if (!controls) showOv();
+          } else {
+            if (!controls) showOv();
+            follow(ctx.getShared());
+          }
           ctx.onCleanup(() => {
-            if (!controls) {
-              el.removeEventListener('click', toggle);
-              video.removeEventListener('play', hideOv);
-              video.removeEventListener('pause', showOv);
-              video.removeEventListener('ended', showOv);
-            }
+            if (!controls) el.removeEventListener('click', onClick);
+            video.removeEventListener('play', onPlay);
+            video.removeEventListener('pause', onPause);
+            video.removeEventListener('ended', onEnded);
+            video.removeEventListener('seeked', onSeeked);
+            const wasActing = acting();
             try { video.pause(); video.currentTime = 0; } catch (e) {}
+            release();
+            if (wasActing) {
+              ctx.setShared({ playing: false, t: 0, at: Date.now() });   // not playing when the slide returns
+              if (OWNERS[ctx.syncId] === me) delete OWNERS[ctx.syncId];
+            }
           });
-        } else {
-          const iframe = el.querySelector('iframe');
-          const post = (func) => {
-            try { if (iframe && iframe.contentWindow) iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: func, args: [] }), '*'); } catch (e) {}
+        } else if (iframe) {
+          const post = (func, args) => {
+            try { if (iframe.contentWindow) iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: func, args: args || [] }), '*'); } catch (e) {}
           };
-          const onOverlay = (e) => { e.stopPropagation(); hideOv(); post('playVideo'); };
+          let playing = false;
+          const setPlaying = (on, t) => {
+            playing = on;
+            if (on) hideOv(); else if (trigger === 'click' && overlay) showOv();
+            if (acting()) ctx.setShared({ playing: on, t: typeof t === 'number' ? t : null, at: Date.now() });
+          };
+          // A follower mirrors play / pause / seek, muted (the player accepts commands
+          // only once it has loaded, so the mute is repeated then).
+          const muteSoon = () => { if (!acting()) { post('mute'); setTimeout(() => post('mute'), 1500); } };
+          const follow = (st) => {
+            if (!st || acting()) return;
+            post('mute');
+            if (typeof st.t === 'number') post('seekTo', [st.t, true]);
+            if (st.playing) { hideOv(); post('playVideo'); } else post('pauseVideo');
+            playing = !!st.playing;
+          };
+          const toggle = () => { if (playing) { post('pauseVideo'); setPlaying(false); } else { post('playVideo'); setPlaying(true); } };
+          const onOverlay = (e) => { e.stopPropagation(); if (acting()) toggle(); else ctx.sendAction('toggle'); };
+          const onLoad = () => muteSoon();
+          iframe.addEventListener('load', onLoad);
+          ctx.onShared(follow);
+          if (isOwner) {
+            ctx.onAction((type) => { if (acting() && type === 'toggle') toggle(); });
+            ctx.onCommand((action, args, done) => {
+              if (!acting()) return;
+              const a = action || 'play';
+              if (a === 'play') { post('playVideo'); setPlaying(true); }
+              else if (a === 'restart') { post('seekTo', [0, true]); post('playVideo'); setPlaying(true, 0); }
+              else if (a === 'pause') { post('pauseVideo'); setPlaying(false); }
+              else if (a === 'stop') { post('pauseVideo'); post('seekTo', [0, true]); setPlaying(false, 0); }
+              else if (a === 'toggle') toggle();
+              else if (a === 'seek') { const t = toSec(args[0]); post('seekTo', [t, true]); setPlaying(playing, t); }
+              else if (a === 'mute') post('mute');
+              else if (a === 'unmute') post('unMute');
+              done();
+            });
+          }
           if (trigger === 'click' && overlay) {
             showOv();
             overlay.addEventListener('click', onOverlay);
           } else {
             hideOv();
+            playing = trigger === 'auto';
           }
+          if (acting()) ctx.setShared({ playing: playing, t: null, at: Date.now() });
+          else { muteSoon(); follow(ctx.getShared()); }
           ctx.onCleanup(() => {
+            iframe.removeEventListener('load', onLoad);
             if (overlay) overlay.removeEventListener('click', onOverlay);
             post('pauseVideo');
+            if (acting()) {
+              ctx.setShared({ playing: false, t: null, at: Date.now() });
+              if (OWNERS[ctx.syncId] === me) delete OWNERS[ctx.syncId];
+            }
           });
         }
       }

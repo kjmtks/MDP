@@ -71,7 +71,7 @@ const ASSET_GUIDES = {
     '• <script> — CDATA JS: `{ init(el, ctx) { … }, destroy() {} }`. ctx = {id, root, presenting, role (owner|mirror), syncId, getShared(), setShared(patch), onShared(cb), sendAction(a), onAction(cb), onCleanup(cb), tag, emit(topic,payload), onBus(topic,cb), onCommand(cb)}. Add class `mdp-interactive` to an element to suppress slide nav. If you inject raw $…$ / \\(…\\) HTML, call window.renderMathInElement(el) — the Markdown KaTeX pass skips injected HTML.',
     '    · CLEANUP RULE: init() re-runs on the SAME DOM (teardown removes bus subscriptions but NOT DOM listeners) — every addEventListener MUST be paired with removeEventListener inside ctx.onCleanup(), or one click will fire stale duplicate handlers.',
     '    · App event bus (window.mdpBus / ctx.emit / ctx.onBus): free-form topics reach every surface (preview / slideshow / presenter / remote). Every directive accepts a `tag: NAME` argument; ctx.onCommand((action, args, done) => …) then receives `cmd:NAME` commands — from other modules, from @script markers ([[emit-wait: cmd:NAME play | label]] pauses the narration until you call done()), and from the presenter script pane where markers render as clickable chips. Run side effects (audio etc.) only when ctx.role === "owner". `narration:pause|resume|skip` topics control the narrated auto-play.',
-    '    · TTS: window.mdpTts.speak(text, {lang, voice, speaker, irodoriVoice, caption, rate, onProgress}) speaks with the user-configured narrator (Web Speech / VOICEVOX / Irodori-TTS, falling back to Web Speech when a local engine is down; `caption` = Irodori Voice Design text such as "明るく弾んだ若い女性の声", Japanese only); mdpTts.stop() stops. See @speakcard / @speak for the reference implementation of cross-surface audio.',
+    '    · TTS: window.mdpTts.speak(text, {lang, voice, speaker, serverVoice, instructions, rate, onProgress}) speaks with the user-configured narrator (Web Speech / VOICEVOX / an OpenAI-compatible TTS server such as Irodori-TTS, falling back to Web Speech when that engine is down; `voice` = Web Speech narrator, `speaker` = VOICEVOX style id, `serverVoice` = the TTS server\'s voice id, `instructions` = how to speak, e.g. "明るく弾んだ若い女性の声" — Irodori\'s Voice Design, Japanese only); mdpTts.stop() stops. See @speakcard / @speak for the reference implementation of cross-surface audio.',
     'FIND existing: get_slide_spec (module index) then get_module_spec(names) for full specs; read_module(path) for raw source.',
   ].join('\n'),
   effect: [
@@ -587,6 +587,18 @@ function expandBinary(content, sourceText) {
 // `@time` wins; else a read-aloud `@script` ⇒ script length / reading speed; else
 // complexity-driven. `cpm` (reading chars/min) is the user's calibrated setting.
 const TT = { BASE: 20, BULLET: 7, VISUAL: 20, BODY_W: 0.5 };
+// What a slide's @script COUNTS — identical to talkTime.ts scriptChars (via
+// autoplay.ts stripScriptMarkers / rubyBase): ruby readings (`[[語|よみ]]`) and
+// `[[say:…]]` / `[[step]]` / event markers are not counted.
+const RUBY_RE = /\[\[(?!\s*(?:emit-wait|emit|wait|pause|say)\s*:)((?:\\\((?:(?!\\\))[\s\S])*\\\)|\\\[(?:(?!\\\])[\s\S])*\\\]|[^[\]|\n])+?)\|([^[\]|\n]+?)\]\]/g;
+function scriptCharsOf(raw) {
+  return [...String(raw).matchAll(/<!--\s*@script:\s*([\s\S]*?)-->/g)].map((m) => m[1]).join('')
+    .replace(RUBY_RE, (_m, base) => base)
+    .replace(/\[\[\s*say\s*:\s*([\s\S]*?)\]\]/gi, ' ')
+    .replace(/\[\[\s*step\s*\]\]/gi, ' ')
+    .replace(/\[\[\s*(emit-wait|emit|wait|pause)\s*:\s*([^\]]*?)\s*\]\]/gi, ' ')
+    .replace(/\s+/g, '').length;
+}
 function parseTimeToSeconds(str) {
   const s = String(str || '').trim().toLowerCase();
   if (!s) return null;
@@ -604,7 +616,7 @@ function slideSecondsFromRaw(raw, cpm) {
   const em = String(raw).match(/<!--\s*@time\s+([\s\S]*?)\s*-->/i);
   const explicit = em ? parseTimeToSeconds(em[1]) : null;
   if (explicit != null) return explicit;
-  const scriptChars = [...raw.matchAll(/<!--\s*@script:\s*([\s\S]*?)-->/g)].map((m) => m[1]).join('').replace(/\s+/g, '').length;
+  const scriptChars = scriptCharsOf(raw);
   if (scriptChars > 0) return Math.round(scriptChars / cps);
   const noC = raw.replace(/<!--[\s\S]*?-->/g, ' ');
   const bullets = (noC.match(/^[ \t]*(?:[-*+]|\d+\.)\s+\S/gm) || []).length;
@@ -626,7 +638,7 @@ function outlineDeck(text, cpm) {
     const notes = [...raw.matchAll(/<!--\s*@note:\s*([\s\S]*?)-->/g)].map((m) => m[1]);
     const chars = noComments.replace(/\s+/g, '').length;
     const noteChars = notes.join('').replace(/\s+/g, '').length;
-    const scriptChars = [...raw.matchAll(/<!--\s*@script:\s*([\s\S]*?)-->/g)].map((m) => m[1]).join('').replace(/\s+/g, '').length;
+    const scriptChars = scriptCharsOf(raw);
     const explicitTime = (raw.match(/<!--\s*@time\s+([\s\S]*?)\s*-->/i) || [])[1];
     const hidden = /<!--\s*@hide\s*-->/i.test(raw);
     const cover = /<!--\s*@cover\s*-->/i.test(raw);
@@ -1731,6 +1743,16 @@ async function callToolInner(method, p, baseDir) {
     case 'insert_at_cursor': return await rly(baseDir, 'insertAtCursor', { text: String(p.text ?? '') }, 10000);
     case 'measure_slides': return await rly(baseDir, 'measureSlides', { path: p.path ? requireDeckPath(p.path) : undefined, slides: Array.isArray(p.slides) ? p.slides.map(Number).filter((n) => Number.isInteger(n)) : undefined, all: !!p.all }, 120000);
     case 'render_slide_image': return await rly(baseDir, 'renderSlideImage', { path: p.path ? requireDeckPath(p.path) : undefined, slide: Number(p.slide), width: p.width ? Number(p.width) : undefined }, 120000);
+    // Narrated video export: the renderer queues a job on the open (or given) deck;
+    // it runs in the background and is followed with get_video_jobs.
+    case 'export_video': return await rly(baseDir, 'exportVideo', {
+      path: p.path ? requireDeckPath(p.path) : undefined,
+      mode: p.mode === 'fast' ? 'fast' : 'exact',
+      height: p.height !== undefined ? Number(p.height) : undefined,
+      subtitles: p.subtitles, vtt: p.vtt, includeHidden: p.includeHidden, fade: p.fade,
+    }, 60000);
+    case 'get_video_jobs': return await rly(baseDir, 'videoJobs', {}, 8000);
+    case 'cancel_video': return await rly(baseDir, 'cancelVideo', { jobId: p.jobId ? String(p.jobId) : undefined, all: !!p.all }, 8000);
 
     default:
       throw new Error(`Unknown tool: ${method}`);

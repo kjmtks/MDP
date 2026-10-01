@@ -49,11 +49,13 @@ export function applyFontCss(doc: Document, css: string, id = FONT_STYLE_ID): vo
   if (el.textContent !== css) el.textContent = css;
 }
 
-const bare = (family: string) => family.replace(/^["']|["']$/g, '').trim().toLowerCase();
+// A family name as compared: no quotes, no case. Trimmed FIRST — a computed
+// `font-family` split at its commas gives ` "Noto Sans JP"`, quote after a space.
+export const bare = (family: string) => family.trim().replace(/^["']|["']$/g, '').trim().toLowerCase();
 
 // Does a face's unicode-range cover any of these code points? (A split font —
 // e.g. Google's ~120 slices of a CJK family — only needs the slices in use.)
-function rangeCovers(range: string, codePoints: number[]): boolean {
+export function rangeCovers(range: string, codePoints: number[]): boolean {
   const r = (range || '').trim();
   if (!r || /^U\+0+-10FFFF$/i.test(r)) return true;
   for (const part of r.split(',')) {

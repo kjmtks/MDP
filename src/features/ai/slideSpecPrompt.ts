@@ -121,14 +121,22 @@ block on a single slide OVERRIDES the global one for that slide; an EMPTY block
     order. Markers are invisible on the slide and in the presenter view; they only
     pace the auto-play. Example: \`<!-- @script: First the problem. [[step]] Now the
     fix. -->\` on a slide whose second point is a \`@build\`.
+  - **Readings for the narrator (ruby):** tell the TTS how to pronounce a word or a
+    formula with \`[[base|reading]]\` — the base is exactly what is written before the
+    \`|\`: \`ルビの[[仕様|しよう]]を[[改良|かいりょう]]したい。\`, \`[[SVD|エスブイディー]]\`,
+    \`[[第一種の過誤|だいいっしゅのかご]]\`. The narrator says the reading; the presenter
+    view, the subtitles and the talk-time estimate show / count only the base — a ruby
+    is never displayed. Use it where a TTS would misread (technical terms, names,
+    acronyms, unusual readings), not for everyday words.
   - **Math in the script:** write formulas in KaTeX — \`\\(…\\)\` inline, \`\\[…\\]\`
     display — and they are RENDERED in the on-screen subtitle (the caption and the
-    spoken audio are separate, so the caption can show real math). To have a formula
-    SPOKEN, add its reading right after it as \`[[say: よみ]]\`; a formula with no
-    \`[[say:…]]\` is shown but not read aloud. Example:
-    \`基本角周波数を \\(\\omega_0 = 2\\pi/T\\) [[say: オメガゼロ イコール 2パイ割るティー]] とおくと，…\`
+    spoken audio are separate, so the caption can show real math). A formula is SPOKEN
+    only when it has a reading — make it the base of a ruby; a formula without one is
+    shown but not read aloud. Example:
+    \`基本角周波数を [[\\(\\omega_0 = 2\\pi/T\\)|オメガゼロ イコール 2パイ割るティー]] とおくと，…\`
     — the caption shows \\(\\omega_0=2\\pi/T\\); the narrator says "オメガゼロ イコール 2パイ割るティー".
-    Prefer KaTeX + \`[[say:…]]\` over spelling maths out phonetically in plain text.
+    (The older \`\\(…\\) [[say: よみ]]\` means the same.) Prefer KaTeX + a ruby over
+    spelling maths out phonetically in plain text.
   - **Event markers (app-wide bus):** a script can fire events on the app event bus
     (mdpBus) at exact points, e.g. to have an on-slide module play an example and
     then continue narrating:
@@ -141,6 +149,13 @@ block on a single slide OVERRIDES the global one for that slide; an EMPTY block
     \`cmd:ex1\` (e.g. \`[[emit-wait: cmd:ex1 play main | 例文①]]\`). In the presenter
     view these markers render as clickable CHIPS, so a human presenter fires the
     same events manually while reading the script. Markers never appear on slides.
+    Official modules that take commands: \`@speak\` / \`@speakcard\` (play [main|sub] |
+    stop; emit-wait waits for the speech to end), \`@timer\` (start | pause | toggle |
+    reset | set 90; emit-wait on start waits for 0:00), \`@video\` (play | pause |
+    toggle | restart | stop | seek 12 | mute | unmute; emit-wait on play waits for a
+    video file to end) — e.g. \`<!-- @timer tag: think, minutes: 1 -->\` +
+    \`[[emit-wait: cmd:think start timeout=70s | 1分]]\`. get_module_spec lists each
+    module's commands.
 - \`<!-- @time 90s -->\` — this slide's speaking-time budget (overrides the estimate).
   Accepts \`90s\`, \`2m\`, \`1m30s\`, \`1:30\` (mm:ss). Shown live in the presenter view
   (per-slide + whole-deck countdown).
@@ -385,8 +400,9 @@ Timing
 - If the user wants a spoken SCRIPT, put it in \`<!-- @script: … -->\` (not @note) —
   that both provides the read-aloud text in the presenter view AND makes the
   talk-time estimate reflect it. Reserve @note for brief reminders. Write any maths in
-  the script as KaTeX (\`\\(…\\)\`) so the subtitle renders it, and give each formula a
-  spoken reading with \`[[say: よみ]]\` (see @script above).
+  the script as KaTeX (\`\\(…\\)\`) so the subtitle renders it, give each formula a
+  spoken reading with a ruby \`[[\\(…\\)|よみ]]\`, and add rubies (\`[[語|よみ]]\`) to words
+  a TTS would misread (see @script above).
 
 Consistency
 - Set the theme and aspect ONCE on the meta page (don't repeat per slide); choose

@@ -45,6 +45,8 @@ export const usePresentationSync = (
   // latest saved run travels to the presenter so it can show "last time" marks.
   onRehearsalRun?: (run: RehearsalRun) => void,
   lastRehearsal?: RehearsalRun | null,
+  // REC from the presenter view: the host records (it owns the deck path).
+  onRecordCommand?: (action: 'start' | 'stop', micId?: string) => void,
 ) => {
   const [channelId] = useState<string>(() => {
     const query = window.location.hash.split('?')[1] || window.location.search;
@@ -195,6 +197,9 @@ export const usePresentationSync = (
         break;
       case 'HISTORY_NAV':
         if (msg.dir === 1) historyForward?.(); else historyBack?.();
+        break;
+      case 'REC_COMMAND':
+        if (msg.action === 'start' || msg.action === 'stop') onRecordCommand?.(msg.action, msg.micId);
         break;
     }
   }, electronWsPort);

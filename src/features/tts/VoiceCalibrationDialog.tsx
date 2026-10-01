@@ -7,8 +7,8 @@ import { apiClient } from '../../api/apiClient';
 import { useAppSettings } from '../settings/AppSettingsContext';
 import type { AppSettings } from '../settings/types';
 import {
-  IRODORI_REFERENCE_TEXT, IRODORI_VOICE_ID, irodoriServerOf, isAbortError, isLocalIrodoriServer,
-  saveIrodoriVoice, speak, type Utterance,
+  IRODORI_REFERENCE_TEXT, IRODORI_VOICE_ID, isAbortError, isLocalSpeechServer,
+  referenceVoicesUsed, saveIrodoriVoice, speak, speechServerOf, type Utterance,
 } from './ttsService';
 import { MicInput, decodeAudioFile, listMicrophones, type MicDevice } from './micInput';
 import {
@@ -94,7 +94,8 @@ const LevelMeter: React.FC<{ mic: MicInput | null; recording: boolean }> = ({ mi
 };
 
 // Record the presenter's own voice — a few sentences from the deck, one at a
-// time — and register it on the Irodori-TTS server as a reference voice
+// time — and register it on the TTS server as a reference voice (offered only
+// where the server registers voices — SpeechServerControls' `voiceRegistry`)
 // ('record'); or register an existing recording instead ('file'). The takes are
 // kept on this computer only (voiceStore) and can be exported as a training set.
 // Mounted only while open, so every opening starts fresh.
@@ -109,8 +110,8 @@ export const VoiceCalibrationDialog: React.FC<{
 }> = ({ mode, tts, slideRaws, onClose, onRegistered }) => {
   const { settings, update } = useAppSettings();
   const cpm = settings.readingCharsPerMin || 320;
-  const server = useMemo(() => irodoriServerOf(tts), [tts]);
-  const shared = !isLocalIrodoriServer(tts.irodoriUrl);
+  const server = useMemo(() => speechServerOf(tts), [tts]);
+  const shared = !isLocalSpeechServer(tts.openaiUrl, tts.openaiSsh);
 
   const [step, setStep] = useState<'setup' | 'record' | 'finish' | 'file'>(mode === 'file' ? 'file' : 'setup');
   const [error, setError] = useState('');
@@ -296,6 +297,8 @@ export const VoiceCalibrationDialog: React.FC<{
   const [saving, setSaving] = useState(false);
   const [confirmReplace, setConfirmReplace] = useState(false);
   const [registered, setRegistered] = useState('');
+  // The voice the server's model turned out to ignore (Irodori without speaker conditioning).
+  const [ignoredBy, setIgnoredBy] = useState('');
 
   const register = (wav: Uint8Array, replace: boolean) => {
     if (!nameOk || saving) return;
@@ -305,8 +308,15 @@ export const VoiceCalibrationDialog: React.FC<{
       setConfirmReplace(false);
       setRegistered(name);
       onRegistered(name);
+      // The first voice on a server is also the first chance to ask whether its
+      // model uses reference voices at all (Irodori; others answer null).
+      setIgnoredBy('');
+      const registeredName = name;
+      void referenceVoicesUsed(server, registeredName).then((used) => {
+        if (used === false) setIgnoredBy(registeredName);
+      }, () => { /* cannot tell: say nothing */ });
       if (set && step === 'finish') {
-        const next = { ...set, name, registered: { server: tts.irodoriUrl, voiceId: name, at: Date.now() } };
+        const next = { ...set, name, registered: { server: tts.openaiUrl, voiceId: name, at: Date.now() } };
         setSet(next);
         void saveRecordingSet(next).catch(() => { /* the voice is registered; the note is cosmetic */ });
       }
@@ -321,7 +331,7 @@ export const VoiceCalibrationDialog: React.FC<{
     // A sentence of this deck that was NOT recorded: does the clone carry over?
     const text = pickSentences(slideRaws, 1, '', set ? set.takes.map((t) => t.text) : [])[0] || IRODORI_REFERENCE_TEXT;
     setTesting(true); setError('');
-    const u = speak(text, { ...tts, engine: 'irodori', irodoriVoice: registered });
+    const u = speak(text, { ...tts, engine: 'openai', openaiVoice: registered });
     utteranceRef.current = u;
     u.done.catch((e: unknown) => { if (!isAbortError(e)) setError(msg(e)); })
       .finally(() => { if (utteranceRef.current === u) { utteranceRef.current = null; setTesting(false); } });
@@ -418,6 +428,12 @@ export const VoiceCalibrationDialog: React.FC<{
         {testing ? <><CircularProgress size={14} sx={{ mr: 1 }} />Speaking…</> : '▶ Hear it read a new sentence'}
       </Button>
       {testing && <Button size="small" sx={btn} onClick={() => utteranceRef.current?.stop()}>Stop</Button>}
+      {ignoredBy === registered && (
+        <span style={{ fontSize: 13, color: warnColor, flexBasis: '100%' }}>
+          But the server’s model does not use reference voices: it ignores “{registered}”, and every line gets a different
+          speaker. Switch the server to a model that takes a reference voice (Irodori-TTS v4 / v4.1).
+        </span>
+      )}
     </div>
   );
 
@@ -431,7 +447,7 @@ export const VoiceCalibrationDialog: React.FC<{
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div style={{ fontSize: 14, lineHeight: 1.7 }}>
           Read about {speakSec} seconds of sentences from this deck aloud, one at a time. MDP trims each take,
-          joins up to {REFERENCE_MAX_SEC} s of them into a reference voice on the Irodori-TTS server, and the narration
+          joins up to {REFERENCE_MAX_SEC} s of them into a reference voice on the TTS server, and the narration
           then speaks in your voice.
         </div>
         <ul style={{ margin: 0, paddingLeft: 20, fontSize: 13, lineHeight: 1.7, opacity: 0.85 }}>

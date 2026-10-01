@@ -9,14 +9,21 @@ export interface PlayOptions {
   args?: Record<string, string>;
 }
 
+// A duration as authors write it — 800, "800", "800ms", "0.8s" — in milliseconds
+// (null = not a duration). The slide spec teaches the unit-suffixed form.
+const toMs = (v: unknown): number | null => {
+  const m = /^\s*(\d+(?:\.\d+)?|\.\d+)\s*(ms|s)?\s*$/i.exec(String(v ?? ''));
+  if (!m) return null;
+  return parseFloat(m[1]) * (m[2]?.toLowerCase() === 's' ? 1000 : 1);
+};
+
 // Resolve duration (ms) / easing from per-call overrides, then the effect's
 // declared parameter defaults, then hard fallbacks.
 export const resolveTiming = (
   name: string,
   overrides?: { duration?: string | number; easing?: string },
 ): { duration: number; easing: string } => {
-  const dRaw = overrides?.duration ?? effectParamDefault(name, 'duration') ?? 400;
-  const duration = Number(dRaw) || 400;
+  const duration = toMs(overrides?.duration) ?? toMs(effectParamDefault(name, 'duration')) ?? 400;
   const easing = String(overrides?.easing ?? effectParamDefault(name, 'easing') ?? 'ease');
   return { duration, easing };
 };

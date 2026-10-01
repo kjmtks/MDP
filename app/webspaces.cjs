@@ -56,6 +56,12 @@
 //     still resolves, so reach it through an "@x" space that shares its
 //     `root` (give that space "owner" in `read`/`write`).
 //
+//   "videoExport": false (default) | true | ["admin", "group:lab", "alice"]
+//     Who may export narrated videos (beside the deck, only where they may
+//     write); "videoExportMaxMB" caps one file (default 4096). Re-read when
+//     this file changes -- the administrator (or the site's portal) flips it
+//     without restarting MDP. See webFeatures.cjs.
+//
 // Everything resolves to PLAIN local paths -- `.mdplink` indirection is
 // deliberately not honoured in shared mode.
 

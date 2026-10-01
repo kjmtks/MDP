@@ -22,6 +22,7 @@ import { useDrawing } from '../../features/drawing/hooks/useDrawing';
 import { estimateDeckSeconds, slideSeconds, explicitSlideSeconds, formatClock } from '../../features/slide/talkTime';
 import { firstHeading, newRunId, type RehearsalRun } from '../../features/rehearsal/rehearsalStore';
 import { SlideControls, type AppMode } from '../../features/drawing/components/SlideControls';
+import { getRecordingState, preferredMic, recordingSupported, type RecordingState } from '../../features/recording/slideRecorder';
 import type { Stroke } from '../../features/drawing/components/DrawingOverlay';
 
 import EditIcon from '@mui/icons-material/Edit';
@@ -151,6 +152,8 @@ export default function PresenterPage() {
   const recRunRef = useRef<{ id: string; startedAt: string } | null>(null);
   const [recStatus, setRecStatus] = useState<'idle' | 'recording' | 'paused' | 'saved'>('idle');
   const [lastRehearsal, setLastRehearsal] = useState<RehearsalRun | null>(null);
+  // The main window's recorder, as last reported (REC_STATE).
+  const [recState, setRecState] = useState<RecordingState>(getRecordingState);
   // Latest render values for handlers that must not go stale (beforeunload).
   const latestRef = useRef({ elapsedTime: 0, currentIndex: 0, slides: [] as any[], readingCpm: 320, deckSeconds: 0 }); // eslint-disable-line @typescript-eslint/no-explicit-any
 
@@ -218,6 +221,9 @@ export default function PresenterPage() {
         break;
       case 'BUS_EVENT':
         mdpBus.receiveRemote(msg.topic, msg.payload);
+        break;
+      case 'REC_STATE':
+        if (msg.state) setRecState(msg.state);
         break;
       case 'DRAW_STROKE':
         addStroke(msg.pageIndex, msg.stroke, false);
@@ -584,6 +590,11 @@ export default function PresenterPage() {
           stylusOnly={stylusOnly}
           setStylusOnly={setStylusOnly}
           onHistoryBack={() => sendHistoryNav(-1)} onHistoryForward={() => sendHistoryNav(1)} canHistoryBack canHistoryForward
+          // REC: the main window records (it owns the deck); this view asks and shows its state.
+          recording={recordingSupported() ? recState : undefined}
+          onToggleRecording={recordingSupported() && channelId
+            ? () => send({ type: 'REC_COMMAND', action: recState.status === 'recording' ? 'stop' : 'start', micId: preferredMic(), channelId })
+            : undefined}
         />
 
         <Group orientation="horizontal" style={{ height: '100%' }}>

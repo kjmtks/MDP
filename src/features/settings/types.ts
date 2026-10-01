@@ -1,6 +1,7 @@
 // App-level (chrome) settings, persisted PER-WORKSPACE in `.mdp/settings.json`.
 // These are distinct from slide themes (`@theme`, .mdp/themes) — they style the
 // editor app itself (header, panels, menus, editor font, shortcuts).
+import { DEFAULT_SSH_BASTION, type SshBastion } from '../tts/ttsService';
 
 export interface AppSettings {
   version: 1;                            // schema version, for forward migration
@@ -36,26 +37,34 @@ export interface AppSettings {
   // Rehearsal read-aloud (TTS) preferences — the selected engine and its options.
   // Persisted so the rehearsal dialog remembers the user's voice/engine choice.
   tts: {
-    engine: 'webspeech' | 'voicevox' | 'irodori';
+    engine: 'webspeech' | 'voicevox' | 'openai';
     rate: number;
     pitch: number;
     webspeechVoiceURI: string;
     voicevoxUrl: string;
     voicevoxSpeaker: number;
-    // Irodori-TTS server (Aratako/Irodori-TTS-Server): its URL, its API key (the
-    // server's IRODORI_API_KEY; '' when it has none), the voice id to speak with
-    // (a reference clip in the server's voices/ folder, or 'none'), and an
-    // optional Voice Design caption describing the voice / delivery. The key lives
-    // only here, in the machine-local app settings — never in a workspace `.mdp`,
-    // and it is withheld from module scripts (see moduleTtsApi.ts).
-    irodoriUrl: string;
-    irodoriApiKey: string;
-    irodoriVoice: string;
-    irodoriCaption: string;
+    // An OpenAI-compatible TTS server (Irodori-TTS-Server, OpenAI, Kokoro-FastAPI…):
+    // its URL, its API key ('' when it has none), the model ('' = the one the
+    // server lists), the voice id to speak with (Irodori: a reference clip in its
+    // voices/ folder, or 'none'), and an optional description of the voice /
+    // delivery (Irodori's Voice Design caption, OpenAI's `instructions`). The key
+    // lives only here, in the machine-local app settings — never in a workspace
+    // `.mdp`, and it is withheld from module scripts (see moduleTtsApi.ts).
+    // Stored before 1.4.30 as irodori* keys with engine 'irodori' — still read,
+    // and still written (legacyTtsKeys) for an older install sharing the file.
+    openaiUrl: string;
+    openaiApiKey: string;
+    openaiModel: string;
+    openaiVoice: string;
+    openaiInstructions: string;
+    // Optional SSH jump host to reach that server through (desktop app), with an
+    // on/off switch; its password / key passphrase are NOT here — the main process
+    // keeps them encrypted (app/sshTunnel.cjs).
+    openaiSsh: SshBastion;
     // Narrated auto-play: synthesize the WHOLE show's audio BEFORE starting it
     // (progress bar), instead of synthesizing each segment as it plays. Slow
     // machines stutter on real-time synthesis; pre-generating trades a wait up
-    // front for gap-free playback. VOICEVOX / Irodori only — Web Speech cannot be
+    // front for gap-free playback. VOICEVOX / TTS server only — Web Speech cannot be
     // pre-synthesized (the browser gives no audio data, only live playback).
     pregenerate: boolean;
   };
@@ -91,7 +100,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   tts: {
     engine: 'webspeech', rate: 1, pitch: 1, webspeechVoiceURI: '',
     voicevoxUrl: 'http://127.0.0.1:50021', voicevoxSpeaker: 1,
-    irodoriUrl: 'http://127.0.0.1:8088', irodoriApiKey: '', irodoriVoice: 'none', irodoriCaption: '',
+    openaiUrl: 'http://127.0.0.1:8088', openaiApiKey: '', openaiModel: '', openaiVoice: '', openaiInstructions: '',
+    openaiSsh: DEFAULT_SSH_BASTION,
     pregenerate: false,
   },
   readingCharsPerMin: 320,
@@ -123,23 +133,59 @@ export function normalizeSettings(raw: unknown): AppSettings {
       : {},
     tts: (() => {
       const d = DEFAULT_SETTINGS.tts;
-      const t = (r.tts && typeof r.tts === 'object') ? r.tts as Partial<AppSettings['tts']> : {};
+      const t = (r.tts && typeof r.tts === 'object') ? r.tts as Omit<Partial<AppSettings['tts']>, 'engine'> & LegacyTts : {};
+      const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
       return {
-        engine: t.engine === 'voicevox' || t.engine === 'irodori' ? t.engine : 'webspeech',
+        engine: t.engine === 'voicevox' ? 'voicevox' : t.engine === 'openai' || t.engine === 'irodori' ? 'openai' : 'webspeech',
         rate: typeof t.rate === 'number' && t.rate > 0 ? t.rate : d.rate,
         pitch: typeof t.pitch === 'number' && t.pitch >= 0 ? t.pitch : d.pitch,
         webspeechVoiceURI: typeof t.webspeechVoiceURI === 'string' ? t.webspeechVoiceURI : d.webspeechVoiceURI,
         voicevoxUrl: typeof t.voicevoxUrl === 'string' && t.voicevoxUrl ? t.voicevoxUrl : d.voicevoxUrl,
         voicevoxSpeaker: typeof t.voicevoxSpeaker === 'number' ? t.voicevoxSpeaker : d.voicevoxSpeaker,
-        irodoriUrl: typeof t.irodoriUrl === 'string' && t.irodoriUrl ? t.irodoriUrl : d.irodoriUrl,
-        irodoriApiKey: typeof t.irodoriApiKey === 'string' ? t.irodoriApiKey : d.irodoriApiKey,
-        irodoriVoice: typeof t.irodoriVoice === 'string' && t.irodoriVoice ? t.irodoriVoice : d.irodoriVoice,
-        irodoriCaption: typeof t.irodoriCaption === 'string' ? t.irodoriCaption : d.irodoriCaption,
+        openaiUrl: str(t.openaiUrl) || str(t.irodoriUrl) || d.openaiUrl,
+        openaiApiKey: str(t.openaiApiKey) ?? str(t.irodoriApiKey) ?? d.openaiApiKey,
+        openaiModel: str(t.openaiModel) ?? d.openaiModel,
+        openaiVoice: str(t.openaiVoice) ?? str(t.irodoriVoice) ?? d.openaiVoice,
+        openaiInstructions: str(t.openaiInstructions) ?? str(t.irodoriCaption) ?? d.openaiInstructions,
+        openaiSsh: (() => {
+          const raw = t.openaiSsh ?? t.irodoriSsh;
+          const s = (raw && typeof raw === 'object') ? raw as Partial<SshBastion> : {};
+          const port = Number(s.port);
+          return {
+            enabled: s.enabled === true,
+            host: typeof s.host === 'string' ? s.host : '',
+            port: Number.isInteger(port) && port > 0 && port < 65536 ? port : 22,
+            user: typeof s.user === 'string' ? s.user : '',
+            auth: s.auth === 'password' ? 'password' : 'key',
+            keyPath: typeof s.keyPath === 'string' ? s.keyPath : DEFAULT_SSH_BASTION.keyPath,
+          };
+        })(),
         pregenerate: typeof t.pregenerate === 'boolean' ? t.pregenerate : d.pregenerate,
       };
     })(),
     readingCharsPerMin: typeof r.readingCharsPerMin === 'number' && r.readingCharsPerMin > 0 ? r.readingCharsPerMin : 320,
     readingCalibrationText: typeof r.readingCalibrationText === 'string' && r.readingCalibrationText.trim() ? r.readingCalibrationText : DEFAULT_SETTINGS.readingCalibrationText,
+  };
+}
+
+// The TTS server's settings as stored before 1.4.30 (engine 'irodori').
+interface LegacyTts {
+  engine?: string;
+  irodoriUrl?: unknown; irodoriApiKey?: unknown; irodoriVoice?: unknown; irodoriCaption?: unknown; irodoriSsh?: unknown;
+}
+
+/** The TTS server's settings under their pre-1.4.30 names, written alongside the
+ *  new ones: an older MDP on this computer shares the settings file and knows only
+ *  these (with engine 'irodori'), so its narrator keeps working. Remove once no
+ *  install older than 1.4.30 is in use. */
+export function legacyTtsKeys(tts: AppSettings['tts']): LegacyTts {
+  return {
+    ...(tts.engine === 'openai' ? { engine: 'irodori' } : {}),
+    irodoriUrl: tts.openaiUrl,
+    irodoriApiKey: tts.openaiApiKey,
+    irodoriVoice: tts.openaiVoice || 'none',
+    irodoriCaption: tts.openaiInstructions,
+    irodoriSsh: tts.openaiSsh,
   };
 }
 

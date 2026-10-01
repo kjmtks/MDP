@@ -1,29 +1,52 @@
-// Text-to-speech for read-aloud (rehearsal, narrated auto-play, module API).
+// Text-to-speech for read-aloud (rehearsal, narrated auto-play, video export, module API).
 // Three selectable engines:
 //   - 'webspeech' : the browser/OS Web Speech API (SpeechSynthesis). Zero setup,
 //     cross-platform; voices come from the OS (and, when online, cloud voices).
 //   - 'voicevox'  : a LOCAL VOICEVOX engine (default http://127.0.0.1:50021). The
 //     user runs VOICEVOX; we POST /audio_query then /synthesis and play the WAV.
 //     CORS is permitted by the engine, so the renderer calls it directly.
-//   - 'irodori'   : a LOCAL Irodori-TTS server (Aratako/Irodori-TTS-Server, an
-//     OpenAI-compatible /v1/audio/speech; default http://127.0.0.1:8088) that the
-//     user runs, like the VOICEVOX engine.
-// VOICEVOX and Irodori return AUDIO DATA, so their clips can be prefetched and
+//   - 'openai'    : any TTS server with OpenAI's speech API (POST /v1/audio/speech)
+//     — one the user runs, such as Irodori-TTS-Server (default
+//     http://127.0.0.1:8088), Kokoro-FastAPI or openedai-speech, or OpenAI itself.
+//     Irodori-TTS-Server's extensions (reference voices, Voice Design) are used when
+//     it is the server.
+// VOICEVOX and the TTS server return AUDIO DATA, so their clips can be prefetched and
 // pre-generated; Web Speech only speaks live. Config is persisted in app settings.
 
-export type TtsEngine = 'webspeech' | 'voicevox' | 'irodori';
+export type TtsEngine = 'webspeech' | 'voicevox' | 'openai';
+
+/** An SSH jump host ("bastion") the TTS-server requests can go through — desktop
+ *  app only (app/sshTunnel.cjs). The bastion opens the connection to the server, so
+ *  a server that admits only campus addresses works from home; `enabled` switches
+ *  between that and connecting directly, keeping the rest. Secrets (password, key
+ *  passphrase) are NOT here: the main process keeps them encrypted, bound to this
+ *  bastion / key file. */
+export interface SshBastion {
+  enabled: boolean;
+  host: string;
+  port: number;
+  user: string;
+  auth: 'key' | 'password';
+  keyPath: string;           // private key file for auth 'key' ('~' = home folder)
+}
+
+export const DEFAULT_SSH_BASTION: SshBastion = {
+  enabled: false, host: '', port: 22, user: '', auth: 'key', keyPath: '~/.ssh/id_ed25519',
+};
 
 export interface TtsConfig {
   engine: TtsEngine;
-  rate: number;              // speaking rate; ~0.5–2.0. VOICEVOX speedScale / Irodori speed.
-  pitch: number;             // Web Speech pitch 0–2 (VOICEVOX and Irodori ignore it).
+  rate: number;              // speaking rate; ~0.5–2.0. VOICEVOX speedScale / the server's `speed`.
+  pitch: number;             // Web Speech pitch 0–2 (VOICEVOX and the server ignore it).
   webspeechVoiceURI: string; // chosen SpeechSynthesisVoice.voiceURI ('' = default)
   voicevoxUrl: string;       // e.g. http://127.0.0.1:50021
   voicevoxSpeaker: number;   // VOICEVOX style id
-  irodoriUrl: string;        // e.g. http://127.0.0.1:8088
-  irodoriApiKey: string;     // the server's IRODORI_API_KEY ('' = the server needs none)
-  irodoriVoice: string;      // server voice id (a reference clip in its voices/), or 'none'
-  irodoriCaption: string;    // Voice Design text ("落ち着いた低めの男性の声…"); '' = none
+  openaiUrl: string;         // the TTS server's URL, with or without /v1 (e.g. http://127.0.0.1:8088)
+  openaiApiKey: string;      // sent as Authorization: Bearer … ('' = the server needs none)
+  openaiModel: string;       // '' = the speech model the server lists
+  openaiVoice: string;       // the server's voice id ('' = its default; Irodori 'none' = no reference voice)
+  openaiInstructions: string; // how to speak: Irodori's Voice Design caption / OpenAI's `instructions`
+  openaiSsh: SshBastion;     // optional bastion to reach the server through
 }
 
 export const DEFAULT_TTS: TtsConfig = {
@@ -33,20 +56,22 @@ export const DEFAULT_TTS: TtsConfig = {
   webspeechVoiceURI: '',
   voicevoxUrl: 'http://127.0.0.1:50021',
   voicevoxSpeaker: 1,
-  irodoriUrl: 'http://127.0.0.1:8088',
-  irodoriApiKey: '',
-  irodoriVoice: 'none',
-  irodoriCaption: '',
+  openaiUrl: 'http://127.0.0.1:8088',
+  openaiApiKey: '',
+  openaiModel: '',
+  openaiVoice: '',
+  openaiInstructions: '',
+  openaiSsh: DEFAULT_SSH_BASTION,
 };
 
 /** Engines that return audio DATA (synthesized ahead of playback) rather than
  *  speaking live — so a clip can be prefetched or the whole show pre-generated,
  *  and a failure can fall back to Web Speech. */
-export const synthesizesAudio = (engine: TtsEngine): boolean => engine === 'voicevox' || engine === 'irodori';
+export const synthesizesAudio = (engine: TtsEngine): boolean => engine === 'voicevox' || engine === 'openai';
 
 /** Display name of an engine, for status lines and error messages. */
 export const engineLabel = (engine: TtsEngine): string =>
-  engine === 'voicevox' ? 'VOICEVOX' : engine === 'irodori' ? 'Irodori-TTS' : 'Web Speech';
+  engine === 'voicevox' ? 'VOICEVOX' : engine === 'openai' ? 'TTS server (OpenAI-compatible)' : 'Web Speech';
 
 // Opt-in TTS diagnostics: run `localStorage.mdpTtsDebug = '1'` in DevTools (per
 // window) and every speak/cancel/stop plus each utterance's lifecycle events are
@@ -68,8 +93,8 @@ export interface Utterance { done: Promise<void>; stop: () => void }
 
 // Spoken-position progress, for callers that highlight the text as it is read.
 // Web Speech reports word boundaries: charIndex (+ charLength when the platform
-// provides it) into the spoken string. VOICEVOX and Irodori play a pre-synthesized
-// WAV, so they report only `fraction` (0..1 of playback time) — an approximation.
+// provides it) into the spoken string. VOICEVOX and the TTS server play pre-synthesized
+// audio, so they report only `fraction` (0..1 of playback time) — an approximation.
 export interface SpeakProgress { charIndex?: number; charLength?: number; fraction?: number }
 export type SpeakProgressCallback = (p: SpeakProgress) => void;
 
@@ -216,6 +241,10 @@ const abortError = (): Error => new DOMException('The synthesis was cancelled.',
 // Synthesize VOICEVOX audio WITHOUT playing it yet (so callers can prefetch the
 // next segment while the current one plays). Returns an object URL for a WAV blob.
 async function synthVoicevox(text: string, cfg: TtsConfig, signal?: AbortSignal): Promise<string> {
+  return URL.createObjectURL(await voicevoxWav(text, cfg, signal));
+}
+
+async function voicevoxWav(text: string, cfg: TtsConfig, signal?: AbortSignal): Promise<Blob> {
   const base = (cfg.voicevoxUrl || DEFAULT_TTS.voicevoxUrl).replace(/\/+$/, '');
   const speaker = cfg.voicevoxSpeaker || 0;
   const q = await fetch(`${base}/audio_query?speaker=${speaker}&text=${encodeURIComponent(text)}`, { method: 'POST', signal });
@@ -227,59 +256,164 @@ async function synthVoicevox(text: string, cfg: TtsConfig, signal?: AbortSignal)
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(query), signal,
   });
   if (!s.ok) throw new Error(`VOICEVOX /synthesis returned ${s.status}`);
-  const blob = await s.blob();
-  return URL.createObjectURL(blob);
+  return s.blob();
 }
 
-// ---- Irodori-TTS -------------------------------------------------------------
+/** The narration of `text` as audio BYTES — WAV from VOICEVOX; WAV (or what else the
+ *  server sends, e.g. MP3) from a TTS server — for the video export, which needs the
+ *  audio itself (Web Speech only plays aloud and gives no audio data, so it cannot
+ *  be recorded this way). */
+export async function synthesizeAudio(text: string, cfg: TtsConfig, signal?: AbortSignal): Promise<Uint8Array> {
+  if (cfg.engine === 'openai') return (await serverSpeech(text, cfg, signal)).bytes;
+  if (cfg.engine === 'voicevox') return new Uint8Array(await (await voicevoxWav(text, cfg, signal)).arrayBuffer());
+  throw new Error('Web Speech gives no audio data — choose VOICEVOX or a TTS server to make a narrated video.');
+}
 
-// The server sends no CORS headers unless IRODORI_CORS_ORIGINS is configured, so
-// in Electron every call goes through a narrow relay in the main process
-// (app/ttsRelay.cjs — only this server's API paths). The web build has no relay
-// and calls the server directly; that needs the server's IRODORI_CORS_ORIGINS set
-// to the page's origin (a JSON list, e.g. ["http://localhost:3000"]).
-interface HttpResult { status: number; contentType: string; body: Uint8Array }
+// ---- OpenAI-compatible TTS servers ---------------------------------------------
+//
+// The 'openai' engine speaks through any server with OpenAI's speech API —
+// POST <base>/v1/audio/speech {model, input, voice, response_format, speed}, with
+// `Authorization: Bearer <key>` when the server wants a key: OpenAI itself, or a
+// server the user runs (Irodori-TTS-Server, Kokoro-FastAPI, openedai-speech,
+// Speaches…). `<base>` is the URL as the user gives it, with or without the /v1.
+//
+// Irodori-TTS-Server (Aratako) adds extensions, used when it is the server — its
+// /health answers with the model runtime: a voices/ registry (list, register,
+// replace and remove reference voices), Voice Design (`irodori.caption`), the
+// model's load status, and SSE streaming, the one mode in which it notices a client
+// leaving. Any other server gets a plain request, with the voice description sent
+// as OpenAI's `instructions`; its voice list comes from /v1/audio/voices when it
+// has one (Kokoro-FastAPI does), else the voice is typed in.
+//
+// These servers usually send no CORS headers (Irodori only with
+// IRODORI_CORS_ORIGINS), so in Electron every call goes through a narrow relay in
+// the main process (app/ttsRelay.cjs — only these API paths). The web build has no
+// relay and calls the server directly; that needs the server to allow the page's
+// origin (Irodori: IRODORI_CORS_ORIGINS, a JSON list, e.g. ["http://localhost:3000"]).
+
+/** Why a request through the SSH bastion failed, in a form the settings panel can
+ *  act on: 'hostkey-unknown' (first connection — show `fingerprint` to confirm),
+ *  'hostkey-mismatch' (the key changed — `expected` was pinned), 'no-secret' /
+ *  'auth' (password or passphrase missing or wrong), 'key', 'connect', 'forward'
+ *  (the bastion cannot reach the server), 'config', 'unavailable'. */
+export interface SshBastionProblem {
+  code: string;
+  message: string;
+  host?: string;
+  port?: number;
+  fingerprint?: string;
+  keyType?: string;
+  expected?: string;
+}
+export class SshBastionError extends Error {
+  readonly problem: SshBastionProblem;
+  constructor(problem: SshBastionProblem) {
+    super(`SSH bastion: ${problem.message}`);
+    this.name = 'SshBastionError';
+    this.problem = problem;
+  }
+}
+
+// `messages`: Irodori's X-Irodori-Messages header (what the model did with the
+// request), where it can be read — not by a web page unless the server exposes it.
+interface HttpResult { status: number; contentType: string; body: Uint8Array; sshError?: SshBastionProblem; messages?: string }
 // A reference clip to register on the server as a voice (multipart upload).
 interface VoiceUpload { voiceId?: string; filename: string; data: Uint8Array }
+type SshTarget = Omit<SshBastion, 'enabled'>;
 type TtsRelay = (req: {
   url: string; method: 'GET' | 'POST' | 'PUT' | 'DELETE'; body?: string; upload?: VoiceUpload; apiKey?: string; id?: string;
+  ssh?: SshTarget;
 }) => Promise<HttpResult>;
 type ElectronTts = { ttsHttp?: TtsRelay; ttsHttpAbort?: (id: string) => Promise<boolean> };
 
-/** Where an Irodori server is and how to authenticate to it. `apiKey` is the
- *  server's IRODORI_API_KEY, sent as `Authorization: Bearer …` ('' = none). */
-export interface IrodoriServer { url: string; apiKey?: string }
-export const irodoriServerOf = (cfg: TtsConfig): IrodoriServer => ({ url: cfg.irodoriUrl, apiKey: cfg.irodoriApiKey });
+/** Where a TTS server is and how to reach it. `apiKey` goes out as
+ *  `Authorization: Bearer …` ('' = none). `ssh`: go through this bastion (present
+ *  only while its switch is on). */
+export interface SpeechServer { url: string; apiKey?: string; ssh?: SshBastion }
+export const speechServerOf = (cfg: TtsConfig): SpeechServer => ({
+  url: cfg.openaiUrl,
+  apiKey: cfg.openaiApiKey,
+  ...(cfg.openaiSsh?.enabled ? { ssh: cfg.openaiSsh } : {}),
+});
 
-const irodoriBase = (url: string): string => (url || DEFAULT_TTS.irodoriUrl).trim().replace(/\/+$/, '');
+// The server's root: the URL as given, without a trailing /v1 (the paths add it).
+const serverBase = (url: string): string =>
+  (url || DEFAULT_TTS.openaiUrl).trim().replace(/\/+$/, '').replace(/\/v1$/i, '');
+// One server = one root reached one way: the same address through a bastion is
+// another machine.
+const serverKey = (s: SpeechServer): string =>
+  `${serverBase(s.url)}${s.ssh ? ` via ${s.ssh.user}@${s.ssh.host}:${s.ssh.port}` : ''}`;
 
 /** Does the server run on THIS computer? A voice registered on any other server
  *  can be spoken with (or replaced) by everyone who holds that server's key, and
- *  its audio file sits on a machine someone else administers. */
-export function isLocalIrodoriServer(url: string): boolean {
+ *  its audio file sits on a machine someone else administers. Through a bastion
+ *  the address is the bastion's own, so `127.0.0.1` there is someone else's. */
+export function isLocalSpeechServer(url: string, ssh?: SshBastion): boolean {
+  if (ssh?.enabled) return false;
   try {
-    const host = new URL(irodoriBase(url)).hostname.replace(/^\[|\]$/g, '').toLowerCase();
+    const host = new URL(serverBase(url)).hostname.replace(/^\[|\]$/g, '').toLowerCase();
     return host === 'localhost' || host === '::1' || /^127\./.test(host);
   } catch { return false; }
 }
 
+// ---- the SSH bastion's stored state (desktop app) --------------------------------
+
+/** What the main process holds for a bastion — never the secrets themselves. */
+export interface SshBastionInfo {
+  encryption: boolean;       // the OS keystore can protect a saved secret
+  hasPassword: boolean;      // for user@host:port
+  hasPassphrase: boolean;    // for the key file
+  hostKey: { fingerprint: string; keyType: string; at: number } | null;
+}
+type SshReply = { ok: true; info: SshBastionInfo } | { ok: false; problem: SshBastionProblem };
+type SshApi = {
+  ttsSshInfo?: (req: unknown) => Promise<SshReply>;
+  ttsSshSecret?: (req: unknown) => Promise<SshReply>;
+  ttsSshTrust?: (req: unknown) => Promise<SshReply>;
+  ttsSshForget?: (req: unknown) => Promise<SshReply>;
+};
+const sshApi = (): SshApi | undefined => (window as unknown as { electronAPI?: SshApi }).electronAPI;
+
+/** The bastion needs the desktop app (Node does the SSH; a browser cannot). */
+export const sshBastionSupported = (): boolean => typeof sshApi()?.ttsSshInfo === 'function';
+
+async function sshCall(name: keyof SshApi, req: unknown): Promise<SshBastionInfo> {
+  const fn = sshApi()?.[name];
+  if (!fn) throw new SshBastionError({ code: 'unavailable', message: 'The SSH bastion works only in the desktop app.' });
+  const r = await fn(req);
+  if (!r.ok) throw new SshBastionError(r.problem);
+  return r.info;
+}
+export const sshBastionInfo = (ssh: SshBastion): Promise<SshBastionInfo> => sshCall('ttsSshInfo', ssh);
+/** Save (or with '' clear) the password for user@host:port, or the key file's passphrase. */
+export const setSshBastionSecret = (kind: 'password' | 'passphrase', ssh: SshBastion, value: string): Promise<SshBastionInfo> =>
+  sshCall('ttsSshSecret', { ...ssh, kind, value });
+/** Pin the host key the bastion just presented (after the user compared the fingerprint). */
+export const trustSshBastionHostKey = (ssh: SshBastion, fingerprint: string): Promise<SshBastionInfo> =>
+  sshCall('ttsSshTrust', { host: ssh.host, port: ssh.port, fingerprint });
+/** Forget the pinned host key (the bastion's administrator replaced it). */
+export const forgetSshBastionHostKey = (ssh: SshBastion): Promise<SshBastionInfo> =>
+  sshCall('ttsSshForget', { host: ssh.host, port: ssh.port });
+
+// ---- requests ------------------------------------------------------------------------
+
 // A bearer token travels in an HTTP header: printable ASCII only, no spaces —
 // anything else would be rejected by the HTTP stack (or smuggle a header).
 const API_KEY = /^[\x21-\x7E]+$/;
-function apiKeyOf(server: IrodoriServer): string {
+function apiKeyOf(server: SpeechServer): string {
   const key = (server.apiKey || '').trim();
-  if (key && !API_KEY.test(key)) throw new Error('Irodori-TTS: the API key may only contain printable ASCII characters (no spaces).');
+  if (key && !API_KEY.test(key)) throw new Error('TTS server: the API key may only contain printable ASCII characters (no spaces).');
   return key;
 }
 
 // `json` → POST it; `upload` → multipart POST (or PUT when `method` says so);
 // neither → GET (or DELETE when `method` says so). `signal` aborts the request: the connection is closed, which is
-// what makes the server stop a streamed synthesis (see irodoriSpeech).
-async function irodoriHttp(
-  server: IrodoriServer, path: string,
+// what makes Irodori stop a streamed synthesis (see irodoriStreamedSpeech).
+async function speechHttp(
+  server: SpeechServer, path: string,
   opts: { json?: unknown; upload?: VoiceUpload; method?: 'POST' | 'PUT' | 'DELETE'; signal?: AbortSignal } = {},
 ): Promise<HttpResult> {
-  const base = irodoriBase(server.url);
+  const base = serverBase(server.url);
   const url = `${base}${path}`;
   const apiKey = apiKeyOf(server);
   const { json, upload, signal } = opts;
@@ -288,89 +422,238 @@ async function irodoriHttp(
   const body = json === undefined ? undefined : JSON.stringify(json);
   const electron = (window as unknown as { electronAPI?: ElectronTts }).electronAPI;
   const relay = electron?.ttsHttp;
+  const ssh = server.ssh?.enabled ? server.ssh : undefined;
+  if (ssh && !relay) throw new SshBastionError({ code: 'unavailable', message: 'The SSH bastion works only in the desktop app.' });
   // The relay can only be interrupted by id (an AbortSignal cannot cross IPC).
   const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
   const onAbort = () => { void electron?.ttsHttpAbort?.(id); };
+  let sshProblem: SshBastionProblem | undefined;
   try {
     if (relay) {
       signal?.addEventListener('abort', onAbort, { once: true });
-      return await relay({ url, method, body, upload, id, ...(apiKey ? { apiKey } : {}) });
+      const res = await relay({
+        url, method, body, upload, id, ...(apiKey ? { apiKey } : {}),
+        ...(ssh ? { ssh: { host: ssh.host, port: ssh.port, user: ssh.user, auth: ssh.auth, keyPath: ssh.keyPath } } : {}),
+      });
+      if (!res.sshError) return res;
+      sshProblem = res.sshError;       // thrown below, past the catch-all
+    } else {
+      const headers: Record<string, string> = apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
+      let init: RequestInit = { method, headers: body ? { ...headers, 'Content-Type': 'application/json' } : headers, body, signal };
+      if (upload) {
+        const form = new FormData();
+        if (upload.voiceId) form.append('voice_id', upload.voiceId);
+        form.append('file', new Blob([upload.data.slice()], { type: 'audio/wav' }), upload.filename);
+        init = { method, headers, body: form, signal };
+      }
+      const res = await fetch(url, init);
+      const messages = res.headers.get('x-irodori-messages');
+      return {
+        status: res.status, contentType: res.headers.get('content-type') || '', body: new Uint8Array(await res.arrayBuffer()),
+        ...(messages ? { messages } : {}),
+      };
     }
-    const headers: Record<string, string> = apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
-    let init: RequestInit = { method, headers: body ? { ...headers, 'Content-Type': 'application/json' } : headers, body, signal };
-    if (upload) {
-      const form = new FormData();
-      if (upload.voiceId) form.append('voice_id', upload.voiceId);
-      form.append('file', new Blob([upload.data.slice()], { type: 'audio/wav' }), upload.filename);
-      init = { method, headers, body: form, signal };
-    }
-    const res = await fetch(url, init);
-    return { status: res.status, contentType: res.headers.get('content-type') || '', body: new Uint8Array(await res.arrayBuffer()) };
   } catch (e) {
     if (signal?.aborted) throw abortError();
     // Connection refused / DNS / CORS all land here. The raw text ("fetch failed",
-    // "Error invoking remote method…") says nothing useful to a presenter.
-    ttsLog('irodori request failed', url, String(e));
-    throw new Error(`Irodori-TTS server not reachable at ${base} — is it running?`);
+    // "Error invoking remote method…") says nothing useful to a presenter — except
+    // through a bastion, where the tunnel works and the reason (a TLS certificate,
+    // the server itself) is worth showing.
+    ttsLog('TTS server request failed', url, String(e));
+    if (ssh) {
+      const why = String((e as Error)?.message || e).replace(/^[\s\S]*Error: /, '').replace(/^ttsHttp: /, '');
+      throw new Error(`TTS server not reachable at ${base} through the SSH bastion ${ssh.host}: ${why}`);
+    }
+    throw new Error(`TTS server not reachable at ${base} — is it running?`);
   } finally {
     signal?.removeEventListener('abort', onAbort);
   }
+  if (signal?.aborted) throw abortError();
+  throw new SshBastionError(sshProblem as SshBastionProblem);
 }
 
-// The server answers errors OpenAI-style: {"error":{"message":…}}.
-function irodoriError(r: HttpResult): string {
-  // 401 = the server has IRODORI_API_KEY set and ours is missing or different.
-  const hint = r.status === 401 ? ' — set the server’s API key in the Irodori-TTS settings.' : '';
+// Errors come back OpenAI-style ({"error":{"message":…}}) or FastAPI-style
+// ({"detail":"…"} or a list of validation problems).
+function speechError(r: HttpResult): string {
+  // 401 = the server wants a key and ours is missing or different.
+  const hint = r.status === 401 ? ' — set the server’s API key in the TTS settings.' : '';
   const text = new TextDecoder().decode(r.body);
   try {
     const j = JSON.parse(text);
-    const m = j?.error?.message || j?.detail;
-    if (m) return `Irodori-TTS: ${m}${hint}`;
+    const detail = j?.detail;
+    const m = j?.error?.message || (typeof detail === 'string' ? detail : Array.isArray(detail) ? detail[0]?.msg : '');
+    if (m) return `TTS server: ${m}${hint}`;
   } catch { /* not JSON */ }
-  return `Irodori-TTS returned HTTP ${r.status}${hint}`;
+  return `The TTS server returned HTTP ${r.status}${hint}`;
 }
+const refused = (r: HttpResult): boolean => r.status === 401 || r.status === 403;
 
-const irodoriJson = <T>(r: HttpResult): T => JSON.parse(new TextDecoder().decode(r.body)) as T;
+const speechJson = <T>(r: HttpResult): T => JSON.parse(new TextDecoder().decode(r.body)) as T;
 
-// The server rejects any `model` but its configured name (IRODORI_MODEL_NAME,
-// "irodori-tts" by default), so ask it once per server instead of assuming.
-const irodoriModelIds = new Map<string, string>();
-async function irodoriModelId(server: IrodoriServer): Promise<string> {
-  const base = irodoriBase(server.url);
-  const known = irodoriModelIds.get(base);
-  if (known) return known;
-  try {
-    const r = await irodoriHttp(server, '/v1/models');
-    const id = r.status === 200 ? irodoriJson<{ data?: Array<{ id?: string }> }>(r).data?.[0]?.id : undefined;
-    if (id) { irodoriModelIds.set(base, id); return id; }
-  } catch { /* fall through to the documented default */ }
-  return 'irodori-tts';
-}
-
-/** Voice ids the server offers: the files in its voices/ folder, voices.json
- *  aliases, and 'none' (no reference — Voice Design / text only). */
-export async function listIrodoriVoices(server: IrodoriServer): Promise<string[]> {
-  const r = await irodoriHttp(server, '/v1/audio/voices');
-  if (r.status !== 200) throw new Error(irodoriError(r));
-  const ids = (irodoriJson<{ data?: Array<{ id?: string }> }>(r).data || []).map((v) => String(v.id || '')).filter(Boolean);
-  return ids.sort((a, b) => (a === 'none' ? -1 : b === 'none' ? 1 : a.localeCompare(b)));
-}
+// ---- what the server is and offers -------------------------------------------------
 
 export interface IrodoriStatus { checkpoint: string; loaded: boolean; loading: boolean }
 
-/** Server status. /health never loads the model, so it answers instantly — and
- *  tells whether the FIRST synthesis will have to wait for a model load. It is
- *  also the one endpoint the server leaves open without the API key. */
-export async function irodoriHealth(server: IrodoriServer): Promise<IrodoriStatus> {
-  const r = await irodoriHttp(server, '/health');
-  if (r.status !== 200) throw new Error(irodoriError(r));
-  const h = irodoriJson<{ model?: { hf_checkpoint?: string }; runtime?: { loaded?: boolean; loading?: boolean; checkpoint?: string } }>(r);
-  return {
-    checkpoint: String(h.runtime?.checkpoint || h.model?.hf_checkpoint || ''),
-    loaded: !!h.runtime?.loaded,
-    loading: !!h.runtime?.loading,
-  };
+/** A server as Connect finds it. */
+export interface SpeechServerInfo {
+  /** 'irodori' = Irodori-TTS-Server: Voice Design and model status are available.
+   *  'openai' = any other OpenAI-compatible server. */
+  kind: 'irodori' | 'openai';
+  /** Irodori's model status (null for other servers). */
+  health: IrodoriStatus | null;
+  /** Model ids from /v1/models ([] = the server lists none). */
+  models: string[];
+  /** The voices the server offers (null = it has no list: the voice is typed in). */
+  voices: string[] | null;
+  /** Voices can be registered here in Irodori-TTS-Server's way (see probeHealth). */
+  voiceRegistry: boolean;
 }
+
+// Registering a voice is NOT part of OpenAI's speech API: Irodori-TTS-Server adds
+// it (multipart `file` + `voice_id` to POST /v1/audio/voices, PUT to replace,
+// DELETE — in every version since its first), and kjai01's Chatterbox server copies
+// that form. OpenAI's own POST /v1/audio/voices takes another one (a sample plus a
+// consent recording), so the path alone proves nothing and is never probed. A
+// server is taken to register voices the Irodori way only when it says so in its
+// /health: Irodori itself, or the same `voices` folder report (`files`).
+interface HealthProbe {
+  irodori: IrodoriStatus | null;
+  voiceRegistry: boolean;
+  /** An error status: the server is up but cannot say (e.g. a proxy whose TTS
+   *  process is stopped) — ask again later rather than remember "not Irodori". */
+  failed: HttpResult | null;
+}
+
+// /health — open without the API key and never loads the model, so it answers at
+// once; Irodori's tells whether the FIRST synthesis will wait for a model load.
+// Throws only when the server cannot be reached at all.
+async function probeHealth(server: SpeechServer): Promise<HealthProbe> {
+  const r = await speechHttp(server, '/health');
+  if (r.status >= 500) return { irodori: null, voiceRegistry: false, failed: r };
+  if (r.status !== 200) return { irodori: null, voiceRegistry: false, failed: null };
+  try {
+    const h = speechJson<{
+      model?: { hf_checkpoint?: string }; runtime?: { loaded?: unknown; loading?: unknown; checkpoint?: string };
+      voices?: { files?: unknown };
+    }>(r);
+    const voiceRegistry = typeof h?.voices?.files === 'number';
+    if (!h?.model || !('hf_checkpoint' in h.model) || typeof h.runtime?.loaded !== 'boolean') {
+      return { irodori: null, voiceRegistry, failed: null };
+    }
+    const irodori = {
+      checkpoint: String(h.runtime.checkpoint || h.model.hf_checkpoint || ''),
+      loaded: h.runtime.loaded,
+      loading: !!h.runtime.loading,
+    };
+    return { irodori, voiceRegistry: true, failed: null };
+  } catch { return { irodori: null, voiceRegistry: false, failed: null }; }
+}
+
+// Which kind each server is, found once per server (Connect finds it afresh).
+const kinds = new Map<string, Promise<SpeechServerInfo['kind']>>();
+const knownKinds = new Map<string, SpeechServerInfo['kind']>();
+function serverKind(server: SpeechServer): Promise<SpeechServerInfo['kind']> {
+  const key = serverKey(server);
+  let p = kinds.get(key);
+  if (!p) {
+    const asked: Promise<SpeechServerInfo['kind']> = probeHealth(server).then(({ irodori, failed }) => {
+      const kind = irodori ? 'irodori' : 'openai';
+      if (!failed) knownKinds.set(key, kind);
+      else if (kinds.get(key) === asked) kinds.delete(key);   // it could not say: ask again next time
+      return kind;
+    });
+    p = asked;
+    kinds.set(key, p);
+    p.catch(() => { if (kinds.get(key) === asked) kinds.delete(key); });   // unreachable now: ask again next time
+  }
+  return p;
+}
+/** The server's kind if it is known already (undefined = not asked yet). */
+export const knownServerKind = (server: SpeechServer): SpeechServerInfo['kind'] | undefined => knownKinds.get(serverKey(server));
+/** Find out the server's kind in the background (e.g. at startup), so a later
+ *  decision that needs it — which languages it speaks — has it at hand. */
+export const warmUpSpeechServer = (server: SpeechServer): void => { serverKind(server).catch(() => { /* not running */ }); };
+
+async function listModels(server: SpeechServer): Promise<string[]> {
+  const r = await speechHttp(server, '/v1/models');
+  if (refused(r)) throw new Error(speechError(r));
+  if (r.status !== 200) return [];
+  try {
+    return (speechJson<{ data?: Array<{ id?: unknown }> }>(r).data || []).map((m) => String(m?.id || '')).filter(Boolean);
+  } catch { return []; }
+}
+
+// Irodori answers {data:[{id,…}]}, Kokoro-FastAPI {voices:["af_bella",…]}; others
+// have no such path (null: the voice is typed in).
+async function listVoices(server: SpeechServer): Promise<string[] | null> {
+  const r = await speechHttp(server, '/v1/audio/voices');
+  if (refused(r)) throw new Error(speechError(r));
+  if (r.status !== 200) return null;
+  let list: unknown;
+  try {
+    const j = speechJson<{ data?: unknown; voices?: unknown }>(r);
+    list = Array.isArray(j) ? j : Array.isArray(j?.data) ? j.data : j?.voices;
+  } catch { return null; }
+  if (!Array.isArray(list)) return null;
+  const ids = list.map((v) => {
+    if (typeof v === 'string') return v;
+    const o = (v || {}) as { id?: unknown; voice_id?: unknown; name?: unknown };
+    return String(o.id ?? o.voice_id ?? o.name ?? '');
+  }).filter(Boolean);
+  return ids.sort((a, b) => (a === 'none' ? -1 : b === 'none' ? 1 : a.localeCompare(b)));
+}
+
+/** Connect: what the server is (Irodori-TTS-Server or another OpenAI-compatible
+ *  one), its models and voices. Rejects when it cannot be reached, refuses the
+ *  API key, answers only errors (its TTS process is down — said in its words), or
+ *  the bastion needs attention (SshBastionError). */
+export async function inspectSpeechServer(server: SpeechServer): Promise<SpeechServerInfo> {
+  const { irodori: health, voiceRegistry, failed } = await probeHealth(server);   // also: does it answer at all?
+  if (failed) {
+    // /health and /v1/models both failing = up, but not speaking (kjai01's proxy
+    // with its TTS process stopped says "start it in the portal"): not "Connected".
+    const m = await speechHttp(server, '/v1/models');
+    if (m.status >= 500) throw new Error(speechError(m));
+  }
+  const kind = health ? 'irodori' : 'openai';
+  const key = serverKey(server);
+  if (!failed) {
+    kinds.set(key, Promise.resolve(kind));
+    knownKinds.set(key, kind);
+  }
+  const [models, voices] = await Promise.all([listModels(server), listVoices(server)]);
+  return { kind, health, models, voices, voiceRegistry };
+}
+
+/** The voices the server offers ([] = it has no list). */
+export async function listServerVoices(server: SpeechServer): Promise<string[]> {
+  return (await listVoices(server)) || [];
+}
+
+/** OpenAI's own voices — suggested when a server has no voice list. */
+export const OPENAI_VOICES = ['alloy', 'ash', 'ballad', 'cedar', 'coral', 'echo', 'fable', 'marin', 'nova', 'onyx', 'sage', 'shimmer', 'verse'];
+
+// The model to ask for when the settings name none. Irodori rejects any but its
+// configured name (IRODORI_MODEL_NAME, "irodori-tts" by default) and OpenAI lists
+// every model it has, so ask once per server and take its first speech model;
+// failing that, OpenAI's 'tts-1', which most compatible servers accept as well.
+const defaultModels = new Map<string, string>();
+async function defaultModel(server: SpeechServer): Promise<string> {
+  const key = serverKey(server);
+  const known = defaultModels.get(key);
+  if (known) return known;
+  let ids: string[];
+  try { ids = await listModels(server); } catch { return 'tts-1'; }   // a refused key shows on the speech request
+  const pick = ids.find((id) => /tts/i.test(id)) || ids.find((id) => /speech|kokoro|irodori/i.test(id))
+    || (ids.length === 1 ? ids[0] : '') || 'tts-1';
+  defaultModels.set(key, pick);
+  return pick;
+}
+/** The model a request will use: the configured one, else the server's own. */
+export const speechModelFor = (cfg: TtsConfig): Promise<string> =>
+  Promise.resolve((cfg.openaiModel || '').trim() || defaultModel(speechServerOf(cfg)));
+
+// ---- speech ----------------------------------------------------------------------------
 
 // Join the WAVs of consecutive chunks into one: the first chunk's `fmt ` plus all
 // `data` payloads (the chunks of one request share a format — 48 kHz 16-bit mono).
@@ -406,30 +689,17 @@ function joinWavs(parts: Uint8Array[]): Uint8Array {
   return out;
 }
 
-// One /v1/audio/speech call → the WAV bytes. Always STREAMED (SSE, one event per
-// text chunk), because that is the only mode in which the server notices a client
-// leaving: when a stop/cancel aborts the request, a streamed synthesis ends after
-// the chunk in progress, while a plain request renders the whole text for nobody
-// (measured on v4-Large: ~3 s of wasted GPU time instead of ~48 s for a 6-chunk
-// text). A request still waiting in the server's queue is dropped the same way.
-async function irodoriSpeech(text: string, cfg: TtsConfig, signal?: AbortSignal): Promise<Uint8Array> {
-  const server = irodoriServerOf(cfg);
-  const caption = (cfg.irodoriCaption || '').trim();
-  const r = await irodoriHttp(server, '/v1/audio/speech', {
-    signal,
-    json: {
-      model: await irodoriModelId(server),
-      input: text,
-      voice: (cfg.irodoriVoice || '').trim() || 'none',
-      response_format: 'wav',
-      speed: Math.max(0.25, Math.min(4, cfg.rate || 1)),
-      stream_format: 'sse',
-      ...(caption ? { irodori: { caption } } : {}),
-    },
-  });
+// Irodori: always STREAMED (SSE, one event per text chunk), because that is the only
+// mode in which the server notices a client leaving: when a stop/cancel aborts the
+// request, a streamed synthesis ends after the chunk in progress, while a plain
+// request renders the whole text for nobody (measured on v4-Large: ~3 s of wasted
+// GPU time instead of ~48 s for a 6-chunk text). A request still waiting in the
+// server's queue is dropped the same way.
+async function irodoriStreamedSpeech(server: SpeechServer, json: Record<string, unknown>, signal?: AbortSignal): Promise<Uint8Array> {
+  const r = await speechHttp(server, '/v1/audio/speech', { signal, json: { ...json, response_format: 'wav', stream_format: 'sse' } });
   // Errors found before streaming starts (auth, validation, model load) come back
   // as a plain JSON error response.
-  if (r.status !== 200) throw new Error(irodoriError(r));
+  if (r.status !== 200) throw new Error(speechError(r));
   const parts: Uint8Array[] = [];
   let done = false;
   for (const block of new TextDecoder().decode(r.body).split(/\r?\n\r?\n/)) {
@@ -452,10 +722,39 @@ async function irodoriSpeech(text: string, cfg: TtsConfig, signal?: AbortSignal)
   return joinWavs(parts);
 }
 
-// Synthesize with Irodori WITHOUT playing (same contract as synthVoicevox).
-async function synthIrodori(text: string, cfg: TtsConfig, signal?: AbortSignal): Promise<string> {
-  const wav = await irodoriSpeech(text, cfg, signal);
-  return URL.createObjectURL(new Blob([wav.slice()], { type: 'audio/wav' }));
+// One /v1/audio/speech call → the audio. Irodori: streamed, with the description as
+// its Voice Design caption. Any other server: one plain request asking for WAV (MP3
+// when it has no WAV), with the description as OpenAI's `instructions` — only when
+// there is one: tts-1 and many servers know no such field.
+async function serverSpeech(text: string, cfg: TtsConfig, signal?: AbortSignal): Promise<{ bytes: Uint8Array; type: string }> {
+  const server = speechServerOf(cfg);
+  const kind = await serverKind(server);
+  const model = await speechModelFor(cfg);
+  const how = (cfg.openaiInstructions || '').trim();
+  const json = {
+    model,
+    input: text,
+    voice: (cfg.openaiVoice || '').trim() || (kind === 'irodori' ? 'none' : 'alloy'),
+    speed: Math.max(0.25, Math.min(4, cfg.rate || 1)),
+  };
+  if (kind === 'irodori') {
+    return { bytes: await irodoriStreamedSpeech(server, { ...json, ...(how ? { irodori: { caption: how } } : {}) }, signal), type: 'audio/wav' };
+  }
+  const ask = (format: string) => speechHttp(server, '/v1/audio/speech', {
+    signal, json: { ...json, response_format: format, ...(how ? { instructions: how } : {}) },
+  });
+  let r = await ask('wav');
+  if ((r.status === 400 || r.status === 422) && /format/i.test(new TextDecoder().decode(r.body))) r = await ask('mp3');
+  if (r.status !== 200) throw new Error(speechError(r));
+  const type = r.contentType.split(';')[0].trim().toLowerCase();
+  if (!r.body.length || /json|^text\//.test(type)) throw new Error('The TTS server sent no audio.');
+  return { bytes: r.body, type: type.startsWith('audio/') ? type : 'audio/wav' };
+}
+
+// Synthesize with the TTS server WITHOUT playing (same contract as synthVoicevox).
+async function synthServer(text: string, cfg: TtsConfig, signal?: AbortSignal): Promise<string> {
+  const { bytes, type } = await serverSpeech(text, cfg, signal);
+  return URL.createObjectURL(new Blob([bytes.slice()], { type }));
 }
 
 // ---- Irodori: locking a designed voice ----------------------------------------
@@ -477,33 +776,77 @@ export const IRODORI_REFERENCE_TEXT =
 /** The server's rule for voice ids (they become file names in its voices/). */
 export const IRODORI_VOICE_ID = /^[A-Za-z0-9_-]+$/;
 
-/** Speak the reference text in a voice designed from `cfg.irodoriCaption` (no
+/** Speak the reference text in a voice designed from `cfg.openaiInstructions` (no
  *  reference voice, natural speed) → WAV bytes to audition and then register. */
 export async function designIrodoriVoice(cfg: TtsConfig, signal?: AbortSignal): Promise<Uint8Array> {
-  return irodoriSpeech(IRODORI_REFERENCE_TEXT, { ...cfg, irodoriVoice: 'none', rate: 1 }, signal);
+  return (await serverSpeech(IRODORI_REFERENCE_TEXT, { ...cfg, openaiVoice: 'none', rate: 1 }, signal)).bytes;
 }
 
 /** Register `wav` on the server as voice `voiceId` (a file in its voices/).
  *  Returns 'exists' when that id is taken and `replace` is false, so the caller
  *  can ask before overwriting. On a shared server every key holder sees — and
  *  can replace — the same set of voices. */
-export async function saveIrodoriVoice(server: IrodoriServer, voiceId: string, wav: Uint8Array, replace = false): Promise<'saved' | 'exists'> {
+export async function saveIrodoriVoice(server: SpeechServer, voiceId: string, wav: Uint8Array, replace = false): Promise<'saved' | 'exists'> {
   if (!IRODORI_VOICE_ID.test(voiceId)) throw new Error('A voice name may only contain letters, digits, - and _.');
   const upload: VoiceUpload = { filename: `${voiceId}.wav`, data: wav };
   const r = replace
-    ? await irodoriHttp(server, `/v1/audio/voices/${voiceId}`, { upload, method: 'PUT' })
-    : await irodoriHttp(server, '/v1/audio/voices', { upload: { ...upload, voiceId } });
+    ? await speechHttp(server, `/v1/audio/voices/${voiceId}`, { upload, method: 'PUT' })
+    : await speechHttp(server, '/v1/audio/voices', { upload: { ...upload, voiceId } });
   if (!replace && r.status === 409) return 'exists';
-  if (r.status !== 200 && r.status !== 201) throw new Error(irodoriError(r));
+  if (r.status !== 200 && r.status !== 201) throw new Error(speechError(r));
   return 'saved';
 }
 
 /** Remove voice `voiceId` (its file in the server's voices/). A voices.json alias
  *  is not a file and cannot be removed this way (the server answers 404). */
-export async function deleteIrodoriVoice(server: IrodoriServer, voiceId: string): Promise<void> {
+export async function deleteIrodoriVoice(server: SpeechServer, voiceId: string): Promise<void> {
   if (!IRODORI_VOICE_ID.test(voiceId)) throw new Error('A voice name may only contain letters, digits, - and _.');
-  const r = await irodoriHttp(server, `/v1/audio/voices/${voiceId}`, { method: 'DELETE' });
-  if (r.status !== 200) throw new Error(irodoriError(r));
+  const r = await speechHttp(server, `/v1/audio/voices/${voiceId}`, { method: 'DELETE' });
+  if (r.status !== 200) throw new Error(speechError(r));
+}
+
+// Whether the model Irodori has loaded USES a reference voice. Some checkpoints
+// were trained without speaker conditioning (caption-only Voice Design ones): they
+// accept a registered voice and silently ignore it — no error, a different
+// speaker on every line. /health does not tell, and the streamed (SSE) answers
+// MDP speaks with carry no messages, so it is asked once per loaded checkpoint
+// with one tiny plain request (one character, one sampling step) in a registered
+// voice, and read from X-Irodori-Messages ("speaker conditioning is disabled for
+// this checkpoint; ignoring reference input"). The reference is resolved before
+// any sampling, so the shortcut cannot change the answer.
+const referenceUse = new Map<string, Promise<boolean | null>>();
+
+/** Does the loaded Irodori model use reference voices? Asked with `voiceId`, a
+ *  voice registered on the server. true / false, or null when it cannot tell: not
+ *  Irodori (others keep their own contract), an error, or a header this page may
+ *  not read (a web page sees it only if the server exposes it). */
+export async function referenceVoicesUsed(server: SpeechServer, voiceId: string): Promise<boolean | null> {
+  const { irodori } = await probeHealth(server);
+  if (!irodori || !voiceId || voiceId === 'none') return null;
+  const key = `${serverKey(server)}|${irodori.checkpoint}`;
+  let p = referenceUse.get(key);
+  if (!p) {
+    const asked: Promise<boolean | null> = (async () => {
+      const r = await speechHttp(server, '/v1/audio/speech', {
+        json: {
+          model: await defaultModel(server), input: 'あ', voice: voiceId, response_format: 'wav',
+          irodori: { num_steps: 1 },
+        },
+      });
+      if (r.status !== 200) return null;
+      const m = r.messages || '';
+      return /speaker conditioning is disabled/i.test(m) ? false : m ? true : null;
+    })();
+    p = asked.then((used) => {
+      if (used === null && referenceUse.get(key) === p) referenceUse.delete(key);   // could not tell: ask again later
+      return used;
+    }, () => {
+      if (referenceUse.get(key) === p) referenceUse.delete(key);
+      return null;
+    });
+    referenceUse.set(key, p);
+  }
+  return p;
 }
 
 function playAudioUrl(url: string, revoke: boolean, onProgress?: SpeakProgressCallback): Utterance {
@@ -532,7 +875,7 @@ function playAudioUrl(url: string, revoke: boolean, onProgress?: SpeakProgressCa
 // synthesized once you are done with it.
 export interface Clip { play: () => Utterance; dispose: () => void }
 
-// Prepare `text` for the configured engine WITHOUT playing. For VOICEVOX / Irodori
+// Prepare `text` for the configured engine WITHOUT playing. For VOICEVOX / the TTS server
 // this does the (slow) synthesis up front, so the caller can prefetch the next unit
 // during playback of the current one — or pre-generate the WHOLE show before it
 // starts (see the auto-play's pre-generate mode). For Web Speech there is nothing
@@ -544,7 +887,7 @@ export async function synthesize(
   const t = (text || '').trim();
   if (!t) return { play: () => NOOP, dispose: () => {} };
   if (synthesizesAudio(cfg.engine)) {
-    const url = cfg.engine === 'irodori' ? await synthIrodori(t, cfg, signal) : await synthVoicevox(t, cfg, signal);
+    const url = cfg.engine === 'openai' ? await synthServer(t, cfg, signal) : await synthVoicevox(t, cfg, signal);
     // Aborted just as the audio arrived: nobody will play it.
     if (signal?.aborted) { URL.revokeObjectURL(url); throw abortError(); }
     let freed = false;
@@ -559,7 +902,7 @@ export async function synthesize(
 // ---- Unified entry point ---------------------------------------------------
 
 // Speak `text` with the configured engine. Returns immediately with an Utterance;
-// for VOICEVOX / Irodori the async synthesis is wrapped so stop() works even
+// for VOICEVOX / the TTS server the async synthesis is wrapped so stop() works even
 // mid-request — it aborts the request, so the server stops working on it too.
 export function speak(text: string, cfg: TtsConfig, sel?: VoiceSelect, onProgress?: SpeakProgressCallback): Utterance {
   const t = (text || '').trim();

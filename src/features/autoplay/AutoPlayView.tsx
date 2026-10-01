@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { IconButton, Tooltip, Slider, LinearProgress } from '@mui/material';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import PauseIcon from '@mui/icons-material/Pause';
@@ -12,24 +12,18 @@ import FullscreenExitIcon from '@mui/icons-material/FullscreenExit';
 import CloseIcon from '@mui/icons-material/Close';
 import SmartDisplayIcon from '@mui/icons-material/SmartDisplay';
 import { SlideView } from '../slide/components/SlideView';
+import { SlideEffectLayer } from '../slide/components/SlideEffectLayer';
+import type { MotionSpec } from '../slide/parser/SlideContext';
 import { useAppSettings } from '../settings/AppSettingsContext';
 import renderMathInElement from 'katex/contrib/auto-render';
 import {
-  synthesize, type Clip, type Utterance,
+  synthesize, type Clip, type TtsConfig, type Utterance,
   webSpeechAvailable, loadWebSpeechVoices, listVoicevoxSpeakers, type VoicevoxStyle,
   synthesizesAudio, engineLabel,
 } from '../tts/ttsService';
-import { scriptSegments, slideDwellMs, scriptUnits, segmentParts, type ScriptAction } from './autoplay';
+import { buildPlaylist, scriptSegments, type PlayItem, type ScriptAction } from './autoplay';
 import { mdpBus } from '../bus/mdpBus';
-import { IrodoriControls } from '../tts/IrodoriControls';
-
-// One playable step of the narration: which slide + build step to show, the text to
-// SPEAK (`text`; null = a silent dwell), and the CAPTION to show (`caption`; may carry
-// `\(…\)` KaTeX that is rendered on screen). Caption and speech can differ: a formula
-// is rendered in the caption but spoken only via its `[[say:…]]` reading.
-// An `action` item fires/waits on an app-wide bus event instead of speaking
-// ([[emit…]] / [[wait…]] / [[pause…]] script markers).
-interface PlayItem { slideIdx: number; buildStep: number; text: string | null; caption: string; dwellMs: number; action?: ScriptAction }
+import { SpeechServerControls } from '../tts/SpeechServerControls';
 
 // KaTeX delimiters for rendering a caption's inline/display math.
 const KATEX_DELIMS = [
@@ -39,75 +33,61 @@ const KATEX_DELIMS = [
 
 export interface AutoPlaySlide {
   html: string; raw: string; className?: string; header?: string; footer?: string; stepCount: number;
+  pageNumber?: number;        // the number the slide shows (hidden slides are not played)
+  transition?: MotionSpec;    // its own @transition
+}
+
+/** What the auto-play tells the "exact" video export while it is being recorded. */
+export type AutoPlayExportEvent =
+  | { type: 'prep'; done: number; total: number }       // synthesizing the narration
+  | { type: 'armed'; items: number }                    // ready: the first slide is on screen
+  | { type: 'item'; index: number; total: number; caption: string }
+  | { type: 'finished' }
+  | { type: 'error'; message: string };
+
+/** Export mode: the auto-play runs in the hidden window of an "exact" video export
+ *  — no setup screen, no controls, the narrator as it was when the job was queued.
+ *  It synthesizes every line first, says 'armed', and starts when `go` turns true. */
+export interface AutoPlayExportMode {
+  tts: TtsConfig;
+  cpm: number;
+  captions: boolean;
+  go: boolean;
+  onEvent: (e: AutoPlayExportEvent) => void;
 }
 
 // A standalone, full-screen NARRATED auto-slideshow: reads each slide's @script
-// aloud (TTS) and auto-advances. On slides with in-slide builds, `[[step]]` markers
-// in the @script split the narration so each segment is read, then the build steps
-// once, keeping the words in sync with the reveals.
+// aloud (TTS) and auto-advances, with the slideshow's own slide transitions. On
+// slides with in-slide builds, `[[step]]` markers in the @script split the
+// narration so each segment is read, then the build steps once, keeping the words
+// in sync with the reveals. The "exact" video export records this very view.
 export const AutoPlayView: React.FC<{
   open: boolean;
   onClose: () => void;
   slides: AutoPlaySlide[];
   slideSize: { width: number; height: number };
   basePath?: string;
-}> = ({ open, onClose, slides, slideSize, basePath }) => {
+  globalTransition?: MotionSpec;
+  exportMode?: AutoPlayExportMode;
+}> = ({ open, onClose, slides, slideSize, basePath, globalTransition, exportMode }) => {
   const { settings, update } = useAppSettings();
-  const cpm = settings.readingCharsPerMin || 320;      // human reading speed → only the script-less dwell
+  // Human reading speed → only the script-less dwell.
+  const cpm = exportMode?.cpm ?? (settings.readingCharsPerMin || 320);
   const slideRaws = useMemo(() => slides.map((s) => s.raw), [slides]);   // what to read when recording a voice
   // The synthesized-voice speed is its OWN setting (settings.tts.rate), independent of
   // the human reading speed — a synthetic narrator can run faster/slower than a person.
-  const ttsCfg = useMemo(() => ({ ...settings.tts }), [settings.tts]);
+  const exportTts = exportMode?.tts;
+  const ttsCfg = useMemo(() => ({ ...(exportTts ?? settings.tts) }), [exportTts, settings.tts]);
   const patchTts = (p: Partial<typeof settings.tts>) => update({ tts: { ...settings.tts, ...p } });
   // Pre-generate the whole show before starting it? Only meaningful for engines
-  // that return audio (VOICEVOX / Irodori): Web Speech exposes no audio data — it
-  // synthesizes while it speaks, so there is nothing to prepare in advance.
-  const canPregen = synthesizesAudio(settings.tts.engine);
-  const pregenMode = canPregen && settings.tts.pregenerate;
+  // that return audio (VOICEVOX / a TTS server): Web Speech exposes no audio data — it
+  // synthesizes while it speaks, so there is nothing to prepare in advance. An
+  // export always does: a line that is late would be a silent gap in the video.
+  const canPregen = synthesizesAudio(ttsCfg.engine);
+  const pregenMode = canPregen && (!!exportMode || settings.tts.pregenerate);
 
-  // Flatten the deck into narration steps: one per @script segment (split at
-  // `[[step]]`), plus dwell items for script-less slides / trailing build reveals.
-  const playlist = useMemo<PlayItem[]>(() => {
-    const out: PlayItem[] = [];
-    slides.forEach((s, si) => {
-      const segs = scriptSegments(s.raw);
-      const steps = s.stepCount || 0;
-      if (segs.length === 0) {
-        // No script → dwell proportional to the slide's actual content (not the
-        // talk-time estimate, which is longer). Reveal all builds up front.
-        out.push({ slideIdx: si, buildStep: steps, text: null, caption: '', dwellMs: slideDwellMs(s.html, cpm) });
-        return;
-      }
-      // Each segment is split into subtitle UNITS (scriptUnits): normal sentence /
-      // clause chunking, but a `\(…\)` formula (with its `[[say:…]]` reading) is an
-      // ATOMIC token — never cut mid-math, while a long paragraph that merely
-      // contains a small formula still splits normally. Per unit: the caption keeps
-      // the math (KaTeX-rendered on screen), the speech substitutes the reading (or
-      // silence — a show-only formula dwells long enough to read). All units of a
-      // segment share its build step; builds advance only at [[step]].
-      segs.forEach((seg, k) => {
-        const bs = Math.min(k, steps);
-        // Split the segment further at ACTION markers: text parts narrate as
-        // usual; action parts become fire/wait items at that exact position.
-        for (const part of segmentParts(seg)) {
-          if ('action' in part) {
-            out.push({ slideIdx: si, buildStep: bs, text: null, caption: '', dwellMs: 0, action: part.action });
-            continue;
-          }
-          for (const u of scriptUnits(part.text)) {
-            if (u.speech) {
-              out.push({ slideIdx: si, buildStep: bs, text: u.speech, caption: u.caption, dwellMs: 90 });
-            } else {
-              const readMs = Math.round(Math.max(1800, Math.min(7000, (u.caption.replace(/\\[()[\]]/g, '').length / (cpm / 60)) * 1000)));
-              out.push({ slideIdx: si, buildStep: bs, text: null, caption: u.caption, dwellMs: readMs });
-            }
-          }
-        }
-      });
-      if (steps > segs.length - 1) out.push({ slideIdx: si, buildStep: steps, text: null, caption: '', dwellMs: 500 });
-    });
-    return out;
-  }, [slides, cpm]);
+  // Flatten the deck into narration steps (shared with the video export).
+  const playlist = useMemo<PlayItem[]>(() => buildPlaylist(slides, cpm), [slides, cpm]);
   const firstItemOfSlide = (si: number) => { const i = playlist.findIndex((it) => it.slideIdx === si); return i < 0 ? 0 : i; };
 
   const [slideIdx, setSlideIdx] = useState(0);
@@ -117,7 +97,7 @@ export const AutoPlayView: React.FC<{
   const [error, setError] = useState('');
   const [scale, setScale] = useState(1);
   const [caption, setCaption] = useState('');       // the segment currently being spoken
-  const [showCaptions, setShowCaptions] = useState(true);
+  const [showCaptions, setShowCaptions] = useState(exportMode ? exportMode.captions : true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   // Control-bar visibility, chosen on the setup screen. `false` = a CLEAN frame for
   // video recording (OBS/screen capture): the bar unmounts (the slide gets the full
@@ -143,6 +123,7 @@ export const AutoPlayView: React.FC<{
   const [usingPregen, setUsingPregen] = useState(false);
   const clipsRef = useRef<(Clip | null)[]>([]);   // playlist index -> pre-generated clip
   const prepTokenRef = useRef(0);                 // bumped to cancel a preparation run
+  const prepErrorRef = useRef('');                // why the last preparation failed
   const [webVoices, setWebVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [vvSpeakers, setVvSpeakers] = useState<VoicevoxStyle[]>([]);
   const [vvStatus, setVvStatus] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle');
@@ -160,6 +141,13 @@ export const AutoPlayView: React.FC<{
     catch { /* keep the plain-text caption */ }
   }, [caption, showCaptions]);
 
+  // Export mode's listener, read when an event happens (the loop outlives renders).
+  const exportRef = useRef(exportMode);
+  useEffect(() => { exportRef.current = exportMode; });
+  const emitExport = (e: AutoPlayExportEvent) => {
+    try { exportRef.current?.onEvent(e); } catch { /* the recorder's problem, not the show's */ }
+  };
+
   const tokenRef = useRef(0);       // bumped to cancel the running loop
   // Aborts the running loop's syntheses (the line being made + the prefetched next
   // one) so pause / skip / close stop the TTS server too, not just the playback.
@@ -169,17 +157,19 @@ export const AutoPlayView: React.FC<{
   const utterRef = useRef<Utterance | null>(null);
   const sleepCtl = useRef<{ id: number; resolve: () => void } | null>(null);
 
-  // Fit the fixed-size slide into the viewport (minus the control bar).
+  // Fit the fixed-size slide into the viewport (minus the control bar; an export has
+  // none — its window is the slide's size, so the slide fills the frame).
+  const barSpace = exportMode ? 0 : 76;
   useEffect(() => {
     if (!open) return;
     const fit = () => {
-      const s = Math.min(window.innerWidth / slideSize.width, (window.innerHeight - 76) / slideSize.height);
+      const s = Math.min(window.innerWidth / slideSize.width, (window.innerHeight - barSpace) / slideSize.height);
       setScale(s > 0 && Number.isFinite(s) ? s : 1);
     };
     fit();
     window.addEventListener('resize', fit);
     return () => window.removeEventListener('resize', fit);
-  }, [open, slideSize.width, slideSize.height]);
+  }, [open, slideSize.width, slideSize.height, barSpace]);
 
   const stopAll = () => {
     tokenRef.current++;
@@ -329,6 +319,7 @@ export const AutoPlayView: React.FC<{
       itemIdxRef.current = i;
       const item = playlist[i];
       setSlideIdx(item.slideIdx); setBuildStep(item.buildStep); setCaption(item.caption || '');
+      emitExport({ type: 'item', index: i, total: playlist.length, caption: item.caption || '' });
       const nextClip = clipFor(i + 1);
       if (item.action) {
         await runAction(item.action);
@@ -341,6 +332,7 @@ export const AutoPlayView: React.FC<{
           // abort is ours, not a failure to report.
           if (tokenRef.current !== my) { await releaseTemp(i + 1, nextClip); return; }
           setError(e instanceof Error ? e.message : 'Speech failed.');
+          emitExport({ type: 'error', message: e instanceof Error ? e.message : 'Speech failed.' });
           setPlaying(false); tokenRef.current++;
           await releaseTemp(i + 1, nextClip); return;
         }
@@ -359,7 +351,7 @@ export const AutoPlayView: React.FC<{
       }
       curClip = nextClip;
     }
-    if (tokenRef.current === my) { setPlaying(false); setFinished(true); }
+    if (tokenRef.current === my) { setPlaying(false); setFinished(true); emitExport({ type: 'finished' }); }
   };
 
   // Synthesize the WHOLE show before it starts. Resolves true when every clip is
@@ -385,7 +377,8 @@ export const AutoPlayView: React.FC<{
         setPrep(null);
         // Cancelled (or the view closed): our own abort, not an error to show.
         if (prepTokenRef.current !== my) return false;
-        setError(e instanceof Error ? e.message : 'Speech synthesis failed.');
+        prepErrorRef.current = e instanceof Error ? e.message : 'Speech synthesis failed.';
+        setError(prepErrorRef.current);
         return false;
       }
       if (prepTokenRef.current !== my) { disposeCache(); setPrep(null); return false; }
@@ -425,25 +418,63 @@ export const AutoPlayView: React.FC<{
     if (wasPlaying) run(it); else setPlaying(false);
   };
 
+  // Export mode: no setup screen. Synthesize every line, put the first slide on
+  // screen, say 'armed'; the recorder starts and then sets `go` — the show runs
+  // from the top.
+  const exportOn = !!exportMode;
+  useEffect(() => {
+    if (!open || !exportOn) return undefined;
+    let alive = true;
+    void (async () => {
+      if (!canPregen) {
+        emitExport({ type: 'error', message: 'Web Speech gives no audio data — choose VOICEVOX or a TTS server to make a narrated video.' });
+        return;
+      }
+      prepErrorRef.current = '';
+      const ok = await pregenAll();
+      if (!alive) return;
+      if (!ok) { emitExport({ type: 'error', message: prepErrorRef.current || 'The narration could not be prepared.' }); return; }
+      setStarted(true);
+      try { await document.fonts.ready; } catch { /* draw with what there is */ }
+      await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+      if (alive) emitExport({ type: 'armed', items: playlist.length });
+    })();
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, exportOn]);
+  // Synthesis progress, for the export queue's panel.
+  useEffect(() => {
+    if (exportOn && prep) emitExport({ type: 'prep', done: prep.done, total: prep.total });
+  }, [exportOn, prep]);
+  const wentRef = useRef(false);
+  const exportGo = !!exportMode?.go;
+  useEffect(() => {
+    if (!exportGo || !started || wentRef.current) return;
+    wentRef.current = true;
+    void run(0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exportGo, started]);
+
   // App-wide narration control: any module (or the presenter) can pause/resume/
-  // skip the narrated auto-play by emitting `narration:*` bus events.
+  // skip the narrated auto-play by emitting `narration:*` bus events. Not in an
+  // export: a video has nobody to resume a paused narration.
   const controlRef = useRef({ play, pause, jump, playing });
   controlRef.current = { play, pause, jump, playing };
   useEffect(() => {
-    if (!open) return;
+    if (!open || exportOn) return;
     const offs = [
       mdpBus.on('narration:pause', () => { if (controlRef.current.playing) controlRef.current.pause(); }),
       mdpBus.on('narration:resume', () => { if (!controlRef.current.playing) controlRef.current.play(); }),
       mdpBus.on('narration:skip', () => controlRef.current.jump(1)),
     ];
     return () => offs.forEach((f) => f());
-  }, [open]);
+  }, [open, exportOn]);
 
   // Keyboard transport (works with the control bar hidden — essential for clean
   // recording): Space = play/pause, ←/→ = previous/next slide. Active only during
   // playback (not on the setup screen, where inputs need their keys).
   useEffect(() => {
-    if (!open || !started) return;
+    if (!open || !started || exportOn) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.code === 'Space') { e.preventDefault(); if (playing) pause(); else play(); }
       else if (e.key === 'ArrowRight') { e.preventDefault(); jump(1); }
@@ -452,10 +483,21 @@ export const AutoPlayView: React.FC<{
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, started, playing, finished, slideIdx]);
+  }, [open, started, playing, finished, slideIdx, exportOn]);
+
+  // One slide inside the transition layer — during a transition the outgoing one
+  // keeps rendering, as in the slideshow itself. Both frames stay `presenting`: a
+  // change of it re-runs the slide's module scripts, which would restart the
+  // outgoing slide's modules just as it leaves.
+  const renderSlide = useCallback((s: AutoPlaySlide, idx: number, o: { buildStep: number }) => (
+    <SlideView
+      html={s.html} raw={s.raw} slideSize={slideSize} basePath={basePath}
+      buildStep={o.buildStep} presenting isActive slideIndex={idx} moduleRole="owner"
+      header={s.header} footer={s.footer} className={s.className} pageNumber={s.pageNumber ?? idx + 1}
+    />
+  ), [slideSize, basePath]);
 
   if (!open) return null;
-  const slide = slides[slideIdx];
 
   const engine = settings.tts.engine;
   const jaFirstVoices = [...webVoices].sort((a, b) => (a.lang.startsWith('ja') ? 0 : 1) - (b.lang.startsWith('ja') ? 0 : 1));
@@ -466,8 +508,8 @@ export const AutoPlayView: React.FC<{
   const scriptedCount = slides.filter((s) => scriptSegments(s.raw).length > 0).length;
 
   return (
-    <div ref={rootRef} onMouseMove={peekBar} style={{ position: 'fixed', inset: 0, zIndex: 3000, background: '#000', display: 'flex', flexDirection: 'column' }}>
-      {!started && (
+    <div ref={rootRef} onMouseMove={exportOn ? undefined : peekBar} style={{ position: 'fixed', inset: 0, zIndex: 3000, background: '#000', display: 'flex', flexDirection: 'column' }}>
+      {!started && !exportOn && (
         <div style={{
           position: 'absolute', inset: 0, zIndex: 10, display: 'flex', alignItems: 'center',
           justifyContent: 'center', padding: 20, background: 'radial-gradient(circle at 50% 35%, #23262e, #0c0d10)',
@@ -499,7 +541,7 @@ export const AutoPlayView: React.FC<{
                 {([
                   ['webspeech', 'Web Speech', 'Built-in OS voices · no setup'],
                   ['voicevox', 'VOICEVOX', 'Local engine · natural JP voices'],
-                  ['irodori', 'Irodori-TTS', 'Local AI server · expressive JP voices'],
+                  ['openai', 'TTS server', 'OpenAI-compatible · Irodori-TTS, OpenAI…'],
                 ] as const).map(([id, label, sub]) => {
                   const sel = engine === id;
                   const avail = id === 'webspeech' ? webSpeechAvailable() : true;
@@ -520,10 +562,10 @@ export const AutoPlayView: React.FC<{
             </div>
 
             {/* Voice / speaker */}
-            {engine === 'irodori' ? (
+            {engine === 'openai' ? (
               <div style={{ marginBottom: 16 }}>
-                <div style={{ fontWeight: 700, marginBottom: 9 }}>Irodori-TTS server</div>
-                <IrodoriControls tts={settings.tts} patchTts={patchTts} dark slideRaws={slideRaws} />
+                <div style={{ fontWeight: 700, marginBottom: 9 }}>TTS server (OpenAI-compatible)</div>
+                <SpeechServerControls tts={settings.tts} patchTts={patchTts} dark slideRaws={slideRaws} />
               </div>
             ) : engine === 'webspeech' ? (
               <div style={{ marginBottom: 16 }}>
@@ -578,7 +620,7 @@ export const AutoPlayView: React.FC<{
                 }}
                 title={canPregen
                   ? 'Synthesize every line BEFORE the show starts, then play from memory. Slower to start, but no stutter on machines that cannot synthesize in real time.'
-                  : 'VOICEVOX / Irodori-TTS only — Web Speech synthesizes while it speaks, so there is nothing to prepare in advance.'}>
+                  : 'VOICEVOX / TTS server only — Web Speech synthesizes while it speaks, so there is nothing to prepare in advance.'}>
                 <input type="checkbox" disabled={!canPregen}
                   checked={pregenMode}
                   onChange={(e) => patchTts({ pregenerate: e.target.checked })} />
@@ -646,21 +688,14 @@ export const AutoPlayView: React.FC<{
         </div>
       )}
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', position: 'relative' }}>
-        {slide && (
-          <div style={{ width: slideSize.width, height: slideSize.height, transform: `scale(${scale})`, transformOrigin: 'center' }}>
-            <SlideView
-              html={slide.html}
-              raw={slide.raw}
-              slideSize={slideSize}
-              basePath={basePath}
-              buildStep={buildStep}
-              presenting
-              isActive
-              slideIndex={slideIdx}
-              header={slide.header}
-              footer={slide.footer}
-              className={slide.className}
-              pageNumber={slideIdx + 1}
+        {slides.length > 0 && (
+          <div style={{ width: slideSize.width, height: slideSize.height, flexShrink: 0, position: 'relative', transform: `scale(${scale})`, transformOrigin: 'center' }}>
+            <SlideEffectLayer
+              slides={slides}
+              index={Math.min(slideIdx, slides.length - 1)}
+              step={buildStep}
+              globalTransition={globalTransition}
+              renderSlide={renderSlide}
             />
           </div>
         )}
@@ -678,7 +713,7 @@ export const AutoPlayView: React.FC<{
       {/* Control bar. Hidden in clean-recording mode while PLAYING (the slide gets
           the full height); pausing, finishing, or moving the mouse (peek) brings it
           back — as a bottom OVERLAY so the recorded layout doesn't reflow. */}
-      {(showBar || barPeek || !playing) && (
+      {!exportOn && (showBar || barPeek || !playing) && (
       <div style={{
         height: 60, display: 'flex', alignItems: 'center', gap: 6, padding: '0 14px', background: 'rgba(20,20,22,.92)', color: '#eee',
         ...(showBar ? {} : { position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 5 }),

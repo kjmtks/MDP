@@ -182,6 +182,8 @@ export interface HeaderActions {
   onPrint: () => void;
   onExportPptx?: (mode: 'image' | 'editable') => void;
   onExportImages?: () => void;
+  // Narrated video export (desktop app, slide decks): opens the queue dialog.
+  onExportVideo?: () => void;
   imagesBusy?: boolean;
   pptxBusy?: boolean;
   onToggleOverview: () => void;

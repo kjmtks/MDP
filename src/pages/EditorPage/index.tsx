@@ -1,5 +1,5 @@
 import { FILES_PREFIX } from '../../api/base';
-import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useMemo, useEffect, useSyncExternalStore } from 'react';
 import { Typography, Button, Menu, MenuItem, Divider, Dialog, DialogTitle, DialogContent, DialogActions } from '@mui/material';
 import FolderOpenIcon from '@mui/icons-material/FolderOpen';
 
@@ -22,9 +22,18 @@ import { DrawioEditor } from '../../features/drawio/components/DrawioEditor';
 import { ConnectDialog } from '../../features/remote/components/ConnectDialog';
 import { RehearsalDialog } from '../../features/rehearsal/RehearsalDialog';
 import { readRehearsals, upsertRehearsal, latestRun, type RehearsalRun } from '../../features/rehearsal/rehearsalStore';
-import { formatClock } from '../../features/slide/talkTime';
+import { estimateDeckSeconds, formatClock } from '../../features/slide/talkTime';
+import { setOpenDeck } from '../../features/slide/openDeckRuntime';
 import { SuggestModuleDialog } from '../../features/modules/components/SuggestModuleDialog';
 import { AutoPlayView } from '../../features/autoplay/AutoPlayView';
+import { VideoExportDialog } from '../../features/video/VideoExportDialog';
+import { VideoQueuePanel } from '../../features/video/VideoQueuePanel';
+import { enqueueVideo, onVideoJobFinished } from '../../features/video/videoQueue';
+import { refreshVideoFeature, subscribeVideoFeature, videoExportSupported, type VideoOptions } from '../../features/video/videoTypes';
+import { getFontState } from '../../features/fonts/fontRuntime';
+import {
+  getRecordingState, onRecordingSaved, preferredMic, recordingSupported, startRecording, stopRecording, subscribeRecording,
+} from '../../features/recording/slideRecorder';
 import { PrintContainer } from '../../features/slide/components/PrintContainer';
 import { SlideOverviewGrid } from '../../features/slide/components/SlideOverviewGrid';
 
@@ -59,6 +68,7 @@ import { resolveImages, setLibraryImages, parseInFileImageDefs, type ImageEntry 
 import { addFileImageDef, editFileImageDef, deleteFileImageDef } from '../../features/images/imageDocEdits';
 import { updateModuleTransforms, removeModuleDirectives, parseModuleDirectives, moveModuleDirective, getModuleDirectiveText, pasteModuleDirective, pasteModuleAt } from '../../features/modules/moduleDocEdits';
 import { splitMarkdownToBlocks } from '../../features/slide/parser/slideParser';
+import type { MotionSpec } from '../../features/slide/parser/SlideContext';
 import { readTagsFromDoc, upsertTags } from '../../features/slide/parser/tagDocEdits';
 import { splitTags } from '../../features/slide/parser/tags';
 import { useDeckIndexBuilder } from '../../features/search/useDeckIndexBuilder';
@@ -144,7 +154,7 @@ export default function EditorPage() {
     drawings, currentSlideIndexRef
   });
 
-  const { settings: appSettings } = useAppSettings();
+  const { settings: appSettings, update: updateAppSettings } = useAppSettings();
 
   const tabsRef = useRef(tabs);
   const activeTabIndexRef = useRef(activeTabIndex);
@@ -760,6 +770,10 @@ export default function EditorPage() {
   }, [previewFileType, previewFileName, lastUpdated]);
 
   const slides = imageSlides ?? videoSlides ?? mdSlides;
+  // For the Settings overlay (reading-speed calibration reads the open deck's
+  // @script). References only — nothing is copied per parse.
+  useEffect(() => { setOpenDeck({ fileName: currentFileName || '', slides, index: currentSlideIndex }); },
+    [currentFileName, slides, currentSlideIndex]);
   const slideSize = useMemo(
     () => ((imageSlides || videoSlides) ? { width: (BASE_HEIGHT * 16) / 9, height: BASE_HEIGHT } : mdSlideSize),
     [imageSlides, videoSlides, mdSlideSize],
@@ -1098,6 +1112,57 @@ export default function EditorPage() {
     slides, slideSize, basePath, themeCssUrl, deckPath: currentFileName, rasterize, onSaved: () => fetchFileTree(),
   });
 
+  // Narrated video export: a queued job holds a SNAPSHOT of the open deck (slides,
+  // styles, fonts, narrator) taken now, so editing — or queueing the next deck —
+  // can go on while it renders. The file lands beside the deck.
+  const [videoDialogOpen, setVideoDialogOpen] = useState(false);
+  // The web build asks the server whether this user may (the administrator's
+  // switch, which can change at any time — asked again whenever the tab regains focus).
+  const videoAllowed = useSyncExternalStore(subscribeVideoFeature, videoExportSupported);
+  useEffect(() => {
+    if (isElectron()) return undefined;
+    const ask = () => { void refreshVideoFeature(); };
+    ask();
+    window.addEventListener('focus', ask);
+    return () => window.removeEventListener('focus', ask);
+  }, []);
+  const canExportVideo = videoAllowed && !!currentFileName?.endsWith('.slide.md') && mdSlides.length > 0;
+  const queueVideo = useCallback((options: VideoOptions, tabStream?: MediaStream): string | null => {
+    if (!currentFileName) return null;
+    const id = enqueueVideo({
+      deckPath: currentFileName,
+      slides: mdSlides.map((s, i) => {
+        const d = s as { html?: string; raw?: string; stepCount?: number; isHidden?: boolean; className?: string; header?: string; footer?: string; pageNumber?: number; transition?: MotionSpec };
+        return {
+          html: d.html || '', raw: d.raw || '', stepCount: d.stepCount || 0, isHidden: !!d.isHidden,
+          className: d.className, header: d.header, footer: d.footer, pageNumber: d.pageNumber ?? i + 1,
+          transition: d.transition?.name, motion: d.transition,
+        };
+      }),
+      globalTransition: (globalContext as { transition?: MotionSpec } | undefined)?.transition?.name,
+      globalMotion: (globalContext as { transition?: MotionSpec } | undefined)?.transition,
+      slideSize: mdSlideSize,
+      basePath,
+      themeCssUrl,
+      moduleCss: Object.values(loadedModules).map((m) => m.style).filter(Boolean).join('\n'),
+      // The exact mode runs the modules' scripts and plays the effects in its own window.
+      modules: Object.values(loadedModules),
+      effects: Object.values(loadedEffects),
+      fontCss: getFontState().css,
+      tts: { ...appSettings.tts },
+      cpm: appSettings.readingCharsPerMin || 320,
+      options,
+      tabStream,
+    });
+    setVideoDialogOpen(false);
+    return id;
+  }, [currentFileName, mdSlides, globalContext, mdSlideSize, basePath, themeCssUrl, appSettings.tts, appSettings.readingCharsPerMin]);
+  // A finished video shows up in the file tree at once.
+  useEffect(() => {
+    onVideoJobFinished((job) => { if (job.status === 'done') fetchFileTree(); });
+    return () => onVideoJobFinished(null);
+  }, [fetchFileTree]);
+
   const [remoteActive, setRemoteActive] = useState(false);
   const [remotePort, setRemotePort] = useState<number | null>(null);
   const [remoteIps, setRemoteIps] = useState<{ name: string; address: string }[]>([]);
@@ -1171,12 +1236,35 @@ export default function EditorPage() {
     }
   }, [previewFileName]);
 
+  // Recording the live presentation (the audience window + microphone → a video
+  // beside the deck). REC in the slideshow controls, or from the presenter view.
+  const recState = useSyncExternalStore(subscribeRecording, getRecordingState);
+  const canRecord = recordingSupported() && !!currentFileName?.endsWith('.slide.md');
+  const recordCommand = useCallback((action: 'start' | 'stop', micId?: string) => {
+    if (action === 'stop') { void stopRecording(); return; }
+    if (currentFileName) void startRecording(currentFileName, micId ?? preferredMic(), isSlideshow);
+  }, [currentFileName, isSlideshow]);
+  // A recording of this window ends with its slideshow — it would go on to film the editor.
+  useEffect(() => {
+    if (!isSlideshow && recState.status === 'recording' && recState.source === 'main') void stopRecording();
+  }, [isSlideshow, recState.status, recState.source]);
+
   const { channelId, token, send, imagePrep } = usePresentationSync(
     syncSlides, currentSlideIndex, slideSize, globalContext, baseUrl, themeCssUrl, lastUpdated, drawings,
     moveSlide, addStroke, clear, undo, redo, handleAddBlankSlide, updateStrokes, handleUpdateNote,
     remotePort, rasterize, remoteActive, basePath, isSlideOverview, toggleSlideOverview, selectSlideFromOverview,
-    step, navLink, navBack, navForward, handleUpdateScript, handleRehearsalRun, lastRehearsal
+    step, navLink, navBack, navForward, handleUpdateScript, handleRehearsalRun, lastRehearsal, recordCommand
   );
+  // The presenter view shows the recorder's state (REC / elapsed time).
+  useEffect(() => { send({ type: 'REC_STATE', state: recState, channelId }); }, [recState, send, channelId]);
+  useEffect(() => { if (recState.error) reportError(recState.error, { title: 'Recording' }); }, [recState.error]);
+  useEffect(() => {
+    onRecordingSaved((path) => {
+      fetchFileTree();
+      notify(`Saved beside the deck: ${path.split('/').pop()}`, { title: 'Recording' });
+    });
+    return () => onRecordingSaved(null);
+  }, [fetchFileTree]);
 
   const handleUpdateStrokes = useCallback((pageIndex: number, indices: number[], dx: number, dy: number) => {
     if (updateStrokes) updateStrokes(pageIndex, indices, dx, dy);
@@ -2008,6 +2096,7 @@ export default function EditorPage() {
     onPrint: handlePrint,
     onExportPptx: (mode: PptxMode) => { void exportPptx(mode); },
     onExportImages: () => { void exportImages(); },
+    onExportVideo: canExportVideo ? () => setVideoDialogOpen(true) : undefined,
     imagesBusy: !!imageExporting,
     pptxBusy: !!pptxExporting,
     onToggleOverview: toggleSlideOverview,
@@ -2015,7 +2104,7 @@ export default function EditorPage() {
     canPresent: slides.length > 0,
   }), [handleOpenFolderWithFlag, handleManualSync, handleSwitchToRemote, openConnectDialog,
     openPresenterTool, openOutputWindow, openSuggestModule, toggleSlideshow, handlePrint, exportPptx, pptxExporting,
-    exportImages, imageExporting, toggleSlideOverview, isSlideOverview, slides.length]);
+    exportImages, imageExporting, canExportVideo, toggleSlideOverview, isSlideOverview, slides.length]);
 
   // Concurrent-edit lock: hold the active editable text file so a second
   // person on a shared server opens it read-only instead of clobbering.
@@ -2052,13 +2141,29 @@ export default function EditorPage() {
 
       <ConnectDialog open={isConnectDialogOpen} onClose={() => setIsConnectDialogOpen(false)} channelId={channelId} token={token} ipCandidates={remoteIps} port={remotePort} />
 
-      <RehearsalDialog open={rehearseOpen} onClose={() => setRehearseOpen(false)} onRun={handleRehearsalRun} slides={mdSlides.map((s) => ({ raw: (s as { raw?: string }).raw || '', scriptHtml: (s as { scriptHtml?: string }).scriptHtml || '' }))} />
+      <RehearsalDialog open={rehearseOpen} onClose={() => setRehearseOpen(false)} onRun={handleRehearsalRun} slides={mdSlides.map((s) => ({ raw: (s as { raw?: string }).raw || '' }))} />
 
       <SuggestModuleDialog open={suggestOpen} onClose={() => setSuggestOpen(false)} text={suggestText} onInsert={handleInsertText} />
 
+      {videoDialogOpen && currentFileName && (
+        <VideoExportDialog open onClose={() => setVideoDialogOpen(false)} deckPath={currentFileName}
+          slideSize={mdSlideSize} engine={appSettings.tts.engine}
+          estimatedSeconds={estimateDeckSeconds(mdSlides, appSettings.readingCharsPerMin || 320)}
+          onUseEngine={(engine) => updateAppSettings({ tts: { ...appSettings.tts, engine } })}
+          onQueue={queueVideo} />
+      )}
+      <VideoQueuePanel onOpen={(p) => handleFileSelect(p)} />
+
+      {/* Hidden slides are not played, as in the slideshow (the numbers stay the deck's). */}
       <AutoPlayView open={autoPlayOpen} onClose={() => setAutoPlayOpen(false)} basePath={basePath} slideSize={mdSlideSize}
-        slides={mdSlides.map((s) => { const d = s as { html?: string; raw?: string; className?: string; header?: string; footer?: string; stepCount?: number };
-          return { html: d.html || '', raw: d.raw || '', className: d.className, header: d.header, footer: d.footer, stepCount: d.stepCount || 0 }; })} />
+        globalTransition={globalContext.transition}
+        slides={mdSlides.flatMap((s, i) => {
+          const d = s as { html?: string; raw?: string; className?: string; header?: string; footer?: string; stepCount?: number; isHidden?: boolean; pageNumber?: number; transition?: MotionSpec };
+          return d.isHidden ? [] : [{
+            html: d.html || '', raw: d.raw || '', className: d.className, header: d.header, footer: d.footer,
+            stepCount: d.stepCount || 0, pageNumber: d.pageNumber ?? i + 1, transition: d.transition,
+          }];
+        })} />
 
       {moduleSettings && (
         <ModuleSettingsDialog
@@ -2133,6 +2238,7 @@ export default function EditorPage() {
               <SlideControls
                 mode={mode} setMode={setMode} pageIndex={currentSlideIndex} totalSlides={slides.length} visible={showControls} onNav={moveSlide} onAddSlide={() => handleAddBlankSlide(currentSlideIndex)} onClearDrawing={() => { clear(currentSlideIndex); send({ type: 'CLEAR_DRAWING', channelId, pageIndex: currentSlideIndex }); }} onClose={() => { document.exitFullscreen(); setMode('view'); }} toolType={toolType} setToolType={setToolType} penColor={penColor} setPenColor={setPenColor} penWidth={penWidth} setPenWidth={setPenWidth} canUndo={canUndo(currentSlideIndex)} canRedo={canRedo(currentSlideIndex)} onUndo={() => undo(currentSlideIndex)} onRedo={() => redo(currentSlideIndex)} useLaserPointerMode={true} stylusOnly={stylusOnly} setStylusOnly={setStylusOnly} containerStyle={{ bottom: '20px' }}
                 onHistoryBack={navBack} onHistoryForward={navForward} canHistoryBack={navCanBack} canHistoryForward={navCanForward}
+                recording={canRecord ? recState : undefined} onToggleRecording={canRecord ? () => recordCommand(recState.status === 'recording' ? 'stop' : 'start') : undefined}
               />
               <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <SlideEffectLayer
@@ -2150,8 +2256,11 @@ export default function EditorPage() {
                     <SlideScaler width={slideSize.width} height={slideSize.height} marginRate={1}>
                       {slide && !slide.isHidden && (
                         <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+                          {/* Both frames of a transition stay `presenting`: flipping it re-runs the
+                              slide's module scripts, which would restart the outgoing slide's
+                              modules just as it leaves. Only input follows `interactive`. */}
                           <SlideView
-                            html={slide.html} raw={slide.raw} basePath={basePath} pageNumber={slide.pageNumber} className={slide.className} isActive={true} slideSize={slideSize} isEnabledPointerEvents={opts.interactive && mode === 'view'} header={slide.header} footer={slide.footer} drawings={drawings[idx] || []} buildStep={opts.buildStep} onStepAutoAdvance={opts.onStepAutoAdvance} presenting={opts.interactive} slideIndex={idx} moduleRole="owner" onSlideLink={navLink}
+                            html={slide.html} raw={slide.raw} basePath={basePath} pageNumber={slide.pageNumber} className={slide.className} isActive={true} slideSize={slideSize} isEnabledPointerEvents={opts.interactive && mode === 'view'} header={slide.header} footer={slide.footer} drawings={drawings[idx] || []} buildStep={opts.buildStep} onStepAutoAdvance={opts.onStepAutoAdvance} presenting slideIndex={idx} moduleRole="owner" onSlideLink={navLink}
                             onAddStroke={opts.interactive ? (stroke) => { addStroke(idx, stroke); send({ type: 'DRAW_STROKE', channelId, pageIndex: idx, stroke }); } : undefined}
                             isInteracting={opts.interactive && mode === 'pen'} toolType={toolType} color={penColor} lineWidth={penWidth} penOnly={stylusOnly}
                             onUpdateStrokes={opts.interactive ? (indices, dx, dy) => handleUpdateStrokes(idx, indices, dx, dy) : undefined}
@@ -2186,6 +2295,8 @@ export default function EditorPage() {
           loadFile, handleInsertText, tabs, updateTabContent,
           saveActiveFile: handleSave, reloadFileFromDisk,
           onRefreshTree: handleManualRefresh,
+          // Narrated video export (export_video): the same queue as the Export menu.
+          queueVideo, ttsEngine: appSettings.tts.engine, readingCpm: appSettings.readingCharsPerMin || 320,
         }} />
       )}
 

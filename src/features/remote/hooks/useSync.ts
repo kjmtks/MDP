@@ -3,6 +3,7 @@ import { useEffect, useRef, useCallback } from 'react';
 import { isElectron } from '../../../api/apiClient';
 import type { SlideLinkRect } from '../capture/captureTypes';
 import type { RehearsalRun } from '../../rehearsal/rehearsalStore';
+import type { RecordingState } from '../../recording/slideRecorder';
 
 declare const __API_PORT__: string;
 
@@ -60,7 +61,11 @@ export type SyncMessage =
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   | { type: 'MODULE_STATE'; syncId: string; state: any; channelId?: string }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  | { type: 'MODULE_ACTION'; syncId: string; actionType: string; payload?: any; channelId?: string };
+  | { type: 'MODULE_ACTION'; syncId: string; actionType: string; payload?: any; channelId?: string }
+  // Recording the live presentation: the presenter view asks (mirror→host; the host
+  // owns the deck path and records), the host reports its recorder's state back.
+  | { type: 'REC_COMMAND'; action: 'start' | 'stop'; micId?: string; channelId?: string }
+  | { type: 'REC_STATE'; state: RecordingState; channelId?: string };
 
 export type ConnectionStatus = 'connecting' | 'connected' | 'disconnected' | 'error';
 

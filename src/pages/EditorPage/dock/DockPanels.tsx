@@ -17,6 +17,7 @@ import SmartDisplayIcon from '@mui/icons-material/SmartDisplay';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import PrintIcon from '@mui/icons-material/Print';
 import ImageIcon from '@mui/icons-material/Image';
+import MovieIcon from '@mui/icons-material/Movie';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import SlideshowIcon from '@mui/icons-material/Slideshow';
 import GridViewIcon from '@mui/icons-material/GridView';
@@ -546,7 +547,7 @@ export const PreviewPanel: React.FC = () => {
         <Tooltip title="Auto-play with narration (read @script aloud, auto-advance; [[step]] drives builds)"><span><IconButton size="small" sx={toolBtnSx} disabled={!h.canPresent} onClick={h.onAutoPlay}><SmartDisplayIcon fontSize="small" /></IconButton></span></Tooltip>
         <Tooltip title="Start Slideshow (F5)"><span><IconButton size="small" sx={toolBtnSx} disabled={!h.canPresent} onClick={h.onToggleSlideshow}><PlayArrowIcon fontSize="small" /></IconButton></span></Tooltip>
         <Tooltip title="Slide Overview"><span><IconButton size="small" sx={{ ...toolBtnSx, color: h.isSlideOverview ? 'var(--app-text-strong)' : 'var(--app-text-muted)' }} disabled={!h.canPresent} onClick={h.onToggleOverview}><GridViewIcon fontSize="small" /></IconButton></span></Tooltip>
-        <Tooltip title="Export (PDF / PowerPoint)">
+        <Tooltip title="Export (PDF / PowerPoint / images / narrated video)">
           <span><IconButton size="small" sx={toolBtnSx} disabled={!h.canPresent || h.pptxBusy} onClick={(e) => setExportAnchor(e.currentTarget)}>
             {h.pptxBusy ? <CircularProgress size={16} sx={{ color: 'var(--app-accent)' }} /> : <FileDownloadIcon fontSize="small" />}
           </IconButton></span>
@@ -570,6 +571,12 @@ export const PreviewPanel: React.FC = () => {
           {h.onExportImages && (
             <MenuItem onClick={() => { setExportAnchor(null); h.onExportImages!(); }} dense disabled={!!h.imagesBusy}>
               <ListItemIcon><ImageIcon fontSize="small" /></ListItemIcon>Images — one PNG per slide
+            </MenuItem>
+          )}
+          {h.onExportVideo && <Divider />}
+          {h.onExportVideo && (
+            <MenuItem onClick={() => { setExportAnchor(null); h.onExportVideo!(); }} dense>
+              <ListItemIcon><MovieIcon fontSize="small" /></ListItemIcon>Narrated video (MP4) — no slideshow needed…
             </MenuItem>
           )}
         </Menu>

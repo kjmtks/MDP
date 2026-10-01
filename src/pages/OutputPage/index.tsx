@@ -154,29 +154,32 @@ export default function OutputPage() {
     link.href = `${themeCssUrl}${sep}t=${lastUpdated}`;
   }, [themeCssUrl, lastUpdated]);
 
-  // Keep the WINDOW's aspect ratio locked to the deck's, so a drag-resize can never
-  // letterbox the output: Electron constrains the drag itself; on the web (no such
-  // API) the height is corrected once the user stops dragging.
+  // Keep the window's CONTENT at the deck's aspect ratio, so neither a screen share
+  // nor a recording of it shows bars. The desktop app also locks the drag (on
+  // Windows Electron locks the whole window, frame included, which leaves the
+  // content a few pixels off), so everywhere the height is corrected once a resize
+  // settles.
   const ratio = slideSize.width / slideSize.height;
   const resizeTimer = useRef<number | null>(null);
   useEffect(() => {
     if (!Number.isFinite(ratio) || ratio <= 0) return;
     const el = window as unknown as { electronAPI?: { setWindowAspectRatio?: (r: number) => void } };
-    if (isElectron() && el.electronAPI?.setWindowAspectRatio) {
-      el.electronAPI.setWindowAspectRatio(ratio);
-      return;
-    }
+    if (isElectron()) el.electronAPI?.setWindowAspectRatio?.(ratio);
     const fix = () => {
+      // A fullscreen or maximised window has the display's shape — leave it be.
+      if (document.fullscreenElement || window.outerWidth >= window.screen.availWidth
+        || (window.innerWidth >= window.screen.width && window.innerHeight >= window.screen.height)) return;
       // Only the height moves: the width is what the user is aiming at.
       const want = Math.round(window.innerWidth / ratio);
       const delta = want - window.innerHeight;
-      if (Math.abs(delta) > 2) window.resizeBy(0, delta);
+      if (Math.abs(delta) > 1) window.resizeBy(0, delta);
     };
-    const onResize = () => {
+    const later = (ms: number) => {
       if (resizeTimer.current) window.clearTimeout(resizeTimer.current);
-      resizeTimer.current = window.setTimeout(fix, 220);
+      resizeTimer.current = window.setTimeout(fix, ms);
     };
-    fix();
+    const onResize = () => later(220);
+    later(300);   // once the window's own lock has settled
     window.addEventListener('resize', onResize);
     return () => {
       window.removeEventListener('resize', onResize);

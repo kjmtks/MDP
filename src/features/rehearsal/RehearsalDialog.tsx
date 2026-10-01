@@ -13,21 +13,18 @@ import {
   speak, listWebSpeechVoices, loadWebSpeechVoices, webSpeechAvailable,
   listVoicevoxSpeakers, engineLabel, type Utterance, type VoicevoxStyle,
 } from '../tts/ttsService';
-import { IrodoriControls } from '../tts/IrodoriControls';
+import { SpeechServerControls } from '../tts/SpeechServerControls';
+import { scriptSegments, speechText } from '../autoplay/autoplay';
 
 // Minimal shape we need from a parsed slide.
-interface RehearsalSlide { raw: string; scriptHtml: string }
+interface RehearsalSlide { raw: string }
 
 interface Step { index: number; title: string; script: string; budget: number }
 
-const stripHtml = (html: string): string => {
-  if (!html) return '';
-  const doc = new DOMParser().parseFromString(html, 'text/html');
-  // Script-marker chips ([[step]]/[[emit…]] rendered for the presenter pane) are
-  // controls, not prose — drop them so the rehearsal never reads them aloud.
-  doc.body.querySelectorAll('.mdp-script-chip').forEach((el) => el.remove());
-  return (doc.body.textContent || '').replace(/\s+/g, ' ').trim();
-};
+// What the narrator reads: the script's SPOKEN form, as in the auto-play — ruby and
+// [[say:…]] readings in place, formulas without a reading and all markers left out
+// (the displayed text would read raw math and skip the readings).
+const spokenScript = (raw: string): string => scriptSegments(raw).map(speechText).filter(Boolean).join(' ');
 
 const firstHeading = (raw: string): string => {
   const noComments = raw.replace(/<!--[\s\S]*?-->/g, ' ');
@@ -65,7 +62,7 @@ export const RehearsalDialog: React.FC<{
 
   // Build the rehearsal steps from slides that carry a read-aloud @script.
   const steps: Step[] = useMemo(() => slides.map((s, i) => {
-    const script = stripHtml(s.scriptHtml);
+    const script = spokenScript(s.raw);
     const budget = explicitSlideSeconds(s.raw) ?? slideSecondsFromRaw(s.raw, cpm);
     return { index: i, title: firstHeading(s.raw) || `Slide ${i + 1}`, script, budget };
   }).filter((st) => st.script), [slides, cpm]);
@@ -142,7 +139,7 @@ export const RehearsalDialog: React.FC<{
       const u = speak(steps[i].script, ttsCfg);
       utterRef.current = u;
       try { await u.done; } catch (e) {
-        // Engine failed (e.g. VOICEVOX / Irodori not running) — stop the whole run and report.
+        // Engine failed (e.g. VOICEVOX / the TTS server not running) — stop the whole run and report.
         stopTick(); setRunning(false);
         setVvError(e instanceof Error ? e.message : `${engineLabel(tts.engine)} speech failed.`);
         return;
@@ -173,7 +170,7 @@ export const RehearsalDialog: React.FC<{
         <ToggleButtonGroup exclusive size="small" value={tts.engine} onChange={(_, v) => { if (v) { setVvError(''); patchTts({ engine: v }); } }}>
           <ToggleButton value="webspeech" sx={{ textTransform: 'none' }}>Web Speech</ToggleButton>
           <ToggleButton value="voicevox" sx={{ textTransform: 'none' }}>VOICEVOX</ToggleButton>
-          <ToggleButton value="irodori" sx={{ textTransform: 'none' }}>Irodori-TTS</ToggleButton>
+          <ToggleButton value="openai" sx={{ textTransform: 'none' }}>TTS server</ToggleButton>
         </ToggleButtonGroup>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <Tooltip title="Sets each slide's time BUDGET & the talk-time estimate (General)"><span style={{ fontSize: 13, color: 'var(--app-text-muted)' }}>Reading speed</span></Tooltip>
@@ -192,9 +189,9 @@ export const RehearsalDialog: React.FC<{
         <b>Reading speed</b> sets the time budget / talk-time estimate (shared with General). <b>Voice speed</b> is how fast the TTS voice actually reads — adjust it separately from your target pace.
       </div>
 
-      {tts.engine === 'irodori' ? (
+      {tts.engine === 'openai' ? (
         <>
-          <IrodoriControls tts={tts} patchTts={patchTts} slideRaws={slideRaws} />
+          <SpeechServerControls tts={tts} patchTts={patchTts} slideRaws={slideRaws} />
           {vvError && <span style={{ color: '#dc2626', fontSize: 13 }}>{vvError}</span>}
         </>
       ) : tts.engine === 'webspeech' ? (
