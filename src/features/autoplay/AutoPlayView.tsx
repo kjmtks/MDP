@@ -57,6 +57,17 @@ export interface AutoPlayExportMode {
   onEvent: (e: AutoPlayExportEvent) => void;
 }
 
+// A slide's name in the setup screen's "Start from" list: its first heading, else
+// what it is (a cover), else the start of its text.
+function slideName(s: AutoPlaySlide): string {
+  const raw = s.raw || '';
+  const heading = /^ {0,3}#{1,6}\s+(.+?)\s*#*\s*$/m.exec(raw.replace(/<!--[\s\S]*?-->/g, ''));
+  if (heading) return heading[1].replace(/[*_`]/g, '').replace(/\\[()[\]]/g, '').trim();
+  if (/<!--\s*@cover\b/.test(raw)) return 'Cover';
+  const text = (s.html || '').replace(/<[^>]*>/g, ' ').replace(/&[a-z#0-9]+;/gi, ' ').replace(/\s+/g, ' ').trim();
+  return text ? (text.length > 40 ? `${text.slice(0, 40)}…` : text) : 'Untitled';
+}
+
 // A standalone, full-screen NARRATED auto-slideshow: reads each slide's @script
 // aloud (TTS) and auto-advances, with the slideshow's own slide transitions. On
 // slides with in-slide builds, `[[step]]` markers in the @script split the
@@ -70,7 +81,10 @@ export const AutoPlayView: React.FC<{
   basePath?: string;
   globalTransition?: MotionSpec;
   exportMode?: AutoPlayExportMode;
-}> = ({ open, onClose, slides, slideSize, basePath, globalTransition, exportMode }) => {
+  /** Where the show starts unless the setup screen picks another slide: the slide
+   *  being edited (an index into `slides`). */
+  startSlide?: number;
+}> = ({ open, onClose, slides, slideSize, basePath, globalTransition, exportMode, startSlide }) => {
   const { settings, update } = useAppSettings();
   // Human reading speed → only the script-less dwell.
   const cpm = exportMode?.cpm ?? (settings.readingCharsPerMin || 320);
@@ -93,6 +107,13 @@ export const AutoPlayView: React.FC<{
 
   const [slideIdx, setSlideIdx] = useState(0);
   const [buildStep, setBuildStep] = useState(0);
+  // The slide the show starts from: picked on the setup screen, else the one being
+  // edited. Shown behind the setup screen, so starting needs no transition.
+  const [startChoice, setStartChoice] = useState<number | null>(null);
+  const clampSlide = (i: number) => Math.max(0, Math.min(slides.length - 1, Math.floor(i) || 0));
+  const editingSlide = clampSlide(startSlide ?? 0);
+  const startFrom = clampSlide(startChoice ?? editingSlide);
+  const startItem = Math.max(0, playlist.findIndex((it) => it.slideIdx === startFrom));   // its first playlist item
   const [playing, setPlaying] = useState(false);
   const [finished, setFinished] = useState(false);
   const [error, setError] = useState('');
@@ -214,7 +235,7 @@ export const AutoPlayView: React.FC<{
 
   // Reset when (re)opened.
   useEffect(() => {
-    if (open) { setStarted(false); setSlideIdx(0); setBuildStep(0); setFinished(false); setError(''); setCaption(''); itemIdxRef.current = 0; }
+    if (open) { setStarted(false); setSlideIdx(0); setBuildStep(0); setFinished(false); setError(''); setCaption(''); setStartChoice(null); itemIdxRef.current = 0; }
     // Closing frees the pre-generated audio: it is the only place the cache can
     // outlive the playlist it was built for (the view is modal — the deck cannot
     // be edited while it is open).
@@ -369,12 +390,13 @@ export const AutoPlayView: React.FC<{
     if (tokenRef.current === my) { setPlaying(false); setFinished(true); emitExport({ type: 'finished' }); }
   };
 
-  // Synthesize the WHOLE show before it starts. Resolves true when every clip is
-  // ready, false if the user cancelled or the engine failed (the caller then stays
-  // on the setup screen). Cancelling aborts the line in progress at once.
-  const pregenAll = async (): Promise<boolean> => {
+  // Synthesize the show (from playlist item `fromItem` on) before it starts. Resolves
+  // true when every clip is ready, false if the user cancelled or the engine failed
+  // (the caller then stays on the setup screen). Cancelling aborts the line in
+  // progress at once. A line before `fromItem` is synthesized when it is reached.
+  const pregenAll = async (fromItem = 0): Promise<boolean> => {
     const targets: { i: number; text: string }[] = [];
-    playlist.forEach((it, i) => { if (it.text) targets.push({ i, text: it.text }); });
+    playlist.forEach((it, i) => { if (it.text && i >= fromItem) targets.push({ i, text: it.text }); });
     const my = ++prepTokenRef.current;
     pregenAbortRef.current?.abort();
     const ac = new AbortController();
@@ -410,16 +432,19 @@ export const AutoPlayView: React.FC<{
 
   const play = () => { if (finished) { itemIdxRef.current = 0; setSlideIdx(0); run(0); } else run(itemIdxRef.current); };
   // Leave the setup screen: go TRUE fullscreen (ignored if the browser refuses) and
-  // start the narrated show from the first slide. Fullscreen is requested FIRST —
+  // start the narrated show from the chosen slide. Fullscreen is requested FIRST —
   // it needs the click's user activation, which a long pre-generation would consume.
   const startShow = async () => {
     if (rootRef.current && !document.fullscreenElement) void rootRef.current.requestFullscreen().catch(() => {});
+    const from = startItem;
     if (pregenMode) {
-      const ok = await pregenAll();
+      const ok = await pregenAll(from);
       if (!ok) return;   // cancelled / engine failure → stay on the setup screen
     }
+    setSlideIdx(startFrom); setBuildStep(0);
+    itemIdxRef.current = from;
     setStarted(true);
-    run(0);
+    run(from);
   };
   const pause = () => { stopAll(); setPlaying(false); };
   const restart = () => { stopAll(); setFinished(false); setSlideIdx(0); setBuildStep(0); itemIdxRef.current = 0; run(0); };
@@ -644,7 +669,7 @@ export const AutoPlayView: React.FC<{
             </div>
             {pregenMode && (
               <div style={{ margin: '-14px 0 18px', fontSize: 12, color: '#9aa0aa' }}>
-                ⏳ All {playlist.filter((it) => it.text).length} lines are synthesized before the show starts (progress is shown);
+                ⏳ All {playlist.filter((it, i) => it.text && i >= startItem).length} lines{startFrom > 0 ? ` from slide ${startFrom + 1} on` : ''} are synthesized before the show starts (progress is shown);
                 playback then runs from memory — for machines that stutter on real-time synthesis.
                 The speed is baked in, so it can’t be changed during the show.
               </div>
@@ -652,6 +677,21 @@ export const AutoPlayView: React.FC<{
             {!showBar && (
               <div style={{ margin: '-14px 0 18px', fontSize: 12, color: '#9aa0aa' }}>
                 🎬 Clean-recording mode: no control bar in the frame. Space = pause/resume, ←/→ = slides, mouse move = peek controls, Esc = exit fullscreen.
+              </div>
+            )}
+
+            {/* Where the show starts: the slide being edited, or any other. */}
+            {slides.length > 1 && (
+              <div style={{ marginBottom: 18 }}>
+                <div style={{ fontWeight: 700, marginBottom: 7 }}>Start from</div>
+                <select style={selectStyle} value={startFrom} aria-label="Start from"
+                  onChange={(e) => setStartChoice(Number(e.target.value))}>
+                  {slides.map((s, i) => (
+                    <option key={i} value={i}>
+                      {i + 1}. {slideName(s)}{scriptSegments(s.raw).length ? '' : ' — no script'}{startSlide != null && i === editingSlide ? ' (editing)' : ''}
+                    </option>
+                  ))}
+                </select>
               </div>
             )}
             </div>
@@ -691,7 +731,7 @@ export const AutoPlayView: React.FC<{
                   background: 'linear-gradient(90deg,#4f8cf7,#6aa1ff)', color: '#fff', fontSize: 16, fontWeight: 800,
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                 }}>
-                  <PlayArrowIcon /> {pregenMode ? 'Generate audio & start' : 'Start in full screen'}
+                  <PlayArrowIcon /> {pregenMode ? 'Generate audio & start' : 'Start in full screen'}{startFrom > 0 ? ` (slide ${startFrom + 1})` : ''}
                 </button>
                 {error && <div style={{ color: '#f87171', fontSize: 12.5, marginTop: 10, textAlign: 'center' }}>{error}</div>}
                 <div style={{ textAlign: 'center', color: '#787e88', fontSize: 11.5, marginTop: 10 }}>
@@ -707,7 +747,7 @@ export const AutoPlayView: React.FC<{
           <div style={{ width: slideSize.width, height: slideSize.height, flexShrink: 0, position: 'relative', transform: `scale(${scale})`, transformOrigin: 'center' }}>
             <SlideEffectLayer
               slides={slides}
-              index={Math.min(slideIdx, slides.length - 1)}
+              index={Math.min(started ? slideIdx : startFrom, slides.length - 1)}
               step={buildStep}
               globalTransition={globalTransition}
               renderSlide={renderSlide}

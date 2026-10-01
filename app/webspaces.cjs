@@ -7,6 +7,8 @@
 //   {
 //     "userHeader": "x-preferred-username",   // set by the reverse proxy AFTER auth
 //     "admins": ["alice"],                    // user names with the "admin" role
+//     "adminGroup": "staff",                  // optional: members of this group (from
+//                                             //   groupsFile) also have the "admin" role
 //     "groupsFile": "/data/groups.json",      // optional: {group:[user,...]} snapshot,
 //                                             //   maintained by the deployment
 //     "spaces": [
@@ -114,6 +116,7 @@ function load(configPath) {
   return {
     userHeader: String(raw.userHeader || 'x-preferred-username').toLowerCase(),
     admins: new Set(Array.isArray(raw.admins) ? raw.admins : []),
+    adminGroup: String(raw.adminGroup || ''),
     groupsFile: String(raw.groupsFile || ''),
     rootListing,
     spaces,
@@ -126,7 +129,13 @@ function userOf(cfg, req) {
   const u = String(req.headers[cfg.userHeader] || '');
   return SAFE_USER.test(u) ? u : null;
 }
-const isAdmin = (cfg, req) => { const u = userOf(cfg, req); return !!u && cfg.admins.has(u); };
+// Admin = listed in "admins" OR a member of "adminGroup" (resolved from
+// groupsFile, like {group} spaces). A deployment can keep ONE source of
+// truth for its admins (the group) instead of a second hand-kept list.
+const isAdmin = (cfg, req) => {
+  const u = userOf(cfg, req);
+  return !!u && (cfg.admins.has(u) || (!!cfg.adminGroup && groupsOf(req).includes(cfg.adminGroup)));
+};
 // The requester's groups: injected by the server (from groupsFile) as
 // req.mdpGroups. Empty when unknown -> no group spaces are visible.
 const groupsOf = (req) => (Array.isArray(req.mdpGroups) ? req.mdpGroups : []);

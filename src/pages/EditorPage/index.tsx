@@ -2154,9 +2154,11 @@ export default function EditorPage() {
       )}
       <VideoQueuePanel onOpen={(p) => handleFileSelect(p)} />
 
-      {/* Hidden slides are not played, as in the slideshow (the numbers stay the deck's). */}
+      {/* Hidden slides are not played, as in the slideshow (the numbers stay the deck's).
+          It starts at the slide being edited (a hidden one: the next shown). */}
       <AutoPlayView open={autoPlayOpen} onClose={() => setAutoPlayOpen(false)} basePath={basePath} slideSize={mdSlideSize}
         globalTransition={globalContext.transition}
+        startSlide={mdSlides.slice(0, currentSlideIndex).filter((s) => !(s as { isHidden?: boolean }).isHidden).length}
         slides={mdSlides.flatMap((s, i) => {
           const d = s as { html?: string; raw?: string; className?: string; header?: string; footer?: string; stepCount?: number; isHidden?: boolean; pageNumber?: number; transition?: MotionSpec };
           return d.isHidden ? [] : [{
