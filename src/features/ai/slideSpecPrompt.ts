@@ -121,6 +121,12 @@ block on a single slide OVERRIDES the global one for that slide; an EMPTY block
     order. Markers are invisible on the slide and in the presenter view; they only
     pace the auto-play. Example: \`<!-- @script: First the problem. [[step]] Now the
     fix. -->\` on a slide whose second point is a \`@build\`.
+  - **Sentences are the subtitle units:** the narrated auto-play and the narrated
+    video speak and caption the script one SENTENCE at a time (a very short one rides
+    with its neighbour). A sentence wider than two caption lines (~66 full-width
+    characters, ~120 Latin) is cut at its most natural pause — a comma 、/, first —
+    into even pieces, each spoken on its own. So write sentences of moderate length,
+    with commas where a speaker would pause; avoid a very long sentence without any.
   - **Readings for the narrator (ruby):** tell the TTS how to pronounce a word or a
     formula with \`[[base|reading]]\` — the base is exactly what is written before the
     \`|\`: \`ルビの[[仕様|しよう]]を[[改良|かいりょう]]したい。\`, \`[[SVD|エスブイディー]]\`,

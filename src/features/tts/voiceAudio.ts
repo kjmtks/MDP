@@ -4,7 +4,7 @@
 // from the deck's own @script, and pack the takes + transcripts as a training set.
 // Pure functions on Float32 PCM — no DOM, so they run under Node for tests.
 
-import { scriptSegments, sentenceUnits, speechText } from '../autoplay/autoplay';
+import { sentenceUnits } from '../autoplay/autoplay';
 
 export interface Pcm { samples: Float32Array; sampleRate: number }
 
@@ -93,8 +93,9 @@ export function takeIssues(a: TakeAnalysis | null, text: string): TakeIssue[] {
   if (a.clipped > 3) out.push('clipped');
   if (a.speechDb < -42) out.push('quiet');
   if (a.speechDb - a.noiseDb < 18) out.push('noisy');
-  // Nobody reads 14 characters a second: the take was cut off.
-  if (a.speechSec < countChars(text) / 14) out.push('short');
+  // Nobody reads 14 Japanese characters — or 25 letters of English — a second: the
+  // take was cut off.
+  if (a.speechSec < countChars(text) / (mostlyJapanese(text) ? 14 : 25)) out.push('short');
   return out;
 }
 
@@ -263,55 +264,40 @@ const FALLBACK_SENTENCES = [
   'ありがとうございました。それでは、今日はここまでにしましょう。',
 ];
 
-// A sentence worth reading: a normal length, mostly Japanese (the model is
-// Japanese; the transcript must match what is said), no URLs or code.
-function readable(s: string): boolean {
+// Mostly kana / kanji: read as Japanese (counted by characters, not words).
+function mostlyJapanese(s: string): boolean {
   const n = countChars(s);
-  if (n < 12 || n > 80) return false;
-  if (/https?:|www\.|[<>{}=_\\]/.test(s)) return false;
-  const ja = (s.match(/[぀-ヿ㐀-鿿ｦ-ﾟ]/g) || []).length;
-  return ja / n >= 0.5;
+  return n > 0 && (s.match(/[぀-ヿ㐀-鿿ｦ-ﾟ]/g) || []).length / n >= 0.5;
 }
 
-/** Sentences to read, in order: the first ones add up to `targetChars` and are
- *  spread over the whole deck (so they sound like the talk); the rest are spares
- *  for "skip this sentence" and "record more". Drawn from the slides' @script
- *  (as spoken: math readings, no markers), then `extraText`, then a built-in set.
- *  Sentences already in `exclude` (recorded earlier) are left out. */
-export function pickSentences(
-  slideRaws: string[], targetChars: number, extraText = '', exclude: string[] = [],
-): string[] {
-  const seen = new Set(exclude.map((s) => s.trim()));
-  const take = (list: string[]) => {
-    const out: string[] = [];
-    for (const raw of list) {
-      const s = raw.trim();
-      if (!s || seen.has(s) || !readable(s)) continue;
-      seen.add(s);
-      out.push(s);
-    }
-    return out;
-  };
-  const deck = take(slideRaws.flatMap((raw) => scriptSegments(raw).flatMap((seg) => sentenceUnits(speechText(seg)))));
-  const extra = take([...sentenceUnits(extraText), ...FALLBACK_SENTENCES]);
+// A sentence worth reading: a normal length — 12–80 characters of Japanese, or
+// 4–30 words of English (or another spaced language) — and no URLs or code. Any
+// language: a voice is a voice, and Chatterbox speaks English as well.
+function readable(s: string): boolean {
+  if (/https?:|www\.|[<>{}=_\\]/.test(s)) return false;
+  if (mostlyJapanese(s)) {
+    const n = countChars(s);
+    return n >= 12 && n <= 80;
+  }
+  const words = s.trim().split(/\s+/).filter(Boolean).length;
+  return /\p{L}/u.test(s) && words >= 4 && words <= 30;
+}
 
-  // Evenly spaced deck sentences until the target is reached, kept in deck order.
-  const chosen = new Set<number>();
-  if (deck.length) {
-    const avg = deck.reduce((n, s) => n + countChars(s), 0) / deck.length;
-    const k = Math.min(deck.length, Math.max(1, Math.ceil(targetChars / avg)));
-    for (let i = 0; i < k; i++) chosen.add(Math.min(deck.length - 1, Math.floor(((i + 0.5) * deck.length) / k)));
+/** Sentences to read, in order: the deck's scripts as a reading takes them
+ *  (`scripts` — scriptsInReadingOrder: the slide on screen first, else the deck's
+ *  first script, then page after page), split into sentences; after them
+ *  `extraText` (the default passage) and a built-in set, which a deck without
+ *  scripts starts with. Sentences already in `exclude` (recorded) are left out. */
+export function pickSentences(scripts: string[], extraText = '', exclude: string[] = []): string[] {
+  const seen = new Set(exclude.map((s) => s.trim()));
+  const out: string[] = [];
+  for (const raw of [...scripts.flatMap(sentenceUnits), ...sentenceUnits(extraText), ...FALLBACK_SENTENCES]) {
+    const s = raw.trim();
+    if (!s || seen.has(s) || !readable(s)) continue;
+    seen.add(s);
+    out.push(s);
   }
-  let first = [...chosen].sort((a, b) => a - b).map((i) => deck[i]);
-  const spares = deck.filter((_, i) => !chosen.has(i));
-  let chars = first.reduce((n, s) => n + countChars(s), 0);
-  const pool = [...spares, ...extra];
-  while (chars < targetChars && pool.length) {
-    const s = pool.shift() as string;
-    first = [...first, s];
-    chars += countChars(s);
-  }
-  return [...first, ...pool];
+  return out;
 }
 
 /** Reading speed from the takes, comparable to the talk-time setting: the

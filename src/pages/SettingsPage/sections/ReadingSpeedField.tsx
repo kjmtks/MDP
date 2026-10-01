@@ -9,7 +9,8 @@ const countChars = (s: string) => s.replace(/\s+/g, '').length;
 const linkBtn = { textTransform: 'none', minWidth: 0, color: 'var(--app-text-muted)', fontSize: '0.72rem' } as const;
 
 // Field for the talk-time reading speed, with a read-aloud calibration. The
-// passage is the OPEN DECK's own @script (from the slide being edited on) — the
+// passage is the OPEN DECK's own @script (from the slide being edited on, else
+// from the deck's first script — scriptsInReadingOrder) — the
 // text the estimate is about; a deck without one falls back to a fixed passage,
 // which is EDITABLE (language / content differ per user).
 export const ReadingSpeedField: React.FC = () => {

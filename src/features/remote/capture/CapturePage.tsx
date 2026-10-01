@@ -5,6 +5,7 @@ import { waitForRenderReady } from './captureReady';
 import type { CaptureSlideData, WebCaptureMessage } from './captureTypes';
 import { applyFontCss, loadWorkspaceFonts } from '../../fonts/fontRuntime';
 import { embedFontCss } from '../../fonts/fontEmbed';
+import { CAPTION_TEXT, captionLang, fitCaptionBox } from '../../autoplay/captionFit';
 
 const KATEX_DELIMS = [
   { left: '\\(', right: '\\)', display: false },
@@ -93,6 +94,8 @@ export default function CapturePage() {
       // Load the workspace fonts explicitly before the capture: `document.fonts.ready`
       // alone can resolve before the first layout has even started a font load.
       await loadWorkspaceFonts(document, data.fontCss || '', undefined, nodeRef.current?.textContent ?? undefined);
+      // The subtitle's balanced lines are measured with the fonts in.
+      if (captionRef.current && !cancelled) fitCaptionBox(captionRef.current);
       if (nodeRef.current) await waitForRenderReady(nodeRef.current);
       if (cancelled) return;
       if (inIframe) {
@@ -140,14 +143,14 @@ export default function CapturePage() {
         )}
         {data?.caption && (
           // Sized from the slide, so it scales with the frame (≈ the auto-play's caption).
-          <div ref={captionRef} style={{
+          <div ref={captionRef} lang={captionLang(data.caption)} style={{
             position: 'absolute', left: '50%', bottom: data.height * 0.045, transform: 'translateX(-50%)',
-            maxWidth: data.width * 0.88, width: 'max-content', boxSizing: 'border-box',
+            ...CAPTION_TEXT, maxWidth: data.width * 0.88,
             padding: `${data.height * 0.012}px ${data.height * 0.028}px`, borderRadius: data.height * 0.016,
             background: 'rgba(0,0,0,.72)', color: '#fff', textAlign: 'center',
             fontFamily: 'var(--mdp-font-body, "Noto Sans JP", sans-serif)',
             fontSize: data.height * 0.04, lineHeight: 1.35, fontWeight: 600,
-            textShadow: '0 1px 3px rgba(0,0,0,.6)', whiteSpace: 'pre-wrap', zIndex: 10,
+            textShadow: '0 1px 3px rgba(0,0,0,.6)', zIndex: 10,
           }} />
         )}
       </div>

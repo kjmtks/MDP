@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { IconButton, Tooltip, Slider, LinearProgress } from '@mui/material';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import PauseIcon from '@mui/icons-material/Pause';
@@ -22,6 +22,7 @@ import {
   synthesizesAudio, engineLabel,
 } from '../tts/ttsService';
 import { buildPlaylist, scriptSegments, type PlayItem, type ScriptAction } from './autoplay';
+import { CAPTION_TEXT, captionLang, fitCaptionBox } from './captionFit';
 import { mdpBus } from '../bus/mdpBus';
 import { SpeechServerControls } from '../tts/SpeechServerControls';
 
@@ -132,14 +133,28 @@ export const AutoPlayView: React.FC<{
 
   // Render the caption's `\(…\)` / `\[…\]` math with KaTeX. textContent first (so any
   // markup is safely escaped), then auto-render math in place; on any KaTeX error the
-  // caption simply stays as plain text — never throws into the render.
-  useEffect(() => {
+  // caption simply stays as plain text — never throws into the render. Before the
+  // paint (a layout effect), so the box never shows empty or at the wrong width;
+  // then it is narrowed to balanced lines (fitCaptionBox).
+  useLayoutEffect(() => {
     const el = captionRef.current;
     if (!el) return;
     el.textContent = caption;
     try { renderMathInElement(el, { delimiters: KATEX_DELIMS, throwOnError: false }); }
     catch { /* keep the plain-text caption */ }
+    fitCaptionBox(el);
   }, [caption, showCaptions]);
+  // The caption's size follows the window (vw) and its fonts: fit it again then.
+  useEffect(() => {
+    if (!open) return undefined;
+    const refit = () => { if (captionRef.current) fitCaptionBox(captionRef.current); };
+    window.addEventListener('resize', refit);
+    document.fonts?.addEventListener?.('loadingdone', refit);
+    return () => {
+      window.removeEventListener('resize', refit);
+      document.fonts?.removeEventListener?.('loadingdone', refit);
+    };
+  }, [open]);
 
   // Export mode's listener, read when an event happens (the loop outlives renders).
   const exportRef = useRef(exportMode);
@@ -700,12 +715,12 @@ export const AutoPlayView: React.FC<{
           </div>
         )}
         {showCaptions && caption && (
-          <div ref={captionRef} style={{
+          <div ref={captionRef} lang={captionLang(caption)} style={{
             position: 'absolute', left: '50%', bottom: 'clamp(16px, 4vh, 48px)', transform: 'translateX(-50%)',
-            maxWidth: 'min(90%, 1100px)', padding: '8px 18px', borderRadius: 10,
+            ...CAPTION_TEXT, maxWidth: 'min(90%, 1100px)', padding: '8px 18px', borderRadius: 10,
             background: 'rgba(0,0,0,.72)', color: '#fff', textAlign: 'center',
             fontSize: 'clamp(16px, 2.4vw, 30px)', lineHeight: 1.35, fontWeight: 600,
-            textShadow: '0 1px 3px rgba(0,0,0,.6)', pointerEvents: 'none', whiteSpace: 'pre-wrap',
+            textShadow: '0 1px 3px rgba(0,0,0,.6)', pointerEvents: 'none',
           }} />
         )}
       </div>

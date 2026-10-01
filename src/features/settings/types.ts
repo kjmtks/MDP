@@ -1,7 +1,7 @@
 // App-level (chrome) settings, persisted PER-WORKSPACE in `.mdp/settings.json`.
 // These are distinct from slide themes (`@theme`, .mdp/themes) — they style the
 // editor app itself (header, panels, menus, editor font, shortcuts).
-import { DEFAULT_SSH_BASTION, type SshBastion } from '../tts/ttsService';
+import { DEFAULT_SSH_BASTION, type SpeechProfile, type SshBastion } from '../tts/ttsService';
 
 export interface AppSettings {
   version: 1;                            // schema version, for forward migration
@@ -57,6 +57,13 @@ export interface AppSettings {
     openaiModel: string;
     openaiVoice: string;
     openaiInstructions: string;
+    // What was chosen on each server — voice, model, description — by its URL
+    // (speechProfileKey). Servers have their own voices and models (Irodori's
+    // 'my-voice' does not exist on Chatterbox, which in turn takes other models),
+    // so switching servers brings back that server's own choices instead of
+    // carrying another's over. The three fields above are the CURRENT server's —
+    // what every request uses.
+    openaiProfiles: Record<string, SpeechProfile>;
     // Optional SSH jump host to reach that server through (desktop app), with an
     // on/off switch; its password / key passphrase are NOT here — the main process
     // keeps them encrypted (app/sshTunnel.cjs).
@@ -101,6 +108,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     engine: 'webspeech', rate: 1, pitch: 1, webspeechVoiceURI: '',
     voicevoxUrl: 'http://127.0.0.1:50021', voicevoxSpeaker: 1,
     openaiUrl: 'http://127.0.0.1:8088', openaiApiKey: '', openaiModel: '', openaiVoice: '', openaiInstructions: '',
+    openaiProfiles: {},
     openaiSsh: DEFAULT_SSH_BASTION,
     pregenerate: false,
   },
@@ -147,6 +155,18 @@ export function normalizeSettings(raw: unknown): AppSettings {
         openaiModel: str(t.openaiModel) ?? d.openaiModel,
         openaiVoice: str(t.openaiVoice) ?? str(t.irodoriVoice) ?? d.openaiVoice,
         openaiInstructions: str(t.openaiInstructions) ?? str(t.irodoriCaption) ?? d.openaiInstructions,
+        openaiProfiles: (() => {
+          const raw = t.openaiProfiles;
+          if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+          const out: Record<string, SpeechProfile> = {};
+          // (The newest few dozen are plenty: one per server ever connected to.)
+          for (const [key, v] of Object.entries(raw as Record<string, unknown>).slice(-40)) {
+            if (!key || !v || typeof v !== 'object') continue;
+            const p = v as Partial<SpeechProfile>;
+            out[key] = { voice: str(p.voice) ?? '', model: str(p.model) ?? '', instructions: str(p.instructions) ?? '' };
+          }
+          return out;
+        })(),
         openaiSsh: (() => {
           const raw = t.openaiSsh ?? t.irodoriSsh;
           const s = (raw && typeof raw === 'object') ? raw as Partial<SshBastion> : {};

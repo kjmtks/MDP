@@ -344,6 +344,26 @@ const serverBase = (url: string): string =>
 const serverKey = (s: SpeechServer): string =>
   `${serverBase(s.url)}${s.ssh ? ` via ${s.ssh.user}@${s.ssh.host}:${s.ssh.port}` : ''}`;
 
+/** The choices made on one server — they do not carry over to another, whose
+ *  voices and models are its own (settings' `openaiProfiles`). */
+export interface SpeechProfile { voice: string; model: string; instructions: string }
+
+/** Which server a profile belongs to: its URL. A named server is the same machine
+ *  whether reached directly or through a bastion (on campus / at home); only a
+ *  loopback address through a bastion is the bastion itself. */
+export function speechProfileKey(s: SpeechServer): string {
+  const base = serverBase(s.url);
+  try {
+    const u = new URL(base);
+    const key = `${u.origin}${u.pathname.replace(/\/+$/, '')}`;
+    const host = u.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+    const loopback = host === 'localhost' || host === '::1' || /^127\./.test(host);
+    return loopback && s.ssh ? `${key} via ${s.ssh.host}` : key;
+  } catch {
+    return base;
+  }
+}
+
 /** Does the server run on THIS computer? A voice registered on any other server
  *  can be spoken with (or replaced) by everyone who holds that server's key, and
  *  its audio file sits on a machine someone else administers. Through a bastion

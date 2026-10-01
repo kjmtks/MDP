@@ -17,6 +17,8 @@ import {
   trainingSetFiles, type TakeAnalysis, type TakeIssue,
 } from './voiceAudio';
 import { MAKE_MANIFEST_PY, speakerInversionReadme } from './speakerInversionKit';
+import { getOpenDeck } from '../slide/openDeckRuntime';
+import { scriptsInReadingOrder } from '../slide/readingCalibration';
 import {
   deleteRecordingSet, listRecordingSets, newRecordingSet, saveRecordingSet, type VoiceRecordingSet,
 } from './voiceStore';
@@ -174,13 +176,25 @@ export const VoiceCalibrationDialog: React.FC<{
   const sentence = queue[cur] || '';
   const recordedSec = speechOf(set);
 
+  // The deck's scripts in reading order: from the slide on screen in the editor
+  // (else the deck's first script), page after page (scriptsInReadingOrder). Read
+  // when asked — the editor publishes its deck (openDeckRuntime); without one,
+  // the slides handed in, from the start.
+  const deckScripts = (): string[] => {
+    const open = getOpenDeck();
+    const ordered = open.slides.length
+      ? scriptsInReadingOrder(open.slides, open.index)
+      : scriptsInReadingOrder(slideRaws.map((raw) => ({ raw })), 0);
+    return ordered.map((s) => s.spoken);
+  };
+
   const begin = (base: VoiceRecordingSet | null) => {
     const done = speechOf(base);
     const goal = Math.max(SPEECH_TARGET_SEC, done + 20);
     setSet(base);
     if (base) setName(base.name);
     setGoalSec(goal);
-    setQueue(pickSentences(slideRaws, (cpm * (goal - done)) / 60, settings.readingCalibrationText, base ? base.takes.map((t) => t.text) : []));
+    setQueue(pickSentences(deckScripts(), settings.readingCalibrationText, base ? base.takes.map((t) => t.text) : []));
     setCur(0);
     setTake(null);
     setError('');
@@ -329,7 +343,7 @@ export const VoiceCalibrationDialog: React.FC<{
     utteranceRef.current?.stop();
     audioRef.current?.pause();
     // A sentence of this deck that was NOT recorded: does the clone carry over?
-    const text = pickSentences(slideRaws, 1, '', set ? set.takes.map((t) => t.text) : [])[0] || IRODORI_REFERENCE_TEXT;
+    const text = pickSentences(deckScripts(), '', set ? set.takes.map((t) => t.text) : [])[0] || IRODORI_REFERENCE_TEXT;
     setTesting(true); setError('');
     const u = speak(text, { ...tts, engine: 'openai', openaiVoice: registered });
     utteranceRef.current = u;
@@ -446,7 +460,8 @@ export const VoiceCalibrationDialog: React.FC<{
     content = (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div style={{ fontSize: 14, lineHeight: 1.7 }}>
-          Read about {speakSec} seconds of sentences from this deck aloud, one at a time. MDP trims each take,
+          Read about {speakSec} seconds of this deck’s script aloud, one sentence at a time — from the slide on
+          screen onward (or from the deck’s first script when that slide has none). MDP trims each take,
           joins up to {REFERENCE_MAX_SEC} s of them into a reference voice on the TTS server, and the narration
           then speaks in your voice.
         </div>

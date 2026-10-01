@@ -6,9 +6,9 @@ import { apiClient } from '../../api/apiClient';
 import type { AppSettings } from '../settings/types';
 import {
   IRODORI_VOICE_ID, OPENAI_VOICES, SshBastionError, deleteIrodoriVoice, designIrodoriVoice, forgetSshBastionHostKey,
-  inspectSpeechServer, isAbortError, referenceVoicesUsed, saveIrodoriVoice, setSshBastionSecret, speechModelFor, speechServerOf,
-  sshBastionInfo, sshBastionSupported, trustSshBastionHostKey,
-  type SpeechServer, type SpeechServerInfo, type SshBastion, type SshBastionInfo, type SshBastionProblem,
+  inspectSpeechServer, isAbortError, referenceVoicesUsed, saveIrodoriVoice, setSshBastionSecret, speechModelFor,
+  speechProfileKey, speechServerOf, sshBastionInfo, sshBastionSupported, trustSshBastionHostKey,
+  type SpeechProfile, type SpeechServer, type SpeechServerInfo, type SshBastion, type SshBastionInfo, type SshBastionProblem,
 } from './ttsService';
 import { VoiceCalibrationDialog } from './VoiceCalibrationDialog';
 
@@ -19,6 +19,10 @@ interface Sample { wav: Uint8Array; url: string }
 
 // The Voice menu's entry for a server's own default voice (stored as '').
 const SERVER_DEFAULT = '__server-default__';
+
+// Which server a connection's findings belong to: the URL, the key and the route.
+const connectionStamp = (s: SpeechServer): string =>
+  `${speechProfileKey(s)}|${s.apiKey || ''}|${s.ssh ? `${s.ssh.user}@${s.ssh.host}:${s.ssh.port}` : ''}`;
 
 // Which /etc/ssh/ssh_host_<x>_key.pub on the bastion holds a key of this type.
 const hostKeyFile = (keyType = ''): string =>
@@ -58,35 +62,79 @@ export const SpeechServerControls: React.FC<{
   slideRaws?: string[];
 }> = ({ tts, patchTts, dark, slideRaws }) => {
   // 'loading' from the start: the panel connects as soon as the engine is picked.
-  const [status, setStatus] = useState<'loading' | 'ok' | 'error'>('loading');
+  const [rawStatus, setStatus] = useState<'loading' | 'ok' | 'error'>('loading');
   const [error, setError] = useState('');
-  const [info, setInfo] = useState<SpeechServerInfo | null>(null);
+  // What Connect found, and FOR WHICH server (URL, key, route). Change any of those
+  // and the findings no longer apply: the panel reconnects by itself instead of
+  // offering another server's voices.
+  const [found, setFound] = useState<{ stamp: string; info: SpeechServerInfo | null } | null>(null);
   // The model a request uses when the settings name none (what the server lists).
   const [autoModel, setAutoModel] = useState('');
   // The last connection's SSH trouble, when the user can act on it here.
   const [sshProblem, setSshProblem] = useState<SshBastionProblem | null>(null);
 
   const server = useMemo(() => speechServerOf(tts), [tts]);
+  const stamp = connectionStamp(server);
+  const stale = !!found && found.stamp !== stamp;
+  const info = found && !stale ? found.info : null;
+  const status = stale ? 'loading' : rawStatus;
   const irodori = info?.kind === 'irodori';
   const canRegister = !!info?.voiceRegistry;
 
   // State is only set from the promise's callbacks, never synchronously. `srv`:
   // a server config newer than this render's (the bastion switch just flipped).
   const load = useCallback((then?: () => void, srv: SpeechServer = server) => {
+    const at = connectionStamp(srv);
     void inspectSpeechServer(srv).then(
-      (found) => {
-        setInfo(found); setError(''); setSshProblem(null); setStatus('ok');
+      (got) => {
+        setFound({ stamp: at, info: got }); setError(''); setSshProblem(null); setStatus('ok');
         void speechModelFor({ ...tts, openaiModel: '' }).then(setAutoModel, () => setAutoModel(''));
+        // This server's own choices: the ones remembered for it, or — the first
+        // time here — the current ones where it has them (another server's voice
+        // or model is not carried over: it would fail here).
+        const key = speechProfileKey(srv);
+        const saved = tts.openaiProfiles[key];
+        const has = (v: string) => !v || !got.voices || got.voices.includes(v) || (got.kind === 'irodori' && v === 'none');
+        const next: SpeechProfile = saved ?? {
+          voice: has(tts.openaiVoice) ? tts.openaiVoice : '',
+          model: !tts.openaiModel || !got.models.length || got.models.includes(tts.openaiModel) ? tts.openaiModel : '',
+          instructions: tts.openaiInstructions,
+        };
+        const p: Partial<Tts> = {};
+        if (next.voice !== tts.openaiVoice) p.openaiVoice = next.voice;
+        if (next.model !== tts.openaiModel) p.openaiModel = next.model;
+        if (next.instructions !== tts.openaiInstructions) p.openaiInstructions = next.instructions;
+        if (!saved) p.openaiProfiles = { ...tts.openaiProfiles, [key]: next };
+        if (Object.keys(p).length) patchTts(p);
         then?.();
       },
       (e: unknown) => {
-        setInfo(null); setStatus('error');
+        setFound({ stamp: at, info: null }); setStatus('error');
         setSshProblem(e instanceof SshBastionError ? e.problem : null);
         setError(e instanceof Error ? e.message : String(e));
       },
     );
-  }, [server, tts]);
+  }, [server, tts, patchTts]);
   const connect = () => { setStatus('loading'); setError(''); load(); };
+
+  // The URL, key or route changed: connect again by itself once the typing stops.
+  useEffect(() => {
+    if (!stale) return undefined;
+    const t = window.setTimeout(() => { setError(''); load(); }, 900);
+    return () => window.clearTimeout(t);
+  }, [stale, stamp, load]);
+
+  // A choice made on the connected server is remembered for it (and only then:
+  // not under a half-typed URL).
+  const choose = (p: Partial<Pick<Tts, 'openaiVoice' | 'openaiModel' | 'openaiInstructions'>>) => {
+    const key = info ? speechProfileKey(server) : '';
+    const next: SpeechProfile = {
+      voice: p.openaiVoice ?? tts.openaiVoice,
+      model: p.openaiModel ?? tts.openaiModel,
+      instructions: p.openaiInstructions ?? tts.openaiInstructions,
+    };
+    patchTts({ ...p, ...(key ? { openaiProfiles: { ...tts.openaiProfiles, [key]: next } } : {}) });
+  };
 
   // ---- SSH bastion (desktop app) ------------------------------------------------
   const sshSupported = sshBastionSupported();
@@ -143,7 +191,7 @@ export const SpeechServerControls: React.FC<{
   // what is spoken is what the panel shows. (Irodori's '' already means 'none',
   // and on another server with a voice registry '' is its own default voice.)
   useEffect(() => {
-    if (info && !info.voiceRegistry && info.voices?.length && !tts.openaiVoice.trim()) patchTts({ openaiVoice: info.voices[0] });
+    if (info && !info.voiceRegistry && info.voices?.length && !tts.openaiVoice.trim()) choose({ openaiVoice: info.voices[0] });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [info]);
 
@@ -200,7 +248,7 @@ export const SpeechServerControls: React.FC<{
       setConfirmReplace(false);
       dropSample();
       // Re-read the list so the new voice is offered, then speak with it.
-      load(() => patchTts({ openaiVoice: name }));
+      load(() => choose({ openaiVoice: name }));
     }, (e: unknown) => setDesignError(e instanceof Error ? e.message : String(e)))
       .finally(() => setSaving(false));
   };
@@ -210,11 +258,11 @@ export const SpeechServerControls: React.FC<{
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [removeError, setRemoveError] = useState('');
-  const onRegistered = (id: string) => load(() => patchTts({ openaiVoice: id }));
+  const onRegistered = (id: string) => load(() => choose({ openaiVoice: id }));
   const remove = (id: string) => {
     setRemoving(true); setRemoveError('');
     deleteIrodoriVoice(server, id).then(
-      () => { setConfirmRemove(false); load(() => patchTts({ openaiVoice: irodori ? 'none' : '' })); },
+      () => { setConfirmRemove(false); load(() => choose({ openaiVoice: irodori ? 'none' : '' })); },
       (e: unknown) => setRemoveError(e instanceof Error ? e.message : String(e)),
     ).finally(() => setRemoving(false));
   };
@@ -408,7 +456,7 @@ export const SpeechServerControls: React.FC<{
       {showModel && (
         <>
           <TextField size="small" label="Model" value={tts.openaiModel}
-            onChange={(e) => patchTts({ openaiModel: e.target.value.trim() })}
+            onChange={(e) => choose({ openaiModel: e.target.value.trim() })}
             placeholder={autoModel ? `automatic — ${autoModel}` : 'automatic'}
             slotProps={{ htmlInput: { list: 'mdp-tts-models', spellCheck: false } }}
             helperText={tts.openaiModel.trim() ? undefined : 'Empty: the speech model the server lists (else tts-1).'} />
@@ -422,7 +470,7 @@ export const SpeechServerControls: React.FC<{
         <TextField select size="small" label="Voice" value={defaultChoice && !voice ? SERVER_DEFAULT : voice}
           onChange={(e) => {
             const id = String(e.target.value);
-            patchTts({ openaiVoice: id === SERVER_DEFAULT ? '' : id }); setConfirmRemove(false); setRemoveError('');
+            choose({ openaiVoice: id === SERVER_DEFAULT ? '' : id }); setConfirmRemove(false); setRemoveError('');
           }}>
           {options.map((id) => (
             <MenuItem key={id} value={id}>
@@ -436,7 +484,7 @@ export const SpeechServerControls: React.FC<{
       ) : (
         <>
           <TextField size="small" label="Voice" value={tts.openaiVoice}
-            onChange={(e) => patchTts({ openaiVoice: e.target.value.trim() })}
+            onChange={(e) => choose({ openaiVoice: e.target.value.trim() })}
             placeholder="alloy" slotProps={{ htmlInput: { list: 'mdp-tts-voices', spellCheck: false } }}
             helperText={tts.openaiVoice.trim() ? undefined : 'Empty: alloy. OpenAI’s voices are suggested; other servers name their own.'} />
           <datalist id="mdp-tts-voices">
@@ -486,7 +534,7 @@ export const SpeechServerControls: React.FC<{
       )}
 
       <TextField size="small" label={irodori ? 'Voice Design (caption)' : 'Instructions (optional)'} multiline minRows={2} maxRows={5}
-        value={tts.openaiInstructions} onChange={(e) => patchTts({ openaiInstructions: e.target.value })}
+        value={tts.openaiInstructions} onChange={(e) => choose({ openaiInstructions: e.target.value })}
         placeholder={irodori ? '例: 落ち着いた低めの男性の声。聞き取りやすい、丁寧な講義口調。' : '例: 落ち着いた、ゆっくりした講義口調で。'} />
 
       {!irodori ? (

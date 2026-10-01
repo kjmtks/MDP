@@ -19,27 +19,41 @@ export interface CalibrationPassage {
 const TARGET_CHARS = 250;   // ≈ 45 s at 320 chars/min — long enough to average out
 const MAX_CHARS = 700;      // don't add a slide that would make it much longer
 
-/** The slide being edited first, then the following ones (wrapping round), until
- *  about TARGET_CHARS. null when no visible slide has a script to read. */
+/** One slide's script as it would be read: its spoken form and the characters the
+ *  talk-time estimate counts for it. */
+export interface SlideScript { slide: number; spoken: string; chars: number }
+
+/** The deck's scripts in the order a reading takes them (the reading-speed and
+ *  voice calibrations): from the slide on screen when it has a script — then on,
+ *  page after page, round to the start — else from the deck's first script.
+ *  Hidden slides are skipped (not spoken in the talk), and so is a script with
+ *  nothing to say (e.g. only a formula without a reading). [] = no script at all:
+ *  the caller falls back to the default passage. */
+export function scriptsInReadingOrder(slides: readonly OpenDeckSlide[], current: number): SlideScript[] {
+  const all: SlideScript[] = [];
+  slides.forEach((slide, i) => {
+    if (!slide || slide.isHidden) return;
+    const raw = slide.raw || '';
+    const chars = scriptChars(raw);
+    const spoken = chars ? scriptSegments(raw).map(speechText).filter(Boolean).join(' ') : '';
+    if (spoken) all.push({ slide: i + 1, spoken, chars });
+  });
+  const at = all.findIndex((s) => s.slide === Math.floor(current) + 1);
+  return at > 0 ? [...all.slice(at), ...all.slice(0, at)] : all;
+}
+
+/** The scripts in reading order (scriptsInReadingOrder) until about TARGET_CHARS.
+ *  null when no visible slide has a script to read. */
 export function deckCalibrationPassage(slides: readonly OpenDeckSlide[], start: number): CalibrationPassage | null {
-  const n = slides.length;
-  if (!n) return null;
-  const from = Math.min(Math.max(0, Math.floor(start) || 0), n - 1);
   const parts: string[] = [];
   const picked: number[] = [];
   let chars = 0;
-  for (let k = 0; k < n && chars < TARGET_CHARS; k++) {
-    const i = (from + k) % n;
-    const slide = slides[i];
-    if (!slide || slide.isHidden) continue;             // not spoken in the talk
-    const raw = slide.raw || '';
-    const count = scriptChars(raw);
-    if (!count || (picked.length && chars + count > MAX_CHARS)) continue;
-    const spoken = scriptSegments(raw).map(speechText).filter(Boolean).join(' ');
-    if (!spoken) continue;                               // e.g. only a formula without a reading
-    parts.push(spoken);
-    picked.push(i + 1);
-    chars += count;
+  for (const s of scriptsInReadingOrder(slides, start)) {
+    if (chars >= TARGET_CHARS) break;
+    if (picked.length && chars + s.chars > MAX_CHARS) continue;
+    parts.push(s.spoken);
+    picked.push(s.slide);
+    chars += s.chars;
   }
   return picked.length ? { text: parts.join('\n\n'), chars, slides: picked } : null;
 }

@@ -3,6 +3,8 @@
 // then the in-slide build advances one step, then the next segment is read — so the
 // spoken words stay in sync with the reveals. The markers are stripped before TTS.
 
+import { captionChunks, displayWidth, splitSentences, UNIT_MAX } from './captionSplit';
+
 const STEP_MARKER = /\[\[\s*step\s*\]\]/gi;
 
 // Extract the concatenated @script text from a slide's raw markdown.
@@ -186,12 +188,13 @@ const ATOM_RE = /\uE000(\d+)\uE001/g;
 
 // Split a narration segment into subtitle units WITHOUT ever cutting inside a
 // formula or a ruby: each ruby, and each math span (with its optional trailing
-// `[[say: 読み]]` reading), is masked to one atomic token, the text is chunked at the
-// usual sentence/clause boundaries (captionChunks), then each chunk is restored twice
-// — the caption shows the base / the math, the speech says the reading (or nothing,
-// for a formula without one). A long paragraph that merely CONTAINS a small formula
-// is therefore still split normally.
-export function scriptUnits(seg: string, maxLen = 42): ScriptUnit[] {
+// `[[say: 読み]]` reading), is masked to one atomic token (as wide as what it SHOWS),
+// the text is cut into units (captionChunks: whole sentences where they fit, a long
+// one at its most natural places into even pieces), then each chunk is restored
+// twice — the caption shows the base / the math, the speech says the reading (or
+// nothing, for a formula without one). A long paragraph that merely CONTAINS a small
+// formula is therefore still split normally.
+export function scriptUnits(seg: string, maxWidth = UNIT_MAX): ScriptUnit[] {
   // `speech` carries its own spacing: a formula's reading is set apart, a word's
   // reading takes the word's place in the sentence.
   const atoms: { caption: string; speech: string }[] = [];
@@ -203,8 +206,11 @@ export function scriptUnits(seg: string, maxLen = 42): ScriptUnit[] {
       (_m, math: string, say?: string) => atom(math, say && say.trim() ? ` ${say.trim()} ` : ''))
     // a stray reading with no preceding formula: speak it, show nothing
     .replace(/\[\[\s*say\s*:\s*([\s\S]*?)\]\]/gi, (_m, say: string) => atom('', ` ${say.trim()} `));
+  // A formula's width on screen ≈ its LaTeX without the markup (a command = one glyph).
+  const atomWidth = (n: number) => Math.max(0.5, displayWidth(String(atoms[n]?.caption ?? '')
+    .replace(/\\[()[\]]/g, '').replace(/\\[a-zA-Z]+/g, 'x').replace(/[{}^_\\]/g, '')));
   const units: ScriptUnit[] = [];
-  for (const chunk of captionChunks(masked, maxLen)) {
+  for (const chunk of captionChunks(masked, maxWidth, atomWidth)) {
     const caption = chunk.replace(ATOM_RE, (_m, i) => atoms[+i].caption).replace(/[ \t]+/g, ' ').trim();
     const speech = chunk.replace(ATOM_RE, (_m, i) => atoms[+i].speech || ' ').replace(/\s+/g, ' ').trim();
     if (caption || speech) units.push({ caption, speech });
@@ -282,69 +288,14 @@ export function slideDwellMs(html: string, cpm: number): number {
   return Math.round(Math.max(1.5, Math.min(10, seconds)) * 1000);
 }
 
-// Split a narration segment into SENTENCES (at 。．！？!?… enders). Each sentence is
-// synthesized + captioned as its own unit, so the on-screen caption is exactly the
-// audio being spoken (perfect sync) and speech stays natural (no mid-sentence cuts).
-// A run with no sentence ender is returned whole.
+// Split a text into SENTENCES — Japanese 。．！？, English . ! ? before the next
+// sentence (not after Mr. / e.g. / an initial), never inside brackets or quotes
+// (captionSplit.splitSentences). A run with no sentence ender is returned whole.
 export function sentenceUnits(text: string): string[] {
-  const t = (text || '').replace(/\s+/g, ' ').trim();
-  if (!t) return [];
-  return t.split(/(?<=[。．！？!?…])/).map((s) => s.trim()).filter(Boolean);
+  return splitSentences(text);
 }
 
-// Wrap an over-long clause at NATURAL word boundaries (spaces) — for English/mixed
-// text. If the run has no spaces (e.g. plain CJK with no punctuation), it is kept
-// WHOLE rather than cut mid-word: a long run virtually always ends at a 句点, so the
-// pathological no-delimiter case isn't worth an ugly mid-word cut.
-function wrapAtSpaces(s: string, maxLen: number): string[] {
-  if (!/\s/.test(s)) return [s.trim()];
-  const words = s.split(/(?<=\s)/); // keep each word's trailing space
-  const out: string[] = [];
-  let buf = '';
-  for (const w of words) {
-    if (!buf) buf = w;
-    else if ((buf + w).trim().length <= maxLen) buf += w;
-    else { out.push(buf.trim()); buf = w; }
-  }
-  if (buf.trim()) out.push(buf.trim());
-  return out.filter(Boolean);
-}
-
-// Delimiters we break at, in addition to sentence enders — "natural" break points:
-//   • clause punctuation:      、 ，, ; ； : ： ・
-//   • AFTER a closing bracket/quote:  」 』 ） 】 〕 》 〉
-//   • BEFORE an opening bracket/quote: 「 『 （ 【 〔 《 〈
-// (Word-boundary spaces are handled separately, as a softer fallback.)
-const CLAUSE_SPLIT = /(?<=[、，,;；:：・」』）】〕》〉])|(?=[「『（【〔《〈])/;
-
-// Split a narration segment into SUBTITLE-sized chunks, breaking at NATURAL points as
-// much as possible: first at sentence enders (。．！？!?…), then, for a long sentence,
-// at the clause/bracket delimiters above — splitting there and merging pieces up to
-// ~maxLen so every break lands on a delimiter. A clause still over maxLen is wrapped
-// at word-boundary spaces (English); a delimiter-and-space-free run (long CJK with no
-// punctuation) is kept whole. Whitespace is collapsed. Returns [] for empty.
-export function captionChunks(text: string, maxLen = 42): string[] {
-  const t = (text || '').replace(/\s+/g, ' ').trim();
-  if (!t) return [];
-  const sentences = t.split(/(?<=[。．！？!?…])/).map((s) => s.trim()).filter(Boolean);
-  const out: string[] = [];
-  for (const sentence of sentences) {
-    if (sentence.length <= maxLen) { out.push(sentence); continue; }
-    const pieces = sentence.split(CLAUSE_SPLIT).map((p) => p.trim()).filter(Boolean);
-    let buf = '';
-    const flush = () => { if (buf) { out.push(buf); buf = ''; } };
-    for (const p of pieces) {
-      if (p.length > maxLen) {
-        // Clause longer than a line: wrap at spaces (English) or keep whole (CJK).
-        flush();
-        for (const w of wrapAtSpaces(p, maxLen)) out.push(w);
-        continue;
-      }
-      if (!buf) buf = p;
-      else if ((buf + p).length <= maxLen) buf += p; // merge; delimiters already inside
-      else { flush(); buf = p; }
-    }
-    flush();
-  }
-  return out;
-}
+// The subtitle units of a narration text: whole sentences wherever they fit the
+// caption's two lines, a long one cut at its most natural places into even pieces
+// (captionSplit.ts).
+export { captionChunks };
