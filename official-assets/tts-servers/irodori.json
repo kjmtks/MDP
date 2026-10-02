@@ -1,0 +1,45 @@
+{
+  "id": "irodori",
+  "name": "Irodori-TTS",
+  "description": "Aratako's Irodori-TTS-Server — Japanese; reference voices and Voice Design. Its tuning goes in the request's `irodori` object.",
+  "match": [
+    { "health": { "model.hf_checkpoint": true } }
+  ],
+  "languages": ["ja"],
+  "defaultVoice": "none",
+  "options": [
+    {
+      "key": "irodori.caption", "type": "string", "role": "instructions",
+      "label": "Voice Design (caption)",
+      "description": "Receives the speaker's prompt."
+    },
+    {
+      "key": "irodori.num_steps", "type": "integer", "min": 1, "max": 200,
+      "label": "Steps (num_steps)",
+      "description": "More steps: finer audio, slower synthesis."
+    },
+    {
+      "key": "irodori.seed", "type": "integer", "min": 0,
+      "label": "Seed",
+      "description": "The same seed gives the same rendition (without a reference voice it does not fix the speaker). Blank: different each time."
+    },
+    {
+      "key": "irodori.truncation_factor", "type": "number", "min": 0, "max": 1, "step": 0.05,
+      "label": "Steadiness (truncation_factor)",
+      "description": "Lower: a steadier, less varied voice."
+    },
+    {
+      "key": "irodori.speaker_kv_scale", "type": "number", "min": 0, "step": 0.1,
+      "label": "Reference voice strength (speaker_kv_scale)",
+      "description": "How closely the reference voice is followed."
+    },
+    {
+      "key": "irodori.duration_scale", "type": "number", "min": 0.1, "step": 0.05,
+      "label": "Length (duration_scale)",
+      "description": "Above 1: longer, slower speech."
+    },
+    { "key": "irodori.cfg_scale_text", "type": "number", "min": 0, "step": 0.1, "label": "Text guidance (cfg_scale_text)" },
+    { "key": "irodori.cfg_scale_caption", "type": "number", "min": 0, "step": 0.1, "label": "Caption guidance (cfg_scale_caption)" },
+    { "key": "irodori.cfg_scale_speaker", "type": "number", "min": 0, "step": 0.1, "label": "Speaker guidance (cfg_scale_speaker)" }
+  ]
+}

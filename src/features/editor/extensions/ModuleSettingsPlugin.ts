@@ -67,9 +67,24 @@ class ModuleSettingsWidget extends WidgetType {
 
 export const moduleSettingsPlugin = ViewPlugin.fromClass(class {
   decorations: DecorationSet;
-  constructor(view: EditorView) { this.decorations = this.build(view); }
+  // The module registry fills in AFTER the editor opens (the workspace's modules
+  // load asynchronously): rebuild then, or the buttons would appear only once the
+  // user typed or scrolled.
+  private stale = false;
+  private readonly onRegistered: () => void;
+  constructor(view: EditorView) {
+    this.decorations = this.build(view);
+    this.onRegistered = () => { this.stale = true; view.dispatch({}); };
+    window.addEventListener('mdp-modules-registered', this.onRegistered);
+  }
   update(u: ViewUpdate) {
-    if (u.docChanged || u.viewportChanged) this.decorations = this.build(u.view);
+    if (u.docChanged || u.viewportChanged || this.stale) {
+      this.stale = false;
+      this.decorations = this.build(u.view);
+    }
+  }
+  destroy() {
+    window.removeEventListener('mdp-modules-registered', this.onRegistered);
   }
   build(view: EditorView) {
     const builder = new RangeSetBuilder<Decoration>();

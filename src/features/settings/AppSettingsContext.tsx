@@ -9,6 +9,9 @@ interface AppSettingsContextValue {
   ready: boolean;
   appThemeVariant: 'dark' | 'light';
   update: (partial: Partial<AppSettings>) => void;
+  /** Change some read-aloud (TTS) settings, keeping the others as they are NOW —
+   *  not as a render saw them: a panel's later patch never undoes an earlier one. */
+  updateTts: (patch: Partial<AppSettings['tts']>) => void;
   /** Remove a shortcut override so the action falls back to its registry default. */
   resetShortcut: (actionId: string) => void;
 }
@@ -92,6 +95,14 @@ export const AppSettingsProvider: React.FC<{ children: React.ReactNode }> = ({ c
     });
   }, [persist]);
 
+  const updateTts = useCallback((patch: Partial<AppSettings['tts']>) => {
+    setSettings((prev) => {
+      const next = { ...prev, tts: { ...prev.tts, ...patch } };
+      persist(next);
+      return next;
+    });
+  }, [persist]);
+
   const resetShortcut = useCallback((actionId: string) => {
     setSettings((prev) => {
       if (!(actionId in prev.shortcuts)) return prev;
@@ -108,6 +119,7 @@ export const AppSettingsProvider: React.FC<{ children: React.ReactNode }> = ({ c
     ready,
     appThemeVariant: appThemeVariant(settings.appTheme),
     update,
+    updateTts,
     resetShortcut,
   };
 

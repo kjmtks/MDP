@@ -13,6 +13,13 @@
 // VOICEVOX and the TTS server return AUDIO DATA, so their clips can be prefetched and
 // pre-generated; Web Speech only speaks live. Config is persisted in app settings.
 
+import { dropVoiceCopy, keepVoiceCopy } from './voiceCopyStore';
+import {
+  NO_DESCRIPTION, describeFromHealth, describeFromProfile, matchProfile, optionsFromOpenApi, reportedLanguages,
+  speechRequestBody, type SpeechServerDescription,
+} from './speechOptions';
+import { onSpeechProfilesChanged, speechProfiles } from './speechProfiles';
+
 export type TtsEngine = 'webspeech' | 'voicevox' | 'openai';
 
 /** An SSH jump host ("bastion") the TTS-server requests can go through — desktop
@@ -34,6 +41,15 @@ export const DEFAULT_SSH_BASTION: SshBastion = {
   enabled: false, host: '', port: 22, user: '', auth: 'key', keyPath: '~/.ssh/id_ed25519',
 };
 
+/** VOICEVOX voice shaping — audio_query's pitchScale / intonationScale /
+ *  volumeScale. An absent field keeps the engine's own value for the style. */
+export interface VoicevoxShape { pitch?: number; intonation?: number; volume?: number }
+
+/** The range VOICEVOX accepts for each shaping value (values are clamped to it). */
+export const VOICEVOX_SHAPE_RANGE: Record<keyof VoicevoxShape, readonly [number, number]> = {
+  pitch: [-0.15, 0.15], intonation: [0, 2], volume: [0, 2],
+};
+
 export interface TtsConfig {
   engine: TtsEngine;
   rate: number;              // speaking rate; ~0.5–2.0. VOICEVOX speedScale / the server's `speed`.
@@ -47,6 +63,11 @@ export interface TtsConfig {
   openaiVoice: string;       // the server's voice id ('' = its default; Irodori 'none' = no reference voice)
   openaiInstructions: string; // how to speak: Irodori's Voice Design caption / OpenAI's `instructions`
   openaiSsh: SshBastion;     // optional bastion to reach the server through
+  // The TTS server's own options (speechOptions.ts): the server's defaults from the
+  // settings, merged with a call's. Only the ones the server takes are sent.
+  openaiExtra?: Record<string, unknown>;
+  voicevoxShape?: VoicevoxShape; // per-utterance shaping (set by a call, never stored)
+  lang?: string;             // the line's language (BCP-47), for a server's language option
 }
 
 export const DEFAULT_TTS: TtsConfig = {
@@ -72,6 +93,18 @@ export const synthesizesAudio = (engine: TtsEngine): boolean => engine === 'voic
 /** Display name of an engine, for status lines and error messages. */
 export const engineLabel = (engine: TtsEngine): string =>
   engine === 'voicevox' ? 'VOICEVOX' : engine === 'openai' ? 'TTS server (OpenAI-compatible)' : 'Web Speech';
+
+/** An engine as a deck or a module script names it: 'server' / 'tts' / 'irodori' /
+ *  'openai' all mean the TTS server. '' / 'auto' / anything else → null (the
+ *  caller picks — by language and the app's narrator). */
+export function engineFromName(name: string | null | undefined): TtsEngine | null {
+  switch ((name || '').trim().toLowerCase()) {
+    case 'webspeech': return 'webspeech';
+    case 'voicevox': return 'voicevox';
+    case 'openai': case 'server': case 'tts': case 'irodori': return 'openai';
+    default: return null;
+  }
+}
 
 // Opt-in TTS diagnostics: run `localStorage.mdpTtsDebug = '1'` in DevTools (per
 // window) and every speak/cancel/stop plus each utterance's lifecycle events are
@@ -244,6 +277,18 @@ async function synthVoicevox(text: string, cfg: TtsConfig, signal?: AbortSignal)
   return URL.createObjectURL(await voicevoxWav(text, cfg, signal));
 }
 
+/** Write a shape into an audio_query (pitch → pitchScale, …), clamped to the range
+ *  VOICEVOX accepts; absent or non-numeric values leave the style's own value. */
+function applyVoicevoxShape(query: Record<string, unknown>, shape?: VoicevoxShape): void {
+  if (!shape) return;
+  for (const k of Object.keys(VOICEVOX_SHAPE_RANGE) as Array<keyof VoicevoxShape>) {
+    const v = shape[k];
+    if (typeof v !== 'number' || !Number.isFinite(v)) continue;
+    const [lo, hi] = VOICEVOX_SHAPE_RANGE[k];
+    query[`${k}Scale`] = Math.max(lo, Math.min(hi, v));
+  }
+}
+
 async function voicevoxWav(text: string, cfg: TtsConfig, signal?: AbortSignal): Promise<Blob> {
   const base = (cfg.voicevoxUrl || DEFAULT_TTS.voicevoxUrl).replace(/\/+$/, '');
   const speaker = cfg.voicevoxSpeaker || 0;
@@ -251,6 +296,7 @@ async function voicevoxWav(text: string, cfg: TtsConfig, signal?: AbortSignal): 
   if (!q.ok) throw new Error(`VOICEVOX /audio_query returned ${q.status}`);
   const query = await q.json();
   query.speedScale = Math.max(0.5, Math.min(2, cfg.rate || 1));
+  applyVoicevoxShape(query, cfg.voicevoxShape);
   // Aborted between the two calls → the (heavier) synthesis is never requested.
   const s = await fetch(`${base}/synthesis?speaker=${speaker}`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(query), signal,
@@ -345,8 +391,40 @@ const serverKey = (s: SpeechServer): string =>
   `${serverBase(s.url)}${s.ssh ? ` via ${s.ssh.user}@${s.ssh.host}:${s.ssh.port}` : ''}`;
 
 /** The choices made on one server — they do not carry over to another, whose
- *  voices and models are its own (settings' `openaiProfiles`). */
-export interface SpeechProfile { voice: string; model: string; instructions: string }
+ *  voices, models and options are its own (settings' `openaiProfiles`). */
+export interface SpeechProfile { voice: string; model: string; instructions: string; extra?: Record<string, unknown> }
+
+/** A named speaker a deck calls by name (`mainvoice: @name`): the engine, its voice and
+ *  how it speaks (settings' `voicePresets` — this computer's). `connection` names a
+ *  saved connection: the TTS server to speak on instead of the current one. */
+export interface VoicePreset {
+  name: string;
+  engine: TtsEngine;
+  voice: string;                     // Web Speech narrator, the server's voice id, or a VOICEVOX style id
+  prompt?: string;                   // TTS server: how to speak
+  extra?: Record<string, unknown>;   // TTS server: its own options
+  voicevox?: VoicevoxShape;          // VOICEVOX shaping
+  connection?: string;               // TTS server: a saved connection's name
+}
+
+/** A preset name a deck can write after `@` (no spaces or argument punctuation). */
+export const PRESET_NAME = /^[\p{L}\p{N}_.-]{1,40}$/u;
+
+/** A saved way to a TTS server — its URL, API key and the SSH bastion to go
+ *  through (settings' `openaiConnections`) — picked from a list instead of typed
+ *  again (the campus server, the one at home, OpenAI…). A bastion's password or
+ *  passphrase is not in it: the main process keeps one per bastion. */
+export interface SpeechConnection { name: string; url: string; apiKey: string; ssh: SshBastion }
+
+/** Is `c` the connection the settings use now? The bastion's details count only
+ *  while its switch is on (off, it is a direct connection either way). */
+export function isSameConnection(c: SpeechConnection, cfg: Pick<TtsConfig, 'openaiUrl' | 'openaiApiKey' | 'openaiSsh'>): boolean {
+  const a = c.ssh;
+  const b = cfg.openaiSsh ?? DEFAULT_SSH_BASTION;
+  const sameRoute = a.enabled === b.enabled && (!a.enabled || (
+    a.host === b.host && a.port === b.port && a.user === b.user && a.auth === b.auth && (a.auth !== 'key' || a.keyPath === b.keyPath)));
+  return serverBase(c.url) === serverBase(cfg.openaiUrl) && c.apiKey === (cfg.openaiApiKey || '') && sameRoute;
+}
 
 /** Which server a profile belongs to: its URL. A named server is the same machine
  *  whether reached directly or through a bastion (on campus / at home); only a
@@ -527,6 +605,8 @@ export interface SpeechServerInfo {
   voices: string[] | null;
   /** Voices can be registered here in Irodori-TTS-Server's way (see probeHealth). */
   voiceRegistry: boolean;
+  /** What it takes beyond OpenAI's request, and what it speaks (speechOptions.ts). */
+  description: SpeechServerDescription;
 }
 
 // Registering a voice is NOT part of OpenAI's speech API: Irodori-TTS-Server adds
@@ -641,9 +721,60 @@ export async function inspectSpeechServer(server: SpeechServer): Promise<SpeechS
     kinds.set(key, Promise.resolve(kind));
     knownKinds.set(key, kind);
   }
-  const [models, voices] = await Promise.all([listModels(server), listVoices(server)]);
-  return { kind, health, models, voices, voiceRegistry };
+  const [models, voices, description] = await Promise.all([
+    listModels(server), listVoices(server), describeSpeechServer(server, true).catch(() => NO_DESCRIPTION),
+  ]);
+  return { kind, health, models, voices, voiceRegistry, description };
 }
+
+// ---- what the server takes beyond OpenAI's request (speechOptions.ts) ----------------
+
+const descriptions = new Map<string, Promise<SpeechServerDescription>>();
+const knownDescriptions = new Map<string, SpeechServerDescription>();
+// A profile added or changed in the workspace may describe a server differently.
+onSpeechProfilesChanged(() => { descriptions.clear(); knownDescriptions.clear(); });
+
+const jsonOf = (r: HttpResult | null): unknown => {
+  if (!r || r.status !== 200) return null;
+  try { return speechJson<unknown>(r); } catch { return null; }
+};
+
+// The server's own word (/health `options`), else a profile that recognizes it, else
+// its OpenAPI schema, else nothing — none of them asked of the server. `passing`: the
+// server answered only errors (a proxy whose TTS process is stopped) — not to be kept.
+async function findDescription(server: SpeechServer): Promise<{ desc: SpeechServerDescription; passing: boolean }> {
+  const [h, m] = await Promise.all([speechHttp(server, '/health'), speechHttp(server, '/v1/models').catch(() => null)]);
+  const passing = h.status >= 500;
+  const facts = { url: serverBase(server.url), health: jsonOf(h), models: jsonOf(m) };
+  const own = describeFromHealth(facts.health, facts.models);
+  if (own) return { desc: own, passing };
+  const profile = matchProfile(speechProfiles(), facts);
+  if (profile) return { desc: describeFromProfile(profile, facts), passing };
+  const options = optionsFromOpenApi(jsonOf(await speechHttp(server, '/openapi.json').catch(() => null)));
+  if (options.length) return { desc: { source: 'openapi', options, languages: reportedLanguages(facts), strict: true }, passing };
+  return { desc: { ...NO_DESCRIPTION, languages: reportedLanguages(facts) }, passing };
+}
+
+/** What the server takes beyond OpenAI's speech request, and what it speaks — found
+ *  once per server (`fresh`: ask again, as Connect does). Rejects only when the server
+ *  cannot be reached; then, or when it answered only errors, it is asked again next time. */
+export function describeSpeechServer(server: SpeechServer, fresh = false): Promise<SpeechServerDescription> {
+  const key = serverKey(server);
+  const cached = fresh ? undefined : descriptions.get(key);
+  if (cached) return cached;
+  const forget = () => { if (descriptions.get(key) === asked) descriptions.delete(key); };
+  const asked: Promise<SpeechServerDescription> = findDescription(server).then(({ desc, passing }) => {
+    if (passing) forget();
+    else knownDescriptions.set(key, desc);
+    return desc;
+  });
+  descriptions.set(key, asked);
+  asked.catch(forget);
+  return asked;
+}
+/** The server's description if it is known already (undefined = not asked yet). */
+export const knownSpeechDescription = (server: SpeechServer): SpeechServerDescription | undefined =>
+  knownDescriptions.get(serverKey(server));
 
 /** The voices the server offers ([] = it has no list). */
 export async function listServerVoices(server: SpeechServer): Promise<string[]> {
@@ -742,27 +873,32 @@ async function irodoriStreamedSpeech(server: SpeechServer, json: Record<string, 
   return joinWavs(parts);
 }
 
-// One /v1/audio/speech call → the audio. Irodori: streamed, with the description as
-// its Voice Design caption. Any other server: one plain request asking for WAV (MP3
-// when it has no WAV), with the description as OpenAI's `instructions` — only when
-// there is one: tts-1 and many servers know no such field.
+// One /v1/audio/speech call → the audio. The body follows the server's description
+// (speechOptions.ts): the description of the voice goes where the server takes it
+// (OpenAI's `instructions`; Irodori's Voice Design caption), and only when there is
+// one — tts-1 and many servers know no such field; the server's own options are sent
+// if it takes them, its language option filled from the line's language. Irodori is
+// streamed; any other server gets one plain request asking for WAV (MP3 when it has
+// no WAV).
 async function serverSpeech(text: string, cfg: TtsConfig, signal?: AbortSignal): Promise<{ bytes: Uint8Array; type: string }> {
   const server = speechServerOf(cfg);
-  const kind = await serverKind(server);
+  const [kind, desc] = await Promise.all([serverKind(server), describeSpeechServer(server).catch(() => NO_DESCRIPTION)]);
   const model = await speechModelFor(cfg);
-  const how = (cfg.openaiInstructions || '').trim();
-  const json = {
-    model,
-    input: text,
-    voice: (cfg.openaiVoice || '').trim() || (kind === 'irodori' ? 'none' : 'alloy'),
-    speed: Math.max(0.25, Math.min(4, cfg.rate || 1)),
-  };
+  const json = speechRequestBody(
+    {
+      model,
+      input: text,
+      voice: (cfg.openaiVoice || '').trim() || desc.defaultVoice || (kind === 'irodori' ? 'none' : 'alloy'),
+      speed: Math.max(0.25, Math.min(4, cfg.rate || 1)),
+    },
+    { prompt: cfg.openaiInstructions, extra: cfg.openaiExtra, lang: cfg.lang },
+    desc,
+    kind === 'irodori' ? 'irodori.caption' : 'instructions',   // where the prompt goes when nothing describes the server
+  );
   if (kind === 'irodori') {
-    return { bytes: await irodoriStreamedSpeech(server, { ...json, ...(how ? { irodori: { caption: how } } : {}) }, signal), type: 'audio/wav' };
+    return { bytes: await irodoriStreamedSpeech(server, json, signal), type: 'audio/wav' };
   }
-  const ask = (format: string) => speechHttp(server, '/v1/audio/speech', {
-    signal, json: { ...json, response_format: format, ...(how ? { instructions: how } : {}) },
-  });
+  const ask = (format: string) => speechHttp(server, '/v1/audio/speech', { signal, json: { ...json, response_format: format } });
   let r = await ask('wav');
   if ((r.status === 400 || r.status === 422) && /format/i.test(new TextDecoder().decode(r.body))) r = await ask('mp3');
   if (r.status !== 200) throw new Error(speechError(r));
@@ -814,6 +950,9 @@ export async function saveIrodoriVoice(server: SpeechServer, voiceId: string, wa
     : await speechHttp(server, '/v1/audio/voices', { upload: { ...upload, voiceId } });
   if (!replace && r.status === 409) return 'exists';
   if (r.status !== 200 && r.status !== 201) throw new Error(speechError(r));
+  // The server never gives the audio back: keep a copy here, so the voice can be
+  // renamed later (voiceRename.ts). A copy that cannot be kept costs only that.
+  await keepVoiceCopy(speechProfileKey(server), voiceId, wav).catch(() => { /* no local storage */ });
   return 'saved';
 }
 
@@ -823,6 +962,7 @@ export async function deleteIrodoriVoice(server: SpeechServer, voiceId: string):
   if (!IRODORI_VOICE_ID.test(voiceId)) throw new Error('A voice name may only contain letters, digits, - and _.');
   const r = await speechHttp(server, `/v1/audio/voices/${voiceId}`, { method: 'DELETE' });
   if (r.status !== 200) throw new Error(speechError(r));
+  await dropVoiceCopy(speechProfileKey(server), voiceId).catch(() => { /* none kept */ });
 }
 
 // Whether the model Irodori has loaded USES a reference voice. Some checkpoints
@@ -907,7 +1047,9 @@ export async function synthesize(
   const t = (text || '').trim();
   if (!t) return { play: () => NOOP, dispose: () => {} };
   if (synthesizesAudio(cfg.engine)) {
-    const url = cfg.engine === 'openai' ? await synthServer(t, cfg, signal) : await synthVoicevox(t, cfg, signal);
+    // The line's language reaches a server whose language option needs it.
+    const c = !cfg.lang && sel?.lang ? { ...cfg, lang: sel.lang } : cfg;
+    const url = c.engine === 'openai' ? await synthServer(t, c, signal) : await synthVoicevox(t, c, signal);
     // Aborted just as the audio arrived: nobody will play it.
     if (signal?.aborted) { URL.revokeObjectURL(url); throw abortError(); }
     let freed = false;

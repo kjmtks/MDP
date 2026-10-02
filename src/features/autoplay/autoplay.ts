@@ -100,9 +100,10 @@ export function segmentParts(seg: string): SegmentPart[] {
 // `[[base|reading]]` — the base is exactly what is written before the |, so a
 // reading can never land on the wrong characters. The narrator says the reading.
 // Everything that SHOWS the script — the presenter pane, subtitles, the talk-time
-// count — keeps only the base: a ruby is for the TTS and never displayed. The event
-// markers (`[[emit: … | label]]`…) and `[[say: …]]` are not rubies; after a formula,
-// `[[say: よみ]]` still works as before.
+// count — keeps only the base in the text; the presenter pane marks it (a dashed
+// underline) and shows its reading on hover. The event markers (`[[emit: … |
+// label]]`…) and `[[say: …]]` are not rubies; after a formula, `[[say: よみ]]` still
+// works as before.
 // Mirrored for the talk-time count in app/mcp-bridge.cjs — keep the two identical.
 const RUBY = /\[\[(?!\s*(?:emit-wait|emit|wait|pause|say)\s*:)((?:\\\((?:(?!\\\))[\s\S])*\\\)|\\\[(?:(?!\\\])[\s\S])*\\\]|[^[\]|\n])+?)\|([^[\]|\n]+?)\]\]/g;
 
@@ -116,12 +117,27 @@ export const rubyBase = (text: string): string => eachRuby(text, (h) => h.base);
 /** The script as SPOKEN: every ruby replaced by its reading. */
 export const rubyReading = (text: string): string => eachRuby(text, (h) => (h.math ? ` ${h.reading} ` : h.reading));
 
+const escAttr = (v: string) => v.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+/** A script for the PRESENTER pane with its readings marked. A reading is not in
+ *  the text (the presenter reads the words and the math themselves), but within
+ *  reach: a ruby's base — or a formula with its `[[say:…]]` — becomes
+ *  `<span class="mdp-script-ruby" data-reading="…">`, which the pane underlines
+ *  (dashed) and whose reading it shows on hover. A stray `[[say:…]]` goes. */
+export function markScriptReadings(script: string): string {
+  const mark = (base: string, reading: string) => `<span class="mdp-script-ruby" data-reading="${escAttr(reading)}">${base}</span>`;
+  return eachRuby(String(script || ''), (h) => mark(h.base, h.reading))
+    .replace(/(\\\([\s\S]*?\\\)|\\\[[\s\S]*?\\\])\s*\[\[\s*say\s*:\s*([\s\S]*?)\]\]/gi, (_m, math: string, say: string) =>
+      (say.trim() ? mark(math, say.trim()) : math))
+    .replace(/\[\[\s*say\s*:[\s\S]*?\]\]/gi, ' ');
+}
+
 // Render a script's markdown for the PRESENTER pane: markers become inline chip
-// elements (clicked chips re-fire the same events manually). Readings — rubies and
-// [[say:…]] — are hidden (the presenter reads the text and the math itself).
+// elements (clicked chips re-fire the same events manually). Its readings are
+// marked before that (markScriptReadings, while code spans are still set aside).
 export function renderScriptChips(scriptMarkdown: string): string {
-  const esc = (v: string) => v.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  return rubyBase(String(scriptMarkdown || ''))
+  const esc = escAttr;
+  return String(scriptMarkdown || '')
     .replace(/\[\[\s*step\s*\]\]/gi, '<button type="button" class="mdp-script-chip" data-chip="step" title="ビルドを1歩進める">⏭</button>')
     .replace(actionMarkerRe(), (_m, kindRaw: string, body: string) => {
       const a = parseScriptAction(kindRaw, body);

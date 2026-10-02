@@ -37,8 +37,10 @@ def asset_hash(path):
 def generate_catalog():
     # `fonts` keeps one folder per family (font.json + font files + licence); the
     # app checks the binary font files by SIZE (listed below) rather than reading
-    # them back to hash on every workspace load.
-    target_dirs = ['effects', 'fonts', 'modules', 'snippets', 'taxonomy', 'templates', 'themes']
+    # them back to hash on every workspace load. `tts-servers` = profiles of TTS
+    # servers (what each kind takes beyond OpenAI's speech request) — bundled in
+    # the app too; a synced copy brings a newer profile to an app built before it.
+    target_dirs = ['effects', 'fonts', 'modules', 'snippets', 'taxonomy', 'templates', 'themes', 'tts-servers']
     catalog = {}
 
     for target in target_dirs:

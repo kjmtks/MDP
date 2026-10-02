@@ -130,9 +130,10 @@ block on a single slide OVERRIDES the global one for that slide; an EMPTY block
   - **Readings for the narrator (ruby):** tell the TTS how to pronounce a word or a
     formula with \`[[base|reading]]\` — the base is exactly what is written before the
     \`|\`: \`ルビの[[仕様|しよう]]を[[改良|かいりょう]]したい。\`, \`[[SVD|エスブイディー]]\`,
-    \`[[第一種の過誤|だいいっしゅのかご]]\`. The narrator says the reading; the presenter
-    view, the subtitles and the talk-time estimate show / count only the base — a ruby
-    is never displayed. Use it where a TTS would misread (technical terms, names,
+    \`[[第一種の過誤|だいいっしゅのかご]]\`. The narrator says the reading; the subtitles
+    and the talk-time estimate show / count only the base, and the presenter view
+    shows the base with a dashed underline, its reading popping up on hover — never
+    on the slide. Use it where a TTS would misread (technical terms, names,
     acronyms, unusual readings), not for everyday words.
   - **Math in the script:** write formulas in KaTeX — \`\\(…\\)\` inline, \`\\[…\\]\`
     display — and they are RENDERED in the on-screen subtitle (the caption and the
@@ -162,6 +163,16 @@ block on a single slide OVERRIDES the global one for that slide; an EMPTY block
     video file to end) — e.g. \`<!-- @timer tag: think, minutes: 1 -->\` +
     \`[[emit-wait: cmd:think start timeout=70s | 1分]]\`. get_module_spec lists each
     module's commands.
+    The speech modules pick their READER: \`engine: auto | webspeech | server | voicevox\`
+    with \`voice\` (a Web Speech narrator name, the TTS server's voice id, or a VOICEVOX
+    style id), \`prompt\` (server: how to speak) and \`extra\` (server: its own options as
+    name=value pairs, e.g. Chatterbox \`"cfg_weight=0.3, exaggeration=0.7"\` — only the
+    ones that server takes are sent; its language option follows the line's \`lang\`) or
+    \`pitch\`/\`intonation\`/\`volume\` (VOICEVOX), and \`fallback: auto | webspeech | none\`
+    for when that engine cannot speak — on \`@speakcard\` per line (\`mainengine\`,
+    \`mainvoice\`, \`mainextra\`, …, \`subengine\`, …). \`voice: @name\` names a voice preset
+    saved in the author's app (engine, voice, prompt and options in one); use one only
+    when the author has it — elsewhere the line is read by its language.
 - \`<!-- @time 90s -->\` — this slide's speaking-time budget (overrides the estimate).
   Accepts \`90s\`, \`2m\`, \`1m30s\`, \`1:30\` (mm:ss). Shown live in the presenter view
   (per-slide + whole-deck countdown).
@@ -369,7 +380,8 @@ Math & references
   \`\\[ … \\]\` do NOT split the cell (MDP rewrites them to \`\\vert\` / \`\\Vert\` before the
   table is parsed). \`$ … $\` math in a table is not protected — use \`\\( … \\)\`.
 - Render citations with \`@references\` and BibTeX entries in its body — don't retype
-  references by hand (it mis-attributes sources).
+  references by hand (it mis-attributes sources). A corporate author goes in double
+  braces (\`author = {{World Health Organization}}\`) and is printed whole, not abbreviated.
 
 Diagrams & images
 - Build diagrams as TEXT: \`@mermaid\` (flow/sequence/…), \`@chartjs\` (charts),

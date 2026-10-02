@@ -1,8 +1,15 @@
 // Input kind for the per-argument settings UI (the gear button on a module
 // directive). 'text' = free text (default), 'number' = numeric (integer when
 // `integer`), 'boolean' = on/off, 'select' = one of `options`, 'color' = free
-// pick or a theme variable, 'image' = URL/path or an `@alias` from the library.
-export type ParamType = 'text' | 'number' | 'boolean' | 'select' | 'color' | 'image';
+// pick or a theme variable, 'image' = URL/path or an `@alias` from the library,
+// 'voice' = a narrator of the speech engine named by the `engine` param — picked
+// from the voices that engine actually has (Web Speech narrators, the TTS server's
+// voice ids, VOICEVOX style ids) or typed, with a try-it button; a voice preset
+// is written `@name`. 'speechoptions' = the TTS server's own options for that voice
+// ("k=v, k2=v2", see tts/speechOptions.ts), shown as the controls the server's
+// description names; it reads the voice param `<prefix>voice` (<prefix> = this
+// param's name without its trailing "extra") and its `engine` / `lang` params.
+export type ParamType = 'text' | 'number' | 'boolean' | 'select' | 'color' | 'image' | 'voice' | 'speechoptions';
 
 export interface ParamOption { value: string; label: string; }
 
@@ -24,6 +31,17 @@ export interface ModuleParam {
   max?: number;
   step?: number;
   integer?: boolean;     // number: integer-only
+  multiline?: boolean;   // text: a multi-line box (line breaks become spaces — args are one line)
+  // `showif="engine:voicevox|openai"` — the control is shown (and saved) only while
+  // that other param's value is one of these; an unset param counts as its default.
+  showIf?: { param: string; values: string[] };
+  // type="voice" / "speechoptions": the params holding the engine ('auto' |
+  // 'webspeech' | 'server' | 'voicevox') and the language (BCP-47) the voice is for.
+  // The try-it button also reads `<prefix>prompt|extra|pitch|intonation|volume` and
+  // `rate`, where <prefix> is this param's name without its trailing "voice"
+  // (mainvoice → main…).
+  engineParam?: string;
+  langParam?: string;
 }
 
 // Which axes a manipulable module allows. '' = disabled, 'x' = horizontal only,
@@ -81,7 +99,7 @@ export interface ModuleData {
   script: string;
 }
 
-const PARAM_TYPES = ['text', 'number', 'boolean', 'select', 'color', 'image'];
+const PARAM_TYPES = ['text', 'number', 'boolean', 'select', 'color', 'image', 'voice', 'speechoptions'];
 
 // Parse `<parameters><param .../></parameters>` (settings-UI metadata) from any
 // container element. Shared by module and effect (.mdpfx) parsing.
@@ -117,6 +135,13 @@ export const parseParamElements = (root: ParentNode): ModuleParam[] => {
       return Number.isFinite(n) ? n : undefined;
     };
 
+    // `showif="param:a|b"` → visible only while `param` is a or b.
+    const showRaw = (p.getAttribute("showif") || "").trim();
+    const sci = showRaw.indexOf(':');
+    const showIf = sci > 0
+      ? { param: showRaw.slice(0, sci).trim(), values: showRaw.slice(sci + 1).split('|').map(s => s.trim()).filter(Boolean) }
+      : undefined;
+
     out.push({
       name: p.getAttribute("name") || "",
       default: p.hasAttribute("default") ? p.getAttribute("default")! : undefined,
@@ -128,6 +153,10 @@ export const parseParamElements = (root: ParentNode): ModuleParam[] => {
       options,
       min: numAttr("min"), max: numAttr("max"), step: numAttr("step"),
       integer: p.getAttribute("integer") === "true",
+      multiline: p.getAttribute("multiline") === "true" || undefined,
+      showIf,
+      engineParam: p.getAttribute("engine") || undefined,
+      langParam: p.getAttribute("lang") || undefined,
     });
   });
   return out;

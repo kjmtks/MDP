@@ -1,7 +1,9 @@
 // App-level (chrome) settings, persisted PER-WORKSPACE in `.mdp/settings.json`.
 // These are distinct from slide themes (`@theme`, .mdp/themes) — they style the
 // editor app itself (header, panels, menus, editor font, shortcuts).
-import { DEFAULT_SSH_BASTION, type SpeechProfile, type SshBastion } from '../tts/ttsService';
+import {
+  DEFAULT_SSH_BASTION, PRESET_NAME, type SpeechConnection, type SpeechProfile, type SshBastion, type VoicePreset,
+} from '../tts/ttsService';
 
 export interface AppSettings {
   version: 1;                            // schema version, for forward migration
@@ -57,7 +59,11 @@ export interface AppSettings {
     openaiModel: string;
     openaiVoice: string;
     openaiInstructions: string;
-    // What was chosen on each server — voice, model, description — by its URL
+    // The server's own options beyond OpenAI's request (Chatterbox's language and
+    // accent, Irodori's tuning — see tts/speechOptions.ts), as {field: value}; only
+    // those the server is known to take are sent.
+    openaiExtra: Record<string, unknown>;
+    // What was chosen on each server — voice, model, description, options — by its URL
     // (speechProfileKey). Servers have their own voices and models (Irodori's
     // 'my-voice' does not exist on Chatterbox, which in turn takes other models),
     // so switching servers brings back that server's own choices instead of
@@ -68,6 +74,16 @@ export interface AppSettings {
     // on/off switch; its password / key passphrase are NOT here — the main process
     // keeps them encrypted (app/sshTunnel.cjs).
     openaiSsh: SshBastion;
+    // Saved connections — a URL, its API key and the bastion to go through — to
+    // switch between by name (the campus server, the one at home, OpenAI…). Picking
+    // one copies it into the three fields above; each server then brings back its
+    // own voice, model and description (openaiProfiles). Bastion secrets stay with
+    // the main process, one per bastion, as for the current connection.
+    openaiConnections: SpeechConnection[];
+    // Named speakers decks call by name (`mainvoice: @lecturer` on @speakcard): an
+    // engine with its voice, prompt and options, optionally on a saved connection.
+    // This computer's — a deck naming one that is missing here speaks by language.
+    voicePresets: VoicePreset[];
     // Narrated auto-play: synthesize the WHOLE show's audio BEFORE starting it
     // (progress bar), instead of synthesizing each segment as it plays. Slow
     // machines stutter on real-time synthesis; pre-generating trades a wait up
@@ -108,8 +124,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
     engine: 'webspeech', rate: 1, pitch: 1, webspeechVoiceURI: '',
     voicevoxUrl: 'http://127.0.0.1:50021', voicevoxSpeaker: 1,
     openaiUrl: 'http://127.0.0.1:8088', openaiApiKey: '', openaiModel: '', openaiVoice: '', openaiInstructions: '',
+    openaiExtra: {},
     openaiProfiles: {},
     openaiSsh: DEFAULT_SSH_BASTION,
+    openaiConnections: [],
+    voicePresets: [],
     pregenerate: false,
   },
   readingCharsPerMin: 320,
@@ -155,6 +174,7 @@ export function normalizeSettings(raw: unknown): AppSettings {
         openaiModel: str(t.openaiModel) ?? d.openaiModel,
         openaiVoice: str(t.openaiVoice) ?? str(t.irodoriVoice) ?? d.openaiVoice,
         openaiInstructions: str(t.openaiInstructions) ?? str(t.irodoriCaption) ?? d.openaiInstructions,
+        openaiExtra: optionsOf(t.openaiExtra),
         openaiProfiles: (() => {
           const raw = t.openaiProfiles;
           if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
@@ -163,28 +183,83 @@ export function normalizeSettings(raw: unknown): AppSettings {
           for (const [key, v] of Object.entries(raw as Record<string, unknown>).slice(-40)) {
             if (!key || !v || typeof v !== 'object') continue;
             const p = v as Partial<SpeechProfile>;
-            out[key] = { voice: str(p.voice) ?? '', model: str(p.model) ?? '', instructions: str(p.instructions) ?? '' };
+            out[key] = {
+              voice: str(p.voice) ?? '', model: str(p.model) ?? '', instructions: str(p.instructions) ?? '',
+              ...(p.extra !== undefined ? { extra: optionsOf(p.extra) } : {}),
+            };
           }
           return out;
         })(),
-        openaiSsh: (() => {
-          const raw = t.openaiSsh ?? t.irodoriSsh;
-          const s = (raw && typeof raw === 'object') ? raw as Partial<SshBastion> : {};
-          const port = Number(s.port);
-          return {
-            enabled: s.enabled === true,
-            host: typeof s.host === 'string' ? s.host : '',
-            port: Number.isInteger(port) && port > 0 && port < 65536 ? port : 22,
-            user: typeof s.user === 'string' ? s.user : '',
-            auth: s.auth === 'password' ? 'password' : 'key',
-            keyPath: typeof s.keyPath === 'string' ? s.keyPath : DEFAULT_SSH_BASTION.keyPath,
-          };
+        openaiSsh: sshOf(t.openaiSsh ?? t.irodoriSsh),
+        openaiConnections: (() => {
+          const raw = t.openaiConnections;
+          if (!Array.isArray(raw)) return [];
+          const byName = new Map<string, SpeechConnection>();
+          for (const v of raw as unknown[]) {
+            if (!v || typeof v !== 'object') continue;
+            const c = v as Partial<SpeechConnection>;
+            const name = (str(c.name) ?? '').trim().slice(0, 60);
+            if (!name || typeof c.url !== 'string') continue;
+            byName.delete(name);   // a name appears once (the last one wins)
+            byName.set(name, { name, url: c.url, apiKey: str(c.apiKey) ?? '', ssh: sshOf(c.ssh) });
+          }
+          return [...byName.values()].slice(-30);
+        })(),
+        voicePresets: (() => {
+          const raw = t.voicePresets;
+          if (!Array.isArray(raw)) return [];
+          const byName = new Map<string, VoicePreset>();
+          for (const v of raw as unknown[]) {
+            if (!v || typeof v !== 'object') continue;
+            const p = v as Partial<VoicePreset> & Record<string, unknown>;
+            const name = (str(p.name) ?? '').trim();
+            const engine = p.engine === 'voicevox' || p.engine === 'openai' ? p.engine : p.engine === 'webspeech' ? 'webspeech' : null;
+            if (!PRESET_NAME.test(name) || !engine) continue;
+            const shape = p.voicevox && typeof p.voicevox === 'object' ? p.voicevox as Record<string, unknown> : null;
+            const n = (x: unknown) => (typeof x === 'number' && Number.isFinite(x) ? x : undefined);
+            byName.delete(name.toLowerCase());
+            byName.set(name.toLowerCase(), {
+              name, engine, voice: str(p.voice) ?? '',
+              ...(str(p.prompt) ? { prompt: str(p.prompt) } : {}),
+              ...(p.extra !== undefined ? { extra: optionsOf(p.extra) } : {}),
+              ...(shape ? { voicevox: { pitch: n(shape.pitch), intonation: n(shape.intonation), volume: n(shape.volume) } } : {}),
+              ...(str(p.connection) ? { connection: str(p.connection) } : {}),
+            });
+          }
+          return [...byName.values()].slice(-50);
         })(),
         pregenerate: typeof t.pregenerate === 'boolean' ? t.pregenerate : d.pregenerate,
       };
     })(),
     readingCharsPerMin: typeof r.readingCharsPerMin === 'number' && r.readingCharsPerMin > 0 ? r.readingCharsPerMin : 320,
     readingCalibrationText: typeof r.readingCalibrationText === 'string' && r.readingCalibrationText.trim() ? r.readingCalibrationText : DEFAULT_SETTINGS.readingCalibrationText,
+  };
+}
+
+// A server's options as stored: a plain object of plain values (nested objects for
+// dotted fields), at most a few dozen.
+function optionsOf(raw: unknown): Record<string, unknown> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>).slice(0, 60)) {
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(k) || k === '__proto__' || k === 'constructor' || k === 'prototype') continue;
+    if (v && typeof v === 'object' && !Array.isArray(v)) out[k] = optionsOf(v);
+    else if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') out[k] = v;
+  }
+  return out;
+}
+
+// A bastion as stored (the current one, or a saved connection's).
+function sshOf(raw: unknown): SshBastion {
+  const s = (raw && typeof raw === 'object') ? raw as Partial<SshBastion> : {};
+  const port = Number(s.port);
+  return {
+    enabled: s.enabled === true,
+    host: typeof s.host === 'string' ? s.host : '',
+    port: Number.isInteger(port) && port > 0 && port < 65536 ? port : 22,
+    user: typeof s.user === 'string' ? s.user : '',
+    auth: s.auth === 'password' ? 'password' : 'key',
+    keyPath: typeof s.keyPath === 'string' ? s.keyPath : DEFAULT_SSH_BASTION.keyPath,
   };
 }
 

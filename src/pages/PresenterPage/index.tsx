@@ -133,6 +133,8 @@ export default function PresenterPage() {
   const [noteDraft, setNoteDraft] = useState('');
   const [isEditingScript, setIsEditingScript] = useState(false);
   const [scriptDrafts, setScriptDrafts] = useState<string[]>([]);
+  // The reading of the script word under the mouse (a ruby), and where to show it.
+  const [rubyTip, setRubyTip] = useState<{ text: string; x: number; top: number; bottom: number } | null>(null);
   const [prevIndex, setPrevIndex] = useState(currentIndex);
 
   const timerStartRef = useRef<number | null>(null);
@@ -160,6 +162,11 @@ export default function PresenterPage() {
   // Speaking-time budgets (seconds): whole deck + the current slide. From each
   // slide's `<!-- @time … -->` when set, else `@script` read time, else estimate.
   const readingCpm = appSettings.readingCharsPerMin;
+  // The script pane's HTML as ONE object per script: the page re-renders every
+  // second, and a fresh `{ __html }` makes React replace the pane's nodes each time —
+  // which dropped a used chip's ✓ and left a reading popup behind (the mouse "left"
+  // nodes that no longer existed).
+  const scriptInner = useMemo(() => ({ __html: currentSlide?.scriptHtml || '' }), [currentSlide?.scriptHtml]);
   const deckSeconds = useMemo(() => estimateDeckSeconds(slides, readingCpm), [slides, readingCpm]);
   const currentBudgetSec = useMemo(() => (currentSlide ? slideSeconds(currentSlide, readingCpm) : 0), [currentSlide, readingCpm]);
   const currentHasExplicit = !!(currentSlide && explicitSlideSeconds(currentSlide.raw || '') != null);
@@ -248,6 +255,7 @@ export default function PresenterPage() {
     setNoteDraft(extractNoteText(currentSlide));
     setIsEditingScript(false);
     setScriptDrafts(extractScriptBlocks(currentSlide));
+    setRubyTip(null);
     // Restart the per-slide countdown from the current elapsed value.
     slideBaselineMsRef.current = elapsedTime;
     // Book the time spent on the slide we are leaving to the recorder.
@@ -738,7 +746,17 @@ export default function PresenterPage() {
                             }
                             chip.classList.add('mdp-chip-used');
                           }}
-                          dangerouslySetInnerHTML={{ __html: currentSlide.scriptHtml }}
+                          // A word with a reading (ruby): its reading pops out above
+                          // it (below near the top edge) — fixed, so the pane's
+                          // scrolling never clips it.
+                          onMouseOver={(e) => {
+                            const r = (e.target as HTMLElement).closest?.('.mdp-script-ruby[data-reading]') as HTMLElement | null;
+                            if (!r) { setRubyTip(null); return; }
+                            const b = r.getBoundingClientRect();
+                            setRubyTip({ text: r.dataset.reading || '', x: b.left + b.width / 2, top: b.top, bottom: b.bottom });
+                          }}
+                          onMouseLeave={() => setRubyTip(null)}
+                          dangerouslySetInnerHTML={scriptInner}
                         />
                       ) : (
                         <div style={{ marginTop: 6, fontSize: '0.85rem', color: '#666', fontStyle: 'italic' }}>
@@ -751,7 +769,19 @@ export default function PresenterPage() {
                           .presenter-script .mdp-script-chip.mdp-chip-passive { border-color:#555; background:rgba(255,255,255,0.06); color:#999; cursor:default; }
                           .presenter-script .mdp-script-chip.mdp-chip-used { opacity:0.45; }
                         .presenter-script .mdp-script-chip.mdp-chip-used::after { content:' ✓'; }
+                          .presenter-script .mdp-script-ruby { text-decoration:underline dashed rgba(138,180,248,0.85); text-decoration-thickness:1px; text-underline-offset:0.28em; cursor:help; }
+                          .presenter-script .mdp-script-ruby:hover { background:rgba(59,130,246,0.18); border-radius:3px; }
                       `}</style>
+                      {rubyTip?.text && (
+                        <div role="tooltip" style={{
+                          position: 'fixed', left: rubyTip.x, zIndex: 2000, pointerEvents: 'none', maxWidth: 360,
+                          ...(rubyTip.top > 48 ? { top: rubyTip.top - 6, transform: 'translate(-50%, -100%)' } : { top: rubyTip.bottom + 6, transform: 'translateX(-50%)' }),
+                          padding: '4px 10px', borderRadius: 6, background: '#0f172a', color: '#e2e8f0', border: '1px solid #3b82f6',
+                          boxShadow: '0 4px 14px rgba(0,0,0,0.45)', fontSize: '0.95rem', lineHeight: 1.45, whiteSpace: 'normal', textAlign: 'center',
+                        }}>
+                          {rubyTip.text}
+                        </div>
+                      )}
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', borderBottom: '1px solid #444', paddingBottom: '8px', flexShrink: 0 }}>
                       <span className="presenter-label">NOTES</span>

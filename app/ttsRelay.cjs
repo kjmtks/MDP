@@ -10,7 +10,8 @@
 // Deliberately NARROW — this is not a general proxy: http(s) only, only the
 // speech API's paths (under any base path), a fixed method per path, bounded
 // request and response.
-//   GET  /health, /v1/models, /v1/audio/voices
+//   GET  /health, /v1/models, /v1/audio/voices, /openapi.json (the server's own
+//        description of its speech request — the options it takes)
 //   POST /v1/audio/speech            (JSON)
 //   POST /v1/audio/voices            (Irodori: multipart upload of a reference voice)
 //   PUT  /v1/audio/voices/<id>       (Irodori: multipart replace of a reference voice)
@@ -39,7 +40,7 @@ const net = require('net');
 const crypto = require('crypto');
 const sshTunnel = require('./sshTunnel.cjs');
 
-const GET_PATH = /\/(health|v1\/models|v1\/audio\/voices)$/;
+const GET_PATH = /\/(health|openapi\.json|v1\/models|v1\/audio\/voices)$/;
 const SPEECH_PATH = /\/v1\/audio\/speech$/;
 const VOICES_PATH = /\/v1\/audio\/voices$/;
 const VOICE_PATH = /\/v1\/audio\/voices\/[A-Za-z0-9_-]+$/;

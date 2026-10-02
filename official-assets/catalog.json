@@ -429,7 +429,7 @@
     },
     {
       "path": "modules/references.mdpmod.xml",
-      "hash": "bdade898"
+      "hash": "d77767fd"
     },
     {
       "path": "modules/roadmap.mdpmod.xml",
@@ -457,11 +457,11 @@
     },
     {
       "path": "modules/speak.mdpmod.xml",
-      "hash": "b84c2bb0"
+      "hash": "64906a70"
     },
     {
       "path": "modules/speakcard.mdpmod.xml",
-      "hash": "b7782060"
+      "hash": "eaaa2bb7"
     },
     {
       "path": "modules/spectrum.mdpmod.xml",
@@ -601,6 +601,20 @@
     {
       "path": "themes/terminal.css",
       "hash": "0b0f2b60"
+    }
+  ],
+  "tts-servers": [
+    {
+      "path": "tts-servers/chatterbox.json",
+      "hash": "dc79455d"
+    },
+    {
+      "path": "tts-servers/irodori.json",
+      "hash": "3720eb42"
+    },
+    {
+      "path": "tts-servers/openai.json",
+      "hash": "483805cb"
     }
   ]
 }

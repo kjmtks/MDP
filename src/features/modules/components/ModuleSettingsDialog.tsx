@@ -1,8 +1,8 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField, Switch,
   MenuItem, Select, FormControlLabel, Typography, Box, Stack, InputAdornment, IconButton, Menu,
-  Popover, Chip, Checkbox,
+  Popover, Chip, Checkbox, Autocomplete, CircularProgress,
 } from '@mui/material';
 import PaletteIcon from '@mui/icons-material/Palette';
 import ImageIcon from '@mui/icons-material/Image';
@@ -12,8 +12,20 @@ import AddIcon from '@mui/icons-material/Add';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
+import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+import StopIcon from '@mui/icons-material/Stop';
+import RefreshIcon from '@mui/icons-material/Refresh';
+import BookmarkAddOutlinedIcon from '@mui/icons-material/BookmarkAddOutlined';
+import CloseIcon from '@mui/icons-material/Close';
 import type { ModuleParam, ParamOption } from '../../../utils/moduleParser';
 import type { ImageEntry } from '../../images/imageRegistry';
+import { useAppSettings } from '../../settings/AppSettingsContext';
+import { getModuleTtsApi, speakerOptions, type MdpTtsEngineInfo, type SpeakerSpec } from '../../tts/moduleTtsApi';
+import { SpeechOptionsFields } from '../../tts/SpeechOptionsFields';
+import { formatExtra, parseExtra, type SpeechServerDescription } from '../../tts/speechOptions';
+import {
+  PRESET_NAME, engineFromName, engineLabel, isSameConnection, type TtsEngine, type Utterance, type VoicePreset, type VoicevoxShape,
+} from '../../tts/ttsService';
 
 // Slide theme colour variables a `color` param can bind to (resolved on the
 // slide, so they follow the active deck theme). Value stored as `var(--x)`.
@@ -167,6 +179,298 @@ const ImageField: React.FC<{ value: string; entries: ImageEntry[]; resolveThumb:
   );
 };
 
+// --- voice picker (type="voice") ----------------------------------------------
+interface VoiceOption { value: string; label: string; hint?: string; preset?: VoicePreset }
+
+// Each engine's list is fetched once and shared by every voice field; a failed
+// fetch is forgotten, so ↻ (or reopening the dialog) asks again.
+const voiceLists = new Map<TtsEngine, Promise<VoiceOption[]>>();
+const loadVoiceList = (engine: TtsEngine, fresh = false): Promise<VoiceOption[]> => {
+  const cached = voiceLists.get(engine);
+  if (cached && !fresh) return cached;
+  const api = getModuleTtsApi();
+  const p: Promise<VoiceOption[]> = engine === 'voicevox'
+    ? api.voicevoxSpeakers().then((ss) => ss.map((s) => ({ value: String(s.id), label: s.label })))
+    : engine === 'openai'
+      ? api.serverVoices().then((ids) => ids.map((id) => ({ value: id, label: id })))
+      : api.voices().then((vs) => vs.map((v) => ({ value: v.name, label: v.name, hint: v.lang })));
+  voiceLists.set(engine, p);
+  p.catch(() => { if (voiceLists.get(engine) === p) voiceLists.delete(engine); });
+  return p;
+};
+
+const SAMPLE_TEXT = { ja: 'これは、この声の試し読みです。', en: 'This is a sample of this voice.' };
+
+/** The speaker a voice param and its siblings describe (see ModuleParam.engineParam
+ *  for the naming) — turned into speak() options by the same mapping as the modules. */
+const speakerSpecOf = (p: ModuleParam, eff: (name: string) => string): SpeakerSpec => {
+  const prefix = p.name.replace(/voice$/i, '');
+  return {
+    engine: p.engineParam ? eff(p.engineParam) : '',
+    voice: eff(p.name),
+    prompt: eff(`${prefix}prompt`),
+    extra: eff(`${prefix}extra`),
+    pitch: eff(`${prefix}pitch`), intonation: eff(`${prefix}intonation`), volume: eff(`${prefix}volume`),
+    lang: p.langParam ? eff(p.langParam) : '',
+    rate: eff('rate'),
+    fallback: eff('fallback'),
+    speaker: eff('speaker'),
+  };
+};
+
+// Voice presets (settings' `voicePresets`): a deck names one as `@name`.
+const presetNamed = (presets: VoicePreset[], voice: string): VoicePreset | undefined => {
+  const v = voice.trim();
+  return v.startsWith('@') ? presets.find((x) => x.name.toLowerCase() === v.slice(1).trim().toLowerCase()) : undefined;
+};
+const presetHint = (pr: VoicePreset): string =>
+  [engineLabel(pr.engine), pr.voice, pr.connection ? `on ${pr.connection}` : ''].filter(Boolean).join(' · ');
+// A preset name made from a voice's label ("ずんだもん（ノーマル）" → "ずんだもん-ノーマル").
+const presetNameFrom = (s: string): string =>
+  s.replace(/[^\p{L}\p{N}_.-]+/gu, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'voice';
+const numberOrNone = (s: string | number | undefined): number | undefined => {
+  const n = typeof s === 'number' ? s : typeof s === 'string' && s.trim() !== '' ? Number(s) : NaN;
+  return Number.isFinite(n) ? n : undefined;
+};
+
+const VoiceField: React.FC<{ p: ModuleParam; value: string; onChange: (v: string) => void; eff: (name: string) => string }> = ({ p, value, onChange, eff }) => {
+  const { settings, updateTts } = useAppSettings();
+  const presets = settings.tts.voicePresets;
+  const named = engineFromName(p.engineParam ? eff(p.engineParam) : '');
+  const engine: TtsEngine = named ?? 'webspeech';  // auto + a name = a Web Speech narrator
+  const lang = (p.langParam ? eff(p.langParam) : '').trim().toLowerCase();
+  const isPreset = value.trim().startsWith('@');
+  const preset = presetNamed(presets, value);
+  const [list, setList] = useState<VoiceOption[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [listError, setListError] = useState('');
+  const [reload, setReload] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const [status, setStatus] = useState('');
+  const [saveName, setSaveName] = useState<string | null>(null);   // "Save as a preset" being typed
+  const utter = useRef<Utterance | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    setListError('');
+    loadVoiceList(engine, reload > 0).then(
+      (l) => { if (alive) { setList(l); setLoading(false); } },
+      (e) => { if (alive) { setList([]); setLoading(false); setListError(String((e as Error)?.message || e)); } },
+    );
+    return () => { alive = false; };
+  }, [engine, reload]);
+  // Closing the dialog stops an audition.
+  useEffect(() => () => { utter.current?.stop(); }, []);
+
+  // The presets first (any engine — a preset brings its own), then the engine's
+  // voices, Web Speech narrators of the line's language first.
+  const presetOptions = useMemo<VoiceOption[]>(
+    () => presets.map((pr) => ({ value: `@${pr.name}`, label: `@${pr.name}`, hint: presetHint(pr), preset: pr })), [presets]);
+  const options = useMemo(() => {
+    let voices = list;
+    if (engine === 'webspeech' && lang) {
+      const base = lang.split('-')[0];
+      const rank = (o: VoiceOption) => {
+        const l = (o.hint || '').toLowerCase().replace(/_/g, '-');
+        return l.startsWith(lang) ? 0 : l.startsWith(base) ? 1 : 2;
+      };
+      voices = [...list].sort((a, b) => rank(a) - rank(b));
+    }
+    return [...presetOptions, ...voices];
+  }, [list, engine, lang, presetOptions]);
+  const current = preset ? presetOptions.find((o) => o.preset === preset) : list.find((o) => o.value === value.trim());
+
+  // Save what this line says now — engine, voice, prompt, options, VOICEVOX shaping —
+  // as a named preset, and call it by that name here. On the TTS server it remembers
+  // the saved connection in use, so it keeps speaking there after a switch.
+  const canSave = !isPreset && (!!named || !!value.trim());
+  const saveOk = saveName !== null && PRESET_NAME.test(saveName.trim());
+  const suggestName = (): string => {
+    const v = value.trim();
+    if (engine === 'voicevox') return presetNameFrom(current?.label || (v ? `voicevox-${v}` : 'voicevox'));
+    return presetNameFrom(v || (engine === 'openai' ? 'server' : 'narrator'));
+  };
+  const savePreset = () => {
+    if (!saveOk || saveName === null) return;
+    const name = saveName.trim();
+    const spec = speakerSpecOf(p, eff);
+    const pr: VoicePreset = { name, engine, voice: value.trim() };
+    if (engine === 'openai') {
+      const prompt = (spec.prompt || '').trim();
+      if (prompt) pr.prompt = prompt;
+      const extra = parseExtra(typeof spec.extra === 'string' ? spec.extra : '');
+      if (Object.keys(extra).length) pr.extra = extra;
+      const conn = settings.tts.openaiConnections.find((c) => isSameConnection(c, settings.tts));
+      if (conn) pr.connection = conn.name;
+    } else if (engine === 'voicevox') {
+      const shape: VoicevoxShape = {};
+      const sp = numberOrNone(spec.pitch); if (sp !== undefined) shape.pitch = sp;
+      const si = numberOrNone(spec.intonation); if (si !== undefined) shape.intonation = si;
+      const sv = numberOrNone(spec.volume); if (sv !== undefined) shape.volume = sv;
+      if (Object.keys(shape).length) pr.voicevox = shape;
+    }
+    updateTts({ voicePresets: [...presets.filter((x) => x.name.toLowerCase() !== name.toLowerCase()), pr] });
+    onChange(`@${name}`);
+    setSaveName(null);
+  };
+  const deletePreset = (pr: VoicePreset) => {
+    updateTts({ voicePresets: presets.filter((x) => x !== pr) });
+  };
+
+  const tryVoice = () => {
+    const api = getModuleTtsApi();
+    if (playing) { utter.current?.stop(); utter.current = null; setPlaying(false); return; }
+    const o = speakerOptions(speakerSpecOf(p, eff));
+    setStatus('');
+    o.onEngine = (info: MdpTtsEngineInfo) => {
+      setStatus(info.message || (info.engine ? `Speaking with ${engineLabel(info.engine)}…` : ''));
+    };
+    const u = api.speak(/^ja/i.test(lang) ? SAMPLE_TEXT.ja : SAMPLE_TEXT.en, o);
+    utter.current = u;
+    setPlaying(true);
+    u.done.finally(() => {
+      if (utter.current !== u) return;
+      utter.current = null;
+      setPlaying(false);
+      setStatus((s) => (s.startsWith('Speaking with') ? '' : s));
+    });
+  };
+
+  const cfg = getModuleTtsApi().config();
+  const placeholder = engine === 'voicevox' ? 'Style id (a number)'
+    : engine === 'openai' ? 'Voice id — blank = the server’s default'
+      : 'Narrator name (part is enough) — blank = by language';
+  let help: React.ReactNode = null;
+  let warn = false;
+  if (isPreset) {
+    if (preset) help = `Preset — ${presetHint(preset)}${preset.prompt ? ` · “${preset.prompt}”` : ''}${preset.extra ? ` · ${formatExtra(preset.extra)}` : ''}`;
+    else { warn = true; help = `No preset “${value.trim()}” on this computer — the line is read by its language.`; }
+  } else if (loading) help = 'Loading the voices…';
+  else if (listError) {
+    warn = true;
+    help = engine === 'voicevox' ? `VOICEVOX did not answer (${cfg.voicevoxUrl}) — start it, or type a style id.`
+      : engine === 'openai' ? `The TTS server’s voices could not be listed (${cfg.openaiUrl}): ${listError}. Type a voice id.`
+        : listError;
+  } else if (engine === 'voicevox' && value.trim()) {
+    if (current) help = current.label;
+    else { warn = true; help = 'Not one of this VOICEVOX’s styles.'; }
+  } else if (engine === 'webspeech' && !list.length) {
+    warn = true;
+    help = 'No Web Speech narrators are installed on this computer.';
+  } else if (!named) {
+    help = 'Auto: a name picks that Web Speech narrator; blank = the app’s narrator for the language.';
+  }
+
+  return (
+    <Box>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+        <Autocomplete<VoiceOption, false, false, true>
+          freeSolo size="small" fullWidth
+          options={options}
+          value={current ?? (value || null)}
+          inputValue={value}
+          onInputChange={(_, v, reason) => { if (reason === 'input' || reason === 'clear') onChange(v); }}
+          onChange={(_, v) => onChange(typeof v === 'string' ? v : v ? v.value : '')}
+          getOptionLabel={(o) => (typeof o === 'string' ? o : o.value)}
+          isOptionEqualToValue={(a, b) => a.value === b.value}
+          filterOptions={(opts, st) => {
+            const q = st.inputValue.trim().toLowerCase();
+            if (!q || opts.some((o) => o.value.toLowerCase() === q)) return opts;
+            return opts.filter((o) => `${o.value} ${o.label} ${o.hint || ''}`.toLowerCase().includes(q));
+          }}
+          renderOption={(props, o) => {
+            const { key, ...rest } = props as typeof props & { key: React.Key };
+            return (
+              <li key={key} {...rest}>
+                <Typography component="span" sx={{ fontSize: '0.82rem', fontWeight: o.preset ? 600 : undefined }}>{o.label}</Typography>
+                {engine === 'voicevox' && !o.preset && <Typography component="span" sx={{ ml: 0.75, fontSize: '0.72rem', color: 'text.disabled' }}>{o.value}</Typography>}
+                {o.hint && <Typography component="span" sx={{ ml: 0.75, fontSize: '0.72rem', color: 'text.disabled', flex: o.preset ? 1 : undefined }}>{o.hint}</Typography>}
+                {o.preset && (
+                  <IconButton size="small" title="Delete this preset (a deck naming it is then read by its language)"
+                    onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                    onClick={(e) => { e.stopPropagation(); deletePreset(o.preset!); }}
+                    sx={{ ml: 0.5, p: 0.25, color: 'text.disabled' }}>
+                    <CloseIcon sx={{ fontSize: 14 }} />
+                  </IconButton>
+                )}
+              </li>
+            );
+          }}
+          renderInput={(params) => <TextField {...params} placeholder={placeholder} variant="outlined" sx={fieldSx} />}
+        />
+        <IconButton size="small" title="Reload the list" onClick={() => setReload((n) => n + 1)} sx={{ color: 'var(--app-text-muted)' }}>
+          {loading ? <CircularProgress size={16} /> : <RefreshIcon fontSize="small" />}
+        </IconButton>
+        <IconButton size="small" title={playing ? 'Stop' : 'Try this voice'} onClick={tryVoice} sx={{ color: 'var(--app-accent)' }}>
+          {playing ? <StopIcon fontSize="small" /> : <PlayArrowIcon fontSize="small" />}
+        </IconButton>
+        <IconButton size="small" title="Save this speaker as a preset — decks can then name it as @name" disabled={!canSave}
+          onClick={() => setSaveName(saveName === null ? suggestName() : null)} sx={{ color: 'var(--app-text-muted)' }}>
+          <BookmarkAddOutlinedIcon fontSize="small" />
+        </IconButton>
+      </Box>
+      {saveName !== null && (
+        <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.75, mt: 1 }}>
+          <TextField size="small" label="Preset name" value={saveName} autoFocus variant="outlined" sx={{ ...fieldSx, width: 220 }}
+            onChange={(e) => setSaveName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); savePreset(); } if (e.key === 'Escape') { e.stopPropagation(); setSaveName(null); } }}
+            error={!saveOk}
+            helperText={!saveOk ? 'Letters, digits, - _ . (no spaces)'
+              : presets.some((x) => x.name.toLowerCase() === saveName.trim().toLowerCase()) ? 'Replaces the preset of that name' : `Then written as @${saveName.trim()}`} />
+          <Button size="small" variant="contained" disabled={!saveOk} onClick={savePreset} sx={{ mt: 0.25 }}>Save</Button>
+          <Button size="small" onClick={() => setSaveName(null)} sx={{ mt: 0.25, color: 'var(--app-text-muted)' }}>Cancel</Button>
+        </Box>
+      )}
+      {help && (
+        <Typography sx={{ color: warn ? 'var(--app-warning, #d97706)' : 'var(--app-text-disabled)', fontSize: '0.72rem', mt: 0.4 }}>{help}</Typography>
+      )}
+      {status && (
+        <Typography sx={{ color: /could not/.test(status) ? 'var(--app-warning, #d97706)' : 'var(--app-text-disabled)', fontSize: '0.72rem', mt: 0.25 }}>{status}</Typography>
+      )}
+    </Box>
+  );
+};
+
+// --- the TTS server's own options (type="speechoptions") ----------------------
+// "k=v, k2=v2" in the directive, edited as the controls the server's description
+// names. The server: the preset's saved connection when the voice is a preset with
+// one, else the TTS server set in the app.
+const SpeechExtraField: React.FC<{ p: ModuleParam; value: string; onChange: (v: string) => void; eff: (name: string) => string }> = ({ p, value, onChange, eff }) => {
+  const { settings } = useAppSettings();
+  const prefix = p.name.replace(/extra$/i, '');
+  const preset = presetNamed(settings.tts.voicePresets, eff(`${prefix}voice`));
+  const connection = preset?.engine === 'openai' ? preset.connection : undefined;
+  const lang = p.langParam ? eff(p.langParam) : '';
+  const where = connection || settings.tts.openaiUrl;
+  const [found, setFound] = useState<{ where: string; desc: SpeechServerDescription | null; error?: string } | null>(null);
+  useEffect(() => {
+    let alive = true;
+    getModuleTtsApi().serverOptions(connection).then(
+      (desc) => { if (alive) setFound({ where, desc }); },
+      (e) => { if (alive) setFound({ where, desc: null, error: String((e as Error)?.message || e) }); },
+    );
+    return () => { alive = false; };
+  }, [connection, where]);
+  const current = found && found.where === where ? found : null;
+  const extra = useMemo(() => parseExtra(value), [value]);
+  const note = !current ? 'Asking the TTS server what it takes…'
+    : current.error ? `The TTS server could not be asked (${where}) — options can still be written as text: ${current.error}`
+      : undefined;
+  return (
+    <Box>
+      <SpeechOptionsFields description={current?.desc ?? null} value={extra} lang={lang}
+        fieldSx={{ ...fieldSx, '& .MuiFormHelperText-root:not(.Mui-error)': { color: 'var(--app-text-disabled)' } }}
+        note={note} onChange={(next) => onChange(formatExtra(next))} />
+      {preset?.extra && (
+        <Typography sx={{ color: 'var(--app-text-disabled)', fontSize: '0.72rem', mt: 0.4 }}>
+          On top of the preset’s own: {formatExtra(preset.extra)}
+        </Typography>
+      )}
+    </Box>
+  );
+};
+
 // --- array helpers: a `[a, b, c]` literal <-> string items (commas / brackets
 // inside an item are escaped as `\,` `\[` `\]`, matching the render-side split).
 const parseArrayLiteral = (val: string): string[] => {
@@ -190,7 +494,13 @@ const defaultItem = (p: ModuleParam): string => {
   }
 };
 
-interface ItemCtx { imageEntries: ImageEntry[]; resolveThumb: (v: string) => string; }
+interface ItemCtx {
+  imageEntries: ImageEntry[];
+  resolveThumb: (v: string) => string;
+  /** The value a param has right now (its default while unset) — for controls
+   *  that depend on other params (a voice depends on its engine). */
+  eff: (name: string) => string;
+}
 
 // Render the control for ONE value of the param's (item) type. Reused for plain
 // params and — per item — by ArrayField.
@@ -224,7 +534,18 @@ const renderTypedControl = (p: ModuleParam, val: string, onChange: (v: string) =
       return <ColorField value={val} options={p.options} onChange={onChange} />;
     case 'image':
       return <ImageField value={val} entries={ctx.imageEntries} resolveThumb={ctx.resolveThumb} onChange={onChange} />;
+    case 'voice':
+      return <VoiceField p={p} value={val} onChange={onChange} eff={ctx.eff} />;
+    case 'speechoptions':
+      return <SpeechExtraField p={p} value={val} onChange={onChange} eff={ctx.eff} />;
     default:
+      if (p.multiline) {
+        // Directive args live on one line: line breaks become spaces.
+        return (
+          <TextField size="small" fullWidth multiline minRows={2} maxRows={6} value={val} variant="outlined" sx={fieldSx}
+            onChange={(e) => onChange(e.target.value.replace(/\s*[\r\n]+\s*/g, ' '))} />
+        );
+      }
       return <TextField size="small" fullWidth value={val} variant="outlined" sx={fieldSx} onChange={(e) => onChange(e.target.value)} />;
   }
 };
@@ -270,6 +591,7 @@ export interface ModuleSettingsDialogProps {
 export const ModuleSettingsDialog: React.FC<ModuleSettingsDialogProps> = ({
   open, moduleName, params, initialValues, imageEntries, resolveThumb, onClose, onSave,
 }) => {
+  const { settings } = useAppSettings();
   // Seed each control from the current directive value, falling back to default.
   const seed = useMemo(() => {
     const v: Record<string, string> = {};
@@ -299,9 +621,28 @@ export const ModuleSettingsDialog: React.FC<ModuleSettingsDialogProps> = ({
   };
   const setSpec = (name: string, on: boolean) => setSpecified((prev) => ({ ...prev, [name]: on }));
 
+  // A param's value as the module will see it: the edited value when specified,
+  // else its default.
+  const eff = (name: string): string => {
+    const q = params.find((x) => x.name === name);
+    if (!q) return values[name] ?? '';
+    return (q.required || specified[name]) ? (values[name] ?? '') : (q.default ?? '');
+  };
+  // `showif`: a control that does not apply to the current choice (e.g. a VOICEVOX
+  // pitch while the engine is the TTS server) is hidden — and not saved. A voice
+  // preset brings its own engine: while one is chosen, its engine is what counts.
+  const effEngine = (name: string): string => {
+    const voiceParam = params.find((q) => q.type === 'voice' && q.engineParam === name);
+    const pr = voiceParam ? presetNamed(settings.tts.voicePresets, eff(voiceParam.name)) : undefined;
+    return pr ? (pr.engine === 'openai' ? 'server' : pr.engine) : eff(name);
+  };
+  const isVisible = (p: ModuleParam): boolean =>
+    !p.showIf || p.showIf.values.some((v) => v.toLowerCase() === effEngine(p.showIf!.param).trim().toLowerCase());
+
   const handleSave = () => {
     const out: Record<string, string> = {};
     params.forEach((p) => {
+      if (!isVisible(p)) return;
       const spec = !!p.required || specified[p.name];
       if (!spec) return;                          // optional + "Unset" → omit
       const v = (values[p.name] ?? '').trim();
@@ -317,7 +658,7 @@ export const ModuleSettingsDialog: React.FC<ModuleSettingsDialogProps> = ({
     onSave(out);
   };
 
-  const itemCtx = { imageEntries, resolveThumb };
+  const itemCtx: ItemCtx = { imageEntries, resolveThumb, eff };
   const renderControl = (p: ModuleParam) => {
     const val = values[p.name] ?? '';
     if (p.isArray) return <ArrayField p={p} value={val} onChange={(v) => set(p.name, v)} ctx={itemCtx} />;
@@ -335,7 +676,7 @@ export const ModuleSettingsDialog: React.FC<ModuleSettingsDialogProps> = ({
           <Typography sx={{ color: 'var(--app-text-disabled)' }}>This module has no editable parameters.</Typography>
         ) : (
           <Stack spacing={2} sx={{ pt: 0.5 }}>
-            {params.map((p) => {
+            {params.filter(isVisible).map((p) => {
               const active = !!p.required || specified[p.name];
               const missingReq = p.required && p.default === undefined && (values[p.name] ?? '').trim() === '';
               return (

@@ -7,7 +7,7 @@ import type { SlideContext, MotionSpec } from './SlideContext';
 import type { Stroke } from '../../drawing/components/DrawingOverlay';
 import { applyModulesToMarkdown, parseArguments } from '../../modules/moduleProcessor';
 import { applyBuildsToMarkdown } from './buildProcessor';
-import { renderScriptChips, rubyBase } from '../../autoplay/autoplay';
+import { markScriptReadings, renderScriptChips } from '../../autoplay/autoplay';
 import markedKatex from "marked-katex-extension";
 import { registerMdpKatex } from "./katexExtensions";
 
@@ -208,11 +208,11 @@ export const renderSlideHTML = (block: RawBlock, globalContext: SlideContext, pa
     // Strip the auto-narration control markers from the DISPLAYED script (the
     // auto-play reads them from the slide's raw markdown): `[[step]]` drives build
     // stepping, and a ruby `[[語|よみ]]` / `[[say: 読み]]` is the TTS reading of a word
-    // or formula — the presenter reads the text and the rendered math itself, so the
-    // readings are dropped here (the base stays).
+    // or formula — the presenter reads the text and the rendered math itself, so a
+    // reading is not in the text: its base is marked, the reading shown on hover
+    // (markScriptReadings — here, while code spans are still set aside).
     extractedScripts.push(
-      rubyBase(scriptContent.trim())
-        .replace(/\[\[\s*say\s*:\s*[\s\S]*?\]\]/gi, ' ')
+      markScriptReadings(scriptContent.trim())
         .replace(/\[\[\s*step\s*\]\]/gi, ' ')
         .replace(/\s+/g, ' ').trim(),
     );

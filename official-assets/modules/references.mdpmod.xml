@@ -11,6 +11,9 @@ sections. Each BibTeX entry becomes one formatted reference; the chosen notation
 automatically. @string macros, # concatenation, crossref/xdata inheritance, LaTeX accents,
 LaTeX quotes (``…'' becomes “…”) and $math$ are all handled. (For a single inline citation
 in running text, this module is not it.)
+Authors: `Last, First and Last, First`. A corporate author goes in double braces —
+`author = {{World Health Organization}}` — and is printed whole (never abbreviated); an
+"and" inside braces does not split names (`{{Ministry A} and {Ministry B}}` = two authors).
 
 Parameters:
   `layout`   — list | cards (default list). list = numbered/tagged lines; cards = a grid of boxes.
@@ -303,14 +306,49 @@ Example:
       let last, first;
       if (a.indexOf(',') > -1) { const p = a.split(','); last = p[0].trim(); first = (p[1] || '').trim(); }
       else { const p = a.split(/\s+/); last = p.pop(); first = p.join(' '); }
+      // A hyphenated given name keeps its hyphen: Jörn-Henrik -> J.-H.
       const initials = first.split(/\s+/).filter(Boolean)
-        .map(function (x) { return x.charAt(0).toUpperCase() + '.'; }).join(' ');
+        .map(function (x) {
+          return x.split('-').filter(Boolean)
+            .map(function (y) { return y.charAt(0).toUpperCase() + '.'; }).join('-');
+        }).join(' ');
       return { last: last || '', first: first, initials: initials };
+    };
+    // A name list splits on " and " only OUTSIDE braces, as in BibTeX: cleaning
+    // first (which drops the braces) cut "{Ministry of Economy, Trade and
+    // Industry}" in two.
+    const splitNameList = function (raw) {
+      const s = String(raw); const out = []; let depth = 0, cur = '';
+      for (let k = 0; k < s.length; k++) {
+        const c = s[k];
+        if (c === '{') depth++;
+        else if (c === '}') depth = Math.max(0, depth - 1);
+        else if (depth === 0 && /\s/.test(c)) {
+          const m = /^\s+and\s+/i.exec(s.slice(k));
+          if (m) { out.push(cur); cur = ''; k += m[0].length - 1; continue; }
+        }
+        cur += c;
+      }
+      out.push(cur);
+      return out.map(function (x) { return x.trim(); }).filter(Boolean);
+    };
+    // A wholly braced name — {World Health Organization} — is one literal name
+    // (a corporate author): never split into first/last, never abbreviated.
+    const isWhollyBraced = function (a) {
+      if (a.charAt(0) !== '{' || a.charAt(a.length - 1) !== '}') return false;
+      let d = 0;
+      for (let k = 0; k < a.length; k++) {
+        if (a[k] === '{') d++;
+        else if (a[k] === '}') { d--; if (d === 0 && k < a.length - 1) return false; }
+      }
+      return true;
     };
     const nameListOf = function (raw) {
       if (!raw) return [];
-      return clean(raw).split(/\s+and\s+/i).map(function (x) { return x.trim(); })
-        .filter(Boolean).map(splitName);
+      return splitNameList(raw).map(function (a) {
+        if (isWhollyBraced(a)) return { last: clean(a), first: '', initials: '' };
+        return splitName(clean(a));
+      }).filter(function (nm) { return nm.last; });
     };
     const fmtNames = function (names, mode) {
       if (!names.length) return '';

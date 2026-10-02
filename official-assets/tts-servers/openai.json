@@ -1,0 +1,9 @@
+{
+  "id": "openai",
+  "name": "OpenAI",
+  "description": "OpenAI's own speech API — it takes no fields beyond its own (instructions included), so no options are sent.",
+  "match": [
+    { "url": "^https?://api\\.openai\\.com(/|$)" }
+  ],
+  "options": []
+}

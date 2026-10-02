@@ -49,7 +49,7 @@ export const RehearsalDialog: React.FC<{
    *  deck's rehearsal history, like a presenter-tool run. */
   onRun?: (run: RehearsalRun) => void;
 }> = ({ open, onClose, slides, onRun }) => {
-  const { settings, update, appThemeVariant } = useAppSettings();
+  const { settings, update, updateTts, appThemeVariant } = useAppSettings();
   const muiTheme = useMemo(() => createTheme({ palette: { mode: appThemeVariant } }), [appThemeVariant]);
   const tts = settings.tts;
   const cpm = settings.readingCharsPerMin || 320;
@@ -82,7 +82,7 @@ export const RehearsalDialog: React.FC<{
   const tickRef = useRef<number | null>(null);
   const cancelRef = useRef(false);
 
-  const patchTts = (p: Partial<typeof tts>) => update({ tts: { ...tts, ...p } });
+  const patchTts = updateTts;
 
   // Load Web Speech voices when the dialog opens (they populate asynchronously).
   useEffect(() => {

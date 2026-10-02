@@ -6,11 +6,16 @@ import { apiClient } from '../../api/apiClient';
 import type { AppSettings } from '../settings/types';
 import {
   IRODORI_VOICE_ID, OPENAI_VOICES, SshBastionError, deleteIrodoriVoice, designIrodoriVoice, forgetSshBastionHostKey,
-  inspectSpeechServer, isAbortError, referenceVoicesUsed, saveIrodoriVoice, setSshBastionSecret, speechModelFor,
+  inspectSpeechServer, isAbortError, isSameConnection, referenceVoicesUsed, saveIrodoriVoice, setSshBastionSecret, speechModelFor,
   speechProfileKey, speechServerOf, sshBastionInfo, sshBastionSupported, trustSshBastionHostKey,
-  type SpeechProfile, type SpeechServer, type SpeechServerInfo, type SshBastion, type SshBastionInfo, type SshBastionProblem,
+  type SpeechConnection, type SpeechProfile, type SpeechServer, type SpeechServerInfo, type SshBastion, type SshBastionInfo, type SshBastionProblem,
 } from './ttsService';
 import { VoiceCalibrationDialog } from './VoiceCalibrationDialog';
+import { SpeechOptionsFields } from './SpeechOptionsFields';
+import { flattenOptions, nestOptions } from './speechOptions';
+import { renameProblem, renameServerVoice } from './voiceRename';
+import { decodeAudioFile } from './micInput';
+import { encodeWav, referenceFromFile } from './voiceAudio';
 
 type Tts = AppSettings['tts'];
 
@@ -19,6 +24,28 @@ interface Sample { wav: Uint8Array; url: string }
 
 // The Voice menu's entry for a server's own default voice (stored as '').
 const SERVER_DEFAULT = '__server-default__';
+// The Connection menu's entry for settings that match no saved connection.
+const UNSAVED = '__unsaved__';
+
+// Where a saved connection goes, in a few words: host/path (· via the bastion).
+const whereTo = (c: Pick<SpeechConnection, 'url' | 'ssh'>): string => {
+  let at = c.url.trim();
+  try { const u = new URL(at); at = `${u.host}${u.pathname.replace(/\/+$/, '')}`; } catch { /* as typed */ }
+  return c.ssh.enabled && c.ssh.host ? `${at} · via ${c.ssh.host}` : at;
+};
+// A first name for a connection being saved: the host's first label and the last
+// path segment ("kjai01 chatterbox"), and the bastion it goes through.
+const nameFor = (url: string, ssh: SshBastion): string => {
+  let name = 'server';
+  try {
+    const u = new URL(url.trim());
+    const h = u.hostname;
+    const host = h === 'localhost' || /^[\d.]+$/.test(h) || h.includes(':') ? h : h.split('.')[0];
+    const seg = u.pathname.split('/').filter((s) => s && s.toLowerCase() !== 'v1').pop();
+    name = seg ? `${host} ${seg}` : host;
+  } catch { /* keep 'server' */ }
+  return ssh.enabled && ssh.host ? `${name} via ${ssh.host.split('.')[0]}` : name;
+};
 
 // Which server a connection's findings belong to: the URL, the key and the route.
 const connectionStamp = (s: SpeechServer): string =>
@@ -41,6 +68,11 @@ const hostKeyFile = (keyType = ''): string =>
 // offers: design one clip from the caption → audition it → register it on the
 // server as a named voice → speak everything with that voice. With any other
 // server the description goes out as OpenAI's `instructions`.
+//
+// "Server options": what the server takes beyond OpenAI's request — Chatterbox's
+// language and accent, Irodori's tuning… — as its description names them
+// (speechOptions.ts: the server's own word, an MDP profile, or its OpenAPI schema).
+// Like the voice, they belong to the server they were set on.
 //
 // The presenter's OWN voice — record a few sentences of the deck
 // (VoiceCalibrationDialog), or register an existing recording — and removing a
@@ -95,15 +127,20 @@ export const SpeechServerControls: React.FC<{
         const key = speechProfileKey(srv);
         const saved = tts.openaiProfiles[key];
         const has = (v: string) => !v || !got.voices || got.voices.includes(v) || (got.kind === 'irodori' && v === 'none');
+        // Of the current options, only those this server is known to take: a server
+        // that does not describe its options would be sent another's as written.
+        const taken = new Set(got.description.options.map((o) => o.key));
         const next: SpeechProfile = saved ?? {
           voice: has(tts.openaiVoice) ? tts.openaiVoice : '',
           model: !tts.openaiModel || !got.models.length || got.models.includes(tts.openaiModel) ? tts.openaiModel : '',
           instructions: tts.openaiInstructions,
+          extra: nestOptions(Object.fromEntries(Object.entries(flattenOptions(tts.openaiExtra || {})).filter(([k]) => taken.has(k)))),
         };
         const p: Partial<Tts> = {};
         if (next.voice !== tts.openaiVoice) p.openaiVoice = next.voice;
         if (next.model !== tts.openaiModel) p.openaiModel = next.model;
         if (next.instructions !== tts.openaiInstructions) p.openaiInstructions = next.instructions;
+        if (JSON.stringify(next.extra || {}) !== JSON.stringify(tts.openaiExtra || {})) p.openaiExtra = next.extra || {};
         if (!saved) p.openaiProfiles = { ...tts.openaiProfiles, [key]: next };
         if (Object.keys(p).length) patchTts(p);
         then?.();
@@ -126,14 +163,49 @@ export const SpeechServerControls: React.FC<{
 
   // A choice made on the connected server is remembered for it (and only then:
   // not under a half-typed URL).
-  const choose = (p: Partial<Pick<Tts, 'openaiVoice' | 'openaiModel' | 'openaiInstructions'>>) => {
+  const choose = (p: Partial<Pick<Tts, 'openaiVoice' | 'openaiModel' | 'openaiInstructions' | 'openaiExtra'>>) => {
     const key = info ? speechProfileKey(server) : '';
     const next: SpeechProfile = {
       voice: p.openaiVoice ?? tts.openaiVoice,
       model: p.openaiModel ?? tts.openaiModel,
       instructions: p.openaiInstructions ?? tts.openaiInstructions,
+      extra: p.openaiExtra ?? tts.openaiExtra,
     };
     patchTts({ ...p, ...(key ? { openaiProfiles: { ...tts.openaiProfiles, [key]: next } } : {}) });
+  };
+
+  // ---- saved connections (URL + API key + bastion) ------------------------------
+  const connections = tts.openaiConnections;
+  const current = connections.find((c) => isSameConnection(c, tts)) || null;
+  const [connName, setConnName] = useState<string | null>(null);   // "Save as" being typed
+  const [confirmForget, setConfirmForget] = useState(false);
+  // Pick one: its URL, key and bastion — and the voice, model and description used
+  // on that server before — in one change, then connect to it.
+  const pickConnection = (name: string) => {
+    const c = connections.find((x) => x.name === name);
+    if (!c || isSameConnection(c, tts)) return;
+    const srv = speechServerOf({ ...tts, openaiUrl: c.url, openaiApiKey: c.apiKey, openaiSsh: c.ssh });
+    const prof = tts.openaiProfiles[speechProfileKey(srv)];
+    patchTts({
+      openaiUrl: c.url, openaiApiKey: c.apiKey, openaiSsh: c.ssh,
+      ...(prof ? { openaiVoice: prof.voice, openaiModel: prof.model, openaiInstructions: prof.instructions, openaiExtra: prof.extra ?? {} } : {}),
+    });
+    setSshProblem(null); setSshError(''); setConfirmForget(false); setConnName(null);
+    setStatus('loading'); setError('');
+    load(undefined, srv);
+  };
+  // Save the connection in use under a name (a name already saved is replaced).
+  const saveConnection = (raw: string) => {
+    const name = raw.trim().slice(0, 60);
+    if (!name) return;
+    const c: SpeechConnection = { name, url: tts.openaiUrl.trim(), apiKey: tts.openaiApiKey, ssh: tts.openaiSsh };
+    patchTts({ openaiConnections: [...connections.filter((x) => x.name !== name), c] });
+    setConnName(null);
+  };
+  // Forget a saved connection (the settings in use stay as they are).
+  const forgetConnection = (name: string) => {
+    patchTts({ openaiConnections: connections.filter((x) => x.name !== name) });
+    setConfirmForget(false);
   };
 
   // ---- SSH bastion (desktop app) ------------------------------------------------
@@ -267,6 +339,34 @@ export const SpeechServerControls: React.FC<{
     ).finally(() => setRemoving(false));
   };
 
+  // Renaming the chosen voice: the same audio registered under the new name, then
+  // the old name removed (voiceRename.ts). `exists`: the new name is taken (asks
+  // before replacing); `no-audio`: this computer has no copy (asks for the file).
+  const [rename, setRename] = useState<{ to: string; phase: 'edit' | 'exists' | 'no-audio'; audio?: Uint8Array } | null>(null);
+  const [renaming, setRenaming] = useState(false);
+  const [renameError, setRenameError] = useState('');
+  const renameFileRef = useRef<HTMLInputElement | null>(null);
+  const doRename = (from: string, to: string, replace: boolean, audio?: Uint8Array) => {
+    if (!to || to === from || renameProblem(from, to) || renaming) return;
+    setRenaming(true); setRenameError('');
+    renameServerVoice(server, from, to, { replace, audio }).then((res) => {
+      if (res !== 'renamed') { setRename({ to, phase: res, audio }); return; }
+      setRename(null);
+      load(() => choose({ openaiVoice: to }));
+    }, (e: unknown) => setRenameError(e instanceof Error ? e.message : String(e)))
+      .finally(() => setRenaming(false));
+  };
+  const renameFromFile = async (from: string, to: string, f: File) => {
+    setRenameError('');
+    try {
+      const r = referenceFromFile(await decodeAudioFile(await f.arrayBuffer()));
+      if (!r) throw new Error('No speech was found in this file.');
+      doRename(from, to, false, encodeWav(r.ref));
+    } catch (e) {
+      setRenameError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
   // Irodori's '' means 'none' (no reference voice). On another server with a voice
   // registry '' is the server's own default voice — the request names OpenAI's
   // 'alloy', which kjai01's Chatterbox takes as its default — and is offered as such.
@@ -304,6 +404,11 @@ export const SpeechServerControls: React.FC<{
   }, [voices, voice, irodori, defaultChoice]);
   const noRef = voice === 'none';
   const hasCaption = !!tts.openaiInstructions.trim();
+  // The server's own options: offered when it describes some, or some are set.
+  const [showOptions, setShowOptions] = useState(false);
+  const desc = info?.description ?? null;
+  const optionCount = desc ? desc.options.filter((o) => o.role !== 'instructions').length : 0;
+  const extraCount = Object.keys(flattenOptions(tts.openaiExtra || {})).length;
   // Irodori takes one model (it rejects any other name): no field unless one is set.
   const showModel = !irodori || !!tts.openaiModel.trim();
 
@@ -329,6 +434,44 @@ export const SpeechServerControls: React.FC<{
   );
   const body = (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {/* Saved connections: URL + API key + bastion, switched by name. */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        {connections.length > 0 && (
+          <TextField select size="small" label="Connection" value={current ? current.name : UNSAVED} sx={{ flex: 1, minWidth: 220 }}
+            onChange={(e) => pickConnection(String(e.target.value))}>
+            {!current && <MenuItem value={UNSAVED} disabled>not saved — the settings below</MenuItem>}
+            {connections.map((c) => (
+              <MenuItem key={c.name} value={c.name}>
+                {c.name}<span style={{ color: muted, fontSize: 12, marginLeft: 10 }}>{whereTo(c)}</span>
+              </MenuItem>
+            ))}
+          </TextField>
+        )}
+        {connName !== null ? (
+          <>
+            <TextField size="small" label="Save this connection as" value={connName} autoFocus sx={{ flex: connections.length ? undefined : 1, width: 230 }}
+              onChange={(e) => setConnName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && connName.trim()) saveConnection(connName); if (e.key === 'Escape') setConnName(null); }}
+              helperText={connections.some((c) => c.name === connName.trim()) ? 'replaces the saved one of that name' : 'URL, API key and bastion'} />
+            <Button size="small" variant="contained" sx={btn} disabled={!connName.trim()} onClick={() => saveConnection(connName)}>Save</Button>
+            <Button size="small" sx={btn} onClick={() => setConnName(null)}>Cancel</Button>
+          </>
+        ) : confirmForget && current ? (
+          <>
+            <span style={{ fontSize: 12, color: warn }}>Delete the saved connection “{current.name}”? The settings in use stay.</span>
+            <Button size="small" color="error" sx={btn} onClick={() => forgetConnection(current.name)}>Delete</Button>
+            <Button size="small" sx={btn} onClick={() => setConfirmForget(false)}>Keep</Button>
+          </>
+        ) : (
+          <>
+            <Button size="small" sx={btn} onClick={() => setConnName(current?.name ?? nameFor(tts.openaiUrl, tts.openaiSsh))}>
+              {current ? 'Save as…' : 'Save this connection…'}
+            </Button>
+            {current && <Button size="small" sx={{ ...btn, color: muted }} onClick={() => setConfirmForget(true)}>Delete</Button>}
+          </>
+        )}
+      </div>
+
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <TextField size="small" label="Server URL" value={tts.openaiUrl} sx={{ flex: 1 }}
           onChange={(e) => patchTts({ openaiUrl: e.target.value })} placeholder="http://127.0.0.1:8088  ·  https://api.openai.com/v1"
@@ -470,7 +613,7 @@ export const SpeechServerControls: React.FC<{
         <TextField select size="small" label="Voice" value={defaultChoice && !voice ? SERVER_DEFAULT : voice}
           onChange={(e) => {
             const id = String(e.target.value);
-            choose({ openaiVoice: id === SERVER_DEFAULT ? '' : id }); setConfirmRemove(false); setRemoveError('');
+            choose({ openaiVoice: id === SERVER_DEFAULT ? '' : id }); setConfirmRemove(false); setRemoveError(''); setRename(null); setRenameError('');
           }}>
           {options.map((id) => (
             <MenuItem key={id} value={id}>
@@ -513,7 +656,7 @@ export const SpeechServerControls: React.FC<{
               </>
             )}
             <span style={{ flex: 1 }} />
-            {!noRef && voices?.includes(voice) && (confirmRemove ? (
+            {!noRef && voices?.includes(voice) && !rename && (confirmRemove ? (
               <>
                 <span style={{ fontSize: 12, color: warn }}>Remove “{voice}” from the server? Anyone else using it loses it too.</span>
                 <Button size="small" color="error" sx={btn} disabled={removing} onClick={() => remove(voice)}>
@@ -522,10 +665,58 @@ export const SpeechServerControls: React.FC<{
                 <Button size="small" sx={btn} disabled={removing} onClick={() => setConfirmRemove(false)}>Keep</Button>
               </>
             ) : (
-              <Button size="small" sx={{ ...btn, color: muted }} onClick={() => setConfirmRemove(true)}>Remove this voice…</Button>
+              <>
+                <Button size="small" sx={{ ...btn, color: muted }} onClick={() => { setRename({ to: voice, phase: 'edit' }); setRenameError(''); }}>Rename…</Button>
+                <Button size="small" sx={{ ...btn, color: muted }} onClick={() => setConfirmRemove(true)}>Remove this voice…</Button>
+              </>
             ))}
           </div>
           {removeError && <div style={{ fontSize: 12, color: '#f87171', marginTop: -4 }}>{removeError}</div>}
+          {rename && !noRef && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: -2 }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <TextField size="small" label={`Rename “${voice}” to`} value={rename.to} autoFocus sx={{ width: 220 }} disabled={renaming}
+                  onChange={(e) => setRename({ to: e.target.value.trim(), phase: 'edit' })}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && rename.phase === 'edit') doRename(voice, rename.to, false);
+                    if (e.key === 'Escape') setRename(null);
+                  }}
+                  error={!!renameProblem(voice, rename.to)} helperText={renameProblem(voice, rename.to) || undefined} />
+                {rename.phase === 'exists' ? (
+                  <>
+                    <span style={{ fontSize: 12, color: warn }}>“{rename.to}” already exists on the server.</span>
+                    <Button size="small" variant="contained" color="warning" sx={btn} disabled={renaming}
+                      onClick={() => doRename(voice, rename.to, true, rename.audio)}>Replace it</Button>
+                  </>
+                ) : rename.phase === 'edit' && (
+                  <Button size="small" variant="contained" sx={btn}
+                    disabled={renaming || !rename.to || rename.to === voice || !!renameProblem(voice, rename.to)}
+                    onClick={() => doRename(voice, rename.to, false)}>
+                    {renaming ? <CircularProgress size={14} /> : 'Rename'}
+                  </Button>
+                )}
+                <Button size="small" sx={btn} disabled={renaming} onClick={() => { setRename(null); setRenameError(''); }}>Cancel</Button>
+              </div>
+              {rename.phase === 'no-audio' ? (
+                <div style={{ fontSize: 12, color: warn, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span>
+                    The server never gives a voice’s audio back, and this computer has no copy of “{voice}” (it was
+                    registered from elsewhere, or before MDP kept copies). Choose its audio file to register it as “{rename.to}”:
+                  </span>
+                  <Button size="small" variant="outlined" sx={btn} disabled={renaming} onClick={() => renameFileRef.current?.click()}>
+                    {renaming ? <CircularProgress size={14} /> : 'Choose the audio file…'}
+                  </Button>
+                </div>
+              ) : (
+                <div style={{ fontSize: 12, color: muted }}>
+                  The server has no rename: the same audio is registered under the new name, then “{voice}” is removed — anyone else using “{voice}” loses it.
+                </div>
+              )}
+              <input ref={renameFileRef} type="file" accept="audio/*,.wav,.mp3,.flac,.ogg,.m4a" style={{ display: 'none' }}
+                onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void renameFromFile(voice, rename.to, f); }} />
+              {renameError && <div style={{ fontSize: 12, color: '#f87171' }}>{renameError}</div>}
+            </div>
+          )}
           {calibrate && (
             <VoiceCalibrationDialog mode={calibrate} tts={tts} slideRaws={slideRaws || []}
               onClose={() => setCalibrate(null)} onRegistered={onRegistered} />
@@ -581,6 +772,20 @@ export const SpeechServerControls: React.FC<{
             </div>
           )}
           {designError && <div style={{ fontSize: 12, color: '#f87171' }}>{designError}</div>}
+        </div>
+      )}
+
+      {info && (optionCount > 0 || extraCount > 0 || desc?.source === 'none') && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div>
+            <Button size="small" sx={{ ...btn, color: muted, px: 0.5, minWidth: 0 }} onClick={() => setShowOptions((v) => !v)}>
+              {showOptions ? '▾' : '▸'} Server options{optionCount ? ` (${optionCount})` : ''}{extraCount ? ` · ${extraCount} set` : ''}
+            </Button>
+          </div>
+          {showOptions && (
+            <SpeechOptionsFields description={desc} value={tts.openaiExtra || {}} muted={muted}
+              onChange={(next) => choose({ openaiExtra: next })} />
+          )}
         </div>
       )}
     </div>

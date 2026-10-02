@@ -19,24 +19,44 @@ spoken string is the body's plain text.
 
 Parameters:
   • lang (text, default en-US) — BCP-47 language; picks the narrator automatically.
-  • voice (text, default '') — Web Speech narrator by name, substring ok (e.g. Zira).
-  • speaker (number, default -1) — VOICEVOX style id, used when lang is Japanese
-    (-1 = use Web Speech; auto-falls back to Web Speech if the engine is down).
+  • engine (auto | webspeech | server | voicevox, default auto) — who reads it: auto = the app's
+    narrator for the language; server = the TTS server set in the app; voicevox = local VOICEVOX.
+  • voice (text, default '') — the voice for that engine: Web Speech narrator name (substring ok,
+    e.g. Zira; with auto it implies Web Speech), the TTS server's voice id, or a VOICEVOX style id;
+    `@name` = a voice preset saved in the app (overrides engine; read by language where missing).
+  • prompt (text, default '') — engine server only: how to speak (voice description / instructions).
+  • extra (text, default '') — engine server only: the TTS server's own options as name=value
+    pairs, e.g. `extra: "cfg_weight=0.3"` (see @speakcard's mainextra).
+  • pitch / intonation / volume (number, default blank) — engine voicevox only: pitchScale
+    (-0.15–0.15), intonationScale (0–2), volumeScale (0–2).
+  • speaker (number, default -1) — older form: VOICEVOX style id when lang is Japanese and the
+    engine is auto (-1 = not used).
   • rate (number, default 1) — speaking rate (0.5–2).
+  • fallback (auto | webspeech | none, default auto) — when the engine cannot speak: the app's
+    narrator (if another engine that speaks the language), then Web Speech / Web Speech only /
+    stay silent. The tooltip then says what happened.
   • highlight (boolean, default true) — highlight the words as they are spoken.
   • icon (boolean, default true) — show the small ▶ mark before the text.
 
 Example:
 The verb <!-- @speak lang: en-US -->**boils**<!-- @end --> is in the present tense.
 Full sentence: <!-- @speak rate: 0.9 -->Water boils at 100 °C.<!-- @end -->
+VOICEVOX: <!-- @speak lang: ja-JP, engine: voicevox, voice: 3 -->沸騰する<!-- @end -->
 ]]></aiSpec>
   <interactive>true</interactive>
 
   <parameters>
     <param name="lang" type="text" default="en-US" label="Language" desc="BCP-47 language of the text (picks the narrator), e.g. en-US, ja-JP." />
-    <param name="voice" type="text" default="" label="Narrator" desc="Web Speech narrator by name (substring ok, e.g. Zira). Blank = auto by language." />
-    <param name="speaker" type="number" default="-1" label="VOICEVOX speaker" desc="VOICEVOX style id when the language is Japanese (-1 = use Web Speech)." min="-1" max="9999" integer="true" />
+    <param name="engine" type="select" default="auto" label="Speaker: engine" options="auto:Auto (by language / the app's narrator),webspeech:Web Speech (browser),server:TTS server,voicevox:VOICEVOX" desc="Who reads it. Auto = the app's narrator for the language." />
+    <param name="voice" type="voice" engine="engine" lang="lang" default="" label="Speaker: voice" desc="Web Speech narrator name, the TTS server's voice id, a VOICEVOX style id, or @name for a saved preset — pick from the list or type. Blank = the engine's default." />
+    <param name="prompt" type="text" multiline="true" default="" showif="engine:server|openai|tts|irodori" label="Speaker: prompt" desc="How the TTS server should speak (Irodori: voice description; OpenAI-type servers: instructions). Blank = the app's setting." />
+    <param name="extra" type="speechoptions" engine="engine" lang="lang" default="" showif="engine:server|openai|tts|irodori" label="Speaker: server options" desc="The TTS server's own options (e.g. Chatterbox's accent cfg_weight), written name=value, … — only those the server takes are sent. Blank = the app's setting." />
+    <param name="pitch" type="number" default="" min="-0.15" max="0.15" step="0.01" showif="engine:voicevox" label="Speaker: pitch" desc="VOICEVOX pitchScale (-0.15 to 0.15). Blank = VOICEVOX's own." />
+    <param name="intonation" type="number" default="" min="0" max="2" step="0.1" showif="engine:voicevox" label="Speaker: intonation" desc="VOICEVOX intonationScale (0 to 2). Blank = VOICEVOX's own." />
+    <param name="volume" type="number" default="" min="0" max="2" step="0.1" showif="engine:voicevox" label="Speaker: volume" desc="VOICEVOX volumeScale (0 to 2). Blank = VOICEVOX's own." />
+    <param name="speaker" type="number" default="-1" label="VOICEVOX speaker (older form)" desc="VOICEVOX style id when the language is Japanese and the engine is Auto (-1 = not used)." min="-1" max="9999" integer="true" />
     <param name="rate" type="number" default="1" label="Rate" desc="Speaking rate (0.5-2)." min="0.1" max="3" />
+    <param name="fallback" type="select" default="auto" label="If the engine cannot speak" options="auto:The app's narrator then Web Speech,webspeech:Web Speech,none:Stay silent" desc="Used when the chosen engine is not running, not set up, or lacks the voice. The tooltip says what happened." />
     <param name="highlight" type="boolean" default="true" label="Read-along highlight" desc="Highlight the words as they are spoken." />
     <param name="icon" type="boolean" default="true" label="Play mark" desc="Show the small play mark before the text." />
   </parameters>
@@ -62,11 +82,17 @@ Full sentence: <!-- @speak rate: 0.9 -->Water boils at 100 °C.<!-- @end -->
     const rate = parseFloat(args.rate);
     const speaker = parseInt(args.speaker, 10);
     const icon = String(args.icon) !== 'false';
+    // The speaker: engine, prompt, the server's options, VOICEVOX shaping (voice / lang / rate below).
+    let attrs = ' data-fallback="' + esc(args.fallback || 'auto') + '"';
+    ['engine', 'prompt', 'extra', 'pitch', 'intonation', 'volume'].forEach((f) => {
+      const v = args[f];
+      if (v != null && String(v).trim() !== '') attrs += ' data-' + f + '="' + esc(String(v).trim()) + '"';
+    });
     return '<span class="mdp-mod-speak mdp-interactive" role="button" tabindex="0" title="Speak"'
       + ' data-lang="' + esc(args.lang || 'en-US') + '"'
       + ' data-voice="' + esc(args.voice || '') + '"'
       + ' data-speaker="' + (isNaN(speaker) ? -1 : speaker) + '"'
-      + ' data-rate="' + (isNaN(rate) ? '' : rate) + '"'
+      + ' data-rate="' + (isNaN(rate) ? '' : rate) + '"' + attrs
       + ' data-highlight="' + (String(args.highlight) === 'false' ? 'false' : 'true') + '">'
       + (icon ? '<span class="mdp-speak-mark" aria-hidden="true">&#9654;</span>' : '')
       + '<span class="mdp-speak-body">' + body + '</span></span>';
@@ -127,6 +153,8 @@ Full sentence: <!-- @speak rate: 0.9 -->Water boils at 100 °C.<!-- @end -->
           const on = !!st.playing;
           el.classList.toggle('mdp-speak-playing', on);
           if (mark) mark.innerHTML = on ? '&#9632;' : '&#9654;';
+          // A fallback is told in the tooltip only (nothing on the slide changes).
+          el.title = st.note ? 'Speak — ' + st.note : 'Speak';
           if (on && st.prog && bodyEl) {
             const full = bodyEl.textContent || '';
             const text = full.trim();
@@ -185,15 +213,22 @@ Full sentence: <!-- @speak rate: 0.9 -->Water boils at 100 °C.<!-- @end -->
             stopNow(false);
             const text = (bodyEl.textContent || '').trim();
             if (!text) { if (typeof onDone === 'function') onDone(); return; }
-            const rate = parseFloat(el.dataset.rate);
-            const lang = el.dataset.lang || '';
-            const voice = el.dataset.voice || '';
-            const speaker = parseInt(el.dataset.speaker, 10);
-            const o = {};
-            if (!isNaN(rate) && rate > 0) o.rate = rate;
-            if (lang) o.lang = lang;
-            if (/^ja/i.test(lang) && speaker >= 0) o.speaker = speaker;
-            else if (voice) o.voice = voice;
+            // The speaker as the deck wrote it; the app turns it into speak() options
+            // (window.mdpTts.speakerOptions — one mapping for every module).
+            const d = el.dataset;
+            const spec = {
+              engine: d.engine, voice: d.voice, prompt: d.prompt, extra: d.extra,
+              pitch: d.pitch, intonation: d.intonation, volume: d.volume,
+              lang: d.lang, rate: d.rate, fallback: d.fallback, speaker: d.speaker,
+            };
+            // An MDP build without speakerOptions reads it by its language only.
+            const o = typeof tts.speakerOptions === 'function' ? tts.speakerOptions(spec) : { lang: spec.lang };
+            // When the chosen engine could not speak, the app says what it did instead.
+            o.onEngine = function (info) {
+              if (!info.fallback) { ctx.setShared({ note: '' }); return; }
+              console.warn('[speak] ' + info.message);
+              ctx.setShared({ note: info.message || '' });
+            };
             o.onProgress = function (p) {
               if (typeof p.charIndex === 'number') ctx.setShared({ prog: { ci: p.charIndex, cl: p.charLength } });
               else if (typeof p.fraction === 'number') ctx.setShared({ prog: { f: p.fraction } });

@@ -57,6 +57,7 @@ import { apiClient, isElectron, isMcpRenderer } from '../../api/apiClient';
 import { clearAllModules, registerModule, getAllModuleSnippets, loadedModules, setDisabledModules } from '../../features/modules/moduleManager';
 import { refreshModuleRegions } from '../../features/editor/extensions/ModuleRegionPlugin';
 import { ModuleSettingsDialog } from '../../features/modules/components/ModuleSettingsDialog';
+import { setWorkspaceSpeechProfiles } from '../../features/tts/speechProfiles';
 import { loadedEffects } from '../../features/effects/effectManager';
 import type { ModuleParam } from '../../utils/moduleParser';
 
@@ -352,6 +353,23 @@ export default function EditorPage() {
     [fileTree, scopeDirs],
   );
 
+  // TTS server profiles (`.mdp/tts-servers/*.json` along the scope chain): what a kind
+  // of server takes beyond OpenAI's speech request (tts/speechOptions.ts). They
+  // overlay the ones bundled with the app; re-read when one is saved.
+  const ttsServerPathsString = useMemo(
+    () => collectScopedAssetPaths(fileTree, scopeDirs, 'tts-servers', '.json').join(','),
+    [fileTree, scopeDirs],
+  );
+  const [ttsServersEpoch, setTtsServersEpoch] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    const paths = ttsServerPathsString ? ttsServerPathsString.split(',') : [];
+    void Promise.all(paths.map((path) => apiClient.readFileText(path).catch(() => ''))).then((texts) => {
+      if (!cancelled) setWorkspaceSpeechProfiles(texts.filter(Boolean));
+    });
+    return () => { cancelled = true; };
+  }, [ttsServerPathsString, ttsServersEpoch]);
+
   // Incremented whenever modules/effects finish (re)loading. Threaded into slide
   // generation so slides parsed before registration are re-parsed once their
   // markdown transforms (and CSS) are available — otherwise they stay raw.
@@ -585,6 +603,8 @@ export default function EditorPage() {
         // Modules + effects are now registered (markdown transforms + CSS ready):
         // force a slide re-parse so anything rendered raw beforehand is fixed.
         setModuleEpoch((e) => e + 1);
+        // …and let the editor add the ⚙ buttons it could not place before.
+        window.dispatchEvent(new Event('mdp-modules-registered'));
       }
     };
 
@@ -943,6 +963,7 @@ export default function EditorPage() {
         // Re-apply modules to the pinned deck so <render>/<script> changes show
         // live (registerModule already swapped the <style> for CSS changes).
         setModuleEpoch((e) => e + 1);
+        window.dispatchEvent(new Event('mdp-modules-registered'));
       } else if (path.includes(`${EFFECTS_DIR}/`) && path.endsWith('.mdpfx.xml')) {
         // Re-register the edited effect so its CSS/JS updates live, then refresh
         // snippets (effect snippets share the isModule flag).
@@ -980,6 +1001,8 @@ export default function EditorPage() {
         } catch { /* ignore malformed registry */ }
       } else if (path.includes(`${SNIPPETS_DIR}/`) || path.includes(`${TEMPLATES_DIR}/`) || path.includes(`${THEMES_DIR}/`) || path.includes(`${FONTS_DIR}/`)) {
         scheduleRefresh();
+      } else if (/(^|\/)\.mdp\/tts-servers\/[^/]+\.json$/.test(path)) {
+        setTtsServersEpoch((e) => e + 1);
       }
     };
 
@@ -1647,8 +1670,15 @@ export default function EditorPage() {
         Object.entries(st.values).filter(([k]) => !declared.has(k)),
       );
       const merged = { ...preserved, ...vals };
+      // One line, never closing the comment; a value with `,` or `"` (a voice
+      // description, a caption…) is quoted, with `\` and `"` escaped as
+      // parseArguments reads them back.
+      const argValue = (raw: string) => {
+        const v = String(raw).replace(/\s*[\r\n]+\s*/g, ' ').replace(/-->/g, '->');
+        return /[,"]/.test(v) ? `"${v.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"` : v;
+      };
       const kv = (obj: Record<string, string>) => Object.entries(obj)
-        .map(([k, v]) => `${k}: ${/,/.test(v) ? `"${v}"` : v}`).join(', ');
+        .map(([k, v]) => `${k}: ${argValue(v)}`).join(', ');
       let directive: string;
       if (st.kind === 'transition') {
         // Effect name is positional, not a `key: value` arg.

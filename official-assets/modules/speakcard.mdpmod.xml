@@ -1,7 +1,7 @@
 <module>
   <name>speakcard</name>
   <type>block</type>
-  <description>A language-learning sentence card: main sentence + smaller translation + optional reading note, each speakable with machine TTS (Web Speech / VOICEVOX) via the app's window.mdpTts API. Interactive: the speak buttons never advance the slide.</description>
+  <description>A language-learning sentence card: main sentence + smaller translation + optional reading note, each speakable with machine TTS via the app's window.mdpTts API — per line by language, or with a chosen engine and voice (Web Speech narrator, the TTS server's voice + prompt + its own options such as Chatterbox's language/accent, VOICEVOX style + pitch/intonation/volume, or a named voice preset), falling back when that engine cannot speak. Interactive: the speak buttons never advance the slide.</description>
   <tags>interactive, education, language</tags>
   <aiSpec><![CDATA[
 Use for language-teaching slides (e.g. technical English): shows a MAIN sentence with a
@@ -10,8 +10,8 @@ speak button, a smaller SUB line (the translation), and an optional READING NOTE
 with the app's TTS (window.mdpTts): the narrator is picked automatically from the line's
 language, or named explicitly. While speaking, the words being read are highlighted in
 place (word-by-word for Web Speech; an approximate progressive fill for VOICEVOX).
-Requires an MDP build that exposes window.mdpTts; the buttons are inert (no crash) on
-older builds.
+The speaker settings need an MDP build with window.mdpTts.speakerOptions; an older build
+reads each line by its language only.
 
 Block module: 1–3 body sections split by `<!-- @ -->`:
   section 1 — the main sentence (Markdown; e.g. the English sentence)
@@ -20,19 +20,42 @@ Block module: 1–3 body sections split by `<!-- @ -->`:
 To flip the direction (Japanese main, English sub) just swap the texts AND set
 mainlang: ja-JP, sublang: en-US.
 
-Parameters:
+Parameters (each line — main… and sub… — has its own speaker):
   • mainlang (text, default en-US) — language of the main sentence (BCP-47; drives narrator pick).
-  • sublang (text, default ja-JP) — language of the sub line.
+  • mainengine (auto | webspeech | server | voicevox, default auto) — who reads the main line:
+    auto = the app's narrator for that language (Web Speech for a language it cannot speak);
+    webspeech = a browser/OS narrator; server = the TTS server set in the app (OpenAI-compatible:
+    Irodori-TTS, OpenAI, Kokoro…); voicevox = the local VOICEVOX engine.
+  • mainvoice (text, default '') — the voice for that engine: a Web Speech narrator name
+    (substring ok, e.g. Zira; with auto it implies Web Speech), the TTS server's voice id, or a
+    VOICEVOX style id (a number). Blank = that engine's default from the app's settings.
+    `@name` = a voice preset saved in the app (engine + voice + prompt + options in one name,
+    made with ⚙ → Save as preset); it overrides mainengine. A computer without that preset
+    reads the line by its language. Use presets only when the author has them.
+  • mainprompt (text, default '') — engine server only: how to speak (Irodori's voice
+    description / OpenAI's instructions). Blank = the app's setting.
+  • mainextra (text, default '') — engine server only: the TTS server's own options as
+    name=value pairs, e.g. Chatterbox `mainextra: "cfg_weight=0.3, exaggeration=0.7"`
+    (cfg_weight = how much of the reference voice's accent stays; 0 removes it). A value
+    containing , or ; goes in single quotes. Only options that server takes are sent; its
+    language option is filled from mainlang unless set here. Blank = the app's setting.
+  • mainpitch / mainintonation / mainvolume (number, default blank) — engine voicevox only:
+    pitchScale (-0.15–0.15), intonationScale (0–2), volumeScale (0–2). Blank = VOICEVOX's own.
+  • sublang (text, default ja-JP), subengine, subvoice, subprompt, subextra, subpitch,
+    subintonation, subvolume — the same for the sub line.
   • subspeak (boolean, default false) — also give the sub line a speak button
     (default: only the main sentence is speakable).
-  • mainvoice (text, default '') — narrator for the main line by name, substring ok (e.g. Zira).
-  • subvoice (text, default '') — narrator for the sub line (Web Speech name).
-  • speaker (number, default -1) — VOICEVOX style id used for whichever line is Japanese
-    (-1 = don't use VOICEVOX; falls back to Web Speech automatically if the engine is down).
+  • speaker (number, default -1) — older form: VOICEVOX style id for whichever line is Japanese
+    while its engine is auto (-1 = not used). Prefer subengine: voicevox, subvoice: <id>.
   • rate (number, default 1) — speaking rate for both lines (0.5–2; slower for learners).
+  • fallback (auto | webspeech | none, default auto) — when the chosen engine cannot speak (not
+    running, not set up, an unknown voice): auto = the app's narrator if it is another engine that
+    speaks the language, then Web Speech; webspeech = straight to Web Speech; none = stay silent.
+    The ▶ button's tooltip then says what happened.
   • highlight (boolean, default true) — highlight the words as they are spoken.
   • size (select sm|md|lg, default md) — overall text scale.
   • color (color, default var(--accent-color)) — speak-button and reading-note color.
+A value with a comma or a double quote (a prompt) goes in double quotes, inner " escaped as \".
 
 The card itself is UNDECORATED (no frame/background) — wrap it in @callout, @bubble,
 @infobox etc. when a framed look is wanted.
@@ -54,17 +77,44 @@ Water **boils** at 100 °C at atmospheric pressure.
 <!-- @ -->
 100 °C = *one hundred degrees Celsius*
 <!-- @end -->
+
+Example — English by the TTS server, the translation by VOICEVOX:
+<!-- @speakcard mainengine: server, mainvoice: alloy, mainprompt: "Calm, clear lecturer voice", subspeak: true, subengine: voicevox, subvoice: 3, subintonation: 1.2 -->
+This paper proposes a new compression method.
+<!-- @ -->
+本論文では新しい圧縮手法を提案する．
+<!-- @end -->
+
+Example — a Chatterbox server with the speaker's own (Japanese-accented) voice, accent reduced:
+<!-- @speakcard mainengine: server, mainvoice: my-voice, mainextra: "cfg_weight=0.2" -->
+The results are summarized in Table 2.
+<!-- @ -->
+結果を表 2 にまとめる．
+<!-- @end -->
 ]]></aiSpec>
   <interactive>true</interactive>
 
   <parameters>
     <param name="mainlang" type="text" default="en-US" label="Main language" desc="BCP-47 language of the main sentence (picks the narrator), e.g. en-US, ja-JP." />
+    <param name="mainengine" type="select" default="auto" label="Main speaker: engine" options="auto:Auto (by language / the app's narrator),webspeech:Web Speech (browser),server:TTS server,voicevox:VOICEVOX" desc="Who reads the main line. Auto = the app's narrator for the language." />
+    <param name="mainvoice" type="voice" engine="mainengine" lang="mainlang" default="" label="Main speaker: voice" desc="Web Speech narrator name, the TTS server's voice id, a VOICEVOX style id, or @name for a saved preset — pick from the list or type. Blank = the engine's default." />
+    <param name="mainprompt" type="text" multiline="true" default="" showif="mainengine:server|openai|tts|irodori" label="Main speaker: prompt" desc="How the TTS server should speak (Irodori: voice description; OpenAI-type servers: instructions). Blank = the app's setting." />
+    <param name="mainextra" type="speechoptions" engine="mainengine" lang="mainlang" default="" showif="mainengine:server|openai|tts|irodori" label="Main speaker: server options" desc="The TTS server's own options (e.g. Chatterbox's accent cfg_weight, exaggeration), written name=value, … — only those the server takes are sent. Blank = the app's setting." />
+    <param name="mainpitch" type="number" default="" min="-0.15" max="0.15" step="0.01" showif="mainengine:voicevox" label="Main speaker: pitch" desc="VOICEVOX pitchScale (-0.15 to 0.15). Blank = VOICEVOX's own." />
+    <param name="mainintonation" type="number" default="" min="0" max="2" step="0.1" showif="mainengine:voicevox" label="Main speaker: intonation" desc="VOICEVOX intonationScale (0 to 2). Blank = VOICEVOX's own." />
+    <param name="mainvolume" type="number" default="" min="0" max="2" step="0.1" showif="mainengine:voicevox" label="Main speaker: volume" desc="VOICEVOX volumeScale (0 to 2). Blank = VOICEVOX's own." />
     <param name="sublang" type="text" default="ja-JP" label="Sub language" desc="BCP-47 language of the sub (translation) line." />
     <param name="subspeak" type="boolean" default="false" label="Sub speakable" desc="Also give the sub (translation) line a speak button." />
-    <param name="mainvoice" type="text" default="" label="Main narrator" desc="Web Speech narrator for the main line, by name (substring ok, e.g. Zira). Blank = auto by language." />
-    <param name="subvoice" type="text" default="" label="Sub narrator" desc="Web Speech narrator for the sub line. Blank = auto by language." />
-    <param name="speaker" type="number" default="-1" label="VOICEVOX speaker" desc="VOICEVOX style id for the Japanese line (-1 = use Web Speech)." min="-1" max="9999" integer="true" />
+    <param name="subengine" type="select" default="auto" label="Sub speaker: engine" options="auto:Auto (by language / the app's narrator),webspeech:Web Speech (browser),server:TTS server,voicevox:VOICEVOX" desc="Who reads the sub line. Auto = the app's narrator for the language." />
+    <param name="subvoice" type="voice" engine="subengine" lang="sublang" default="" label="Sub speaker: voice" desc="Web Speech narrator name, the TTS server's voice id, a VOICEVOX style id, or @name for a saved preset. Blank = the engine's default." />
+    <param name="subprompt" type="text" multiline="true" default="" showif="subengine:server|openai|tts|irodori" label="Sub speaker: prompt" desc="How the TTS server should speak. Blank = the app's setting." />
+    <param name="subextra" type="speechoptions" engine="subengine" lang="sublang" default="" showif="subengine:server|openai|tts|irodori" label="Sub speaker: server options" desc="The TTS server's own options, written name=value, … — only those the server takes are sent. Blank = the app's setting." />
+    <param name="subpitch" type="number" default="" min="-0.15" max="0.15" step="0.01" showif="subengine:voicevox" label="Sub speaker: pitch" desc="VOICEVOX pitchScale (-0.15 to 0.15). Blank = VOICEVOX's own." />
+    <param name="subintonation" type="number" default="" min="0" max="2" step="0.1" showif="subengine:voicevox" label="Sub speaker: intonation" desc="VOICEVOX intonationScale (0 to 2). Blank = VOICEVOX's own." />
+    <param name="subvolume" type="number" default="" min="0" max="2" step="0.1" showif="subengine:voicevox" label="Sub speaker: volume" desc="VOICEVOX volumeScale (0 to 2). Blank = VOICEVOX's own." />
+    <param name="speaker" type="number" default="-1" label="VOICEVOX speaker (older form)" desc="VOICEVOX style id for a Japanese line whose engine is Auto (-1 = not used). Prefer Sub speaker: engine = VOICEVOX." min="-1" max="9999" integer="true" />
     <param name="rate" type="number" default="1" label="Rate" desc="Speaking rate for both lines (0.5-2)." min="0.1" max="3" />
+    <param name="fallback" type="select" default="auto" label="If the engine cannot speak" options="auto:The app's narrator then Web Speech,webspeech:Web Speech,none:Stay silent" desc="Used when the chosen engine is not running, not set up, or lacks the voice. The ▶ tooltip says what happened." />
     <param name="highlight" type="boolean" default="true" label="Read-along highlight" desc="Highlight the words as they are spoken." />
     <param name="size" type="select" default="md" label="Size" options="sm:Small,md:Medium,lg:Large" desc="Overall text scale of the card." />
     <param name="color" type="color" default="var(--accent-color)" label="Accent color" desc="Speak-button and reading-note color." />
@@ -103,6 +153,16 @@ This paper proposes a new compression method.
 <!-- @end -->]]></text>
       <description>Japanese line spoken by VOICEVOX style id 3 (falls back to Web Speech if the engine is not running).</description>
     </snippet>
+    <snippet>
+      <category>Education</category>
+      <label>Speak card (TTS server + VOICEVOX)</label>
+      <text><![CDATA[<!-- @speakcard mainengine: server, mainprompt: "Calm, clear lecturer voice", subspeak: true, subengine: voicevox, subvoice: 3 -->
+This paper proposes a new compression method.
+<!-- @ -->
+本論文では新しい圧縮手法を提案する．
+<!-- @end -->]]></text>
+      <description>English read by the TTS server set in the app (voice + prompt), the translation by VOICEVOX; pick the voices with the ⚙ button.</description>
+    </snippet>
   </snippets>
 
   <render><![CDATA[
@@ -123,7 +183,16 @@ This paper proposes a new compression method.
       + ' data-mainvoice="' + esc(args.mainvoice || '') + '"'
       + ' data-subvoice="' + esc(args.subvoice || '') + '"'
       + ' data-speaker="' + (isNaN(speaker) ? -1 : speaker) + '"'
-      + ' data-rate="' + (isNaN(rate) ? '' : rate) + '">';
+      + ' data-rate="' + (isNaN(rate) ? '' : rate) + '"'
+      + ' data-fallback="' + esc(args.fallback || 'auto') + '"';
+    // Each line's speaker: engine, voice (above), prompt, the server's options, VOICEVOX shaping.
+    ['main', 'sub'].forEach((k) => {
+      ['engine', 'prompt', 'extra', 'pitch', 'intonation', 'volume'].forEach((f) => {
+        const v = args[k + f];
+        if (v != null && String(v).trim() !== '') html += ' data-' + k + f + '="' + esc(String(v).trim()) + '"';
+      });
+    });
+    html += '>';
     html += '<div class="speakcard-row speakcard-main">' + btn('main') + '<div class="speakcard-text">\n\n' + main + '\n\n</div></div>';
     const subspeak = String(args.subspeak) === 'true';
     if (sub) {
@@ -204,7 +273,6 @@ This paper proposes a new compression method.
           } catch (e) { /* ignore */ }
         };
         dbg('init');
-        const rate = parseFloat(el.dataset.rate);
 
         // Read-along highlight via the CSS Custom Highlight API — colors a Range
         // without mutating the rendered DOM. One highlight name per window is
@@ -252,6 +320,9 @@ This paper proposes a new compression method.
             const on = st.playing === kind;
             btn.classList.toggle('mdp-speak-playing', on);
             btn.innerHTML = on ? '&#9632;' : '&#9654;';
+            // A fallback (the chosen engine could not speak) is told in the tooltip
+            // only — nothing on the projected slide changes.
+            btn.title = (st.note && st.noteKind === kind) ? 'Speak — ' + st.note : 'Speak';
           });
           if (st.playing && st.prog) {
             const tEl = textElOf(st.playing);
@@ -309,16 +380,15 @@ This paper proposes a new compression method.
           // audio plays but ■ flips back, no highlight, narration talks over).
           const REG = window.__mdpSpeakReg || (window.__mdpSpeakReg = {});
           const key = ctx.syncId;
-          const optsFor = function (kind) {
-            const lang = (kind === 'main' ? el.dataset.mainlang : el.dataset.sublang) || '';
-            const voice = (kind === 'main' ? el.dataset.mainvoice : el.dataset.subvoice) || '';
-            const speaker = parseInt(el.dataset.speaker, 10);
-            const o = {};
-            if (!isNaN(rate) && rate > 0) o.rate = rate;
-            if (lang) o.lang = lang;
-            if (/^ja/i.test(lang) && speaker >= 0) o.speaker = speaker;
-            else if (voice) o.voice = voice;
-            return o;
+          // The line's speaker as the deck wrote it; the app turns it into speak()
+          // options (window.mdpTts.speakerOptions — one mapping for every module).
+          const speakerOf = function (kind) {
+            const d = el.dataset;
+            return {
+              engine: d[kind + 'engine'], voice: d[kind + 'voice'], prompt: d[kind + 'prompt'], extra: d[kind + 'extra'],
+              pitch: d[kind + 'pitch'], intonation: d[kind + 'intonation'], volume: d[kind + 'volume'],
+              lang: d[kind + 'lang'], rate: d.rate, fallback: d.fallback, speaker: d.speaker,
+            };
           };
           // Stop whichever instance's utterance is active for this card.
           // answer=true also answers its pending narration reply (explicit
@@ -340,10 +410,18 @@ This paper proposes a new compression method.
             stopNow(false);
             const text = (tEl.textContent || '').trim();
             if (!text) { if (typeof onDone === 'function') onDone(); return; }
-            const o = optsFor(kind);
+            const spec = speakerOf(kind);
+            // An MDP build without speakerOptions reads the line by its language only.
+            const o = typeof tts.speakerOptions === 'function' ? tts.speakerOptions(spec) : { lang: spec.lang };
             o.onProgress = function (p) {
               if (typeof p.charIndex === 'number') ctx.setShared({ prog: { ci: p.charIndex, cl: p.charLength } });
               else if (typeof p.fraction === 'number') ctx.setShared({ prog: { f: p.fraction } });
+            };
+            // When the chosen engine could not speak, the app says what it did instead.
+            o.onEngine = function (info) {
+              if (!info.fallback) { ctx.setShared({ note: '', noteKind: null }); return; }
+              console.warn('[speakcard] ' + info.message);
+              ctx.setShared({ note: info.message || '', noteKind: kind });
             };
             const u = tts.speak(text, o);
             const entry = { u: u, onDone: onDone, by: ctx.id };

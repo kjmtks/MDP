@@ -85,7 +85,7 @@ export const AutoPlayView: React.FC<{
    *  being edited (an index into `slides`). */
   startSlide?: number;
 }> = ({ open, onClose, slides, slideSize, basePath, globalTransition, exportMode, startSlide }) => {
-  const { settings, update } = useAppSettings();
+  const { settings, updateTts } = useAppSettings();
   // Human reading speed → only the script-less dwell.
   const cpm = exportMode?.cpm ?? (settings.readingCharsPerMin || 320);
   const slideRaws = useMemo(() => slides.map((s) => s.raw), [slides]);   // what to read when recording a voice
@@ -93,7 +93,7 @@ export const AutoPlayView: React.FC<{
   // the human reading speed — a synthetic narrator can run faster/slower than a person.
   const exportTts = exportMode?.tts;
   const ttsCfg = useMemo(() => ({ ...(exportTts ?? settings.tts) }), [exportTts, settings.tts]);
-  const patchTts = (p: Partial<typeof settings.tts>) => update({ tts: { ...settings.tts, ...p } });
+  const patchTts = updateTts;
   // Pre-generate the whole show before starting it? Only meaningful for engines
   // that return audio (VOICEVOX / a TTS server): Web Speech exposes no audio data — it
   // synthesizes while it speaks, so there is nothing to prepare in advance. An
