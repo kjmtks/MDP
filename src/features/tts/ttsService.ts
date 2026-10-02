@@ -13,7 +13,6 @@
 // VOICEVOX and the TTS server return AUDIO DATA, so their clips can be prefetched and
 // pre-generated; Web Speech only speaks live. Config is persisted in app settings.
 
-import { dropVoiceCopy, keepVoiceCopy } from './voiceCopyStore';
 import {
   NO_DESCRIPTION, describeFromHealth, describeFromProfile, matchProfile, optionsFromOpenApi, reportedLanguages,
   speechRequestBody, type SpeechServerDescription,
@@ -950,9 +949,6 @@ export async function saveIrodoriVoice(server: SpeechServer, voiceId: string, wa
     : await speechHttp(server, '/v1/audio/voices', { upload: { ...upload, voiceId } });
   if (!replace && r.status === 409) return 'exists';
   if (r.status !== 200 && r.status !== 201) throw new Error(speechError(r));
-  // The server never gives the audio back: keep a copy here, so the voice can be
-  // renamed later (voiceRename.ts). A copy that cannot be kept costs only that.
-  await keepVoiceCopy(speechProfileKey(server), voiceId, wav).catch(() => { /* no local storage */ });
   return 'saved';
 }
 
@@ -962,7 +958,6 @@ export async function deleteIrodoriVoice(server: SpeechServer, voiceId: string):
   if (!IRODORI_VOICE_ID.test(voiceId)) throw new Error('A voice name may only contain letters, digits, - and _.');
   const r = await speechHttp(server, `/v1/audio/voices/${voiceId}`, { method: 'DELETE' });
   if (r.status !== 200) throw new Error(speechError(r));
-  await dropVoiceCopy(speechProfileKey(server), voiceId).catch(() => { /* none kept */ });
 }
 
 // Whether the model Irodori has loaded USES a reference voice. Some checkpoints

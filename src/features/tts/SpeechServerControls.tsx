@@ -13,9 +13,6 @@ import {
 import { VoiceCalibrationDialog } from './VoiceCalibrationDialog';
 import { SpeechOptionsFields } from './SpeechOptionsFields';
 import { flattenOptions, nestOptions } from './speechOptions';
-import { renameProblem, renameServerVoice } from './voiceRename';
-import { decodeAudioFile } from './micInput';
-import { encodeWav, referenceFromFile } from './voiceAudio';
 
 type Tts = AppSettings['tts'];
 
@@ -339,34 +336,6 @@ export const SpeechServerControls: React.FC<{
     ).finally(() => setRemoving(false));
   };
 
-  // Renaming the chosen voice: the same audio registered under the new name, then
-  // the old name removed (voiceRename.ts). `exists`: the new name is taken (asks
-  // before replacing); `no-audio`: this computer has no copy (asks for the file).
-  const [rename, setRename] = useState<{ to: string; phase: 'edit' | 'exists' | 'no-audio'; audio?: Uint8Array } | null>(null);
-  const [renaming, setRenaming] = useState(false);
-  const [renameError, setRenameError] = useState('');
-  const renameFileRef = useRef<HTMLInputElement | null>(null);
-  const doRename = (from: string, to: string, replace: boolean, audio?: Uint8Array) => {
-    if (!to || to === from || renameProblem(from, to) || renaming) return;
-    setRenaming(true); setRenameError('');
-    renameServerVoice(server, from, to, { replace, audio }).then((res) => {
-      if (res !== 'renamed') { setRename({ to, phase: res, audio }); return; }
-      setRename(null);
-      load(() => choose({ openaiVoice: to }));
-    }, (e: unknown) => setRenameError(e instanceof Error ? e.message : String(e)))
-      .finally(() => setRenaming(false));
-  };
-  const renameFromFile = async (from: string, to: string, f: File) => {
-    setRenameError('');
-    try {
-      const r = referenceFromFile(await decodeAudioFile(await f.arrayBuffer()));
-      if (!r) throw new Error('No speech was found in this file.');
-      doRename(from, to, false, encodeWav(r.ref));
-    } catch (e) {
-      setRenameError(e instanceof Error ? e.message : String(e));
-    }
-  };
-
   // Irodori's '' means 'none' (no reference voice). On another server with a voice
   // registry '' is the server's own default voice — the request names OpenAI's
   // 'alloy', which kjai01's Chatterbox takes as its default — and is offered as such.
@@ -613,7 +582,7 @@ export const SpeechServerControls: React.FC<{
         <TextField select size="small" label="Voice" value={defaultChoice && !voice ? SERVER_DEFAULT : voice}
           onChange={(e) => {
             const id = String(e.target.value);
-            choose({ openaiVoice: id === SERVER_DEFAULT ? '' : id }); setConfirmRemove(false); setRemoveError(''); setRename(null); setRenameError('');
+            choose({ openaiVoice: id === SERVER_DEFAULT ? '' : id }); setConfirmRemove(false); setRemoveError('');
           }}>
           {options.map((id) => (
             <MenuItem key={id} value={id}>
@@ -656,7 +625,7 @@ export const SpeechServerControls: React.FC<{
               </>
             )}
             <span style={{ flex: 1 }} />
-            {!noRef && voices?.includes(voice) && !rename && (confirmRemove ? (
+            {!noRef && voices?.includes(voice) && (confirmRemove ? (
               <>
                 <span style={{ fontSize: 12, color: warn }}>Remove “{voice}” from the server? Anyone else using it loses it too.</span>
                 <Button size="small" color="error" sx={btn} disabled={removing} onClick={() => remove(voice)}>
@@ -665,58 +634,10 @@ export const SpeechServerControls: React.FC<{
                 <Button size="small" sx={btn} disabled={removing} onClick={() => setConfirmRemove(false)}>Keep</Button>
               </>
             ) : (
-              <>
-                <Button size="small" sx={{ ...btn, color: muted }} onClick={() => { setRename({ to: voice, phase: 'edit' }); setRenameError(''); }}>Rename…</Button>
-                <Button size="small" sx={{ ...btn, color: muted }} onClick={() => setConfirmRemove(true)}>Remove this voice…</Button>
-              </>
+              <Button size="small" sx={{ ...btn, color: muted }} onClick={() => setConfirmRemove(true)}>Remove this voice…</Button>
             ))}
           </div>
           {removeError && <div style={{ fontSize: 12, color: '#f87171', marginTop: -4 }}>{removeError}</div>}
-          {rename && !noRef && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: -2 }}>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                <TextField size="small" label={`Rename “${voice}” to`} value={rename.to} autoFocus sx={{ width: 220 }} disabled={renaming}
-                  onChange={(e) => setRename({ to: e.target.value.trim(), phase: 'edit' })}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && rename.phase === 'edit') doRename(voice, rename.to, false);
-                    if (e.key === 'Escape') setRename(null);
-                  }}
-                  error={!!renameProblem(voice, rename.to)} helperText={renameProblem(voice, rename.to) || undefined} />
-                {rename.phase === 'exists' ? (
-                  <>
-                    <span style={{ fontSize: 12, color: warn }}>“{rename.to}” already exists on the server.</span>
-                    <Button size="small" variant="contained" color="warning" sx={btn} disabled={renaming}
-                      onClick={() => doRename(voice, rename.to, true, rename.audio)}>Replace it</Button>
-                  </>
-                ) : rename.phase === 'edit' && (
-                  <Button size="small" variant="contained" sx={btn}
-                    disabled={renaming || !rename.to || rename.to === voice || !!renameProblem(voice, rename.to)}
-                    onClick={() => doRename(voice, rename.to, false)}>
-                    {renaming ? <CircularProgress size={14} /> : 'Rename'}
-                  </Button>
-                )}
-                <Button size="small" sx={btn} disabled={renaming} onClick={() => { setRename(null); setRenameError(''); }}>Cancel</Button>
-              </div>
-              {rename.phase === 'no-audio' ? (
-                <div style={{ fontSize: 12, color: warn, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                  <span>
-                    The server never gives a voice’s audio back, and this computer has no copy of “{voice}” (it was
-                    registered from elsewhere, or before MDP kept copies). Choose its audio file to register it as “{rename.to}”:
-                  </span>
-                  <Button size="small" variant="outlined" sx={btn} disabled={renaming} onClick={() => renameFileRef.current?.click()}>
-                    {renaming ? <CircularProgress size={14} /> : 'Choose the audio file…'}
-                  </Button>
-                </div>
-              ) : (
-                <div style={{ fontSize: 12, color: muted }}>
-                  The server has no rename: the same audio is registered under the new name, then “{voice}” is removed — anyone else using “{voice}” loses it.
-                </div>
-              )}
-              <input ref={renameFileRef} type="file" accept="audio/*,.wav,.mp3,.flac,.ogg,.m4a" style={{ display: 'none' }}
-                onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void renameFromFile(voice, rename.to, f); }} />
-              {renameError && <div style={{ fontSize: 12, color: '#f87171' }}>{renameError}</div>}
-            </div>
-          )}
           {calibrate && (
             <VoiceCalibrationDialog mode={calibrate} tts={tts} slideRaws={slideRaws || []}
               onClose={() => setCalibrate(null)} onRegistered={onRegistered} />

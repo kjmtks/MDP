@@ -34,6 +34,12 @@ import { installMdpBus } from './features/bus/mdpBus';
 // rate, … }). Defaults are kept in sync from AppSettingsContext.
 installModuleTtsApi();
 
+// 1.4.33 kept a copy of every voice it registered on a TTS server (IndexedDB
+// 'mdp-voice-copies') so the voice could be renamed. Renaming was dropped — the
+// voice API has no rename and never returns a voice's audio — so the copies go.
+// Remove this once no install is still on 1.4.33.
+try { indexedDB.deleteDatabase('mdp-voice-copies'); } catch { /* no local storage */ }
+
 // Expose the app-wide event bus as `window.mdpBus` — modules, the narration
 // engine and app surfaces exchange addressable events through it (see
 // features/bus/mdpBus.ts for topics and conventions).
