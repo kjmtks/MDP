@@ -532,6 +532,8 @@ async function scopeChain(baseDir, deckArg) {
 }
 
 // Directives that are part of the slide format itself (not module invocations).
+// `tags` (deck tags — no longer a feature) stays so older decks that still carry one
+// are not reported as using an unknown module.
 const BUILTIN_DIRECTIVES = new Set([
   'title', 'subtitle', 'date', 'presenter', 'affiliation', 'contact', 'tags',
   'aspect', 'theme', 'css', 'transition', 'build', 'header', 'footer', 'end',
@@ -625,6 +627,31 @@ function slideSecondsFromRaw(raw, cpm) {
   return Math.round(TT.BASE + bullets * TT.BULLET + visuals * TT.VISUAL + (body / cps) * TT.BODY_W);
 }
 
+// A slide's heading and visible text for search_decks — mirrors the app's
+// src/features/search/contentClean.ts: speaker notes, scripts and every other
+// directive (HTML comments) are not searched; a @caption is shown, so its text is.
+function slideSearchText(raw) {
+  const visible = String(raw || '')
+    .replace(/<!--\s*@image\s[^>]*?-->[\s\S]*?<!--\s*@end\s*-->/g, ' ')
+    .replace(/data:[a-zA-Z0-9+./-]+;base64,[A-Za-z0-9+/=]+/g, ' ')
+    .replace(/<svg[\s\S]*?<\/svg>/gi, ' ')
+    .replace(/<!--\s*@caption\s+([\s\S]*?)\s*-->/gi, (_m, c) => `\n${c || ''}\n`)
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/<\/?[a-zA-Z][^>]*>/g, ' ')
+    .replace(/^[ \t]*```.*$/gm, ' ')
+    .replace(/^[ \t]*(?:[-*+]|\d+[.)])[ \t]+/gm, '')
+    .replace(/^[ \t]*>[ \t]?/gm, '')
+    .replace(/^[ \t|:-]*-{3,}[ \t|:-]*$/gm, ' ')
+    .replace(/\*\*|__|~~|`/g, '')
+    .replace(/\|/g, ' ');
+  const m = visible.match(/^[ \t]{0,3}#{1,6}[ \t]+(.+?)[ \t]*#*[ \t]*$/m);
+  const squash = (s) => s.replace(/\s+/g, ' ').trim().normalize('NFKC');
+  const rest = m ? visible.slice(0, m.index) + visible.slice(m.index + m[0].length) : visible;
+  return { heading: squash(m ? m[1] : ''), text: squash(rest) };
+}
+
 // Low-token per-slide structure summary (heading, bullets, modules, notes, volume).
 function outlineDeck(text, cpm) {
   const blocks = splitBlocks(text);
@@ -669,7 +696,6 @@ function outlineDeck(text, cpm) {
     title: metaField(meta, 'title') || undefined,
     subtitle: metaField(meta, 'subtitle') || undefined,
     theme: metaField(meta, 'theme') || undefined,
-    tags: metaField(meta, 'tags') ? metaField(meta, 'tags').split(/[,;]/).map((t) => t.trim()).filter(Boolean) : undefined,
     slideCount: slides.length,
     estimatedMinutes: Math.round((totalSeconds / 60) * 10) / 10,
     slides,
@@ -1262,9 +1288,11 @@ async function callToolInner(method, p, baseDir) {
     }
 
     case 'search_decks': {
-      const query = String(p.query || '').toLowerCase();
-      const wantTags = Array.isArray(p.tags) ? p.tags.map((t) => String(t).toLowerCase()) : [];
-      if (!query && !wantTags.length) throw new Error('Provide "query" and/or "tags".');
+      // Slide by slide, like the app's search (src/features/search): the deck's
+      // title/subtitle and each slide's heading and visible text — never speaker notes
+      // or scripts. Terms are AND-ed; a term may also be met by the deck's title.
+      const terms = String(p.query || '').normalize('NFKC').toLowerCase().split(/\s+/).filter(Boolean);
+      if (!terms.length) throw new Error('Provide "query".');
       const tree = await vtree(baseDir);
       const decks = [];
       (function walk(nodes) {
@@ -1277,23 +1305,36 @@ async function callToolInner(method, p, baseDir) {
       for (const deckPath of decks.slice(0, 300)) {
         let text;
         try { text = await mdplink.vfsReadText(vres(baseDir, deckPath)); } catch { continue; }
-        const meta = splitBlocks(text)[0] || '';
+        const blocks = splitBlocks(text);
+        const meta = blocks[0] || '';
         const title = metaField(meta, 'title');
         const subtitle = metaField(meta, 'subtitle');
-        const tags = metaField(meta, 'tags').split(/[,;]/).map((t) => t.trim()).filter(Boolean);
-        if (wantTags.length && !wantTags.every((t) => tags.some((x) => x.toLowerCase() === t))) continue;
-        let score = wantTags.length ? 2 : 0;
-        let matchedIn;
-        if (query) {
-          const lower = text.toLowerCase();
-          if (title.toLowerCase().includes(query)) { score += 3; matchedIn = 'title'; }
-          else if (tags.some((t) => t.toLowerCase().includes(query))) { score += 2; matchedIn = 'tags'; }
-          else if (subtitle.toLowerCase().includes(query)) { score += 2; matchedIn = 'subtitle'; }
-          else if (lower.includes(query)) {
-            score += 1; matchedIn = 'body';
-          } else continue;
-        }
-        results.push({ path: deckPath, title: title || undefined, tags: tags.length ? tags : undefined, matchedIn, score });
+        const deckNorm = `${title}\n${subtitle}`.normalize('NFKC').toLowerCase();
+        const titleMatch = terms.every((t) => deckNorm.includes(t));
+        const slides = [];
+        let best = 0;
+        blocks.slice(1).forEach((raw, i) => {
+          const { heading, text: body } = slideSearchText(raw);
+          const h = heading.toLowerCase();
+          const b = body.toLowerCase();
+          let score = 0;
+          for (const t of terms) {
+            if (h.includes(t)) score += 30;
+            else if (b.includes(t)) score += 10;
+            else if (!deckNorm.includes(t)) return;
+          }
+          if (!score) return;
+          best = Math.max(best, score);
+          const at = terms.map((t) => b.indexOf(t)).filter((x) => x >= 0).sort((x, y) => x - y)[0];
+          const snippet = at === undefined ? '' : `${at > 40 ? '…' : ''}${body.slice(Math.max(0, at - 40), at + 60)}${at + 60 < body.length ? '…' : ''}`;
+          slides.push({ slide: i + 1, ...(heading ? { heading } : {}), ...(snippet ? { snippet } : {}) });
+        });
+        if (!slides.length && !titleMatch) continue;
+        results.push({
+          path: deckPath, title: title || undefined, ...(titleMatch ? { titleMatch: true } : {}),
+          slideCount: slides.length, slides: slides.slice(0, 8),
+          score: best + (titleMatch ? 20 : 0) + Math.min(slides.length, 10),
+        });
       }
       results.sort((a, b) => b.score - a.score);
       return { results: results.slice(0, 20).map(({ score, ...r }) => r) };

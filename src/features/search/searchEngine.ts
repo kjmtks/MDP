@@ -1,137 +1,112 @@
-// Pure, React-free deck search. Matching is case-insensitive substring over
-// NFKC-normalised fields (so Japanese / full-width text matches without a
-// tokenizer; a bigram index is a possible future refinement). Terms are AND-ed;
-// a term may match in any field. Tag filters are AND-ed and matched exactly.
+// Pure, React-free slide search over the workspace deck index. Matching is
+// case-insensitive substring over NFKC-normalised text (so Japanese / full-width
+// text matches without a tokenizer). Terms are AND-ed.
+//
+// A slide is a hit when every term is found in it — its heading or visible text —
+// or in its deck's title/subtitle, and at least one term in the slide itself (so
+// "BRONZE 予測" finds the slides about 予測 in the BRONZE deck). A deck whose
+// title/subtitle hold every term is listed even without a matching slide. What is
+// searched is what the audience sees: speaker notes and scripts are not indexed
+// (contentClean.ts).
 
 import type { DeckIndexEntry } from './deckIndexStore';
+import type { SlideText } from './contentClean';
 
 export interface Highlight { start: number; end: number; }
 export interface Snippet { text: string; highlights: Highlight[]; }
-export interface SearchResult {
-  entry: DeckIndexEntry;
+
+export interface SlideHit {
+  slide: SlideText;
   score: number;
-  snippet?: Snippet;
-  matchedSlideIndex?: number;
+  heading: Snippet;     // the slide's heading, its matches marked
+  snippet?: Snippet;    // around the first match in its text
 }
 
-export interface ParsedQuery { terms: string[]; tagFilters: string[]; }
+export interface DeckResult {
+  entry: DeckIndexEntry;
+  score: number;
+  titleMatch: boolean;  // every term is in the deck's title/subtitle
+  hits: SlideHit[];     // in slide order
+}
 
 const normalize = (s: string): string => (s || '').normalize('NFKC').toLowerCase();
 
-// Field weights: a hit in the title counts most, then tags, subtitle, body.
-const W_TITLE = 100;
-const W_TAGS = 60;
-const W_SUBTITLE = 40;
-const W_BODY = 10;
-const BONUS_PREFIX = 20;   // term is a prefix of the title
-const BONUS_EXACT_TAG = 20; // term exactly equals a tag
+// A hit in a slide's heading counts more than one in its text; a deck whose title
+// holds the query, or with many matching slides, ranks a little higher.
+const W_HEADING = 30;
+const W_TEXT = 10;
+const W_TITLE = 20;
 const SNIPPET_RADIUS = 40;
 
-/** Split a raw query into terms + inline `tag:foo` filters (single-word tags only;
- *  multi-word tags are filtered via the separate tagFilters argument to searchDecks). */
-export const parseQuery = (raw: string): ParsedQuery => {
-  const terms: string[] = [];
-  const tagFilters: string[] = [];
-  const normalized = normalize(raw).trim();
-  if (!normalized) return { terms, tagFilters };
-  for (const tok of normalized.split(/\s+/)) {
-    if (!tok) continue;
-    if (tok.startsWith('tag:') && tok.length > 4) tagFilters.push(tok.slice(4));
-    else terms.push(tok);
-  }
-  return { terms, tagFilters };
-};
+/** The query's terms (NFKC, lowercase, whitespace-separated). */
+export const parseQuery = (raw: string): string[] => normalize(raw).split(/\s+/).filter(Boolean);
 
-/** Score an entry against the terms (AND). Returns null if any term matches nothing. */
-const scoreEntry = (entry: DeckIndexEntry, terms: string[]): number | null => {
-  if (terms.length === 0) return 0;
-  let score = 0;
-  for (const term of terms) {
-    let best = 0;
-    if (entry.titleNorm.includes(term)) {
-      best = Math.max(best, W_TITLE + (entry.titleNorm.startsWith(term) ? BONUS_PREFIX : 0));
-    }
-    if (entry.tagsNorm.some((t) => t.includes(term))) {
-      best = Math.max(best, W_TAGS + (entry.tagsNorm.some((t) => t === term) ? BONUS_EXACT_TAG : 0));
-    }
-    if (entry.subtitleNorm.includes(term)) best = Math.max(best, W_SUBTITLE);
-    if (entry.bodyText.includes(term)) best = Math.max(best, W_BODY);
-    if (best === 0) return null; // AND: this term hit no field → drop the deck
-    score += best;
-  }
-  return score;
-};
-
-/** Build a body snippet around the earliest body match, with highlight ranges for
- *  every term, plus the slide index that match falls in. */
-const buildSnippet = (
-  entry: DeckIndexEntry,
-  terms: string[],
-): { snippet?: Snippet; matchedSlideIndex?: number } => {
-  const { bodyText, bodyDisplay, slideOffsets } = entry;
-  let firstPos = -1;
-  let firstLen = 0;
-  for (const t of terms) {
-    const p = bodyText.indexOf(t);
-    if (p !== -1 && (firstPos === -1 || p < firstPos)) { firstPos = p; firstLen = t.length; }
-  }
-  if (firstPos === -1) return {};
-
-  const from = Math.max(0, firstPos - SNIPPET_RADIUS);
-  const to = Math.min(bodyDisplay.length, firstPos + firstLen + SNIPPET_RADIUS);
-  const lead = from > 0 ? '…' : '';
-  const trail = to < bodyDisplay.length ? '…' : '';
-  // newline → space is length-preserving, so offsets in `window` map onto `core`.
-  const core = bodyDisplay.slice(from, to).replace(/\s+/g, ' ');
-  const window = bodyText.slice(from, to);
-
+// Every occurrence of every term in `norm` (offsets valid for its display twin),
+// merged into sorted, non-overlapping ranges shifted by `offset`.
+const marks = (norm: string, terms: string[], offset = 0): Highlight[] => {
   const raw: Highlight[] = [];
   for (const t of terms) {
-    let i = 0;
-    for (;;) {
-      const idx = window.indexOf(t, i);
-      if (idx === -1) break;
-      raw.push({ start: idx + lead.length, end: idx + t.length + lead.length });
-      i = idx + t.length;
+    for (let i = norm.indexOf(t); i !== -1; i = norm.indexOf(t, i + t.length)) {
+      raw.push({ start: i + offset, end: i + t.length + offset });
     }
   }
   raw.sort((a, b) => a.start - b.start);
-  const highlights: Highlight[] = [];
+  const out: Highlight[] = [];
   for (const h of raw) {
-    const last = highlights[highlights.length - 1];
+    const last = out[out.length - 1];
     if (last && h.start <= last.end) last.end = Math.max(last.end, h.end);
-    else highlights.push({ ...h });
+    else out.push({ ...h });
   }
-
-  let matchedSlideIndex = 0;
-  for (let i = 0; i < slideOffsets.length; i++) {
-    if (slideOffsets[i] <= firstPos) matchedSlideIndex = i;
-    else break;
-  }
-
-  return { snippet: { text: lead + core + trail, highlights }, matchedSlideIndex };
+  return out;
 };
 
-/**
- * Search the index. `extraTagFilters` (exact, e.g. from clicked tag chips) are
- * combined with any inline `tag:` filters. Returns results sorted by score desc.
- */
-export const searchDecks = (
-  entries: DeckIndexEntry[],
-  rawQuery: string,
-  extraTagFilters: string[] = [],
-): SearchResult[] => {
-  const { terms, tagFilters } = parseQuery(rawQuery);
-  const allTagFilters = [...tagFilters, ...extraTagFilters.map(normalize)].filter(Boolean);
-  if (!terms.length && !allTagFilters.length) return [];
+// The text around the first match, with every match in it marked.
+const snippetOf = (display: string, norm: string, terms: string[]): Snippet | undefined => {
+  let first = -1;
+  let len = 0;
+  for (const t of terms) {
+    const p = norm.indexOf(t);
+    if (p !== -1 && (first === -1 || p < first)) { first = p; len = t.length; }
+  }
+  if (first === -1) return undefined;
+  const from = Math.max(0, first - SNIPPET_RADIUS);
+  const to = Math.min(display.length, first + len + SNIPPET_RADIUS);
+  const lead = from > 0 ? '…' : '';
+  const trail = to < display.length ? '…' : '';
+  return {
+    text: lead + display.slice(from, to) + trail,
+    highlights: marks(norm.slice(from, to), terms, lead.length),
+  };
+};
 
-  const results: SearchResult[] = [];
+/** Search the index: decks best first, each with its matching slides. */
+export const searchSlides = (entries: DeckIndexEntry[], rawQuery: string): DeckResult[] => {
+  const terms = parseQuery(rawQuery);
+  if (!terms.length) return [];
+  const results: DeckResult[] = [];
   for (const entry of entries) {
-    if (allTagFilters.length && !allTagFilters.every((tf) => entry.tagsNorm.includes(tf))) continue;
-    const base = scoreEntry(entry, terms);
-    if (base === null) continue;
-    const { snippet, matchedSlideIndex } = terms.length ? buildSnippet(entry, terms) : {};
-    results.push({ entry, score: base, snippet, matchedSlideIndex });
+    const inDeck = (t: string) => entry.titleNorm.includes(t) || entry.subtitleNorm.includes(t);
+    const titleMatch = terms.every(inDeck);
+    const hits: SlideHit[] = [];
+    for (const slide of entry.slides) {
+      let score = 0;
+      let own = 0;
+      let all = true;
+      for (const t of terms) {
+        const inHeading = slide.headingNorm.includes(t);
+        if (inHeading || slide.textNorm.includes(t)) { own++; score += inHeading ? W_HEADING : W_TEXT; }
+        else if (!inDeck(t)) { all = false; break; }
+      }
+      if (!all || !own) continue;
+      hits.push({
+        slide, score,
+        heading: { text: slide.heading, highlights: marks(slide.headingNorm, terms) },
+        snippet: snippetOf(slide.text, slide.textNorm, terms),
+      });
+    }
+    if (!hits.length && !titleMatch) continue;
+    const best = hits.reduce((m, h) => Math.max(m, h.score), 0);
+    results.push({ entry, titleMatch, hits, score: best + (titleMatch ? W_TITLE : 0) + Math.min(hits.length, 10) });
   }
   results.sort(
     (a, b) =>
@@ -139,17 +114,4 @@ export const searchDecks = (
       (a.entry.title || a.entry.name).localeCompare(b.entry.title || b.entry.name),
   );
   return results;
-};
-
-/** Union of all tags across entries, de-duped case-insensitively, sorted. Used for
- *  the tag-chip filter row and the tag editor's autocomplete suggestions. */
-export const allTagsOf = (entries: DeckIndexEntry[]): string[] => {
-  const seen = new Map<string, string>();
-  for (const e of entries) {
-    for (const t of e.tags) {
-      const key = normalize(t);
-      if (!seen.has(key)) seen.set(key, t);
-    }
-  }
-  return Array.from(seen.values()).sort((a, b) => a.localeCompare(b));
 };

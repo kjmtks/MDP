@@ -103,7 +103,7 @@ export const TAKE_ISSUE_TEXT: Record<TakeIssue, string> = {
   empty: 'No speech was recorded — check the microphone and read the sentence again.',
   clipped: 'Too loud: the recording is distorted. Move back from the microphone or lower its input level.',
   quiet: 'Very quiet. Move closer to the microphone or raise its input level.',
-  noisy: 'Background noise is loud compared with your voice. A quieter room or a headset microphone helps.',
+  noisy: 'Background noise is loud compared with your voice. A quieter room or a headset microphone helps; a steady hiss can also be removed when the voice is registered.',
   short: 'This take looks cut off — was the whole sentence read?',
 };
 

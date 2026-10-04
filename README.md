@@ -80,7 +80,7 @@ Turn a deck into an interactive, non-linear presentation: use standard Markdown 
 
 ## 🔍 Slide Search & `.mdpignore`
 
-Search every deck in your workspace at once from the search box in the sidebar — by **title**, **subtitle**, **`@tags`**, or **full slide text**. Results are ranked across all `*.slide.md` files and jump straight to the matching page.
+Search every deck in your workspace at once from the search box in the sidebar — by **title**, **subtitle**, slide **headings** and the **text shown on the slides** (speaker notes and read-aloud scripts are not searched). Results list each matching slide under its deck, with the text around the match; a click opens that slide.
 
 ### Excluding folders from search
 

@@ -77,7 +77,8 @@ interface MeasureJob {
 }
 
 // Directives that are part of the slide format itself (not module invocations).
-// Keep in sync with app/mcp-bridge.cjs.
+// Keep in sync with app/mcp-bridge.cjs. `tags` (deck tags — no longer a feature) stays so
+// older decks that still carry one are not reported as using an unknown module.
 const BUILTIN_DIRECTIVES = new Set([
   'title', 'subtitle', 'date', 'presenter', 'affiliation', 'contact', 'tags',
   'aspect', 'theme', 'css', 'transition', 'build', 'header', 'footer', 'end',

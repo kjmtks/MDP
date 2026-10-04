@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Button, Checkbox, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle,
-  FormControlLabel, LinearProgress, MenuItem, TextField,
+  FormControlLabel, LinearProgress, MenuItem, TextField, ToggleButton, ToggleButtonGroup,
 } from '@mui/material';
 import { apiClient } from '../../api/apiClient';
 import { useAppSettings } from '../settings/AppSettingsContext';
@@ -14,8 +14,9 @@ import { MicInput, decodeAudioFile, listMicrophones, type MicDevice } from './mi
 import {
   REFERENCE_MAX_SEC, TAKE_ISSUE_TEXT, analyzeTake, buildReference, countChars, decodeWav, encodeWav,
   formatSeconds, levelTake, pickSentences, readingCharsPerMin, referenceFromFile, resample, storedZip, takeIssues,
-  trainingSetFiles, type TakeAnalysis, type TakeIssue,
+  trainingSetFiles, type Pcm, type TakeAnalysis, type TakeIssue,
 } from './voiceAudio';
+import { reduceNoise, saveNoiseReduction, savedNoiseReduction, type NoiseReduction } from './noiseReduce';
 import { MAKE_MANIFEST_PY, speakerInversionReadme } from './speakerInversionKit';
 import { getOpenDeck } from '../slide/openDeckRuntime';
 import { scriptsInReadingOrder } from '../slide/readingCalibration';
@@ -45,7 +46,18 @@ interface Take {
   url: string | null;
 }
 
-interface FileRef { fileName: string; wav: Uint8Array; url: string; sec: number; cut: boolean }
+interface FileRef { fileName: string; pcm: Pcm; wav: Uint8Array; url: string; sec: number; cut: boolean }
+
+// The reference as it will be registered: with the steady hiss removed at `level`.
+interface Prepared {
+  source: Pcm;
+  level: NoiseReduction;
+  wav: Uint8Array;
+  url: string;
+  /** Background noise (the quietest frames), dBFS, before and after. */
+  before: number | null;
+  after: number | null;
+}
 
 const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const speechOf = (set: VoiceRecordingSet | null) => (set ? set.takes.reduce((n, t) => n + t.speechSec, 0) : 0);
@@ -295,16 +307,41 @@ export const VoiceCalibrationDialog: React.FC<{
   }, [step]);
 
   // ---- the reference, registration and a test line ----------------------------------
+  // Keyed on the takes: registering only notes the voice id on the set.
+  const takes = set?.takes;
   const reference = useMemo(() => {
-    if (step !== 'finish' || !set?.takes.length) return null;
+    if (step !== 'finish' || !takes?.length) return null;
     try {
-      const ref = buildReference(set.takes.map((t) => decodeWav(t.wav)));
-      return { wav: encodeWav(ref), sec: ref.samples.length / ref.sampleRate };
+      const ref = buildReference(takes.map((t) => decodeWav(t.wav)));
+      return { pcm: ref, wav: encodeWav(ref), sec: ref.samples.length / ref.sampleRate };
     } catch { return null; }
-  }, [step, set]);
+  }, [step, takes]);
   const measuredCpm = useMemo(() => (set ? readingCharsPerMin(set.takes) : null), [set]);
 
   const [file, setFile] = useState<FileRef | null>(null);
+
+  // Removing the background hiss before registering (noiseReduce.ts): a cloned voice
+  // copies its reference's background too. The level is remembered on this computer
+  // (like the microphone); the result is worked out after the click is painted — it
+  // takes a few hundred milliseconds — and can be compared with the original.
+  const [noiseLevel, setNoiseLevel] = useState<NoiseReduction>(savedNoiseReduction);
+  const chooseNoise = (level: NoiseReduction) => { setNoiseLevel(level); saveNoiseReduction(level); };
+  const source = step === 'finish' ? reference?.pcm ?? null : step === 'file' ? file?.pcm ?? null : null;
+  const [prepared, setPrepared] = useState<Prepared | null>(null);
+  useEffect(() => {
+    if (!source) return undefined;
+    let live = true;
+    const t = window.setTimeout(() => {
+      const out = reduceNoise(source, noiseLevel);
+      const wav = encodeWav(out);
+      const before = analyzeTake(source)?.noiseDb ?? null;
+      const after = out === source ? before : analyzeTake(out)?.noiseDb ?? null;
+      if (live) setPrepared({ source, level: noiseLevel, wav, url: keepUrl(wavUrl(wav)), before, after });
+    }, 30);
+    return () => { live = false; window.clearTimeout(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [source, noiseLevel]);
+  const ready = prepared && prepared.source === source && prepared.level === noiseLevel ? prepared : null;
   const [loadingFile, setLoadingFile] = useState(false);
   const [consentShared, setConsentShared] = useState(false);
   const [consentOwner, setConsentOwner] = useState(false);
@@ -358,7 +395,7 @@ export const VoiceCalibrationDialog: React.FC<{
       if (!r) throw new Error('No speech was found in this file.');
       const wav = encodeWav(r.ref);
       setFile({
-        fileName: f.name, wav, url: keepUrl(wavUrl(wav)),
+        fileName: f.name, pcm: r.ref, wav, url: keepUrl(wavUrl(wav)),
         sec: r.ref.samples.length / r.ref.sampleRate,
         cut: (r.analysis.end - r.analysis.start) / r.ref.sampleRate > REFERENCE_MAX_SEC + 0.05,
       });
@@ -413,8 +450,38 @@ export const VoiceCalibrationDialog: React.FC<{
       </span>} />
   );
 
-  // Hidden once registered (until the name is changed).
-  const registerRow = (wav: Uint8Array, extraOk: boolean) => !registered && (
+  // The hiss removal: the level, listening to the result and to the original, and
+  // what it did to the background noise.
+  const noiseRow = (originalUrl: () => string) => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 13, fontWeight: 600 }}>Remove background hiss</span>
+        <ToggleButtonGroup size="small" exclusive value={noiseLevel}
+          onChange={(_, v: NoiseReduction | null) => { if (v) chooseNoise(v); }}>
+          <ToggleButton value="off" sx={{ ...btn, py: 0.25 }}>Off</ToggleButton>
+          <ToggleButton value="light" sx={{ ...btn, py: 0.25 }}>Light</ToggleButton>
+          <ToggleButton value="standard" sx={{ ...btn, py: 0.25 }}>Standard</ToggleButton>
+          <ToggleButton value="strong" sx={{ ...btn, py: 0.25 }}>Strong</ToggleButton>
+        </ToggleButtonGroup>
+        {ready ? (
+          <>
+            <Button size="small" variant="outlined" sx={btn} onClick={() => play(ready.url)}>▶ Listen</Button>
+            {noiseLevel !== 'off' && <Button size="small" sx={btn} onClick={() => play(originalUrl())}>▶ Original</Button>}
+          </>
+        ) : <CircularProgress size={16} />}
+      </div>
+      <div style={muted}>
+        {ready && noiseLevel !== 'off' && ready.before !== null && ready.after !== null && (
+          <>Background noise {ready.before.toFixed(0)} → {ready.after.toFixed(0)} dBFS. </>
+        )}
+        A cloned voice copies its recording’s background too, so a quieter reference makes every line quieter.
+        Steady noise only — hiss, hum, a fan.
+      </div>
+    </div>
+  );
+
+  // Hidden once registered (until the name is changed). `wav` null = still being prepared.
+  const registerRow = (wav: Uint8Array | null, extraOk: boolean) => !registered && (
     <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 4 }}>
       <TextField size="small" label="Voice name" value={name} sx={{ width: 190 }}
         onChange={(e) => { setName(e.target.value.trim()); setConfirmReplace(false); setRegistered(''); }}
@@ -422,13 +489,13 @@ export const VoiceCalibrationDialog: React.FC<{
       {confirmReplace ? (
         <>
           <span style={{ fontSize: 13, color: warnColor }}>“{name}” already exists on the server.</span>
-          <Button variant="contained" size="small" sx={btn} disabled={saving} onClick={() => register(wav, true)}>Replace it</Button>
+          <Button variant="contained" size="small" sx={btn} disabled={saving || !wav} onClick={() => { if (wav) register(wav, true); }}>Replace it</Button>
           <Button size="small" sx={btn} disabled={saving} onClick={() => setConfirmReplace(false)}>Cancel</Button>
         </>
       ) : (
         <Button variant="contained" size="small" sx={btn}
-          disabled={saving || !nameOk || !extraOk || (shared && !consentShared)}
-          onClick={() => register(wav, false)}>
+          disabled={saving || !wav || !nameOk || !extraOk || (shared && !consentShared)}
+          onClick={() => { if (wav) register(wav, false); }}>
           {saving ? <CircularProgress size={16} /> : 'Register and use this voice'}
         </Button>
       )}
@@ -582,11 +649,7 @@ export const VoiceCalibrationDialog: React.FC<{
           {set.takes.length} sentences · {formatSeconds(recordedSec)} of speech
           {reference && <> · the reference uses {reference.sec.toFixed(1)} s</>}
         </div>
-        {reference && (
-          <div>
-            <Button size="small" variant="outlined" sx={btn} onClick={() => play(keepUrl(wavUrl(reference.wav)))}>▶ Listen to the reference</Button>
-          </div>
-        )}
+        {reference && noiseRow(() => keepUrl(wavUrl(reference.wav)))}
         {measuredCpm && (
           <div style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             You read at about <b>{measuredCpm}</b> characters a minute
@@ -597,7 +660,7 @@ export const VoiceCalibrationDialog: React.FC<{
           </div>
         )}
         {sharedConsent}
-        {reference && registerRow(reference.wav, true)}
+        {reference && registerRow(ready?.wav ?? null, true)}
         {registeredRow}
         <div style={{ ...muted, marginTop: 4 }}>
           Unhappy with it? Record more sentences, or retake the session. More speech also makes a better training set.
@@ -627,18 +690,18 @@ export const VoiceCalibrationDialog: React.FC<{
               onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void loadFile(f); }} />
           </Button>
           {file && <span style={{ fontSize: 13 }}>{file.fileName} → {file.sec.toFixed(1)} s{file.cut ? ' (cut)' : ''}</span>}
-          {file && <Button size="small" sx={btn} onClick={() => play(file.url)}>▶ Listen</Button>}
         </div>
         {file && file.sec < MIN_SPEECH_SEC && (
           <div style={{ fontSize: 13, color: warnColor }}>Only {file.sec.toFixed(1)} s of audio — the voice may not come through well.</div>
         )}
         {file && (
           <>
+            {noiseRow(() => file.url)}
             <FormControlLabel sx={{ alignItems: 'flex-start' }}
               control={<Checkbox size="small" checked={consentOwner} onChange={(e) => setConsentOwner(e.target.checked)} sx={{ pt: 0.25 }} />}
               label={<span style={{ fontSize: 13 }}>This is my own voice, or the speaker has agreed to its use for speech synthesis.</span>} />
             {sharedConsent}
-            {registerRow(file.wav, consentOwner)}
+            {registerRow(ready?.wav ?? null, consentOwner)}
             {registeredRow}
           </>
         )}

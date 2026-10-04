@@ -7,23 +7,19 @@
 
 import { splitMarkdownToBlocks, parseGlobalContext } from '../slide/parser/slideParser';
 import { extractBookmarkTitle, extractBookmarkSubtitle, type BookmarkTitle } from '../fileTree/bookmarkTitle';
-import { buildBodyText } from './contentClean';
+import { slideText, type SlideText } from './contentClean';
 
 export interface DeckIndexEntry {
   path: string;
   name: string;                    // base file name
   title?: string;                  // raw @title (display fallback / sort)
   subtitle?: string;               // raw @subtitle
-  tags: string[];                  // original casing (display + chips)
   titleDisplay: BookmarkTitle;     // sanitised, KaTeX-safe HTML for the result row
   subtitleDisplay: string | null;  // sanitised HTML, or null
   // normalised (NFKC + lowercase) fields for matching:
   titleNorm: string;
   subtitleNorm: string;
-  tagsNorm: string[];
-  bodyText: string;                // normalised body (matching)
-  bodyDisplay: string;             // NFKC body, original case (snippets)
-  slideOffsets: number[];
+  slides: SlideText[];             // each slide's heading and visible text
 }
 
 export type IndexStatus = 'idle' | 'indexing' | 'ready';
@@ -37,22 +33,18 @@ export const buildEntry = (path: string, rawText: string): DeckIndexEntry => {
   const ctx = parseGlobalContext(blocks[0]?.rawContent ?? '');
   const title = ctx.meta.title;
   const subtitle = ctx.meta.subtitle;
-  const tags = ctx.meta.tags ?? [];
-  const { bodyText, bodyDisplay, slideOffsets } = buildBodyText(rawText);
   return {
     path,
     name: baseName(path),
     title,
     subtitle,
-    tags,
     titleDisplay: extractBookmarkTitle(rawText),
     subtitleDisplay: extractBookmarkSubtitle(rawText),
     titleNorm: norm(title),
     subtitleNorm: norm(subtitle),
-    tagsNorm: tags.map((t) => norm(t)),
-    bodyText,
-    bodyDisplay,
-    slideOffsets,
+    // blocks[0] is the meta page; the slides follow it, so the index matches the
+    // deck's 0-based slide index.
+    slides: blocks.slice(1).map((b, i) => slideText(b.rawContent, i)),
   };
 };
 

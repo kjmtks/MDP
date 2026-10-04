@@ -61,8 +61,6 @@ Each is an HTML comment on its own line:
 - \`<!-- @title TEXT -->\`, \`<!-- @subtitle TEXT -->\`, \`<!-- @date TEXT -->\`,
   \`<!-- @presenter TEXT -->\`, \`<!-- @affiliation TEXT -->\`, \`<!-- @contact TEXT -->\`
   — presentation metadata, shown on the cover slide.
-- \`<!-- @tags TAG1, TAG2; TAG3 -->\` — deck tags for search/organization, separated
-  by commas or semicolons (quote a tag that itself contains one, e.g. \`"a, b"\`). Not shown on slides.
 - \`<!-- @aspect W:H -->\` — slide aspect ratio, e.g. \`<!-- @aspect 16:9 -->\`.
 - \`<!-- @resolution H -->\` or \`<!-- @resolution WxH -->\` — how many CSS pixels the
   canvas is laid out in (default: 720 tall, width from \`@aspect\`). The shape and
@@ -303,7 +301,6 @@ less error-prone than emitting base64 SVG.
 \`\`\`
 <!-- @title Quarterly Review -->
 <!-- @subtitle Q2 results -->
-<!-- @tags finance, quarterly, review -->
 <!-- @presenter Alice Smith -->
 <!-- @aspect 16:9 -->
 <!-- @theme dark -->

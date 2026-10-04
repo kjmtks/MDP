@@ -1,7 +1,6 @@
 import { marked } from 'marked';
 import { slideRenderer } from './markedExtensions';
 import { parseCommand } from './slideCommands';
-import { splitTags } from './tags';
 import { createDefaultContext } from './SlideContext';
 import type { SlideContext, MotionSpec } from './SlideContext';
 import type { Stroke } from '../../drawing/components/DrawingOverlay';
@@ -339,12 +338,8 @@ const applyGlobalCommands = (text: string, context: SlideContext) => {
       }
       if (command.type === 'META') {
         const { key, value } = command.params;
-        if (key === 'tags') {
-          context.meta.tags = splitTags(value);
-        } else {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (context.meta as any)[key] = value;
-        }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (context.meta as any)[key] = value;
       }
       // HEADER / FOOTER are handled by extractDirectiveBlock in parseGlobalContext
       // (block form + inline shorthand), so they are intentionally not applied here.

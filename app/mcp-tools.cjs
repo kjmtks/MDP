@@ -182,7 +182,7 @@ const TOOLS = [
   },
   {
     name: 'get_deck_outline',
-    description: 'LOW-TOKEN structure map of a deck (default: the active one): per slide its heading, bullet count, modules used, note volume and estimated `seconds` (from its `<!-- @time … -->` if set, else notes/complexity), plus deck title/tags and total estimatedMinutes. When the deck has recorded rehearsals, each slide also carries `rehearsalSec` (seconds actually spent in the LAST run) and the deck a `lastRehearsal` summary — call get_rehearsals for the full history. Prefer this over read_deck for orientation and style sampling of long decks. To make talk-time accurate, set `<!-- @time 90s -->` on slides.',
+    description: 'LOW-TOKEN structure map of a deck (default: the active one): per slide its heading, bullet count, modules used, note volume and estimated `seconds` (from its `<!-- @time … -->` if set, else notes/complexity), plus deck title and total estimatedMinutes. When the deck has recorded rehearsals, each slide also carries `rehearsalSec` (seconds actually spent in the LAST run) and the deck a `lastRehearsal` summary — call get_rehearsals for the full history. Prefer this over read_deck for orientation and style sampling of long decks. To make talk-time accurate, set `<!-- @time 90s -->` on slides.',
     inputSchema: S({ path: str('Deck path (default: the active deck)') }),
   },
   {
@@ -192,8 +192,8 @@ const TOOLS = [
   },
   {
     name: 'search_decks',
-    description: 'Search all decks in the workspace by text query and/or tags (matches title, subtitle, tags and body). Use to find reference material or past decks to reuse/imitate.',
-    inputSchema: S({ query: str('Search text (case-insensitive)'), tags: { type: 'array', items: { type: 'string' }, description: 'Tags that must all be present' } }),
+    description: 'Search all decks in the workspace for SLIDES: each slide\'s heading and visible text, plus the deck title/subtitle — never speaker notes or scripts. Terms are AND-ed (a term may be met by the deck title). Returns decks best first, each with its matching slides (1-based `slide`, `heading`, `snippet`; at most 8 — `slideCount` is the total). Use to find past slides or decks to reuse/imitate.',
+    inputSchema: S({ query: str('Search terms, whitespace-separated, all required (case-insensitive)') }, ['query']),
   },
   {
     name: 'patch_deck',

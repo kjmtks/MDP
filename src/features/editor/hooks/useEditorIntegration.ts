@@ -14,7 +14,6 @@ import { scriptCollapsePlugin } from '../extensions/ScriptCollapsePlugin';
 import { themeCollapsePlugin } from '../extensions/ThemeCollapsePlugin';
 import { imageDefCollapsePlugin } from '../extensions/ImageDefCollapsePlugin';
 import { moduleSettingsPlugin } from '../extensions/ModuleSettingsPlugin';
-import { tagSettingsPlugin } from '../extensions/TagSettingsPlugin';
 import { moduleRegionPlugin } from '../extensions/ModuleRegionPlugin';
 import { useAppSettings } from '../../settings/AppSettingsContext';
 import { resolveKeys } from '../../settings/shortcuts/matcher';
@@ -246,7 +245,6 @@ export const useEditorIntegration = ({
       scriptCollapsePlugin,
       themeCollapsePlugin,
       moduleSettingsPlugin,
-      tagSettingsPlugin,
       moduleRegionPlugin,
     ];
 

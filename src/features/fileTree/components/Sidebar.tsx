@@ -44,10 +44,9 @@ import { isFileTreeDrag } from '../dragUtils';
 import { useAppSettings } from '../../settings/AppSettingsContext';
 import { applyAuthorProfile } from '../../settings/types';
 import { useDeckIndex } from '../../search/useDeckIndex';
-import { searchDecks, allTagsOf } from '../../search/searchEngine';
+import { searchSlides } from '../../search/searchEngine';
 import { SearchBox } from '../../search/components/SearchBox';
 import { SearchResults } from '../../search/components/SearchResults';
-import { TagEditor } from '../../search/components/TagEditor';
 
 interface SidebarProps {
   currentFileName: string | null;
@@ -73,11 +72,8 @@ interface SidebarProps {
   onRenameFile?: (oldPath: string, newPath: string) => void;
   onDeleteFiles?: (paths: string[]) => void;
 
-  // Slide search + tags
+  // Slide search: open a deck at a matching slide
   onOpenDeck?: (path: string, slideIndex?: number) => void;
-  canEditTags?: boolean;
-  currentDeckTags?: string[];
-  onSetDeckTags?: (tags: string[]) => void;
 
   section?: 'thumbnail' | 'files' | 'bookmarks';
 }
@@ -102,7 +98,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onManualRefresh, onLoadLinkChildren, onNav,
   bookmarks, isBookmarked, onToggleBookmark, onReorderBookmark, onUpdateBookmark,
   onRenameFile, onDeleteFiles,
-  onOpenDeck, canEditTags, currentDeckTags, onSetDeckTags,
+  onOpenDeck,
   section
 }) => {
   const { settings } = useAppSettings();
@@ -112,16 +108,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
   // --- slide search (shared workspace deck index) ---
   const { entries: deckEntries, status: indexStatus } = useDeckIndex();
   const [query, setQuery] = useState('');
-  const [activeTags, setActiveTags] = useState<string[]>([]);
-  const suggestedTags = React.useMemo(() => allTagsOf(deckEntries), [deckEntries]);
   // Slide search lives only in the Files panel (searches all decks).
-  const searchActive = query.trim().length > 0 || activeTags.length > 0;
+  const searchActive = query.trim().length > 0;
   const searchResults = React.useMemo(
-    () => (searchActive ? searchDecks(deckEntries, query, activeTags) : []),
-    [deckEntries, query, activeTags, searchActive],
+    () => (searchActive ? searchSlides(deckEntries, query) : []),
+    [deckEntries, query, searchActive],
   );
-  const toggleTag = (tag: string) =>
-    setActiveTags((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]));
   const handleOpenResult = (path: string, slideIndex?: number) => {
     if (slideIndex != null && onOpenDeck) onOpenDeck(path, slideIndex);
     else onFileSelect(path);
@@ -684,14 +676,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       <Box sx={{ flexGrow: 1, overflow: 'hidden' }}>
         <CustomTabPanel value={activeIndex} index={0}>
-          {currentFileName?.endsWith('.slide.md') && onSetDeckTags && (
-            <TagEditor
-              tags={currentDeckTags || []}
-              suggestedTags={suggestedTags}
-              canEdit={!!canEditTags}
-              onChange={onSetDeckTags}
-            />
-          )}
           {currentFileName && currentFileType === 'markdown' ? (
             <div
               className="thumbnail-list"
@@ -736,12 +720,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
             <SearchBox
               query={query} onQueryChange={setQuery}
-              suggestedTags={suggestedTags} activeTags={activeTags} onToggleTag={toggleTag}
-              status={indexStatus} placeholder="Search slides — title, subtitle, tag, text…"
+              status={indexStatus} placeholder="Search slides — title, headings, slide text…"
             />
             {searchActive ? (
               <Box sx={{ flex: 1, minHeight: 0, overflowY: 'auto', bgcolor: 'var(--app-bg-panel)', pb: 10 }}>
-                <SearchResults results={searchResults} onOpen={handleOpenResult} activeTags={activeTags} onToggleTag={toggleTag} />
+                <SearchResults results={searchResults} onOpen={handleOpenResult} />
               </Box>
             ) : (
             <Box
