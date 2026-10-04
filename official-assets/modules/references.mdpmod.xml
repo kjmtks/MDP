@@ -750,7 +750,7 @@ Example:
       text-align: left;
       color: var(--text-color);
     }
-    .mdp-mod-references.is-compact { font-size: 0.68em; line-height: 1.35; }
+    .mdp-mod-references.is-compact { font-size: var(--ref-size, 0.68em); line-height: 1.35; }
     .mdp-mod-references.is-compact .mdp-ref-list > li { margin-bottom: 0.32em; }
     .mdp-mod-references.is-compact .mdp-ref-cards { gap: 0.45em; }
     .mdp-ref-list[style*="column-count"] > li { break-inside: avoid; -webkit-column-break-inside: avoid; }
