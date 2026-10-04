@@ -524,12 +524,17 @@ Example:
       const lead = leadNames(e, 'first-last', function (k) { return k > 1 ? ', Eds.' : ', Ed.'; });
       if (lead) s += lead + ', ';
       const ttl = titleSub(e);
+      // A missing field must not leave its separator behind ("Title. . ", "Title,” , Washington").
+      const quoted = function (parts) {
+        parts = parts.filter(Boolean);
+        return parts.length ? '&ldquo;' + esc(ttl) + ',&rdquo; ' + parts.join(', ') + '. ' : '&ldquo;' + esc(ttl) + '.&rdquo; ';
+      };
       if (T === 'book' || T === 'proceedings' || T === 'manual' || T === 'booklet') {
         s += '<em>' + esc(ttl) + '</em>';
         if (e.edition) s += ', ' + esc(ordinal(e.edition)) + ' ed';
-        s += '. ' + ieeePlace(e);
-        if (e.year) s += esc(e.year);
         s += '. ';
+        const place = ieeePlace(e) + (e.year ? esc(e.year) : '');
+        if (place) s += place.replace(/, $/, '') + '. ';
       } else if (isInType(T)) {
         s += '&ldquo;' + esc(ttl) + ',&rdquo; in <em>' + esc(e.booktitle || e.series) + '</em>';
         if (e.address) s += ', ' + esc(e.address);
@@ -544,25 +549,13 @@ Example:
         if (e.year) s += ', ' + esc(e.year);
         s += '. ';
       } else if (T === 'techreport') {
-        s += '&ldquo;' + esc(ttl) + ',&rdquo; ';
-        const inst = e.institution || e.organization; if (inst) s += esc(inst);
-        if (e.address) s += ', ' + esc(e.address);
-        if (e.number) s += ', Rep. ' + esc(e.number);
-        if (e.year) s += ', ' + esc(e.year);
-        s += '. ';
+        const inst = e.institution || e.organization;
+        s += quoted([inst && esc(inst), e.address && esc(e.address), e.number && 'Rep. ' + esc(e.number), e.year && esc(e.year)]);
       } else if (T === 'misc' || T === 'online' || T === 'electronic' || T === 'unpublished') {
-        s += '&ldquo;' + esc(ttl) + ',&rdquo; ';
-        if (e.howpublished) s += esc(e.howpublished) + ', ';
-        if (e.year) s += esc(e.year);
-        s += '. ';
+        s += quoted([e.howpublished && esc(e.howpublished), e.year && esc(e.year)]);
       } else {
-        s += '&ldquo;' + esc(ttl) + ',&rdquo; ';
-        if (e.journal) s += '<em>' + esc(e.journal) + '</em>';
-        if (e.volume) s += ', vol. ' + esc(e.volume);
-        if (e.number) s += ', no. ' + esc(e.number);
-        if (e.pages) s += ', pp. ' + esc(e.pages);
-        if (e.year) s += ', ' + esc(e.year);
-        s += '. ';
+        s += quoted([e.journal && '<em>' + esc(e.journal) + '</em>', e.volume && 'vol. ' + esc(e.volume),
+          e.number && 'no. ' + esc(e.number), e.pages && 'pp. ' + esc(e.pages), e.year && esc(e.year)]);
       }
       if (e.note) s += esc(e.note) + '. ';
       const l = linkHtml(e); if (l) s += l;
