@@ -14,6 +14,15 @@ export interface MotionSpec {
   args: Record<string, string>;
 }
 
+// `<!-- @answers show|hide, key: value, … -->` on the meta page: whether the
+// `@answer` blocks are shown (the instructor's copy — the default) or left blank
+// (a handout), plus deck-wide defaults for them (`label`, `frame`, `space`). The
+// editor's answers toggle overrides `hide` for the deck it previews.
+export interface AnswerSpec {
+  hide: boolean;
+  args: Record<string, string>;
+}
+
 export interface SlideContext {
   numberOfPages: number;
   aspectRatio: [number, number];
@@ -31,6 +40,7 @@ export interface SlideContext {
   // Global defaults from the meta page.
   transition?: MotionSpec;
   build?: MotionSpec;
+  answers?: AnswerSpec;
 }
 
 export const createDefaultContext = (): SlideContext => ({

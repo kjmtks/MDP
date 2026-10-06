@@ -78,6 +78,9 @@ Each is an HTML comment on its own line:
   \`duration\`, \`easing\`.
 - \`<!-- @build key: value, … -->\` — deck-wide default settings for in-slide build
   animations (each \`@build\` block may still override them).
+- \`<!-- @answers hide -->\` — hide every \`@answer\` block of the deck (see "Answers"
+  below); \`show\` (the default) shows them. Deck-wide defaults for the blocks may
+  follow, e.g. \`<!-- @answers label: 解答欄 -->\` (answers still shown).
 
 ## Header / footer — block regions (meta page = all slides; a slide = that slide only)
 
@@ -187,6 +190,28 @@ Common args: \`step\`/\`enter\` (step it appears), \`effect\` (an effect NAME �
 "Animation effects" below), \`duration\`, \`easing\`, \`emphasis\`/\`exit\` (+
 \`emphasisEffect\`/\`exitEffect\`), \`stagger\`, \`auto\` (auto-advance ms).
 
+## Answers — one deck for the instructor's copy and the handout
+
+\`\`\`
+<!-- @build effect: fade -->
+<!-- @answer -->
+the answer and its explanation (markdown or modules)
+<!-- @end -->
+<!-- @end -->
+\`\`\`
+
+Wrap the answer to a quiz or exercise in \`@answer\`. Shown (the default) it is plain
+content. Hidden — \`<!-- @answers hide -->\` on the meta page, or the editor's
+answers toggle — it keeps its place as a blank framed box, and nothing of it is
+printed or exported, so the same deck gives the handout. Args (each block's own
+over the \`@answers\` defaults): \`space\` — \`auto\` (default; the blank is as large
+as the answer), a length (\`120px\`, \`4em\`; a blank of that height) or \`none\`
+(nothing left — for content only the instructor's copy has, such as a quiz timer);
+\`label\` — text in the blank's corner (e.g. \`解答欄\`); \`frame: none\` — no outline.
+\`@answer\` may sit inside a \`@build\` (revealed after the quiz) and hold modules or
+builds; it closes with \`<!-- @end -->\`, or \`<!-- @endanswer -->\` when it sits inside
+a module's body (like \`<!-- @endbuild -->\`).
+
 ## Module directives
 
 Modules are reusable components invoked with an HTML comment. Two forms:
@@ -295,6 +320,11 @@ spaces or \`)\` that would break the \`![…](…)\` image parser):
 SVG tips: include a \`viewBox\`; do NOT hard-code text \`fill\` (leave it so the theme
 colours the labels). For most generated diagrams, **prefer \`@mermaid\`** — it is far
 less error-prone than emitting base64 SVG.
+
+An inlined SVG is shown at its own \`width\`/\`height\` (shrunk to fit). To size one,
+use a module made for it (\`@graph imagesize: 300px\` or \`40%\`) or an HTML image —
+\`<img src="fig.svg" width="300">\`, \`<img src="fig.svg" style="height: 200px">\`;
+a CSS rule aimed at \`img\` does not reach it (it is no longer an \`<img>\`).
 
 ## Putting it together — a complete file
 

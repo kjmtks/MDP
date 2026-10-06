@@ -13,6 +13,35 @@
 .mdp-build-active .mdp-build { visibility: hidden; }
 .mdp-build-active .mdp-build.mdp-build-shown { visibility: visible; }
 
+/* `@answer` blocks hidden for a handout (buildProcessor). The answer keeps its
+ * place and size, but nothing in it is painted — so it is in no PDF, PNG or
+ * PPTX either; `!important` also beats a nested build's `visibility: visible`.
+ * The frame is drawn OVER the box, not as its border, so the layout is exactly
+ * the shown one (the answer's own margins still collapse with its neighbours'). */
+.mdp-answer-hidden { position: relative; }
+.mdp-answer-hidden .mdp-answer-body,
+.mdp-answer-hidden .mdp-answer-body * { visibility: hidden !important; }
+.mdp-answer-hidden::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: calc(1.5 * var(--mdp-px, 1px)) solid color-mix(in srgb, var(--text-color, #333) 35%, transparent);
+  border-radius: calc(6 * var(--mdp-px, 1px));
+  pointer-events: none;
+}
+.mdp-answer-hidden.mdp-answer-noframe::after { content: none; }
+/* `space: <length>` — an empty box of that height. */
+.mdp-answer-hidden.mdp-answer-space { margin: 0.5em 0; }
+.mdp-answer-label {
+  position: absolute;
+  top: calc(4 * var(--mdp-px, 1px));
+  left: calc(10 * var(--mdp-px, 1px));
+  font-size: 0.7em;
+  line-height: 1.2;
+  color: color-mix(in srgb, var(--text-color, #333) 65%, transparent);
+  pointer-events: none;
+}
+
 .slide-content {
   width: 100%;
   height: 100%;
@@ -212,3 +241,8 @@
  * or target text directly: .slide-content .mdp-drawio-svg text { fill: ...; } */
 .mdp-drawio-svg { display: inline-block; max-width: 100%; line-height: 0; vertical-align: middle; }
 .mdp-drawio-svg svg { max-width: 100%; height: auto; }
+/* A width / height the <img> carried (attribute or style — svgPlaceholderAttrs)
+ * sizes the placeholder; the SVG fills it. */
+.mdp-drawio-svg.mdp-svg-w > svg { width: 100%; height: auto; }
+.mdp-drawio-svg.mdp-svg-h > svg { width: auto; height: 100%; }
+.mdp-drawio-svg.mdp-svg-w.mdp-svg-h > svg { width: 100%; height: 100%; }

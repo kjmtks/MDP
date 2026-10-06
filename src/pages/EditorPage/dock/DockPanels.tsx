@@ -26,6 +26,10 @@ import GridOnIcon from '@mui/icons-material/GridOn';
 import SyncIcon from '@mui/icons-material/Sync';
 import SyncDisabledIcon from '@mui/icons-material/SyncDisabled';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import FactCheckIcon from '@mui/icons-material/FactCheck';
+import FactCheckOutlinedIcon from '@mui/icons-material/FactCheckOutlined';
+import CheckBoxIcon from '@mui/icons-material/CheckBox';
+import CheckBoxOutlineBlankIcon from '@mui/icons-material/CheckBoxOutlineBlank';
 import type { IDockviewPanelProps, IDockviewPanelHeaderProps } from 'dockview';
 
 import { darkMenuSlotProps } from './darkMenu';
@@ -541,6 +545,15 @@ export const PreviewPanel: React.FC = () => {
           </Tooltip>
         )}
         <Box sx={{ flex: 1 }} />
+        {h.answers && (
+          <Tooltip title={h.answers.hidden
+            ? 'Answers hidden — @answer blocks are blank frames (handout). Preview, slideshow and every export follow. Click to show them'
+            : 'Answers shown (instructor copy). Click to hide the @answer blocks — e.g. to print a handout'}>
+            <IconButton size="small" sx={{ ...toolBtnSx, color: h.answers.hidden ? 'var(--app-warning)' : 'var(--app-accent)' }} onClick={h.answers.onToggle}>
+              {h.answers.hidden ? <FactCheckOutlinedIcon fontSize="small" /> : <FactCheckIcon fontSize="small" />}
+            </IconButton>
+          </Tooltip>
+        )}
         <Tooltip title="Open Presenter View"><span><IconButton size="small" sx={toolBtnSx} disabled={!h.canPresent} onClick={h.onOpenPresenter}><PresentToAllIcon fontSize="small" /></IconButton></span></Tooltip>
         <Tooltip title="Open Output Window (slide only, aspect-locked — share/capture this instead of the whole screen)"><span><IconButton size="small" sx={toolBtnSx} disabled={!h.canPresent} onClick={h.onOpenOutput}><BrandingWatermarkIcon fontSize="small" /></IconButton></span></Tooltip>
         <Tooltip title="Rehearse (read @script aloud + time vs @time)"><span><IconButton size="small" sx={toolBtnSx} disabled={!h.canPresent} onClick={h.onRehearse}><RecordVoiceOverIcon fontSize="small" /></IconButton></span></Tooltip>
@@ -553,6 +566,14 @@ export const PreviewPanel: React.FC = () => {
           </IconButton></span>
         </Tooltip>
         <Menu anchorEl={exportAnchor} open={!!exportAnchor} onClose={() => setExportAnchor(null)}>
+          {/* Stays open: flip it, then pick the export. */}
+          {h.answers && (
+            <MenuItem onClick={h.answers.onToggle} dense>
+              <ListItemIcon>{h.answers.hidden ? <CheckBoxOutlineBlankIcon fontSize="small" /> : <CheckBoxIcon fontSize="small" />}</ListItemIcon>
+              Include answers (@answer blocks)
+            </MenuItem>
+          )}
+          {h.answers && <Divider />}
           <MenuItem onClick={() => { setExportAnchor(null); h.onPrint(); }} dense>
             <ListItemIcon><PrintIcon fontSize="small" /></ListItemIcon>Export PDF
           </MenuItem>

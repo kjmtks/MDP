@@ -265,10 +265,11 @@ export const renderSlideHTML = (block: RawBlock, globalContext: SlideContext, pa
   const renderer = new marked.Renderer();
   const customRenderer = slideRenderer(localContext, baseUrl, lastUpdated);
   Object.assign(renderer, customRenderer);
-  // Modules first (they consume their own @end), THEN in-slide builds — so a
-  // @build wrapping a block module isn't terminated by that module's @end.
+  // Modules first (they consume their own @end), THEN in-slide builds (and
+  // `@answer` blocks) — so a @build wrapping a block module isn't terminated by
+  // that module's @end.
   const moduleProcessed = applyModulesToMarkdown(slideMarkdown, baseUrl);
-  const built = applyBuildsToMarkdown(moduleProcessed, globalContext.build?.args || {});
+  const built = applyBuildsToMarkdown(moduleProcessed, globalContext.build?.args || {}, globalContext.answers);
   const processedMarkdown = built.markdown;
   const slideHtml = marked.parse(processedMarkdown, {
     renderer: renderer,
@@ -348,6 +349,9 @@ const applyGlobalCommands = (text: string, context: SlideContext) => {
       }
       else if (command.type === 'BUILD') {
         context.build = { name: '', args: parseArguments(command.params.argsStr || '') };
+      }
+      else if (command.type === 'ANSWERS') {
+        context.answers = { hide: command.params.hide, args: parseArguments(command.params.argsStr || '') };
       }
     }
   }

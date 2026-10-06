@@ -182,6 +182,9 @@ export interface HeaderActions {
   onExportVideo?: () => void;
   imagesBusy?: boolean;
   pptxBusy?: boolean;
+  // Present when the previewed deck has `@answer` blocks: whether they are
+  // hidden now (as the deck says, or as toggled) and the toggle.
+  answers?: { hidden: boolean; onToggle: () => void };
   onToggleOverview: () => void;
   isSlideOverview: boolean;
   canPresent: boolean;

@@ -203,3 +203,34 @@ export function registerDataUri(dataUri: string): string {
   }
   return key;
 }
+
+/**
+ * Attributes for the `.mdp-drawio-svg` placeholder that replaces an `<img>` of an
+ * SVG. The image's own sizing — `width` / `height` attributes, a `style`, a
+ * `class` — must survive the switch, or the SVG always shows at its own size
+ * whatever the deck asked for. A width (or height) makes the SVG fill the
+ * placeholder (`.mdp-svg-w` / `.mdp-svg-h` in SlideViewer.css). `alt` / `title`
+ * keep their meaning. Returns the extra classes and the extra attribute text.
+ */
+export function svgPlaceholderAttrs(imgAttrText: string): { cls: string; attrs: string } {
+  const a: Record<string, string> = {};
+  for (const m of imgAttrText.matchAll(/([\w:-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g)) {
+    a[m[1].toLowerCase()] = m[2] ?? m[3] ?? '';
+  }
+  const q = (v: string) => v.replace(/"/g, '&quot;');
+  const len = (v: string) => (/^\d+(\.\d+)?$/.test(v.trim()) ? `${v.trim()}px` : v.trim());
+  const style = [
+    a.width ? `width:${len(a.width)}` : '',
+    a.height ? `height:${len(a.height)}` : '',
+    (a.style || '').trim(),
+  ].filter(Boolean).join(';');
+  const cls = [
+    (a.class || '').trim(),
+    /(?:^|;)\s*width\s*:/i.test(style) ? 'mdp-svg-w' : '',
+    /(?:^|;)\s*height\s*:/i.test(style) ? 'mdp-svg-h' : '',
+  ].filter(Boolean).join(' ');
+  let attrs = style ? ` style="${q(style)}"` : '';
+  if (a.alt) attrs += ` role="img" aria-label="${q(a.alt)}"`;
+  if (a.title) attrs += ` title="${q(a.title)}"`;
+  return { cls: cls ? ` ${q(cls)}` : '', attrs };
+}

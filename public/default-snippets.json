@@ -49,7 +49,8 @@
       { "label": "Time (talk budget)", "text": "\n<!-- @time 90s -->\n", "description": "Set this slide's speaking-time budget (e.g. 90s, 2m, 1m30s, 1:30). Overrides the estimate; shown in the presenter countdown." },
       { "label": "Header", "text": "\n<!-- @header -->\n<!-- @stamp -->\nCONFIDENTIAL\n<!-- @end -->\n<!-- @end -->\n", "description": "Insert header block (with a CONFIDENTIAL stamp). In the meta page = all slides; in a slide = that slide." },
       { "label": "Footer", "text": "\n<!-- @footer -->\nfooter\n<!-- @end -->\n", "description": "Insert footer block. In the meta page = all slides; in a slide = that slide." },
-      { "label": "Hidden Slide", "text": "\n<!-- @hide -->\n", "description": "Set the slide to be hidden" }
+      { "label": "Hidden Slide", "text": "\n<!-- @hide -->\n", "description": "Set the slide to be hidden" },
+      { "label": "Answer (blank in handouts)", "text": "\n<!-- @answer -->\nanswer\n<!-- @end -->\n", "description": "A quiz/exercise answer. Shown normally; a blank framed box when answers are hidden (`<!-- @answers hide -->` on the meta page, or the answers toggle in the preview toolbar / Export menu) — print the handout from the same deck." }
     ]
   },
   {

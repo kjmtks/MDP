@@ -4,7 +4,7 @@ import { BASE_HEIGHT } from '../../../constants';
 import React, { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, useMemo } from 'react';
 import { DrawingOverlay, type Stroke } from '../../drawing/components/DrawingOverlay';
 import { ManipulationLayer, type ManipRuntime } from './ManipulationLayer';
-import { getCachedSvg, getFallback, getSvgNode, loadSvg, registerDataUri, SVG_INVALIDATED_EVENT } from '../inlineSvg';
+import { getCachedSvg, getFallback, getSvgNode, loadSvg, registerDataUri, svgPlaceholderAttrs, SVG_INVALIDATED_EVENT } from '../inlineSvg';
 import { executeModuleScripts } from '../../modules/moduleManager';
 import { applyBuildStep, applyBuildStepInstant } from '../../effects/buildRuntime';
 import './SlideViewer.css';
@@ -343,15 +343,17 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
         // internal url(#id) refs out of the style-url rewriting below). data-URIs
         // register synchronously so they inject before paint (no blank gap);
         // workspace files load async then re-inject. http/blob keep <object>.
+        // The <img>'s own sizing (width/height/style/class) moves to the placeholder.
+        const host = svgPlaceholderAttrs(`${before} ${after}`);
         if (/^data:image\/svg/i.test(src)) {
           const key = registerDataUri(src);
-          return `<span class="mdp-drawio-svg" data-svg-key="${key}"></span>`;
+          return `<span class="mdp-drawio-svg${host.cls}" data-svg-key="${key}"${host.attrs}></span>`;
         }
         if (/^(https?:|blob:)/i.test(src)) {
           return `<object type="image/svg+xml" data="${resolvedSrc}" style="max-width:100%;pointer-events:none;"></object>`;
         }
         const esc = toWorkspacePath(src).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
-        return `<span class="mdp-drawio-svg" data-svg-key="${esc}" data-svg-load="${esc}"></span>`;
+        return `<span class="mdp-drawio-svg${host.cls}" data-svg-key="${esc}" data-svg-load="${esc}"${host.attrs}></span>`;
       }
       return `<img ${before}src="${resolvedSrc}"${after}>`;
     });

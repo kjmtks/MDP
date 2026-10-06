@@ -766,9 +766,17 @@ export default function EditorPage() {
     // the new module <render>/<script> output live, not just its <style>.
   }, [previewMarkdown, imageLibrary, moduleEpoch, previewFileName]);
 
-  const { baseUrl, globalContext, slides: mdSlides, docHtml, slideSize: mdSlideSize, slideStyleVariables, themeCssUrl, slidesSource } = useSlideProcessor(
-    previewFileName, previewFileType, processedMarkdown, lastUpdated, themes, moduleEpoch, previewMarkdown
+  // The answers toggle (preview toolbar / Export menu) overrides the deck's
+  // `@answers` for the deck it was used on — e.g. hide them to print a handout.
+  // Everything built from `slides` follows: preview, slideshow, presenter, PDF,
+  // PowerPoint, images, video.
+  const [answersToggle, setAnswersToggle] = useState<{ deck: string; mode: 'show' | 'hide' } | null>(null);
+  const answersOverride = answersToggle && answersToggle.deck === (previewFileName || '') ? answersToggle.mode : null;
+
+  const { baseUrl, globalContext, slides: mdSlides, docHtml, slideSize: mdSlideSize, slideStyleVariables, themeCssUrl, slidesSource, hasAnswers } = useSlideProcessor(
+    previewFileName, previewFileType, processedMarkdown, lastUpdated, themes, moduleEpoch, previewMarkdown, answersOverride
   );
+  const answersHidden = !!globalContext.answers?.hide;
 
   const imageSlides = useMemo(() => {
     if (previewFileType !== 'image' || !previewFileName) return null;
@@ -2093,12 +2101,17 @@ export default function EditorPage() {
     onExportVideo: canExportVideo ? () => setVideoDialogOpen(true) : undefined,
     imagesBusy: !!imageExporting,
     pptxBusy: !!pptxExporting,
+    answers: hasAnswers && previewFileType === 'markdown' ? {
+      hidden: answersHidden,
+      onToggle: () => setAnswersToggle({ deck: previewFileName || '', mode: answersHidden ? 'show' : 'hide' }),
+    } : undefined,
     onToggleOverview: toggleSlideOverview,
     isSlideOverview,
     canPresent: slides.length > 0,
   }), [handleOpenFolderWithFlag, handleManualSync, handleSwitchToRemote, openConnectDialog,
     openPresenterTool, openOutputWindow, openSuggestModule, toggleSlideshow, handlePrint, exportPptx, pptxExporting,
-    exportImages, imageExporting, canExportVideo, toggleSlideOverview, isSlideOverview, slides.length]);
+    exportImages, imageExporting, canExportVideo, toggleSlideOverview, isSlideOverview, slides.length,
+    hasAnswers, answersHidden, previewFileType, previewFileName]);
 
   // Concurrent-edit lock: hold the active editable text file so a second
   // person on a shared server opens it read-only instead of clobbering.

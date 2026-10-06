@@ -52,6 +52,17 @@ export const parseCommand = (input: string): CommandResult | null => {
   if (matchBuild) {
     return { type: 'BUILD', scope: 'GLOBAL', params: { argsStr: (matchBuild[1] || '').trim() } };
   }
+  // @answers show|hide [key: value, …] — the leading show/hide is optional
+  // (`<!-- @answers label: 解答欄 -->` only sets the defaults; answers stay shown).
+  const matchAnswers = text.match(/^@answers\b\s*([\s\S]*)$/);
+  if (matchAnswers) {
+    const rest = (matchAnswers[1] || '').trim();
+    const mode = rest.match(/^(show|hide)\b\s*,?\s*/i);
+    return {
+      type: 'ANSWERS', scope: 'GLOBAL',
+      params: { hide: !!mode && mode[1].toLowerCase() === 'hide', argsStr: mode ? rest.slice(mode[0].length) : rest },
+    };
+  }
 
   // @header / @footer are BLOCK regions (`<!-- @header --> … <!-- @end -->`),
   // extracted by extractDirectiveBlock in slideParser — not single-line commands.

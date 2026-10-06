@@ -84,7 +84,10 @@ Figure 1: result
       '--graph-label-size: ' + labelsize,
       '--graph-caption-size: ' + captionsize,
       '--graph-area-width: ' + areaWidth,
-      '--graph-img-width: ' + imgWidth
+      '--graph-img-width: ' + imgWidth,
+      // The wrapper of an inlined SVG: blank = as wide as the SVG (fit-content —
+      // as a block, auto would stretch it to a wider label and enlarge the SVG).
+      '--graph-svg-width: ' + (imagesize ? imgWidth : 'fit-content')
     ].join('; ');
 
     // Each label/caption is wrapped in a block padded with blank lines so the
@@ -169,6 +172,20 @@ Figure 1: result
       max-width: 100%;
       height: auto;
       margin: 0 auto;
+    }
+    /* A workspace .svg is inlined — a span.mdp-drawio-svg holding the <svg> —
+       so the img rule above never reaches it: size the span the same way and let
+       the SVG fill it. */
+    .mdp-mod-graph-image .mdp-drawio-svg {
+      display: block;
+      width: var(--graph-svg-width, fit-content);
+      max-width: 100%;
+      margin: 0 auto;
+    }
+    .mdp-mod-graph-image .mdp-drawio-svg > svg {
+      display: block;
+      width: 100%;
+      height: auto;
     }
     /* text-align は flex の子には効かないので，キャプション内に置かれた
        flex なモジュール (@legend など) はブロックごと中央へ寄せる */

@@ -20,6 +20,9 @@ export const useSlideProcessor = (
   // Returned as `slidesSource` once slides built from it are ready — see
   // useSlideGenerator's `sourceKey`.
   sourceKey: string | null = null,
+  // The editor's answers toggle: shows or hides the deck's `@answer` blocks
+  // regardless of its `@answers` directive (null = as the deck says).
+  answersOverride: 'show' | 'hide' | null = null,
 ) => {
   const baseUrl = useMemo(() => {
     const prefix = isElectron() ? 'mdp-file://' : FILES_PREFIX;
@@ -55,10 +58,21 @@ export const useSlideProcessor = (
     }
   }, [processedMarkdown, currentFileType]);
 
-  const globalContext = useMemo(() => {
+  const deckContext = useMemo(() => {
     try { return parseGlobalContext(blocks.length > 0 ? blocks[0].rawContent : ""); }
     catch (e) { console.error('[MDP] meta parse failed:', e); return parseGlobalContext(""); }
   }, [blocks]);
+  // A changed context re-renders every slide (useSlideGenerator), which is what
+  // flipping the answers needs.
+  const globalContext = useMemo(() => (answersOverride
+    ? { ...deckContext, answers: { hide: answersOverride === 'hide', args: deckContext.answers?.args || {} } }
+    : deckContext
+  ), [deckContext, answersOverride]);
+  // Whether the deck has any `@answer` block (the editor offers the toggle then).
+  const hasAnswers = useMemo(
+    () => blocks.some((b, i) => i > 0 && /<!--\s*@answer\b/.test(b.rawContent)),
+    [blocks],
+  );
 
   const { slides: rawSlides, builtKey: slidesSource } = useSlideGenerator(blocks, globalContext, baseUrl, lastUpdated, moduleEpoch, sourceKey);
 
@@ -180,5 +194,5 @@ export const useSlideProcessor = (
     }
   }, [themeCssUrl, lastUpdated]);
 
-  return { baseUrl, globalContext, slides, docHtml, slideSize, slideStyleVariables, themeCssUrl, slidesSource };
+  return { baseUrl, globalContext, slides, docHtml, slideSize, slideStyleVariables, themeCssUrl, slidesSource, hasAnswers };
 };

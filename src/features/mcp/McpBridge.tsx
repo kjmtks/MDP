@@ -83,11 +83,11 @@ const BUILTIN_DIRECTIVES = new Set([
   'title', 'subtitle', 'date', 'presenter', 'affiliation', 'contact', 'tags',
   'aspect', 'theme', 'css', 'transition', 'build', 'header', 'footer', 'end',
   'note', 'script', 'time', 'pageclass', 'id', 'caption', 'cover', 'hide', 'draw', 'drawing', 'addstyle',
-  'image', 'description',
+  'image', 'description', 'answer', 'answers', 'resolution',
 ]);
 // Builtin directives that OPEN a `<!-- @end -->`-closed block (for balance checks).
 // `image` is the in-file image DEFINITION (`<!-- @image alias -->…data…<!-- @end -->`).
-const BLOCK_OPENER_BUILTINS = new Set(['header', 'footer', 'addstyle', 'image']);
+const BLOCK_OPENER_BUILTINS = new Set(['header', 'footer', 'addstyle', 'image', 'answer']);
 
 const loadImage = (src: string) => new Promise<HTMLImageElement>((resolve, reject) => {
   const img = new Image();
@@ -127,7 +127,7 @@ export function validateDeckText(text: string, themes: ThemeOption[]) {
         if (depth === 0) errors.push(`${where}: a section separator "<!-- @ -->" appears with NO open module. A module body must start with an opening "<!-- @name … -->" directive. Add it (get_module_spec shows the exact syntax), or use a plain Markdown list instead.`);
         continue;
       }
-      if (name === 'end' || (/^end./i.test(name) && loadedModules[name.slice(3)])) {
+      if (name === 'end' || name === 'endbuild' || name === 'endanswer' || (/^end./i.test(name) && loadedModules[name.slice(3)])) {
         if (depth === 0) errors.push(`${where}: "<!-- @end -->" with no matching opener. Add the opening "<!-- @name … -->" above it, or remove this stray @end.`);
         else depth--;
         continue;
@@ -144,6 +144,12 @@ export function validateDeckText(text: string, themes: ThemeOption[]) {
       if (name === 'theme') {
         const t = argsStr.trim();
         if (t && !themeNames.has(t)) errors.push(`${where}: unknown theme "${t}" (see list_themes)`);
+        continue;
+      }
+      if (name === 'answers') {
+        const a = argsStr.trim();
+        if (bi > 0) warnings.push(`${where}: "<!-- @answers … -->" only works on the meta page (it switches the deck's @answer blocks between shown and hidden).`);
+        else if (a && !/^(show|hide)\b/i.test(a) && !/^[\w-]+\s*:/.test(a)) warnings.push(`${where}: "@answers ${a}" — expected "show" or "hide" (optionally followed by label:/frame:/space: defaults).`);
         continue;
       }
       if (BLOCK_OPENER_BUILTINS.has(name)) { depth++; continue; }
