@@ -40,7 +40,7 @@
     {
       "id": "utility",
       "label": "Styling & utilities",
-      "desc": "apply CSS classes or inline styles to a slide or region (no visible element of their own)",
+      "desc": "apply CSS classes or inline styles to a slide or region, or show/hide a region only in the PDF export (no visible element of their own)",
       "tags": ["styling"]
     },
     {

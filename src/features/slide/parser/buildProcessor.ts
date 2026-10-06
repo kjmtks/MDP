@@ -75,8 +75,8 @@ const spaceLength = (v: string): string => {
 // Args (the block's own over the deck's `@answers` defaults):
 //   space: auto (default) — the blank is exactly as large as the answer
 //          <length>       — a blank of that height; the answer is left out
-//          none           — nothing at all (content only the instructor's copy has,
-//                           e.g. a timer: hidden, it leaves no gap)
+//          none           — nothing at all (content only the instructor's copy has:
+//                           hidden, it leaves no gap)
 //   label: text shown in the corner of the blank (e.g. 解答欄)
 //   frame: box (default) | none — the outline marking the blank
 const wrapAnswer = (frame: Frame, spec: AnswerSpec | undefined): string => {

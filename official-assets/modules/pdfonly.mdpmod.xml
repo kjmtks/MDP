@@ -1,0 +1,59 @@
+<module>
+  <name>pdfonly</name>
+  <type>block</type>
+  <description>Content that appears only in the PDF: not shown on the slides (preview, slideshow, presenter, images, PowerPoint, video), printed when the deck is exported to PDF. For handout-only notes, such as where to find a video, a URL or QR code, or extra explanation. space: auto keeps a blank of the same size on the slides. Counterpart: @pdfhide.</description>
+  <tags>styling</tags>
+  <aiSpec><![CDATA[
+Wrap content meant for the PDF (a handout, a print) but NOT for the screen: where to
+find a video that plays on the slide, a URL or a QR code, a short written explanation
+that the speaker gives aloud. It is hidden everywhere else (editor preview, slideshow,
+presenter view, PNG / PowerPoint / video export) and printed when the deck is exported
+to PDF. Check it with Export PDF — the preview does not show it.
+
+Parameters:
+  space — none (default): takes no room on the slides.
+          auto: the same room is kept, blank, on the slides (nothing shifts between the
+          slides and the PDF).
+
+<!-- @pdfonly -->
+The demonstration video is on Moodle (week 1).
+<!-- @end -->
+
+The counterpart @pdfhide leaves content OUT of the PDF.
+]]></aiSpec>
+
+  <parameters>
+    <param name="space" type="select" default="none" label="Space on the slides" desc="none = takes no room on the slides; auto = the same room is kept, blank." options="none:Nothing,auto:Blank of the same size" />
+  </parameters>
+
+  <snippets>
+    <snippet>
+      <category>Layout</category>
+      <label>Only in PDF</label>
+      <text><![CDATA[<!-- @pdfonly -->
+printed in the PDF, not shown on the slides
+<!-- @end -->]]></text>
+      <description>Show this content only in the PDF export (hidden on the slides).</description>
+    </snippet>
+  </snippets>
+
+  <render><![CDATA[
+    const keep = String(args.space || '').trim().toLowerCase() === 'auto';
+    // Blank lines around the body so its Markdown (and nested modules) render.
+    return '\n\n<div class="mdp-mod-pdfonly' + (keep ? ' mdp-pdf-keep' : '') + '">\n\n'
+      + sections.join('\n\n').trim() + '\n\n</div>\n\n';
+  ]]></render>
+
+  <style><![CDATA[
+    /* On screen: gone, or (space: auto) an invisible box of the same size —
+       opacity, which nothing inside can undo. The PDF export prints the deck
+       (Electron printToPDF / window.print), so print = the PDF. */
+    .mdp-mod-pdfonly:not(.mdp-pdf-keep) { display: none; }
+    .mdp-mod-pdfonly.mdp-pdf-keep { opacity: 0; pointer-events: none; }
+    @media print {
+      .mdp-mod-pdfonly:not(.mdp-pdf-keep) { display: block; }
+      .mdp-mod-pdfonly.mdp-pdf-keep { opacity: 1; }
+    }
+  ]]></style>
+  <script></script>
+</module>

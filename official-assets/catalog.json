@@ -372,6 +372,14 @@
       "hash": "de1778b3"
     },
     {
+      "path": "modules/pdfhide.mdpmod.xml",
+      "hash": "1ae2273d"
+    },
+    {
+      "path": "modules/pdfonly.mdpmod.xml",
+      "hash": "589cb123"
+    },
+    {
       "path": "modules/phone.mdpmod.xml",
       "hash": "264788df"
     },
@@ -556,7 +564,7 @@
   "taxonomy": [
     {
       "path": "taxonomy/taxonomy.json",
-      "hash": "5a73e7f7"
+      "hash": "534b16a5"
     }
   ],
   "templates": [

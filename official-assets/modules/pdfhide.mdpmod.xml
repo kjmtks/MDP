@@ -1,0 +1,58 @@
+<module>
+  <name>pdfhide</name>
+  <type>block</type>
+  <description>Content left out of the PDF: shown on the slides (preview, slideshow, presenter, images, PowerPoint, video) but not printed when the deck is exported to PDF. For things that mean nothing on paper, such as a quiz timer, a video or a button. space: auto leaves a blank of the same size in the PDF. Counterpart: @pdfonly.</description>
+  <tags>styling</tags>
+  <aiSpec><![CDATA[
+Wrap content that belongs on the SCREEN but not in the PDF (a handout, a print): a quiz
+@timer, a @video, an interactive widget, "click here" instructions. It is shown
+everywhere else (editor preview, slideshow, presenter view, PNG / PowerPoint / video
+export) and left out only when the deck is exported to PDF or printed.
+
+Parameters:
+  space — none (default): nothing is left in the PDF; what follows moves up.
+          auto: a blank of the same size is left in the PDF.
+
+<!-- @pdfhide -->
+<!-- @timer tag: q1, minutes: 1, size: lg -->
+<!-- @end -->
+
+The counterpart @pdfonly shows content ONLY in the PDF. To leave quiz answers out of a
+handout as framed blanks to write in, use the built-in @answer block instead.
+]]></aiSpec>
+
+  <parameters>
+    <param name="space" type="select" default="none" label="Space in the PDF" desc="none = nothing is left in the PDF; auto = a blank of the same size is left." options="none:Nothing,auto:Blank of the same size" />
+  </parameters>
+
+  <snippets>
+    <snippet>
+      <category>Layout</category>
+      <label>Hide in PDF</label>
+      <text><![CDATA[<!-- @pdfhide -->
+shown on the slides, left out of the PDF
+<!-- @end -->]]></text>
+      <description>Leave this content out of the PDF export (the slides still show it).</description>
+    </snippet>
+  </snippets>
+
+  <render><![CDATA[
+    const keep = String(args.space || '').trim().toLowerCase() === 'auto';
+    // Blank lines around the body so its Markdown (and nested modules) render.
+    return '\n\n<div class="mdp-mod-pdfhide' + (keep ? ' mdp-pdf-keep' : '') + '">\n\n'
+      + sections.join('\n\n').trim() + '\n\n</div>\n\n';
+  ]]></render>
+
+  <style><![CDATA[
+    /* The PDF export prints the deck (Electron printToPDF / window.print), so the
+       print medium is the PDF. Kept space: laid out but not painted — nothing of it
+       is in the PDF, and !important beats a build's own visibility. No position on
+       the wrapper, so a module placed in Edit layout keeps its containing block. */
+    @media print {
+      .mdp-mod-pdfhide:not(.mdp-pdf-keep) { display: none !important; }
+      .mdp-mod-pdfhide.mdp-pdf-keep,
+      .mdp-mod-pdfhide.mdp-pdf-keep * { visibility: hidden !important; }
+    }
+  ]]></style>
+  <script></script>
+</module>

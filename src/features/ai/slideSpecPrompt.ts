@@ -206,11 +206,13 @@ answers toggle — it keeps its place as a blank framed box, and nothing of it i
 printed or exported, so the same deck gives the handout. Args (each block's own
 over the \`@answers\` defaults): \`space\` — \`auto\` (default; the blank is as large
 as the answer), a length (\`120px\`, \`4em\`; a blank of that height) or \`none\`
-(nothing left — for content only the instructor's copy has, such as a quiz timer);
+(nothing left — for content only the instructor's copy has, such as a hint);
 \`label\` — text in the blank's corner (e.g. \`解答欄\`); \`frame: none\` — no outline.
 \`@answer\` may sit inside a \`@build\` (revealed after the quiz) and hold modules or
 builds; it closes with \`<!-- @end -->\`, or \`<!-- @endanswer -->\` when it sits inside
-a module's body (like \`<!-- @endbuild -->\`).
+a module's body (like \`<!-- @endbuild -->\`). Content that should never be in a PDF,
+answers or not (a quiz timer, a video), goes in the \`@pdfhide\` module instead;
+\`@pdfonly\` is its counterpart (printed only).
 
 ## Module directives
 
