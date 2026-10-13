@@ -15,6 +15,7 @@ import type { ThemeOption } from '../../types';
 import type { WorkspaceFont, MdpFontDefaults, FontRequirementStatus } from '../fonts/fontTypes';
 import { cancelAllVideos, cancelVideo, getVideoJobs } from '../video/videoQueue';
 import { videoBaseOf, videoExportSupported, type VideoOptions } from '../video/videoTypes';
+import { besideDeckPossible } from '../video/videoFiles';
 import { synthesizesAudio, type TtsEngine } from '../tts/ttsService';
 import { estimateDeckSeconds } from '../slide/talkTime';
 
@@ -649,9 +650,15 @@ Match the user's style throughout (cached profile if present, else get_style_sam
         case 'exportVideo': {
           if (!videoExportSupported()) throw new Error('Video export needs the MDP desktop app.');
           const d = await ensureDeck(params?.path ? String(params.path) : undefined);
+          // A deck behind an SSH link: nothing can be written beside it, and only the
+          // user can pick another place (the save dialog) — say so now, not after the
+          // narration has been synthesized.
+          if (!await besideDeckPossible(d.path)) {
+            throw new Error(`${d.path} is in a folder reached through an SSH link, where a video cannot be written. Ask the user to export it from MDP (Export → Narrated video) and choose where to save it.`);
+          }
           const cc = ctxRef.current;
           if (!synthesizesAudio(cc.ttsEngine)) {
-            throw new Error('The narrator is Web Speech, which gives no audio data to put in a video — ask the user to choose VOICEVOX or a TTS server in MDP (auto-play or rehearsal panel) first.');
+            throw new Error('The narrator is Web Speech, which gives no audio data to put in a video — ask the user to choose VOICEVOX or a TTS server in MDP first (Export → Narrated video, or the auto-play or rehearsal panel).');
           }
           const h = Number(params?.height);
           const options: VideoOptions = {
@@ -661,6 +668,7 @@ Match the user's style throughout (cached profile if present, else get_style_sam
             vtt: params?.vtt === true,
             includeHidden: params?.includeHidden === true,
             fade: params?.fade !== false,
+            updateTimes: params?.updateTimes === true,
           };
           const jobId = cc.queueVideo(options);
           if (!jobId) throw new Error('The deck could not be queued.');
@@ -669,16 +677,18 @@ Match the user's style throughout (cached profile if present, else get_style_sam
             jobId, deck: d.path, mode: options.mode, output: `${videoBaseOf(d.path)}.mp4`,
             ...(options.vtt ? { subtitlesFile: `${videoBaseOf(d.path)}.vtt` } : {}),
             estimatedShowSeconds: showSec,
-            note: options.mode === 'exact'
+            note: (options.mode === 'exact'
               ? 'Queued. An exact export records the real auto-play: expect about the show\'s length (plus synthesizing the narration first). Poll get_video_jobs.'
-              : 'Queued. A fast export renders faster than real time. Poll get_video_jobs.',
+              : 'Queued. A fast export renders faster than real time. Poll get_video_jobs.')
+              + (options.updateTimes ? ' When it is done, each narrated slide\'s measured time becomes its time estimate (get_deck_outline: measuredSec).' : ''),
           };
         }
         case 'videoJobs': {
           const jobs = getVideoJobs().map((j) => ({
-            id: j.id, deck: j.deckPath, status: j.status,
+            id: j.id, deck: j.deckPath, narrator: j.narrator, status: j.status,
             ...(j.progress ? { stage: j.progress.stage, done: j.progress.done, total: j.progress.total, videoSeconds: Math.round(j.progress.seconds) } : {}),
             ...(j.result ? { output: j.result.path, videoSeconds: Math.round(j.result.seconds), ...(j.result.vttPath ? { subtitlesFile: j.result.vttPath } : {}) } : {}),
+            ...(j.result?.measure ? { measuredSlides: j.result.measure.slides.length } : {}),
             ...(j.error ? { error: j.error } : {}),
           }));
           return { jobs, ...(jobs.length ? {} : { note: 'The queue is empty.' }) };

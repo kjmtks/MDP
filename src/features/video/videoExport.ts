@@ -9,17 +9,48 @@ import {
   AudioBufferSource, CanvasSource, Mp4OutputFormat, Output, QUALITY_HIGH, StreamTarget, WebMOutputFormat,
   canEncodeAudio, canEncodeVideo, type StreamTargetChunk,
 } from 'mediabunny';
-import { apiClient, isElectron } from '../../api/apiClient';
+import { isElectron } from '../../api/apiClient';
 import { synthesizeAudio } from '../tts/ttsService';
 import type { CaptureSlideData } from '../remote/capture/captureTypes';
 import {
   FADE_FRAMES, FPS, SAMPLE_RATE, SAMPLES_PER_FRAME, planSegments, toWebVtt, withSpeech, type VideoSegment,
 } from './videoPlan';
-import { videoBaseOf, type VideoJobInput, type VideoProgress, type VideoResult } from './videoTypes';
-import { openVideoFile, type VideoFile } from './videoFiles';
+import { narratorLabel, videoOutputBase, type VideoJobInput, type VideoProgress, type VideoResult } from './videoTypes';
+import { openVideoFile, writeVideoText, type VideoFile } from './videoFiles';
 import { openWebCapturer } from './webCapture';
+import { slideScript } from '../autoplay/autoplay';
+import { scriptKey } from '../slide/talkTime';
+import { firstHeading, newRunId, type NarrationMeasure } from '../rehearsal/rehearsalStore';
 
 const bridge = () => (window as unknown as { electronAPI?: { captureSlide?: (d: object) => Promise<Uint8Array> } }).electronAPI;
+
+/** What each slide's stretches of the video add up to (options.updateTimes), and the
+ *  words among them. A slide that waits for a module ([[emit-wait]], [[wait]]) is
+ *  left out: nothing answers those in a fast video, so its time would miss the
+ *  activity. `speechSamples`: per segment, the length of its voice. */
+function measureOf(job: VideoJobInput, segments: readonly VideoSegment[], speechSamples: readonly number[], startedAt: string): NarrationMeasure {
+  const per = new Map<number, { frames: number; samples: number }>();
+  segments.forEach((seg, i) => {
+    const p = per.get(seg.slideIdx) ?? { frames: 0, samples: 0 };
+    p.frames += seg.frames;
+    p.samples += speechSamples[i] || 0;
+    per.set(seg.slideIdx, p);
+  });
+  const slides: NarrationMeasure['slides'] = [];
+  per.forEach((p, deckIndex) => {
+    const raw = job.slides[deckIndex]?.raw || '';
+    const key = scriptKey(raw);
+    if (!key || /\[\[\s*(?:emit-wait|wait)\s*:/i.test(slideScript(raw))) return;
+    slides.push({
+      deckIndex, key, heading: firstHeading(raw) || undefined, plannedSec: job.slides[deckIndex]?.plannedSec ?? 0,
+      sec: p.frames / FPS, speechSec: p.samples / SAMPLE_RATE,
+    });
+  });
+  return {
+    id: newRunId(), source: 'video', startedAt, endedAt: new Date().toISOString(), complete: true,
+    narrator: narratorLabel(job.tts), slideCount: job.slides.length, slides,
+  };
+}
 
 const aborted = () => new DOMException('The video export was cancelled.', 'AbortError');
 function checkAbort(signal: AbortSignal) { if (signal.aborted) throw aborted(); }
@@ -87,6 +118,7 @@ export async function exportVideo(
   job: VideoJobInput, onProgress: (p: VideoProgress) => void, signal: AbortSignal,
 ): Promise<VideoResult> {
   onProgress({ stage: 'prepare', done: 0, total: 0, seconds: 0 });
+  const startedAt = new Date().toISOString();
   const height = job.options.height;
   const width = Math.round((height * job.slideSize.width) / job.slideSize.height / 2) * 2;   // H.264 wants even sizes
   const codecs = await chooseCodecs(width, height);
@@ -96,7 +128,7 @@ export async function exportVideo(
   if (!segments.length) throw new Error('The deck has no slide to show.');
   checkAbort(signal);
 
-  const path = videoBaseOf(job.deckPath) + codecs.ext;
+  const path = videoOutputBase(job) + codecs.ext;
   const capturer = await openCapturer(job, signal);
   let file: VideoFile;
   try { file = await openVideoFile(path); } catch (e) { capturer.close(); throw e; }
@@ -128,6 +160,7 @@ export async function exportVideo(
 
   let prev: ImageBitmap | null = null;
   let prevKey = '';
+  const speechSamples: number[] = [];   // per segment: its voice's length
   try {
     await output.start();
     let frame = 0;
@@ -141,6 +174,7 @@ export async function exportVideo(
         voice = await voices.get(i)!;
         voices.delete(i);
         seg = segments[i] = withSpeech(seg, voice.length);
+        speechSamples[i] = voice.length;
       }
       checkAbort(signal);
 
@@ -202,10 +236,13 @@ export async function exportVideo(
     committed = true;
     let vttPath: string | undefined;
     if (job.options.vtt) {
-      vttPath = `${videoBaseOf(job.deckPath)}.vtt`;
-      await apiClient.saveFile(vttPath, toWebVtt(segments));
+      vttPath = `${videoOutputBase(job)}.vtt`;
+      await writeVideoText(vttPath, toWebVtt(segments));
     }
-    return { path, vttPath, seconds: frame / FPS };
+    return {
+      path, vttPath, seconds: frame / FPS,
+      ...(job.options.updateTimes ? { measure: measureOf(job, segments, speechSamples, startedAt) } : {}),
+    };
   } catch (e) {
     await output.cancel().catch(() => { /* already torn down */ });
     if (!committed) await file.close(false).catch(() => { /* ignore */ });

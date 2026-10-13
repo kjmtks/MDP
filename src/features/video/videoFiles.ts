@@ -1,17 +1,60 @@
-// The video file beside its deck, written in pieces as the encoder produces them:
-// through the desktop app's IPC (streamFileOpen / Write / Close, app/main.cjs) or
-// the web server's /api/stream/* (server.cjs — only for the users its administrator
-// allows video export). Either way the bytes go to `<name>.part`, and close()
-// commits it under the real name or deletes it.
-import { isElectron } from '../../api/apiClient';
+// The video file — beside its deck, or (desktop) where the user chose in the save
+// dialog — written in pieces as the encoder produces them: through the desktop
+// app's IPC (streamFileOpen / Write / Close, app/main.cjs) or the web server's
+// /api/stream/* (server.cjs — only for the users its administrator allows video
+// export). Either way the bytes go to `<name>.part`, and close() commits it under
+// the real name or deletes it.
+import { apiClient, isElectron } from '../../api/apiClient';
 import { WEB_BASE } from '../../api/base';
 
 interface Bridge {
   streamFileOpen: (relPath: string) => Promise<string>;
   streamFileWrite: (r: { id: string; position: number; data: Uint8Array }) => Promise<boolean>;
   streamFileClose: (r: { id: string; commit: boolean }) => Promise<boolean>;
+  videoTargetOf: (deckRel: string) => Promise<{ local: boolean }>;
+  videoSaveDialog: (r: { name: string; folder?: string }) => Promise<string | null>;
+  videoFileOpen: (r: { file: string; reveal?: boolean }) => Promise<boolean>;
 }
 const bridge = (): Partial<Bridge> | undefined => (window as unknown as { electronAPI?: Partial<Bridge> }).electronAPI;
+
+/** Can a video go beside this deck? Not when its folder is reached through an SSH
+ *  link (desktop) — then it must be saved elsewhere (pickVideoFile). */
+export async function besideDeckPossible(deckPath: string): Promise<boolean> {
+  const api = bridge();
+  if (!isElectron() || !api?.videoTargetOf) return true;
+  try { return (await api.videoTargetOf(deckPath)).local; } catch { return true; }
+}
+
+/** Desktop: where to save a video — the system's save dialog, opened in `folder`
+ *  (else the Videos folder). The absolute .mp4 path, or null when cancelled. */
+export async function pickVideoFile(name: string, folder?: string): Promise<string | null> {
+  const api = bridge();
+  if (!api?.videoSaveDialog) return null;
+  return api.videoSaveDialog({ name, folder });
+}
+
+/** Desktop: play a video saved outside the workspace, or show it in its folder. */
+export async function openSavedVideo(file: string, reveal = false): Promise<void> {
+  await bridge()?.videoFileOpen?.({ file, reveal });
+}
+
+/** Is this a path outside the workspace (picked in the save dialog)? */
+export const isOutsidePath = (p: string): boolean => /^([A-Za-z]:[\\/]|\/|\\\\)/.test(p);
+
+/** The subtitles (.vtt) beside the video: in the workspace through its own file API
+ *  (as always — the web server's stream takes only videos); where the user saved the
+ *  video, written like the video (the save dialog allowed that name's .vtt too). */
+export async function writeVideoText(path: string, text: string): Promise<void> {
+  if (!isOutsidePath(path)) { await apiClient.saveFile(path, text); return; }
+  const file = await openVideoFile(path);
+  try {
+    await file.write(0, new TextEncoder().encode(text));
+  } catch (e) {
+    await file.close(false).catch(() => { /* already gone */ });
+    throw e;
+  }
+  await file.close(true);
+}
 
 export interface VideoFile {
   /** `data` at byte `position` (the MP4 muxer comes back to patch earlier bytes). */

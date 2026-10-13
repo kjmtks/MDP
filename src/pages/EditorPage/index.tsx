@@ -21,8 +21,12 @@ import { ACTIONS_BY_SCOPE } from '../../features/settings/shortcuts/registry';
 import { DrawioEditor } from '../../features/drawio/components/DrawioEditor';
 import { ConnectDialog } from '../../features/remote/components/ConnectDialog';
 import { RehearsalDialog } from '../../features/rehearsal/RehearsalDialog';
-import { readRehearsals, upsertRehearsal, latestRun, type RehearsalRun } from '../../features/rehearsal/rehearsalStore';
-import { estimateDeckSeconds, formatClock } from '../../features/slide/talkTime';
+import {
+  readRehearsals, upsertRehearsal, latestRehearsal, measuredTimesOf, narrationSignature, withMeasuredTimes, narrationRun,
+  forgetMeasuredTimes, isNarrationRun, type MeasuredTime, type NarrationMeasure, type RehearsalFile, type RehearsalRun,
+} from '../../features/rehearsal/rehearsalStore';
+import type { DeckTimingInfo } from '../../features/rehearsal/TimeEstimatesPanel';
+import { estimateDeckSeconds, formatClock, scriptKey, slideSeconds, slideTimeBasis } from '../../features/slide/talkTime';
 import { setOpenDeck } from '../../features/slide/openDeckRuntime';
 import { SuggestModuleDialog } from '../../features/modules/components/SuggestModuleDialog';
 import { AutoPlayView } from '../../features/autoplay/AutoPlayView';
@@ -150,7 +154,7 @@ export default function EditorPage() {
     drawings, currentSlideIndexRef
   });
 
-  const { settings: appSettings, update: updateAppSettings } = useAppSettings();
+  const { settings: appSettings } = useAppSettings();
 
   const tabsRef = useRef(tabs);
   const activeTabIndexRef = useRef(activeTabIndex);
@@ -773,9 +777,33 @@ export default function EditorPage() {
   const [answersToggle, setAnswersToggle] = useState<{ deck: string; mode: 'show' | 'hide' } | null>(null);
   const answersOverride = answersToggle && answersToggle.deck === (previewFileName || '') ? answersToggle.mode : null;
 
-  const { baseUrl, globalContext, slides: mdSlides, docHtml, slideSize: mdSlideSize, slideStyleVariables, themeCssUrl, slidesSource, hasAnswers } = useSlideProcessor(
+  // The previewed deck's rehearsal history (`.rehearsals.json`): the presenter's
+  // "last time" marks, and the narrations measured for the time estimates — each
+  // slide whose exact script was measured carries `measuredSec`, which talkTime
+  // uses in place of the estimate from the script's length (overview, presenter,
+  // rehearsal, video, MCP). `measured` keeps its identity while only rehearsals
+  // are added, so the slides do too.
+  const [deckTiming, setDeckTiming] = useState<{ deck: string; file: RehearsalFile; sig: string; measured: Map<string, MeasuredTime> } | null>(null);
+  const applyTimingFile = useCallback((deck: string, file: RehearsalFile) => {
+    const sig = narrationSignature(file);
+    setDeckTiming((prev) => ({ deck, file, sig, measured: prev && prev.deck === deck && prev.sig === sig ? prev.measured : measuredTimesOf(file) }));
+  }, []);
+  useEffect(() => {
+    if (!previewFileName || !/\.md$/i.test(previewFileName)) return undefined;
+    let cancelled = false;
+    void readRehearsals(previewFileName).then((f) => { if (!cancelled) applyTimingFile(previewFileName, f); });
+    return () => { cancelled = true; };
+  }, [previewFileName, applyTimingFile]);
+  const timingFile = deckTiming && deckTiming.deck === previewFileName ? deckTiming.file : null;
+  const measuredTimes = useMemo(
+    () => (deckTiming && deckTiming.deck === previewFileName ? deckTiming.measured : new Map<string, MeasuredTime>()),
+    [deckTiming, previewFileName],
+  );
+
+  const { baseUrl, globalContext, slides: parsedSlides, docHtml, slideSize: mdSlideSize, slideStyleVariables, themeCssUrl, slidesSource, hasAnswers } = useSlideProcessor(
     previewFileName, previewFileType, processedMarkdown, lastUpdated, themes, moduleEpoch, previewMarkdown, answersOverride
   );
+  const mdSlides = useMemo(() => withMeasuredTimes(parsedSlides, measuredTimes), [parsedSlides, measuredTimes]);
   const answersHidden = !!globalContext.answers?.hide;
 
   const imageSlides = useMemo(() => {
@@ -1153,16 +1181,19 @@ export default function EditorPage() {
     return () => window.removeEventListener('focus', ask);
   }, []);
   const canExportVideo = videoAllowed && !!currentFileName?.endsWith('.slide.md') && mdSlides.length > 0;
-  const queueVideo = useCallback((options: VideoOptions, tabStream?: MediaStream): string | null => {
+  const queueVideo = useCallback((options: VideoOptions, tabStream?: MediaStream, output?: string): string | null => {
     if (!currentFileName) return null;
     const id = enqueueVideo({
       deckPath: currentFileName,
+      output,
       slides: mdSlides.map((s, i) => {
         const d = s as { html?: string; raw?: string; stepCount?: number; isHidden?: boolean; className?: string; header?: string; footer?: string; pageNumber?: number; transition?: MotionSpec };
         return {
           html: d.html || '', raw: d.raw || '', stepCount: d.stepCount || 0, isHidden: !!d.isHidden,
           className: d.className, header: d.header, footer: d.footer, pageNumber: d.pageNumber ?? i + 1,
           transition: d.transition?.name, motion: d.transition,
+          // Its time estimate now — what a measurement of the video is compared with.
+          plannedSec: slideSeconds(s, appSettings.readingCharsPerMin || 320),
         };
       }),
       globalTransition: (globalContext as { transition?: MotionSpec } | undefined)?.transition?.name,
@@ -1183,9 +1214,15 @@ export default function EditorPage() {
     setVideoDialogOpen(false);
     return id;
   }, [currentFileName, mdSlides, globalContext, mdSlideSize, basePath, themeCssUrl, appSettings.tts, appSettings.readingCharsPerMin]);
-  // A finished video shows up in the file tree at once.
+  // A finished video shows up in the file tree at once; what it measured (with
+  // "Update the time estimates") goes into its deck's time estimates.
+  const saveNarrationRef = useRef<((deckPath: string, m: NarrationMeasure) => Promise<string>) | null>(null);
   useEffect(() => {
-    onVideoJobFinished((job) => { if (job.status === 'done') fetchFileTree(); });
+    onVideoJobFinished((job) => {
+      if (job.status !== 'done') return;
+      fetchFileTree();
+      if (job.result?.measure) void saveNarrationRef.current?.(job.deckPath, job.result.measure);
+    });
     return () => onVideoJobFinished(null);
   }, [fetchFileTree]);
 
@@ -1238,29 +1275,55 @@ export default function EditorPage() {
     slides, currentFileName, currentSlideIndex, setCurrentSlideIndex, setStep, openDeck: handleOpenDeck,
   });
 
-  // Rehearsal history of the PREVIEWED deck (the one the presenter mirrors): the
-  // latest run is shipped to the presenter for "last time" marks, and runs the
-  // presenter measures come back through `handleRehearsalRun` to be persisted in
-  // the deck's `.rehearsals.json` sidecar (see features/rehearsal/rehearsalStore).
-  const [lastRehearsal, setLastRehearsal] = useState<RehearsalRun | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    if (!previewFileName || !/\.md$/i.test(previewFileName)) { setLastRehearsal(null); return; }
-    readRehearsals(previewFileName).then((f) => { if (!cancelled) setLastRehearsal(latestRun(f)); });
-    return () => { cancelled = true; };
-  }, [previewFileName]);
+  // Rehearsal history of the PREVIEWED deck (the one the presenter mirrors; loaded
+  // with the slides above): the latest rehearsal is shipped to the presenter for
+  // "last time" marks, and runs the presenter measures come back through
+  // `handleRehearsalRun` to be persisted in the deck's `.rehearsals.json` sidecar
+  // (see features/rehearsal/rehearsalStore).
+  const lastRehearsal = useMemo(() => latestRehearsal(timingFile), [timingFile]);
   const handleRehearsalRun = useCallback(async (run: RehearsalRun) => {
     if (!previewFileName || !/\.md$/i.test(previewFileName)) return;
     try {
       const file = await upsertRehearsal(previewFileName, run);
-      setLastRehearsal(run);
+      applyTimingFile(previewFileName, file);
       const n = file.runs.findIndex((r) => r.id === run.id) + 1;
       notify(`Rehearsal #${n} saved: ${formatClock(Math.round(run.totalSec))} spoken vs ${formatClock(Math.round(run.plannedTotalSec))} planned` +
         (run.complete ? '' : ` (stopped at slide ${run.lastSlide}/${run.slideCount})`), { title: 'Rehearsal' });
     } catch (e) {
       reportError('Failed to save the rehearsal run.', { detail: e });
     }
-  }, [previewFileName]);
+  }, [previewFileName, applyTimingFile]);
+
+  // A narration measured for the time estimates (the auto-play, or a video job,
+  // with "Update the time estimates") → a run in the deck's rehearsal history,
+  // whose times the deck's slides then take. Returns what it did, for the auto-play.
+  const readingCpm = appSettings.readingCharsPerMin || 320;
+  const saveNarration = useCallback(async (deckPath: string, m: NarrationMeasure): Promise<string> => {
+    const from = m.source === 'video' ? 'video' : 'narration';
+    if (!m.slides.length) {
+      const why = `Nothing measured from the ${from}: no slide with a script was played through.`;
+      notify(why, { title: 'Time estimates' });
+      return why;
+    }
+    try {
+      const run = narrationRun(m, m.slideCount ?? 0, readingCpm);
+      const file = await upsertRehearsal(deckPath, run);
+      if (deckPath === previewFileName) applyTimingFile(deckPath, file);
+      const n = run.slides.length;
+      const msg = `Time estimates updated from the ${from}: ${n} slide${n === 1 ? '' : 's'}, ${formatClock(run.totalSec)} (estimated ${formatClock(run.plannedTotalSec)} before)`;
+      notify(`${msg}.`, { title: 'Time estimates' });
+      return msg;
+    } catch (e) {
+      reportError('Failed to save the measured times.', { detail: e });
+      return 'The measured times could not be saved.';
+    }
+  }, [previewFileName, applyTimingFile, readingCpm]);
+  useEffect(() => { saveNarrationRef.current = saveNarration; }, [saveNarration]);
+  const forgetTimes = useCallback(async () => {
+    if (!previewFileName) return;
+    try { applyTimingFile(previewFileName, await forgetMeasuredTimes(previewFileName)); }
+    catch (e) { reportError('Failed to forget the measured times.', { detail: e }); }
+  }, [previewFileName, applyTimingFile]);
 
   // Recording the live presentation (the audience window + microphone → a video
   // beside the deck). REC in the slideshow controls, or from the presenter view.
@@ -1406,6 +1469,39 @@ export default function EditorPage() {
 
   const [rehearseOpen, setRehearseOpen] = useState(false);
   const [autoPlayOpen, setAutoPlayOpen] = useState(false);
+  // The auto-play's slides: hidden ones are not played, as in the slideshow (the
+  // numbers stay the deck's); each knows its place in the deck and its time estimate
+  // now, for a measurement of the narration.
+  const autoPlaySlides = useMemo(() => mdSlides.flatMap((s, i) => {
+    const d = s as { html?: string; raw?: string; className?: string; header?: string; footer?: string; stepCount?: number; isHidden?: boolean; pageNumber?: number; transition?: MotionSpec };
+    return d.isHidden ? [] : [{
+      html: d.html || '', raw: d.raw || '', className: d.className, header: d.header, footer: d.footer,
+      stepCount: d.stepCount || 0, pageNumber: d.pageNumber ?? i + 1, transition: d.transition,
+      deckIndex: i, plannedSec: slideSeconds(s, readingCpm),
+    }];
+  }), [mdSlides, readingCpm]);
+  // Where the deck's time estimates stand — the Timing tab of the auto-play and of
+  // the video dialog; worked out only while one of them is open.
+  const timingInfo = useMemo<DeckTimingInfo | null>(() => {
+    if (!autoPlayOpen && !videoDialogOpen) return null;
+    let scripted = 0;
+    let measured = 0;
+    for (const s of mdSlides as { raw?: string; isHidden?: boolean; measuredSec?: number }[]) {
+      // A shown slide with a script (markers alone count: a timer is an activity), and no @time.
+      if (s.isHidden || !scriptKey(s.raw || '')) continue;
+      const basis = slideTimeBasis(s.raw || '', s.measuredSec);
+      if (basis === 'time') continue;
+      scripted++;
+      if (basis === 'measured') measured++;
+    }
+    const last = (timingFile?.runs || [])
+      .filter((r) => isNarrationRun(r) && (r.slides || []).some((x) => x && x.key))
+      .sort((a, b) => String(b.endedAt || '').localeCompare(String(a.endedAt || '')))[0];
+    return {
+      estimateSec: estimateDeckSeconds(mdSlides, readingCpm), scripted, measured,
+      ...(last ? { lastAt: last.endedAt, lastNarrator: last.narrator } : {}),
+    };
+  }, [autoPlayOpen, videoDialogOpen, mdSlides, readingCpm, timingFile]);
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [suggestText, setSuggestText] = useState('');
   const openSuggestModule = useCallback(() => {
@@ -2148,31 +2244,28 @@ export default function EditorPage() {
 
       <ConnectDialog open={isConnectDialogOpen} onClose={() => setIsConnectDialogOpen(false)} channelId={channelId} token={token} ipCandidates={remoteIps} port={remotePort} />
 
-      <RehearsalDialog open={rehearseOpen} onClose={() => setRehearseOpen(false)} onRun={handleRehearsalRun} slides={mdSlides.map((s) => ({ raw: (s as { raw?: string }).raw || '' }))} />
+      <RehearsalDialog open={rehearseOpen} onClose={() => setRehearseOpen(false)} onRun={handleRehearsalRun}
+        slides={mdSlides.map((s) => ({ raw: (s as { raw?: string }).raw || '', measuredSec: (s as { measuredSec?: number }).measuredSec }))} />
 
       <SuggestModuleDialog open={suggestOpen} onClose={() => setSuggestOpen(false)} text={suggestText} onInsert={handleInsertText} />
 
       {videoDialogOpen && currentFileName && (
         <VideoExportDialog open onClose={() => setVideoDialogOpen(false)} deckPath={currentFileName}
-          slideSize={mdSlideSize} engine={appSettings.tts.engine}
+          slideSize={mdSlideSize} slideRaws={mdSlides.map((s) => (s as { raw?: string }).raw || '')}
           estimatedSeconds={estimateDeckSeconds(mdSlides, appSettings.readingCharsPerMin || 320)}
-          onUseEngine={(engine) => updateAppSettings({ tts: { ...appSettings.tts, engine } })}
+          timing={timingInfo} onForgetTimes={forgetTimes}
           onQueue={queueVideo} />
       )}
       <VideoQueuePanel onOpen={(p) => handleFileSelect(p)} />
 
       {/* Hidden slides are not played, as in the slideshow (the numbers stay the deck's).
-          It starts at the slide being edited (a hidden one: the next shown). */}
+          It starts at the slide being edited (a hidden one: the next shown). What it
+          measures (Timing tab) becomes the deck's time estimates. */}
       <AutoPlayView open={autoPlayOpen} onClose={() => setAutoPlayOpen(false)} basePath={basePath} slideSize={mdSlideSize}
         globalTransition={globalContext.transition}
         startSlide={mdSlides.slice(0, currentSlideIndex).filter((s) => !(s as { isHidden?: boolean }).isHidden).length}
-        slides={mdSlides.flatMap((s, i) => {
-          const d = s as { html?: string; raw?: string; className?: string; header?: string; footer?: string; stepCount?: number; isHidden?: boolean; pageNumber?: number; transition?: MotionSpec };
-          return d.isHidden ? [] : [{
-            html: d.html || '', raw: d.raw || '', className: d.className, header: d.header, footer: d.footer,
-            stepCount: d.stepCount || 0, pageNumber: d.pageNumber ?? i + 1, transition: d.transition,
-          }];
-        })} />
+        slides={autoPlaySlides} timing={timingInfo} onForgetTimes={forgetTimes}
+        onMeasured={previewFileName ? (m) => saveNarration(previewFileName, { ...m, slideCount: mdSlides.length }) : undefined} />
 
       {moduleSettings && (
         <ModuleSettingsDialog

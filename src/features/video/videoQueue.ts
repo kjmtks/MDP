@@ -5,7 +5,7 @@
 // meanwhile. A module-level store (useSyncExternalStore) — it outlives any one
 // component. The encoders (showRecorder.ts / videoExport.ts + mediabunny) are
 // loaded when a job first runs.
-import type { VideoJobInput, VideoProgress, VideoResult } from './videoTypes';
+import { narratorLabel, type VideoJobInput, type VideoProgress, type VideoResult } from './videoTypes';
 
 export type VideoJobStatus = 'queued' | 'running' | 'done' | 'failed' | 'cancelled';
 
@@ -13,6 +13,8 @@ export interface VideoJob {
   id: string;
   deckPath: string;
   title: string;
+  /** The narrator it was queued with (narratorLabel). */
+  narrator: string;
   status: VideoJobStatus;
   progress: VideoProgress | null;
   result?: VideoResult;
@@ -56,13 +58,13 @@ export function enqueueVideo(input: VideoJobInput): string {
   if (waiting) {
     if (waiting.input?.tabStream !== input.tabStream) release(waiting.input);
     waiting.input = input;
-    patch(waiting, { addedAt: Date.now() });
+    patch(waiting, { addedAt: Date.now(), narrator: narratorLabel(input.tts) });
     return waiting.job.id;
   }
   const id = `v${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
   const title = (input.deckPath.split('/').pop() || input.deckPath).replace(/\.slide\.md$/i, '');
   entries.push({
-    job: { id, deckPath: input.deckPath, title, status: 'queued', progress: null, addedAt: Date.now() },
+    job: { id, deckPath: input.deckPath, title, narrator: narratorLabel(input.tts), status: 'queued', progress: null, addedAt: Date.now() },
     input,
     ac: new AbortController(),
   });

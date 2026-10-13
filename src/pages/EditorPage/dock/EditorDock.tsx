@@ -187,13 +187,50 @@ export function EditorDock() {
     }
   }, []);
 
+  // The same, only when the grid has drifted from its container — the cheap check
+  // run on every occasion below. A blank band under the dock (the page's background
+  // showing, "half the screen white") is the grid left at a size the container no
+  // longer has, by a path none of the other calls covers; say so when it happens.
+  const fitIfStale = useCallback(() => {
+    const el = rootRef.current;
+    const api = apiRef.current;
+    if (!el || !api || el.clientWidth <= 0 || el.clientHeight <= 0) return;
+    if (Math.abs(api.width - el.clientWidth) > 1 || Math.abs(api.height - el.clientHeight) > 1) {
+      console.warn(`[MDP] dock grid ${Math.round(api.width)}×${Math.round(api.height)} in a ${el.clientWidth}×${el.clientHeight} container — re-fitted`);
+      api.layout(el.clientWidth, el.clientHeight, true);
+    }
+  }, []);
+
   useEffect(() => {
     const el = rootRef.current;
     if (!el) return;
     const ro = new ResizeObserver(() => fitLayout());
     ro.observe(el);
-    return () => ro.disconnect();
-  }, [fitLayout]);
+    // Whenever the window may have changed, and every 1.5 s while it is visible.
+    const check = () => fitIfStale();
+    const timer = window.setInterval(() => { if (!document.hidden) fitIfStale(); }, 1500);
+    window.addEventListener('resize', check);
+    window.addEventListener('focus', check);
+    document.addEventListener('visibilitychange', check);
+    // The editor page itself never scrolls (only its panes do); body's
+    // `overflow: hidden` stops the user, not a script's focus / scrollIntoView —
+    // which would leave the whole app shifted up over a blank band.
+    const pin = () => {
+      if (window.scrollX || window.scrollY) {
+        console.warn(`[MDP] the editor page was scrolled to ${window.scrollX},${window.scrollY} — put back`);
+        window.scrollTo(0, 0);
+      }
+    };
+    window.addEventListener('scroll', pin);
+    return () => {
+      ro.disconnect();
+      window.clearInterval(timer);
+      window.removeEventListener('resize', check);
+      window.removeEventListener('focus', check);
+      document.removeEventListener('visibilitychange', check);
+      window.removeEventListener('scroll', pin);
+    };
+  }, [fitLayout, fitIfStale]);
 
   const onReady = useCallback((event: DockviewReadyEvent) => {
     const api = event.api;
@@ -225,6 +262,9 @@ export function EditorDock() {
         /* ignore quota / serialization errors */
       }
       broadcastVisiblePanels(api);
+      // A group added / removed / moved (a tab dragged out, a panel closed): the
+      // grid must still fill its container.
+      requestAnimationFrame(() => fitIfStale());
     });
 
     reconcile(api, editorRef.current, syncingRef, lastActiveRef);

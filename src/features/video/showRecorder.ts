@@ -8,15 +8,16 @@
 // synthesized first, so the show never waits for the TTS, then it plays once,
 // start to end.
 import type { StreamTargetChunk } from 'mediabunny';
-import { apiClient, isElectron } from '../../api/apiClient';
+import { isElectron } from '../../api/apiClient';
 import { synthesizesAudio } from '../tts/ttsService';
 import type { AutoPlayExportEvent, AutoPlaySlide } from '../autoplay/AutoPlayView';
 import {
-  showExportChannel, videoBaseOf, type ShowExportDeck, type ShowExportMessage, type VideoJobInput, type VideoProgress,
+  showExportChannel, videoOutputBase, type ShowExportDeck, type ShowExportMessage, type VideoJobInput, type VideoProgress,
   type VideoResult,
 } from './videoTypes';
-import { openVideoFile, type VideoFile } from './videoFiles';
+import { openVideoFile, writeVideoText, type VideoFile } from './videoFiles';
 import { openWebShow, type WebShow } from './webShow';
+import type { NarrationMeasure } from '../rehearsal/rehearsalStore';
 
 interface Bridge {
   openShowExport: (r: { jobId: string; width: number; height: number }) => Promise<boolean>;
@@ -108,10 +109,12 @@ export async function recordShow(
     throw new Error('Web Speech gives no audio data — choose VOICEVOX or a TTS server to make a narrated video.');
   }
   const slides: AutoPlaySlide[] = job.slides
-    .filter((s) => job.options.includeHidden || !s.isHidden)
-    .map((s) => ({
+    .map((s, deckIndex) => ({ s, deckIndex }))
+    .filter(({ s }) => job.options.includeHidden || !s.isHidden)
+    .map(({ s, deckIndex }) => ({
       html: s.html, raw: s.raw, className: s.className, header: s.header, footer: s.footer,
       stepCount: s.stepCount || 0, pageNumber: s.pageNumber, transition: s.motion,
+      deckIndex, plannedSec: s.plannedSec,
     }));
   if (!slides.length) throw new Error('The deck has no slide to show.');
   const jobId = `x${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
@@ -125,7 +128,7 @@ export async function recordShow(
   const deck: ShowExportDeck = {
     slides, slideSize: job.slideSize, basePath: job.basePath, themeCssUrl: job.themeCssUrl, fontCss: job.fontCss,
     modules: job.modules || [], effects: job.effects || [], globalMotion: job.globalMotion,
-    tts: job.tts, cpm: job.cpm, captions: job.options.subtitles,
+    tts: job.tts, cpm: job.cpm, captions: job.options.subtitles, measure: !!job.options.updateTimes,
   };
 
   // Everything that can end the job early funnels into `fail`; the waits below race it.
@@ -143,6 +146,7 @@ export async function recordShow(
   const finishedP = new Promise<void>((r) => { finished = r; });
   let recStart = 0;
   let items = { done: 0, total: 0 };
+  let measure: NarrationMeasure | undefined;   // what the show measured (options.updateTimes)
   const cues: { start: number; end: number; text: string }[] = [];
   let cue: { start: number; text: string } | null = null;
   const now = () => (recStart ? (performance.now() - recStart) / 1000 : 0);
@@ -158,7 +162,8 @@ export async function recordShow(
       progress({ stage: 'record', done: items.done, total: items.total, seconds: now() });
       const text = plainCaption(e.caption);
       if (!cue || cue.text !== text) { closeCue(now()); cue = { start: now(), text }; }
-    } else if (e.type === 'finished') { closeCue(now()); finished(); }
+    } else if (e.type === 'measured') measure = { ...e.measure, slideCount: job.slides.length };
+    else if (e.type === 'finished') { closeCue(now()); finished(); }
     else if (e.type === 'error') fail(new Error(e.message));
   };
   channel.onmessage = (ev: MessageEvent<ShowExportMessage>) => {
@@ -194,7 +199,7 @@ export async function recordShow(
     const audioCfg = { numberOfChannels: sound.getSettings().channelCount || 2, sampleRate: sound.getSettings().sampleRate || 48000 };
     const mp4 = await canEncodeVideo('avc', { width, height, frameRate: 30 }) && await canEncodeAudio('aac', audioCfg);
 
-    const path = videoBaseOf(job.deckPath) + (mp4 ? '.mp4' : '.webm');
+    const path = videoOutputBase(job) + (mp4 ? '.mp4' : '.webm');
     opening = openVideoFile(path);
     const out = file = await race(opening);
     output = new Output({
@@ -233,10 +238,10 @@ export async function recordShow(
     committed = true;
     let vttPath: string | undefined;
     if (job.options.vtt) {
-      vttPath = `${videoBaseOf(job.deckPath)}.vtt`;
-      await apiClient.saveFile(vttPath, toVtt(cues));
+      vttPath = `${videoOutputBase(job)}.vtt`;
+      await writeVideoText(vttPath, toVtt(cues));
     }
-    return { path, vttPath, seconds };
+    return { path, vttPath, seconds, ...(job.options.updateTimes && measure ? { measure } : {}) };
   } catch (e) {
     if (output) await output.cancel().catch(() => { /* not started / torn down */ });
     if (file && !committed) await file.close(false).catch(() => { /* ignore */ });

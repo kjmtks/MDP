@@ -34,6 +34,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   streamFileOpen: (relPath) => ipcRenderer.invoke('streamFileOpen', relPath),
   streamFileWrite: (req) => ipcRenderer.invoke('streamFileWrite', req),
   streamFileClose: (req) => ipcRenderer.invoke('streamFileClose', req),
+  // Where a video can go: beside its deck when that folder is local, else (or by
+  // choice) a file picked in the save dialog — which then may be written, played
+  // and shown in its folder.
+  videoTargetOf: (deckRel) => ipcRenderer.invoke('videoTargetOf', deckRel),
+  videoSaveDialog: (req) => ipcRenderer.invoke('videoSaveDialog', req),
+  videoFileOpen: (req) => ipcRenderer.invoke('videoFileOpen', req),
   // Recording a live presentation: the tab-capture source of the window the
   // audience sees (the output window if open, else this window).
   getSlideWindowSource: () => ipcRenderer.invoke('getSlideWindowSource'),

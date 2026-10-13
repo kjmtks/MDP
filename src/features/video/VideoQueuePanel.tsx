@@ -5,6 +5,7 @@ import MovieIcon from '@mui/icons-material/Movie';
 import {
   cancelAllVideos, cancelVideo, clearFinishedVideos, getVideoJobs, subscribeVideoJobs, type VideoJob,
 } from './videoQueue';
+import { isOutsidePath, openSavedVideo } from './videoFiles';
 
 const clock = (s: number) => {
   const t = Math.max(0, Math.round(s));
@@ -21,7 +22,7 @@ function statusText(j: VideoJob): string {
       if (p.stage === 'record') return `Recording the auto-play · line ${p.done} / ${p.total} · ${clock(p.seconds)}`;
       return `Narrating and rendering ${p.done} / ${p.total} · ${clock(p.seconds)} of video`;
     }
-    case 'done': return `Done · ${clock(j.result?.seconds || 0)} → ${j.result?.path.split('/').pop() || ''}`;
+    case 'done': return `Done · ${clock(j.result?.seconds || 0)} → ${j.result?.path.split(/[\\/]/).pop() || ''}`;
     case 'failed': return `Failed: ${j.error || 'unknown error'}`;
     default: return 'Cancelled';
   }
@@ -60,12 +61,22 @@ export const VideoQueuePanel: React.FC<{ onOpen: (path: string) => void }> = ({ 
           <div key={j.id} style={{ padding: '6px 0', borderTop: '1px solid var(--app-border-subtle)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{ flex: 1, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={j.deckPath}>{j.title}</span>
-              {j.status === 'done' && j.result && (
+              {/* In the workspace: play it in the preview. Saved elsewhere (the save
+                  dialog): the system's player, or its folder. */}
+              {j.status === 'done' && j.result && (isOutsidePath(j.result.path) ? (
+                <>
+                  <Button size="small" sx={btn} onClick={() => void openSavedVideo(j.result!.path)}>Play</Button>
+                  <Button size="small" sx={btn} onClick={() => void openSavedVideo(j.result!.path, true)}>Folder</Button>
+                </>
+              ) : (
                 <Button size="small" sx={btn} onClick={() => onOpen(j.result!.path)}>Play</Button>
-              )}
+              ))}
               {(j.status === 'queued' || running) && (
                 <Button size="small" color="error" sx={btn} onClick={() => cancelVideo(j.id)}>Cancel</Button>
               )}
+            </div>
+            <div style={{ fontSize: 12, marginTop: 2, color: 'var(--app-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={j.narrator}>
+              {j.narrator}
             </div>
             <div style={{ fontSize: 12, marginTop: 2, color: j.status === 'failed' ? '#f87171' : 'var(--app-text-muted)', wordBreak: 'break-word' }}>
               {statusText(j)}

@@ -25,6 +25,10 @@ import { buildPlaylist, scriptSegments, type PlayItem, type ScriptAction } from 
 import { CAPTION_TEXT, captionLang, fitCaptionBox } from './captionFit';
 import { mdpBus } from '../bus/mdpBus';
 import { SpeechServerControls } from '../tts/SpeechServerControls';
+import { scriptKey } from '../slide/talkTime';
+import { firstHeading, newRunId, type NarrationMeasure } from '../rehearsal/rehearsalStore';
+import { TimeEstimatesPanel, type DeckTimingInfo } from '../rehearsal/TimeEstimatesPanel';
+import { narratorLabel } from '../video/videoTypes';
 
 // KaTeX delimiters for rendering a caption's inline/display math.
 const KATEX_DELIMS = [
@@ -36,6 +40,8 @@ export interface AutoPlaySlide {
   html: string; raw: string; className?: string; header?: string; footer?: string; stepCount: number;
   pageNumber?: number;        // the number the slide shows (hidden slides are not played)
   transition?: MotionSpec;    // its own @transition
+  deckIndex?: number;         // its position in the deck (hidden slides counted) — for a measurement
+  plannedSec?: number;        // its time estimate now — what a measurement is compared with
 }
 
 /** What the auto-play tells the "exact" video export while it is being recorded. */
@@ -43,6 +49,7 @@ export type AutoPlayExportEvent =
   | { type: 'prep'; done: number; total: number }       // synthesizing the narration
   | { type: 'armed'; items: number }                    // ready: the first slide is on screen
   | { type: 'item'; index: number; total: number; caption: string }
+  | { type: 'measured'; measure: NarrationMeasure }     // just before 'finished', when asked to measure
   | { type: 'finished' }
   | { type: 'error'; message: string };
 
@@ -54,7 +61,38 @@ export interface AutoPlayExportMode {
   cpm: number;
   captions: boolean;
   go: boolean;
+  /** Measure each slide's narration for the time estimates ('measured' event). */
+  measure?: boolean;
   onEvent: (e: AutoPlayExportEvent) => void;
+}
+
+// The setup screen's tabs, and the "Update the time estimates" choice — both
+// remembered per computer (a convenience).
+type SetupTab = 'narrator' | 'show' | 'timing';
+const TAB_KEY = 'mdp.autoplay.tab';
+const UPDATE_KEY = 'mdp.autoplay.updateTimes';
+const readTab = (): SetupTab => {
+  try { const v = localStorage.getItem(TAB_KEY); return v === 'show' || v === 'timing' ? v : 'narrator'; } catch { return 'narrator'; }
+};
+const readUpdate = (): boolean => { try { return localStorage.getItem(UPDATE_KEY) === '1'; } catch { return false; } };
+const remember = (key: string, value: string) => { try { localStorage.setItem(key, value); } catch { /* not remembered */ } };
+
+const SETUP_TABS: ReadonlyArray<readonly [SetupTab, string]> = [['narrator', 'Narrator'], ['show', 'Playback'], ['timing', 'Timing']];
+
+// A measurement of the narration in progress: how long each playlist item took to
+// PLAY — its words and the breath after them, a pause, an activity the script waits
+// for — never the wait for a line still being synthesized. An item cut short (pause,
+// skip, close) has no time; played again, it gets one. A slide counts when all of
+// its items have one, and none waited in vain for a module (`failed`).
+interface MeasureSession {
+  id: string;
+  startedAt: string;
+  planned: number[];                 // each slide's estimate when the show started
+  sec: (number | undefined)[];       // per playlist item
+  speech: (number | undefined)[];    // per playlist item: the words alone
+  failed: Set<number>;               // items whose [[emit-wait]] / [[wait]] ran out
+  complete: boolean;                 // the show was played to its end
+  sent: string;                      // what was reported last (not reported twice)
 }
 
 // A slide's name in the setup screen's "Start from" list: its first heading, else
@@ -84,7 +122,14 @@ export const AutoPlayView: React.FC<{
   /** Where the show starts unless the setup screen picks another slide: the slide
    *  being edited (an index into `slides`). */
   startSlide?: number;
-}> = ({ open, onClose, slides, slideSize, basePath, globalTransition, exportMode, startSlide }) => {
+  /** "Update the time estimates": what the narration measured — when the show ends,
+   *  or is closed part way. May return a line to show in the control bar. */
+  onMeasured?: (m: NarrationMeasure) => Promise<string | void> | string | void;
+  /** The deck's time estimates now (the setup screen's Timing tab). */
+  timing?: DeckTimingInfo | null;
+  /** Forget the deck's measured times (back to the estimates from the scripts). */
+  onForgetTimes?: () => void | Promise<void>;
+}> = ({ open, onClose, slides, slideSize, basePath, globalTransition, exportMode, startSlide, onMeasured, timing, onForgetTimes }) => {
   const { settings, updateTts } = useAppSettings();
   // Human reading speed → only the script-less dwell.
   const cpm = exportMode?.cpm ?? (settings.readingCharsPerMin || 320);
@@ -151,6 +196,14 @@ export const AutoPlayView: React.FC<{
   const [vvStatus, setVvStatus] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle');
   const rootRef = useRef<HTMLDivElement>(null);
   const captionRef = useRef<HTMLDivElement>(null);
+  const [setupTab, setSetupTab] = useState<SetupTab>(readTab);
+  const pickTab = (t: SetupTab) => { setSetupTab(t); remember(TAB_KEY, t); };
+  const [updateTimes, setUpdateTimes] = useState(readUpdate);
+  // Measuring the narration for the time estimates (see MeasureSession).
+  const measureRef = useRef<MeasureSession | null>(null);
+  const [measureNote, setMeasureNote] = useState('');   // what the last measurement did
+  const onMeasuredRef = useRef(onMeasured);
+  useEffect(() => { onMeasuredRef.current = onMeasured; });
 
   // Render the caption's `\(…\)` / `\[…\]` math with KaTeX. textContent first (so any
   // markup is safely escaped), then auto-render math in place; on any KaTeX error the
@@ -182,6 +235,54 @@ export const AutoPlayView: React.FC<{
   useEffect(() => { exportRef.current = exportMode; });
   const emitExport = (e: AutoPlayExportEvent) => {
     try { exportRef.current?.onEvent(e); } catch { /* the recorder's problem, not the show's */ }
+  };
+
+  // ---- measuring the narration (the "Update the time estimates" option) ----
+  const beginMeasure = () => {
+    measureRef.current = {
+      id: newRunId(), startedAt: new Date().toISOString(), planned: slides.map((s) => s.plannedSec ?? 0),
+      sec: [], speech: [], failed: new Set(), complete: false, sent: '',
+    };
+  };
+  // Every slide with a script whose items all played through, with its time.
+  const collectMeasure = (complete: boolean): NarrationMeasure | null => {
+    const m = measureRef.current;
+    if (!m) return null;
+    const itemsOf = new Map<number, number[]>();
+    playlist.forEach((it, i) => { const list = itemsOf.get(it.slideIdx); if (list) list.push(i); else itemsOf.set(it.slideIdx, [i]); });
+    const measured: NarrationMeasure['slides'] = [];
+    itemsOf.forEach((items, si) => {
+      const s = slides[si];
+      const key = s ? scriptKey(s.raw) : '';
+      if (!key || !items.every((i) => m.sec[i] != null && !m.failed.has(i))) return;
+      measured.push({
+        deckIndex: s.deckIndex ?? si, key, heading: firstHeading(s.raw) || undefined, plannedSec: m.planned[si] ?? 0,
+        sec: items.reduce((a, i) => a + (m.sec[i] ?? 0), 0),
+        speechSec: items.reduce((a, i) => a + (m.speech[i] ?? 0), 0),
+      });
+    });
+    return {
+      id: m.id, source: exportMode ? 'video' : 'autoplay', startedAt: m.startedAt, endedAt: new Date().toISOString(),
+      complete, narrator: narratorLabel(ttsCfg), slides: measured,
+    };
+  };
+  // Hand it over when something new was measured — the end of the show and then
+  // closing it must not report the same slides twice. An export's goes to its
+  // recorder (just before 'finished'); the live show's to the host, which keeps it.
+  const reportMeasure = (complete: boolean) => {
+    const m = measureRef.current;
+    if (!m) return;
+    if (complete) m.complete = true;   // played to the end once: so it stays
+    const res = collectMeasure(m.complete);
+    if (!res) return;
+    const sig = JSON.stringify(res.slides.map((s) => [s.deckIndex, Math.round(s.sec * 10)]));
+    if (sig === m.sent) return;
+    m.sent = sig;
+    if (exportRef.current) { emitExport({ type: 'measured', measure: res }); return; }
+    if (!res.slides.length) return;
+    void Promise.resolve(onMeasuredRef.current?.(res))
+      .then((note) => { if (note) setMeasureNote(note); })
+      .catch(() => { /* the host reports its own failure */ });
   };
 
   const tokenRef = useRef(0);       // bumped to cancel the running loop
@@ -235,11 +336,12 @@ export const AutoPlayView: React.FC<{
 
   // Reset when (re)opened.
   useEffect(() => {
-    if (open) { setStarted(false); setSlideIdx(0); setBuildStep(0); setFinished(false); setError(''); setCaption(''); setStartChoice(null); itemIdxRef.current = 0; }
+    if (open) { setStarted(false); setSlideIdx(0); setBuildStep(0); setFinished(false); setError(''); setCaption(''); setStartChoice(null); itemIdxRef.current = 0; measureRef.current = null; }
     // Closing frees the pre-generated audio: it is the only place the cache can
     // outlive the playlist it was built for (the view is modal — the deck cannot
-    // be edited while it is open).
-    else { stopAll(); setPlaying(false); prepTokenRef.current++; pregenAbortRef.current?.abort(); setPrep(null); setUsingPregen(false); disposeCache(); }
+    // be edited while it is open). What was measured so far is handed over first.
+    else { reportMeasure(false); measureRef.current = null; stopAll(); setPlaying(false); prepTokenRef.current++; pregenAbortRef.current?.abort(); setPrep(null); setUsingPregen(false); disposeCache(); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
   useEffect(() => () => { stopAll(); pregenAbortRef.current?.abort(); disposeCache(); }, []);
 
@@ -299,16 +401,18 @@ export const AutoPlayView: React.FC<{
     setError(msg);
   };
 
-  // Execute a [[emit…]]/[[wait…]]/[[pause…]] script action at its position.
-  const runAction = async (a: ScriptAction) => {
-    if (a.kind === 'pause') { await sleep(a.timeoutMs ?? 1000); return; }
-    if (!a.topic) return;
+  // Execute a [[emit…]]/[[wait…]]/[[pause…]] script action at its position. False
+  // when a wait ran out (or was cut short) — its time says nothing about the slide.
+  const runAction = async (a: ScriptAction): Promise<boolean> => {
+    if (a.kind === 'pause') { await sleep(a.timeoutMs ?? 1000); return true; }
+    if (!a.topic) return true;
     const payload: Record<string, unknown> = { args: a.args || [] };
-    if (a.kind === 'emit') { mdpBus.emit(a.topic, payload); return; }
+    if (a.kind === 'emit') { mdpBus.emit(a.topic, payload); return true; }
     const timeoutMs = a.timeoutMs ?? 30000;
     if (a.kind === 'wait') {
-      if (!await waitForTopic(a.topic, timeoutMs)) warnNoReply('wait', a.topic, timeoutMs);
-      return;
+      if (await waitForTopic(a.topic, timeoutMs)) return true;
+      warnNoReply('wait', a.topic, timeoutMs);
+      return false;
     }
     // emit-wait: fire, then hold the narration until the reply (or timeout).
     const replyTo = `reply:${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
@@ -319,7 +423,9 @@ export const AutoPlayView: React.FC<{
     // answered `cmd:<tag>` — usually a tag typo, a module whose definition in this
     // workspace's `.mdp/modules/` predates ctx.onCommand, or an instance that is
     // not the owner. Say so instead of failing silently.
-    if (!await wait) warnNoReply('emit-wait', a.topic, timeoutMs);
+    if (await wait) return true;
+    warnNoReply('emit-wait', a.topic, timeoutMs);
+    return false;
   };
 
   // Kick off synthesis for one item (empty text → an instant no-op clip), abortable
@@ -350,6 +456,7 @@ export const AutoPlayView: React.FC<{
     // segment overlaps playback of the current one (no silent gap between segments).
     // With a pre-generated show every lookup is an instant cache hit instead.
     let curClip: Promise<Clip> | null = clipFor(fromItem);
+    const measure = measureRef.current;
     for (let i = fromItem; i < playlist.length; i++) {
       if (tokenRef.current !== my) { await releaseTemp(i, curClip); return; }
       itemIdxRef.current = i;
@@ -357,8 +464,12 @@ export const AutoPlayView: React.FC<{
       setSlideIdx(item.slideIdx); setBuildStep(item.buildStep); setCaption(item.caption || '');
       emitExport({ type: 'item', index: i, total: playlist.length, caption: item.caption || '' });
       const nextClip = clipFor(i + 1);
+      // The item's own time, for a measurement: from when it starts PLAYING.
+      let t0 = performance.now();
+      let spoke = 0;
+      let answered = true;
       if (item.action) {
-        await runAction(item.action);
+        answered = await runAction(item.action);
         if (tokenRef.current !== my) { await releaseTemp(i, curClip); await releaseTemp(i + 1, nextClip); return; }
       } else if (item.text) {
         let clip: Clip;
@@ -376,18 +487,27 @@ export const AutoPlayView: React.FC<{
           if (!clipsRef.current[i]) clip.dispose();
           await releaseTemp(i + 1, nextClip); return;
         }
+        t0 = performance.now();   // the words start now: waiting for the synthesis is not the show
         const u = clip.play(); utterRef.current = u;
         await u.done;
+        spoke = (performance.now() - t0) / 1000;
         if (!clipsRef.current[i]) clip.dispose();   // streamed clip: free its WAV
         if (tokenRef.current !== my) { await releaseTemp(i + 1, nextClip); return; }
         await sleep(item.dwellMs);
+        if (tokenRef.current !== my) { await releaseTemp(i + 1, nextClip); return; }
       } else {
         await sleep(item.dwellMs);
         if (tokenRef.current !== my) { await releaseTemp(i + 1, nextClip); return; }
       }
+      // Played through: its time (the latest play of it counts).
+      if (measure && measureRef.current === measure) {
+        measure.sec[i] = (performance.now() - t0) / 1000;
+        measure.speech[i] = spoke;
+        if (answered) measure.failed.delete(i); else measure.failed.add(i);
+      }
       curClip = nextClip;
     }
-    if (tokenRef.current === my) { setPlaying(false); setFinished(true); emitExport({ type: 'finished' }); }
+    if (tokenRef.current === my) { setPlaying(false); setFinished(true); reportMeasure(true); emitExport({ type: 'finished' }); }
   };
 
   // Synthesize the show (from playlist item `fromItem` on) before it starts. Resolves
@@ -443,6 +563,8 @@ export const AutoPlayView: React.FC<{
     }
     setSlideIdx(startFrom); setBuildStep(0);
     itemIdxRef.current = from;
+    setMeasureNote('');
+    if (updateTimes) beginMeasure(); else measureRef.current = null;
     setStarted(true);
     run(from);
   };
@@ -491,6 +613,7 @@ export const AutoPlayView: React.FC<{
   useEffect(() => {
     if (!exportGo || !started || wentRef.current) return;
     wentRef.current = true;
+    if (exportMode?.measure) beginMeasure(); else measureRef.current = null;
     void run(0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [exportGo, started]);
@@ -551,14 +674,17 @@ export const AutoPlayView: React.FC<{
     <div ref={rootRef} onMouseMove={exportOn ? undefined : peekBar} style={{ position: 'fixed', inset: 0, zIndex: 3000, background: '#000', display: 'flex', flexDirection: 'column' }}>
       {!started && !exportOn && (
         <div style={{
-          position: 'absolute', inset: 0, zIndex: 10, display: 'flex', alignItems: 'center',
-          justifyContent: 'center', padding: 20, background: 'radial-gradient(circle at 50% 35%, #23262e, #0c0d10)',
+          position: 'absolute', inset: 0, zIndex: 10, display: 'flex', alignItems: 'flex-start',
+          justifyContent: 'center', padding: 'max(20px, 6vh) 20px 20px', background: 'radial-gradient(circle at 50% 35%, #23262e, #0c0d10)',
           overflow: 'auto',
         }}>
           <div style={{
-            width: 'min(560px, 94vw)', background: '#16181d', color: '#e8e8ea', borderRadius: 14,
+            width: 'min(580px, 94vw)', background: '#16181d', color: '#e8e8ea', borderRadius: 14,
             border: '1px solid #2c2f37', boxShadow: '0 20px 60px rgba(0,0,0,.5)', padding: '22px 24px',
             font: '14px/1.55 system-ui, sans-serif',
+            // Never taller than the screen: a long tab scrolls inside, the tabs and
+            // Start stay in view.
+            display: 'flex', flexDirection: 'column', boxSizing: 'border-box', maxHeight: 'calc(100vh - max(20px, 6vh) - 20px)',
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
               <SmartDisplayIcon style={{ color: '#8ab4f8' }} />
@@ -566,126 +692,178 @@ export const AutoPlayView: React.FC<{
               <div style={{ flex: 1 }} />
               <Tooltip title="Close"><IconButton size="small" onClick={closeAll} sx={{ color: '#aab' }}><CloseIcon fontSize="small" /></IconButton></Tooltip>
             </div>
-            <div style={{ color: '#9aa0aa', fontSize: 12.5, marginBottom: 18 }}>
+            <div style={{ color: '#9aa0aa', fontSize: 12.5, marginBottom: 12 }}>
               Reads each slide’s <code style={{ color: '#c7d2fe' }}>@script</code> aloud and auto-advances, in full screen.
               {' '}{slides.length} slides · {scriptedCount} with a script.
             </div>
 
+            {/* The settings, in tabs; what Start will do and the button stay below them. */}
+            <div role="tablist" aria-label="Auto-play settings"
+              style={{ display: 'flex', gap: 2, borderBottom: '1px solid #2c2f37', marginBottom: 16 }}
+              onKeyDown={(e) => {
+                if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+                e.preventDefault();
+                const i = SETUP_TABS.findIndex(([id]) => id === setupTab);
+                const next = SETUP_TABS[(i + (e.key === 'ArrowRight' ? 1 : SETUP_TABS.length - 1)) % SETUP_TABS.length][0];
+                pickTab(next);
+                document.getElementById(`mdp-autoplay-tab-${next}`)?.focus();
+              }}>
+              {SETUP_TABS.map(([id, label]) => {
+                const sel = setupTab === id;
+                return (
+                  <button key={id} id={`mdp-autoplay-tab-${id}`} type="button" role="tab" aria-selected={sel}
+                    aria-controls="mdp-autoplay-tabpanel" tabIndex={sel ? 0 : -1} onClick={() => pickTab(id)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', marginBottom: -1,
+                      background: 'none', border: 'none', borderBottom: `2px solid ${sel ? '#4f8cf7' : 'transparent'}`,
+                      color: sel ? '#e8e8ea' : '#9aa0aa', fontSize: 14, fontWeight: 700, cursor: 'pointer',
+                    }}>
+                    {label}
+                    {id === 'timing' && updateTimes && (
+                      <span title="Updates the time estimates" style={{ width: 7, height: 7, borderRadius: 999, background: '#4f8cf7' }} />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
             {/* While pre-generating, the settings are frozen: the clips already made
                 use the values as they were when Start was pressed. */}
-            <div style={{ pointerEvents: prep ? 'none' : 'auto', opacity: prep ? 0.5 : 1 }}>
-            {/* Engine */}
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ fontWeight: 700, marginBottom: 7 }}>Voice engine</div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                {([
-                  ['webspeech', 'Web Speech', 'Built-in OS voices · no setup'],
-                  ['voicevox', 'VOICEVOX', 'Local engine · natural JP voices'],
-                  ['openai', 'TTS server', 'OpenAI-compatible · Irodori-TTS, OpenAI…'],
-                ] as const).map(([id, label, sub]) => {
-                  const sel = engine === id;
-                  const avail = id === 'webspeech' ? webSpeechAvailable() : true;
-                  return (
-                    <button key={id} type="button" disabled={!avail}
-                      onClick={() => { patchTts({ engine: id }); if (id === 'voicevox') setVvStatus('idle'); }}
-                      style={{
-                        flex: 1, textAlign: 'left', padding: '10px 12px', borderRadius: 9, cursor: avail ? 'pointer' : 'not-allowed',
-                        border: `1.5px solid ${sel ? '#4f8cf7' : '#33363e'}`, background: sel ? 'rgba(79,140,247,.14)' : '#1b1d22',
-                        color: '#e8e8ea', opacity: avail ? 1 : 0.5,
-                      }}>
-                      <div style={{ fontWeight: 700 }}>{label}</div>
-                      <div style={{ fontSize: 11.5, color: '#9aa0aa', marginTop: 2 }}>{sub}</div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Voice / speaker */}
-            {engine === 'openai' ? (
-              <div style={{ marginBottom: 16 }}>
-                <div style={{ fontWeight: 700, marginBottom: 9 }}>TTS server (OpenAI-compatible)</div>
-                <SpeechServerControls tts={settings.tts} patchTts={patchTts} dark slideRaws={slideRaws} />
-              </div>
-            ) : engine === 'webspeech' ? (
-              <div style={{ marginBottom: 16 }}>
-                <div style={{ fontWeight: 700, marginBottom: 7 }}>Voice</div>
-                <select style={selectStyle} value={settings.tts.webspeechVoiceURI}
-                  onChange={(e) => patchTts({ webspeechVoiceURI: e.target.value })}>
-                  <option value="">System default</option>
-                  {jaFirstVoices.map((v) => <option key={v.voiceURI} value={v.voiceURI}>{v.name} ({v.lang})</option>)}
-                </select>
-                {!jaFirstVoices.length && <div style={{ fontSize: 12, color: '#9aa0aa', marginTop: 6 }}>Loading voices… (uses the system default if none appear)</div>}
-              </div>
-            ) : (
-              <div style={{ marginBottom: 16 }}>
-                <div style={{ fontWeight: 700, marginBottom: 7 }}>VOICEVOX engine</div>
-                <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                  <input style={{ ...selectStyle, flex: 1 }} value={settings.tts.voicevoxUrl}
-                    onChange={(e) => patchTts({ voicevoxUrl: e.target.value })} placeholder="http://127.0.0.1:50021" />
-                  <button type="button" onClick={() => void refreshVvSpeakers()} style={{
-                    padding: '0 14px', borderRadius: 6, cursor: 'pointer', border: '1px solid #3a3d44',
-                    background: '#242730', color: '#e8e8ea', whiteSpace: 'nowrap',
-                  }}>{vvStatus === 'loading' ? '…' : 'Connect'}</button>
+            <div id="mdp-autoplay-tabpanel" role="tabpanel" aria-labelledby={`mdp-autoplay-tab-${setupTab}`}
+              style={{
+                pointerEvents: prep ? 'none' : 'auto', opacity: prep ? 0.5 : 1,
+                flex: '1 1 auto', minHeight: 150, overflowY: 'auto', marginRight: -10, paddingRight: 10,
+              }}>
+            {setupTab === 'narrator' && (
+              <>
+                {/* Engine */}
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontWeight: 700, marginBottom: 7 }}>Voice engine</div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    {([
+                      ['webspeech', 'Web Speech', 'Built-in OS voices · no setup'],
+                      ['voicevox', 'VOICEVOX', 'Local engine · natural JP voices'],
+                      ['openai', 'TTS server', 'OpenAI-compatible · Irodori-TTS, OpenAI…'],
+                    ] as const).map(([id, label, sub]) => {
+                      const sel = engine === id;
+                      const avail = id === 'webspeech' ? webSpeechAvailable() : true;
+                      return (
+                        <button key={id} type="button" disabled={!avail}
+                          onClick={() => { patchTts({ engine: id }); if (id === 'voicevox') setVvStatus('idle'); }}
+                          style={{
+                            flex: 1, textAlign: 'left', padding: '10px 12px', borderRadius: 9, cursor: avail ? 'pointer' : 'not-allowed',
+                            border: `1.5px solid ${sel ? '#4f8cf7' : '#33363e'}`, background: sel ? 'rgba(79,140,247,.14)' : '#1b1d22',
+                            color: '#e8e8ea', opacity: avail ? 1 : 0.5,
+                          }}>
+                          <div style={{ fontWeight: 700 }}>{label}</div>
+                          <div style={{ fontSize: 11.5, color: '#9aa0aa', marginTop: 2 }}>{sub}</div>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-                {vvStatus === 'error' && <div style={{ fontSize: 12, color: '#f87171', marginBottom: 8 }}>Couldn’t reach the engine. Start the VOICEVOX app, then Connect.</div>}
-                <select style={selectStyle} value={settings.tts.voicevoxSpeaker} disabled={!vvSpeakers.length}
-                  onChange={(e) => patchTts({ voicevoxSpeaker: Number(e.target.value) })}>
-                  {vvSpeakers.length
-                    ? vvSpeakers.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)
-                    : <option value={settings.tts.voicevoxSpeaker}>Connect to list speakers…</option>}
-                </select>
-              </div>
+
+                {/* Voice speed — also what a measurement of the narration is taken at */}
+                <div style={{ maxWidth: 320, marginBottom: 14 }}>
+                  <div style={{ fontWeight: 700, marginBottom: 2 }}>Speed <span style={{ color: '#9aa0aa', fontWeight: 400 }}>{settings.tts.rate.toFixed(1)}×</span></div>
+                  <Slider size="small" min={0.5} max={2} step={0.1} value={settings.tts.rate}
+                    onChange={(_, v) => patchTts({ rate: v as number })} sx={{ color: '#8ab4f8' }} />
+                </div>
+
+                {/* Voice / speaker */}
+                {engine === 'openai' ? (
+                  <div style={{ marginBottom: 16 }}>
+                    <div style={{ fontWeight: 700, marginBottom: 9 }}>TTS server (OpenAI-compatible)</div>
+                    <SpeechServerControls tts={settings.tts} patchTts={patchTts} dark slideRaws={slideRaws} />
+                  </div>
+                ) : engine === 'webspeech' ? (
+                  <div style={{ marginBottom: 16 }}>
+                    <div style={{ fontWeight: 700, marginBottom: 7 }}>Voice</div>
+                    <select style={selectStyle} value={settings.tts.webspeechVoiceURI}
+                      onChange={(e) => patchTts({ webspeechVoiceURI: e.target.value })}>
+                      <option value="">System default</option>
+                      {jaFirstVoices.map((v) => <option key={v.voiceURI} value={v.voiceURI}>{v.name} ({v.lang})</option>)}
+                    </select>
+                    {!jaFirstVoices.length && <div style={{ fontSize: 12, color: '#9aa0aa', marginTop: 6 }}>Loading voices… (uses the system default if none appear)</div>}
+                  </div>
+                ) : (
+                  <div style={{ marginBottom: 16 }}>
+                    <div style={{ fontWeight: 700, marginBottom: 7 }}>VOICEVOX engine</div>
+                    <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                      <input style={{ ...selectStyle, flex: 1 }} value={settings.tts.voicevoxUrl}
+                        onChange={(e) => patchTts({ voicevoxUrl: e.target.value })} placeholder="http://127.0.0.1:50021" />
+                      <button type="button" onClick={() => void refreshVvSpeakers()} style={{
+                        padding: '0 14px', borderRadius: 6, cursor: 'pointer', border: '1px solid #3a3d44',
+                        background: '#242730', color: '#e8e8ea', whiteSpace: 'nowrap',
+                      }}>{vvStatus === 'loading' ? '…' : 'Connect'}</button>
+                    </div>
+                    {vvStatus === 'error' && <div style={{ fontSize: 12, color: '#f87171', marginBottom: 8 }}>Couldn’t reach the engine. Start the VOICEVOX app, then Connect.</div>}
+                    <select style={selectStyle} value={settings.tts.voicevoxSpeaker} disabled={!vvSpeakers.length}
+                      onChange={(e) => patchTts({ voicevoxSpeaker: Number(e.target.value) })}>
+                      {vvSpeakers.length
+                        ? vvSpeakers.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)
+                        : <option value={settings.tts.voicevoxSpeaker}>Connect to list speakers…</option>}
+                    </select>
+                  </div>
+                )}
+
+              </>
             )}
 
-            {/* Speed + captions */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 18, marginBottom: 22, flexWrap: 'wrap' }}>
-              <div style={{ flex: 1, minWidth: 200 }}>
-                <div style={{ fontWeight: 700, marginBottom: 2 }}>Speed <span style={{ color: '#9aa0aa', fontWeight: 400 }}>{settings.tts.rate.toFixed(1)}×</span></div>
-                <Slider size="small" min={0.5} max={2} step={0.1} value={settings.tts.rate}
-                  onChange={(_, v) => patchTts({ rate: v as number })} sx={{ color: '#8ab4f8' }} />
-              </div>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none' }}>
-                <input type="checkbox" checked={showCaptions} onChange={(e) => setShowCaptions(e.target.checked)} />
-                Subtitles
-              </label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none' }} title="Uncheck for a clean frame when recording the show as a video (OBS / screen capture). Move the mouse to peek at the controls; Space pauses.">
-                <input type="checkbox" checked={showBar} onChange={(e) => setShowBar(e.target.checked)} />
-                Control bar
-              </label>
-              <label
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 8, userSelect: 'none',
-                  cursor: canPregen ? 'pointer' : 'not-allowed', opacity: canPregen ? 1 : 0.5,
-                }}
-                title={canPregen
-                  ? 'Synthesize every line BEFORE the show starts, then play from memory. Slower to start, but no stutter on machines that cannot synthesize in real time.'
-                  : 'VOICEVOX / TTS server only — Web Speech synthesizes while it speaks, so there is nothing to prepare in advance.'}>
-                <input type="checkbox" disabled={!canPregen}
-                  checked={pregenMode}
-                  onChange={(e) => patchTts({ pregenerate: e.target.checked })} />
-                Pre-generate audio
-              </label>
+            {setupTab === 'show' && (
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 18, marginBottom: 12, flexWrap: 'wrap' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none' }}>
+                    <input type="checkbox" checked={showCaptions} onChange={(e) => setShowCaptions(e.target.checked)} />
+                    Subtitles
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none' }} title="Uncheck for a clean frame when recording the show as a video (OBS / screen capture). Move the mouse to peek at the controls; Space pauses.">
+                    <input type="checkbox" checked={showBar} onChange={(e) => setShowBar(e.target.checked)} />
+                    Control bar
+                  </label>
+                  <label
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 8, userSelect: 'none',
+                      cursor: canPregen ? 'pointer' : 'not-allowed', opacity: canPregen ? 1 : 0.5,
+                    }}
+                    title={canPregen
+                      ? 'Synthesize every line BEFORE the show starts, then play from memory. Slower to start, but no stutter on machines that cannot synthesize in real time.'
+                      : 'VOICEVOX / TTS server only — Web Speech synthesizes while it speaks, so there is nothing to prepare in advance.'}>
+                    <input type="checkbox" disabled={!canPregen}
+                      checked={pregenMode}
+                      onChange={(e) => patchTts({ pregenerate: e.target.checked })} />
+                    Pre-generate audio
+                  </label>
+                </div>
+                {pregenMode && (
+                  <div style={{ margin: '0 0 10px', fontSize: 12, color: '#9aa0aa' }}>
+                    ⏳ All {playlist.filter((it, i) => it.text && i >= startItem).length} lines{startFrom > 0 ? ` from slide ${startFrom + 1} on` : ''} are synthesized before the show starts (progress is shown);
+                    playback then runs from memory — for machines that stutter on real-time synthesis.
+                    The speed is baked in, so it can’t be changed during the show.
+                  </div>
+                )}
+                {!showBar && (
+                  <div style={{ margin: '0 0 10px', fontSize: 12, color: '#9aa0aa' }}>
+                    🎬 Clean-recording mode: no control bar in the frame. Space = pause/resume, ←/→ = slides, mouse move = peek controls, Esc = exit fullscreen.
+                  </div>
+                )}
+              </>
+            )}
+
+            {setupTab === 'timing' && (
+              <TimeEstimatesPanel dark what="narration" update={updateTimes} rate={settings.tts.rate}
+                onUpdate={(v) => { setUpdateTimes(v); remember(UPDATE_KEY, v ? '1' : '0'); }}
+                info={timing} onForget={onForgetTimes} />
+            )}
             </div>
-            {pregenMode && (
-              <div style={{ margin: '-14px 0 18px', fontSize: 12, color: '#9aa0aa' }}>
-                ⏳ All {playlist.filter((it, i) => it.text && i >= startItem).length} lines{startFrom > 0 ? ` from slide ${startFrom + 1} on` : ''} are synthesized before the show starts (progress is shown);
-                playback then runs from memory — for machines that stutter on real-time synthesis.
-                The speed is baked in, so it can’t be changed during the show.
-              </div>
-            )}
-            {!showBar && (
-              <div style={{ margin: '-14px 0 18px', fontSize: 12, color: '#9aa0aa' }}>
-                🎬 Clean-recording mode: no control bar in the frame. Space = pause/resume, ←/→ = slides, mouse move = peek controls, Esc = exit fullscreen.
-              </div>
-            )}
 
-            {/* Where the show starts: the slide being edited, or any other. */}
+            {/* Where the show starts — the slide being edited, or any other — and what
+                Start will do: in view whichever tab is open (the one choice made per run). */}
             {slides.length > 1 && (
-              <div style={{ marginBottom: 18 }}>
-                <div style={{ fontWeight: 700, marginBottom: 7 }}>Start from</div>
-                <select style={selectStyle} value={startFrom} aria-label="Start from"
-                  onChange={(e) => setStartChoice(Number(e.target.value))}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 16, flexShrink: 0 }}>
+                <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>Start from</span>
+                <select style={{ ...selectStyle, flex: 1, minWidth: 0 }} value={startFrom} aria-label="Start from"
+                  disabled={!!prep} onChange={(e) => setStartChoice(Number(e.target.value))}>
                   {slides.map((s, i) => (
                     <option key={i} value={i}>
                       {i + 1}. {slideName(s)}{scriptSegments(s.raw).length ? '' : ' — no script'}{startSlide != null && i === editingSlide ? ' (editing)' : ''}
@@ -694,6 +872,9 @@ export const AutoPlayView: React.FC<{
                 </select>
               </div>
             )}
+            <div style={{ color: '#9aa0aa', fontSize: 12, margin: '10px 0 12px', overflowWrap: 'anywhere', flexShrink: 0 }}>
+              {narratorLabel(settings.tts)}{showCaptions ? ' · subtitles' : ''}{pregenMode ? ' · pre-generated' : ''}
+              {updateTimes ? <span style={{ color: '#8ab4f8' }}> · updates the time estimates</span> : null}
             </div>
 
             {prep ? (
@@ -789,6 +970,7 @@ export const AutoPlayView: React.FC<{
           {usingPregen ? <span style={{ color: '#86efac', marginLeft: 8 }}>· pre-generated</span> : null}
           {error ? <span style={{ color: '#f87171', marginLeft: 10 }}>{error}</span> : null}
           {finished && !error ? <span style={{ color: '#86efac', marginLeft: 10 }}>Finished</span> : null}
+          {measureNote ? <span style={{ color: '#8ab4f8', marginLeft: 10 }}>{measureNote}</span> : null}
         </div>
 
         <div style={{ flex: 1 }} />

@@ -113,8 +113,12 @@ block on a single slide OVERRIDES the global one for that slide; an EMPTY block
   slide; shown in the presenter view). Does NOT affect the talk-time estimate.
 - \`<!-- @script: TEXT -->\` — a READ-ALOUD manuscript for this slide (what the
   presenter plans to say, verbatim). Shown prominently in the presenter view; its
-  length drives the talk-time estimate at the user's reading speed. Use this (not
-  @note) when the intent is to read the slide out.
+  length drives the talk-time estimate at the user's reading speed — until MDP has
+  MEASURED it: once the narrated auto-play or a narrated video runs with "Update the
+  time estimates", the slide's estimate is how long its narration actually took
+  (words, pauses, and the activities the script waits for, e.g. a timer), until the
+  script is edited (get_deck_outline: \`measuredSec\`). Use this (not @note) when the
+  intent is to read the slide out.
   - **Build sync:** if the slide has in-slide builds (\`@build\` steps), put a
     \`[[step]]\` marker in the @script where each build should advance. The narrated
     auto-play reads a segment, advances one build step at the marker, then reads on —
@@ -174,9 +178,9 @@ block on a single slide OVERRIDES the global one for that slide; an EMPTY block
     \`mainvoice\`, \`mainextra\`, …, \`subengine\`, …). \`voice: @name\` names a voice preset
     saved in the author's app (engine, voice, prompt and options in one); use one only
     when the author has it — elsewhere the line is read by its language.
-- \`<!-- @time 90s -->\` — this slide's speaking-time budget (overrides the estimate).
-  Accepts \`90s\`, \`2m\`, \`1m30s\`, \`1:30\` (mm:ss). Shown live in the presenter view
-  (per-slide + whole-deck countdown).
+- \`<!-- @time 90s -->\` — this slide's speaking-time budget (overrides the estimate,
+  a measured one too). Accepts \`90s\`, \`2m\`, \`1m30s\`, \`1:30\` (mm:ss). Shown live in
+  the presenter view (per-slide + whole-deck countdown).
 
 ## In-slide builds (step-by-step reveals)
 
@@ -450,6 +454,10 @@ Timing
   the script as KaTeX (\`\\(…\\)\`) so the subtitle renders it, give each formula a
   spoken reading with a ruby \`[[\\(…\\)|よみ]]\`, and add rubies (\`[[語|よみ]]\`) to words
   a TTS would misread (see @script above).
+- A slide's measured time (\`measuredSec\` in get_deck_outline) is what its narration
+  really took; prefer it over the length estimate when balancing a deck. Rewriting a
+  script retires its measurement — the estimate falls back to the script's length
+  until the user narrates the deck again.
 
 Consistency
 - Set the theme and aspect ONCE on the meta page (don't repeat per slide); choose

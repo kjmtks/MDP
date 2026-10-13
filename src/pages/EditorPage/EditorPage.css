@@ -103,6 +103,17 @@
   --dv-drag-over-background-color: rgba(59, 130, 246, 0.25);
   --dv-drag-over-border-color: var(--app-accent);
 }
+/* The dock's frames clip — they are never scrolled. With dockview's own
+   `overflow: hidden` the user cannot scroll them, but a focus or a scrollIntoView
+   can, and a frame left scrolled shows the dock shifted up with the page's
+   background below it (half the window blank). `clip` cannot be scrolled at all.
+   !important: dockview writes `overflow: hidden` inline on each group.
+   (The tab strip, .dv-scrollable, really scrolls — left alone.) */
+.mdp-dockview .dv-split-view-container,
+.mdp-dockview .dv-groupview,
+.mdp-dockview .dv-drop-target-container {
+  overflow: clip !important;
+}
 .note-pane {
   background: white;
   height: 100%;

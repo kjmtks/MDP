@@ -5,15 +5,18 @@
 //
 //   1. EXPLICIT   — `<!-- @time 90s -->`: use it verbatim (no guessing). Wins.
 //   2. SCRIPT     — `<!-- @script: … -->` present: the presenter intends to READ it
-//                   aloud, so time = script length / reading speed. This is an
-//                   EXPLICIT intent (distinct from @note, which is a supplementary
-//                   reminder and does NOT affect time).
+//                   aloud, so time = how long its narration MEASURED (the narrated
+//                   auto-play / video with "Update the time estimates" — kept per
+//                   script, see scriptKey), else script length / reading speed. This
+//                   is an EXPLICIT intent (distinct from @note, which is a
+//                   supplementary reminder and does NOT affect time).
 //   3. IMPROVISED — else time is driven by CONTENT COMPLEXITY, not character count:
 //                   a per-slide base + bullets + visuals (diagrams/images/code) plus
 //                   a light weight on body text.
 //
 // Reading speed (chars/min) is per-person → passed in (from the app setting, which
-// can be calibrated). Defaults to 320 (Japanese ≈300–350).
+// can be calibrated). Defaults to 320 (Japanese ≈300–350). A measured time is
+// passed in too (`measuredSec`, put on the slide by rehearsalStore.withMeasuredTimes).
 import { stripScriptMarkers } from '../autoplay/autoplay';
 
 export const DEFAULT_READING_CPM = 320;
@@ -31,6 +34,20 @@ const bodyChars = (raw: string): number => nonWs(stripComments(raw));
 // calibration, which must count a passage exactly the way the estimate does.
 export const scriptChars = (raw: string): number =>
   nonWs(stripScriptMarkers([...raw.matchAll(/<!--\s*@script:\s*([\s\S]*?)-->/g)].map((m) => m[1]).join('')));
+
+// A slide's SCRIPT KEY: a fingerprint of its @script text (whitespace ignored — a
+// rewrapped line is the same script; '' = no script). A measured narration time is
+// kept under it, so a measurement stands for exactly the script it was taken with —
+// editing the script retires it, moving the slide does not. Mirrored in
+// app/mcp-bridge.cjs (scriptKeyOf) — keep identical.
+export function scriptKey(raw: string): string {
+  const text = [...String(raw || '').matchAll(/<!--\s*@script:\s*([\s\S]*?)-->/g)]
+    .map((m) => m[1]).join('').replace(/\s+/g, '');
+  if (!text) return '';
+  let h = 0x811c9dc5;   // FNV-1a, 32 bit
+  for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+  return `${(h >>> 0).toString(16).padStart(8, '0')}${text.length.toString(36)}`;
+}
 
 // Parse a human time string to seconds: `90s`, `90`, `2m`, `1m30s`, `1.5m`, `1:30`
 // (mm:ss), `1h`. Bare integer = seconds. Returns null if unparseable.
@@ -65,20 +82,34 @@ const complexity = (raw: string): { bullets: number; visuals: number } => {
   return { bullets, visuals: codeBlocks + images };
 };
 
-// Estimated seconds for ONE slide's raw markdown (explicit → script → improvised).
-export function slideSecondsFromRaw(raw: string, cpm: number = DEFAULT_READING_CPM): number {
+// Estimated seconds for ONE slide's raw markdown (explicit → script: measured, else
+// its length → improvised). `measuredSec`: the measured narration of this exact
+// script — given only for a slide that has one, and it counts even for a script of
+// markers alone (a quiz whose script just runs a timer: its time IS the activity).
+export function slideSecondsFromRaw(raw: string, cpm: number = DEFAULT_READING_CPM, measuredSec?: number | null): number {
   const cps = (cpm > 0 ? cpm : DEFAULT_READING_CPM) / 60;
   const explicit = explicitSlideSeconds(raw);
   if (explicit != null) return explicit;
+  if (measuredSec != null && measuredSec >= 0) return Math.round(measuredSec);
   const script = scriptChars(raw);
   if (script > 0) return Math.round(script / cps);
   const { bullets, visuals } = complexity(raw);
   return Math.round(BASE_SEC + bullets * BULLET_SEC + visuals * VISUAL_SEC + (bodyChars(raw) / cps) * BODY_WEIGHT);
 }
 
+/** Where a slide's time comes from: its @time, its measured narration, its script's
+ *  length, or its content. */
+export type TimeBasis = 'time' | 'measured' | 'script' | 'content';
+export function slideTimeBasis(raw: string, measuredSec?: number | null): TimeBasis {
+  if (explicitSlideSeconds(raw) != null) return 'time';
+  if (measuredSec != null && measuredSec >= 0) return 'measured';
+  return scriptChars(raw) > 0 ? 'script' : 'content';
+}
+
+// A parsed slide: its raw markdown, and `measuredSec` when its script was measured.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function slideSeconds(slide: any, cpm?: number): number {
-  return slide ? slideSecondsFromRaw(slide.raw || '', cpm) : 0;
+  return slide ? slideSecondsFromRaw(slide.raw || '', cpm, slide.measuredSec) : 0;
 }
 
 // Total estimated seconds for the deck (hidden slides excluded — not spoken).

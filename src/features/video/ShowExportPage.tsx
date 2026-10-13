@@ -49,7 +49,7 @@ export default function ShowExportPage() {
     channel?.postMessage({ type: 'event', event } satisfies ShowExportMessage);
   }, [channel]);
   const exportMode = useMemo<AutoPlayExportMode | undefined>(
-    () => (deck ? { tts: deck.tts, cpm: deck.cpm, captions: deck.captions, go, onEvent } : undefined),
+    () => (deck ? { tts: deck.tts, cpm: deck.cpm, captions: deck.captions, measure: !!deck.measure, go, onEvent } : undefined),
     [deck, go, onEvent],
   );
 

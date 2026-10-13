@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { SlideScaler } from './SlideScaler';
 import { SlideView } from './SlideView';
-import { estimateTalkMinutes, formatTalkMinutes } from '../talkTime';
+import { estimateTalkMinutes, formatTalkMinutes, slideTimeBasis } from '../talkTime';
 import { useAppSettings } from '../../settings/AppSettingsContext';
 import type { Stroke } from '../../drawing/components/DrawingOverlay';
 
@@ -21,8 +21,13 @@ export const SlideOverviewGrid: React.FC<SlideOverviewGridProps> = React.memo(({
   const { settings } = useAppSettings();
   const cpm = settings.readingCharsPerMin;
   const visibleCount = slides.filter((s) => !s.isHidden).length;
-  // Estimated talk time — recomputed when the slide set or reading speed changes.
+  // Estimated talk time — recomputed when the slide set or reading speed changes —
+  // and how many slides take their time from a measured narration.
   const minutes = useMemo(() => estimateTalkMinutes(slides, cpm), [slides, cpm]);
+  const measured = useMemo(
+    () => slides.filter((s) => !s.isHidden && slideTimeBasis(s.raw || '', s.measuredSec) === 'measured').length,
+    [slides],
+  );
 
   // The grid sizes itself to ITS CONTAINER, not the screen: the same component is
   // used full-window in the editor, in the presenter tool, and in the small output
@@ -55,9 +60,12 @@ export const SlideOverviewGrid: React.FC<SlideOverviewGridProps> = React.memo(({
         <span style={{ color: 'var(--app-text-secondary)', fontWeight: 600 }}>{visibleCount} slide{visibleCount === 1 ? '' : 's'}</span>
         <span
           style={{ color: 'var(--app-text-muted)' }}
-          title="Estimated talk time — each slide's <!-- @time … --> if set, else read time from substantial notes, else a complexity estimate. Set @time per slide for accuracy. A pacing guide, not exact."
+          title={'Estimated talk time — each slide\'s <!-- @time … --> if set; else, for a slide with a @script, its narration as measured '
+            + '(the auto-play or a narrated video with “Update the time estimates”, until the script is edited) or the script\'s length '
+            + 'at your reading speed; else a complexity estimate. A pacing guide, not exact.'
+            + (measured ? ` ${measured} slide${measured === 1 ? '' : 's'} measured.` : '')}
         >
-          {formatTalkMinutes(minutes)} talk
+          {formatTalkMinutes(minutes)} talk{measured ? <span style={{ marginLeft: '0.5em' }}>· {measured} measured</span> : null}
         </span>
       </div>
       <div style={{ padding: pad, display: 'grid', gridTemplateColumns: `repeat(auto-fill, minmax(min(${minCol}px, 100%), 1fr))`, gap, alignContent: 'flex-start' }}>

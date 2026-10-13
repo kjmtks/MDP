@@ -10,6 +10,7 @@ import type { MotionSpec } from '../slide/parser/SlideContext';
 import type { ModuleData } from '../../utils/moduleParser';
 import type { EffectData } from '../../utils/effectParser';
 import type { PlanSlide } from './videoPlan';
+import type { NarrationMeasure } from '../rehearsal/rehearsalStore';
 
 export interface VideoSlide extends PlanSlide {
   className?: string;
@@ -17,6 +18,7 @@ export interface VideoSlide extends PlanSlide {
   footer?: string;
   pageNumber?: number;
   motion?: MotionSpec;        // its @transition with the arguments (the exact mode plays it)
+  plannedSec?: number;        // its time estimate when queued (what a measurement is compared with)
 }
 
 /** 'exact' = the real narrated auto-play, recorded while it plays (modules, slide
@@ -31,6 +33,9 @@ export interface VideoOptions {
   vtt: boolean;               // also a WebVTT file next to the video
   includeHidden: boolean;
   fade: boolean;              // fast mode: cross-fade picture changes
+  /** Measure each slide's narration and make it the slide's time estimate
+   *  (VideoResult.measure → the deck's rehearsal history). */
+  updateTimes?: boolean;
 }
 
 /** Everything a job needs, captured when it is queued — the deck may be edited,
@@ -50,16 +55,42 @@ export interface VideoJobInput {
   tts: TtsConfig;
   cpm: number;
   options: VideoOptions;
+  /** Desktop: the .mp4 picked in the save dialog (absolute) — omitted: beside the
+   *  deck. A deck behind an SSH link needs one (nothing can be written there). */
+  output?: string;
   /** Web, exact mode: this tab, shared when the job was queued (the browser asks on
    *  a click); recorded cropped to the show. Stopped when the job ends. */
   tabStream?: MediaStream;
 }
 
+/** A job's narrator in a few words — engine, voice, speed — for the queue panel. */
+export function narratorLabel(tts: TtsConfig): string {
+  const speed = `${(tts.rate || 1).toFixed(1)}×`;
+  if (tts.engine === 'voicevox') return `VOICEVOX · speaker ${tts.voicevoxSpeaker} · ${speed}`;
+  if (tts.engine === 'openai') {
+    let host = '';
+    try { host = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(tts.openaiUrl) ? tts.openaiUrl : `http://${tts.openaiUrl}`).host; } catch { /* no host shown */ }
+    return `TTS server${host ? ` (${host})` : ''} · ${(tts.openaiVoice || '').trim() || 'default voice'} · ${speed}`;
+  }
+  return `Web Speech · ${speed}`;
+}
+
 export interface VideoProgress { stage: 'prepare' | 'render' | 'record' | 'finish'; done: number; total: number; seconds: number }
-export interface VideoResult { path: string; vttPath?: string; seconds: number }
+export interface VideoResult {
+  path: string;
+  vttPath?: string;
+  seconds: number;
+  /** What each slide's narration took (options.updateTimes) — saved by the editor. */
+  measure?: NarrationMeasure;
+}
 
 /** `talks/intro.slide.md` → `talks/intro` (the video sits beside its deck). */
 export const videoBaseOf = (deckPath: string): string => deckPath.replace(/\.slide\.md$/i, '').replace(/\.md$/i, '');
+
+/** Where a job's files go, without the extension (.mp4 / .webm, .vtt): the picked
+ *  file, else beside the deck. */
+export const videoOutputBase = (job: Pick<VideoJobInput, 'deckPath' | 'output'>): string =>
+  (job.output ? job.output.replace(/\.(mp4|webm)$/i, '') : videoBaseOf(job.deckPath));
 
 // ---- may this user make videos here? ----
 // Desktop app: always. Web: when the server's administrator allows it for this
@@ -117,6 +148,8 @@ export interface ShowExportDeck {
   tts: TtsConfig;
   cpm: number;
   captions: boolean;
+  /** Measure each slide's narration (the job's options.updateTimes). */
+  measure?: boolean;
 }
 
 export type ShowExportMessage =

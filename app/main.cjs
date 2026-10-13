@@ -821,21 +821,66 @@ ipcMain.handle('writeBinaryToPath', async (event, { filePath, content }) => {
 // The part file is opened exclusively (app/partFile.cjs): another export of the same
 // video — the web server writing into the same folder — is not overwritten.
 const streamWrites = new Map();   // id → { fh, tmp, final }
+// A video goes beside its deck (a LOCAL folder of the workspace) or to a file the
+// user picked in the save dialog below — a deck behind an SSH link can only use the
+// latter. A pick allows that file only: its name with .mp4 / .webm (the encoder may
+// fall back to WebM) and .vtt (the subtitles beside it) — never anywhere else, so a
+// page cannot write wherever it likes.
+const VIDEO_EXT = /\.(mp4|webm|vtt)$/i;
+const pickedVideos = new Set();   // absolute paths without the extension
+const videoStem = (abs) => path.resolve(abs).replace(VIDEO_EXT, '');
+ipcMain.handle('videoTargetOf', async (_event, deckRel) => {
+  const base = String(deckRel || '').replace(/\.slide\.md$/i, '').replace(/\.md$/i, '');
+  const t = vresolve(`${base}.mp4`);
+  return { local: t.kind === 'local' };
+});
+ipcMain.handle('videoSaveDialog', async (event, { name, folder }) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win || win.isDestroyed()) return null;
+  const file = `${String(name || 'video').replace(/[\\/:*?"<>|]/g, '_')}.mp4`;
+  const dir = folder && path.isAbsolute(folder) && fsSync.existsSync(folder) ? folder : app.getPath('videos');
+  const { filePath, canceled } = await dialog.showSaveDialog(win, {
+    title: 'Save the video as',
+    defaultPath: path.join(dir, file),
+    filters: [{ name: 'Video', extensions: ['mp4'] }],
+  });
+  if (canceled || !filePath) return null;
+  const abs = path.resolve(VIDEO_EXT.test(filePath) ? filePath.replace(VIDEO_EXT, '.mp4') : `${filePath}.mp4`);
+  pickedVideos.add(videoStem(abs));
+  return abs;
+});
+// A finished video outside the workspace (picked above): play it in the system's
+// player, or show it in its folder.
+ipcMain.handle('videoFileOpen', async (_event, { file, reveal }) => {
+  const abs = path.resolve(String(file || ''));
+  if (!path.isAbsolute(String(file || '')) || !VIDEO_EXT.test(abs) || !pickedVideos.has(videoStem(abs))) throw new Error('Not a video this app saved.');
+  if (reveal) shell.showItemInFolder(abs);
+  else { const err = await shell.openPath(abs); if (err) throw new Error(err); }
+  return true;
+});
 ipcMain.handle('streamFileOpen', async (_event, relPath) => {
-  if (!/\.(mp4|webm|vtt)$/i.test(String(relPath || ''))) throw new Error('Only a video or subtitle file can be written this way.');
-  const target = vresolve(relPath);
-  if (target.kind !== 'local') throw new Error('Videos can only be written to a local folder (not through an SSH link).');
+  const p = String(relPath || '');
+  if (!VIDEO_EXT.test(p)) throw new Error('Only a video or subtitle file can be written this way.');
+  let abs;
+  if (path.isAbsolute(p)) {
+    abs = path.resolve(p);
+    if (!pickedVideos.has(videoStem(abs))) throw new Error('A video is saved beside its deck or where you chose in the save dialog.');
+  } else {
+    const target = vresolve(p);
+    if (target.kind !== 'local') throw new Error('This deck is reached through an SSH link, where videos cannot be written — choose where to save the video (Export → Narrated video → Save to).');
+    abs = target.abs;
+  }
   // This app exports one video at a time, so a stream still open on the same file
   // was left by a page reloaded mid-export: drop it rather than wait for it.
   for (const [oldId, w] of streamWrites) {
-    if (w.final !== target.abs) continue;
+    if (w.final !== abs) continue;
     streamWrites.delete(oldId);
     await w.fh.close().catch(() => {});
     await fs.rm(w.tmp, { force: true }).catch(() => {});
   }
-  const { part: tmp, fh } = await openPartFile(target.abs);
+  const { part: tmp, fh } = await openPartFile(abs);
   const id = `w${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
-  streamWrites.set(id, { fh, tmp, final: target.abs });
+  streamWrites.set(id, { fh, tmp, final: abs });
   return id;
 });
 ipcMain.handle('streamFileWrite', async (_event, { id, position, data }) => {
