@@ -1,9 +1,11 @@
 import { WEB_BASE } from '../../../api/base';
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { isElectron } from '../../../api/apiClient';
 import type { SlideLinkRect } from '../capture/captureTypes';
 import type { RehearsalRun } from '../../rehearsal/rehearsalStore';
 import type { RecordingState } from '../../recording/slideRecorder';
+import type { RemoteDeck, RemotePos } from '../liveRemote';
+import type { LayoutReport, LayoutResult } from '../layoutCheck';
 
 declare const __API_PORT__: string;
 
@@ -57,6 +59,13 @@ export type SyncMessage =
   | { type: 'LINK_NAV'; target: string; channelId?: string }
   | { type: 'HISTORY_NAV'; dir: 1 | -1; channelId?: string }
   | { type: 'OVERVIEW_GRID'; payload: OverviewGridPayload; channelId?: string }
+  // The live remote (liveRemote.ts): the deck once per change, the position per
+  // page turn (host → remote devices).
+  | { type: 'REMOTE_DECK'; payload: RemoteDeck; channelId?: string }
+  | { type: 'REMOTE_POS'; payload: RemotePos; channelId?: string }
+  // Does the device break the lines where the host does? (layoutCheck.ts)
+  | { type: 'LAYOUT_REPORT'; payload: LayoutReport; channelId?: string }
+  | { type: 'LAYOUT_RESULT'; payload: LayoutResult; channelId?: string }
   // Interactive-module state sync (shared state + actions across surfaces).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   | { type: 'MODULE_STATE'; syncId: string; state: any; channelId?: string }
@@ -82,6 +91,36 @@ function computeWsUrl(electronWsPort?: number | null): string | null {
   return `${wsProtocol}//${wsHost}${WEB_BASE}/`;
 }
 
+// A window on this machine gets every message TWICE when it has both ways open —
+// the BroadcastChannel and the WebSocket relay (the web build always; the desktop
+// app while its remote server runs): the relay passes a message to every other
+// socket of the channel, the windows that already had it by the BroadcastChannel
+// among them. So every message carries an id (`_mid`) and a receiver acts on an id
+// once — a "next" is one step, an [[emit]] chip one command, a stroke one stroke.
+// (A message without an id — from an older page — is acted on as before.)
+const newMessageId = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+function messageIds() {
+  const set = new Set<string>();
+  const order: string[] = [];
+  const add = (id: string) => {
+    set.add(id);
+    order.push(id);
+    if (order.length > 1000) set.delete(order.shift()!);   // both copies come within moments
+  };
+  return {
+    /** True the first time this message is seen (or when it has no id). */
+    first(msg: unknown): boolean {
+      const id = msg && typeof (msg as { _mid?: unknown })._mid === 'string' ? (msg as { _mid: string })._mid : '';
+      if (!id) return true;
+      if (set.has(id)) return false;
+      add(id);
+      return true;
+    },
+    /** Our own message: never acted on if it comes back. */
+    mark: add,
+  };
+}
+
 export const useSync = (
   channelId: string | null,
   token: string | null,
@@ -91,6 +130,7 @@ export const useSync = (
   const bcRef = useRef<BroadcastChannel | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const onMessageRef = useRef(onMessage);
+  const [seen] = useState(messageIds);
 
   useEffect(() => {
     onMessageRef.current = onMessage;
@@ -102,6 +142,7 @@ export const useSync = (
     const bc = new BroadcastChannel(`mdp-sync-${channelId}`);
     bcRef.current = bc;
     bc.onmessage = (event) => {
+      if (!seen.first(event.data)) return;
       // eslint-disable-next-line no-empty
       try { onMessageRef.current(event.data); } catch {}
     };
@@ -134,7 +175,7 @@ export const useSync = (
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          if (data.channelId === channelId) onMessageRef.current(data);
+          if (data.channelId === channelId && seen.first(data)) onMessageRef.current(data);
         // eslint-disable-next-line no-empty
         } catch {}
       };
@@ -167,10 +208,12 @@ export const useSync = (
         wsRef.current = null;
       }
     };
-  }, [channelId, token, electronWsPort]);
+  }, [channelId, token, electronWsPort, seen]);
 
   const send = useCallback((msg: SyncMessage, target: SendTarget = 'all') => {
-    const messageToSend = { ...msg, channelId: channelId || undefined };
+    const _mid = newMessageId();
+    seen.mark(_mid);
+    const messageToSend = { ...msg, channelId: channelId || undefined, _mid };
     if (target !== 'remote' && bcRef.current) {
       // eslint-disable-next-line no-empty
       try { bcRef.current.postMessage(messageToSend); } catch {}
@@ -181,7 +224,7 @@ export const useSync = (
       // eslint-disable-next-line no-empty
       } catch {}
     }
-  }, [channelId]);
+  }, [channelId, seen]);
 
   return { send, status: channelId ? 'connected' : 'disconnected' as ConnectionStatus };
 };

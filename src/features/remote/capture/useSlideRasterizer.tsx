@@ -5,6 +5,7 @@ import { loadedModules } from '../../modules/moduleManager';
 import { waitForRenderReady, dataUrlToWebp } from './captureReady';
 import type { RasterizeOptions, RasterizeResult, SlideLinkRect } from './captureTypes';
 import { getFontState } from '../../fonts/fontRuntime';
+import { settleFocusLayers } from '../../focus/focusSettle';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Slide = any;
@@ -32,7 +33,13 @@ export function useSlideRasterizer() {
     let cancelled = false;
 
     (async () => {
-      const { width, height, scale, basePath, themeCssUrl } = job.opts;
+      const { width, height, scale, basePath, themeCssUrl, buildStep, focus, focusOutline, inspect } = job.opts;
+      const withFocus = !!(focus || focusOutline);
+      const settleFocus = async () => {
+        if (!withFocus || !node) return;
+        settleFocusLayers(node);
+        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      };
       const node = nodeRef.current;
       let src: string;
 
@@ -57,6 +64,9 @@ export function useSlideRasterizer() {
           fontCss: getFontState().css,
           width,
           height,
+          ...(buildStep !== undefined ? { buildStep } : {}),
+          ...(focus ? { focus } : {}),
+          ...(focusOutline ? { focusOutline } : {}),
         });
         // The image comes from the offscreen window, but link rects are measured
         // from the (always-mounted) web node below — settle it first.
@@ -64,6 +74,7 @@ export function useSlideRasterizer() {
       } else {
         if (!node) throw new Error('capture node missing');
         await waitForRenderReady(node);
+        await settleFocus();
         const htmlToImage = await import('html-to-image');
         src = await htmlToImage.toPng(node, { width, height, cacheBust: true, pixelRatio: 1 });
       }
@@ -83,9 +94,18 @@ export function useSlideRasterizer() {
         });
       }
 
+      // The caller's look at the rendered slide (the same markup, build step and
+      // focus as the picture).
+      let inspected: unknown;
+      if (inspect && node) {
+        await settleFocus();
+        const wrapper = node.querySelector<HTMLElement>('.slide-content-wrapper');
+        if (wrapper) inspected = inspect(wrapper);
+      }
+
       const webp = await dataUrlToWebp(src, width, height, scale);
       if (cancelled) return;
-      job.resolve({ dataUrl: webp, links });
+      job.resolve({ dataUrl: webp, links, ...(inspect ? { inspected } : {}) });
       setJob(null);
     })().catch((err) => {
       if (!cancelled) { job.reject(err); setJob(null); }
@@ -125,6 +145,10 @@ export function useSlideRasterizer() {
             // Mirror so the off-screen capture never owns/mutates module sync
             // state; interactive modules are rasterized in their initial state.
             moduleRole="mirror"
+            buildStep={job.opts.buildStep}
+            focus={job.opts.focus}
+            focusOutline={job.opts.focusOutline}
+            focusAnimate={false}
           />
         </div>
       </div>

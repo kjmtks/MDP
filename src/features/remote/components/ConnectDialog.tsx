@@ -1,9 +1,10 @@
 import { WEB_BASE } from '../../../api/base';
 import React, { useState, useEffect } from 'react';
-import { Dialog, DialogTitle, DialogContent, Typography, Box, IconButton, TextField, Button, MenuItem } from '@mui/material';
+import { Dialog, DialogTitle, DialogContent, Typography, Box, IconButton, TextField, Button, MenuItem, ToggleButton, ToggleButtonGroup } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import QRCode from 'qrcode';
+import type { RemoteView } from '../liveRemote';
 
 interface ConnectDialogProps {
   open: boolean;
@@ -12,9 +13,13 @@ interface ConnectDialogProps {
   token?: string;
   ipCandidates?: { name: string; address: string }[];
   port?: number | null;
+  // What the device shows: pictures of the slides, or the live deck (HTML).
+  view?: RemoteView;
+  onViewChange?: (v: RemoteView) => void;
+  liveSupported?: boolean;
 }
 
-export const ConnectDialog: React.FC<ConnectDialogProps> = ({ open, onClose, channelId, token, ipCandidates, port: embeddedPort }) => {
+export const ConnectDialog: React.FC<ConnectDialogProps> = ({ open, onClose, channelId, token, ipCandidates, port: embeddedPort, view = 'image', onViewChange, liveSupported = false }) => {
   const [copied, setCopied] = useState(false);
   const [qrCodeUrl, setQrCodeUrl] = useState('');
 
@@ -107,6 +112,23 @@ export const ConnectDialog: React.FC<ConnectDialogProps> = ({ open, onClose, cha
           </Box>
 
           <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 3 }}>
+            {onViewChange && (
+              <Box>
+                <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+                  The device shows
+                </Typography>
+                <ToggleButtonGroup exclusive size="small" value={view} onChange={(_e, v) => v && onViewChange(v as RemoteView)} aria-label="What the device shows">
+                  <ToggleButton value="image" sx={{ textTransform: 'none', px: 2 }}>Pictures of the slides</ToggleButton>
+                  <ToggleButton value="live" disabled={!liveSupported} sx={{ textTransform: 'none', px: 2 }}>Live slides</ToggleButton>
+                </ToggleButtonGroup>
+                <Typography variant="body2" color="textSecondary" sx={{ mt: 1 }}>
+                  {view === 'live'
+                    ? 'The device draws the slides itself with this deck’s own fonts: builds, transitions, interactive modules (timers, videos…) and focus cues work there too. Only the files this deck uses are handed out — to devices of this presentation.'
+                    : 'Pictures drawn on this computer — any device, exactly as here, but each slide in its final state: no builds, interactive modules or focus cues.'}
+                  {!liveSupported && ' Live slides: in the web version for now.'}
+                </Typography>
+              </Box>
+            )}
             <Box>
               <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
                 Or Enter Token Manually

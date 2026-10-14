@@ -111,3 +111,10 @@
 .presenter-nav-button:hover {
   background-color: #555;
 }
+
+/* The panes' separators (react-resizable-panels v4: data-separator = inactive /
+   hover / active). Full length, so they are easy to grab. */
+.presenter-sep { background: #333; flex: 0 0 auto; transition: background-color 0.15s; touch-action: none; }
+.presenter-sep:hover, .presenter-sep[data-separator="hover"], .presenter-sep[data-separator="active"] { background: #3b82f6; }
+.presenter-sep-v { width: 6px; align-self: stretch; cursor: col-resize; }
+.presenter-sep-h { height: 6px; width: 100%; cursor: row-resize; }

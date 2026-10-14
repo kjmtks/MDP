@@ -1,3 +1,6 @@
+import type { FocusState } from '../../focus/focusState';
+import type { FocusOutlineItem } from '../../focus/focusStyles';
+
 export interface CaptureSlideData {
   id: number;
   html: string;
@@ -26,6 +29,10 @@ export interface CaptureSlideData {
   // A subtitle drawn over the bottom of the slide (the video export; may carry
   // `\(…\)` math, typeset with KaTeX like the auto-play's caption).
   caption?: string;
+  // The focus cues in force (the video export, MCP renders): drawn over the slide
+  // as a still picture. Or every cue's target outlined and numbered (MCP renders).
+  focus?: FocusState;
+  focusOutline?: FocusOutlineItem[];
 }
 
 /** The web build's capture iframe (CapturePage) ↔ the page that hosts it
@@ -42,6 +49,14 @@ export interface RasterizeOptions {
   basePath?: string;
   themeCssUrl?: string;
   scale?: number;
+  // The build step to show (settled; omitted = all builds), and focus cues drawn
+  // over the slide as a still (the MCP renders).
+  buildStep?: number;
+  focus?: FocusState | null;
+  focusOutline?: FocusOutlineItem[] | null;
+  // Read the rendered slide (SlideView's wrapper, settled) before it goes —
+  // whatever it returns comes back as `inspected`.
+  inspect?: (root: HTMLElement) => unknown;
 }
 
 // A clickable slide-hyperlink hotspot, in FRACTIONS of the slide size (0..1), so
@@ -57,4 +72,5 @@ export interface SlideLinkRect {
 export interface RasterizeResult {
   dataUrl: string;
   links: SlideLinkRect[];
+  inspected?: unknown;
 }

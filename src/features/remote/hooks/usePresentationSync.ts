@@ -8,6 +8,8 @@ import { loadedModules } from '../../modules/moduleManager';
 import { loadedEffects } from '../../effects/effectManager';
 import type { RasterizeResult } from '../capture/captureTypes';
 import type { RehearsalRun } from '../../rehearsal/rehearsalStore';
+import { forDevice, grantRemoteFiles, remoteAssetPaths, remoteSlide, type RemoteDeck, type RemoteView } from '../liveRemote';
+import type { LayoutReport } from '../layoutCheck';
 
 type Rasterize = (
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -47,6 +49,10 @@ export const usePresentationSync = (
   lastRehearsal?: RehearsalRun | null,
   // REC from the presenter view: the host records (it owns the deck path).
   onRecordCommand?: (action: 'start' | 'stop', micId?: string) => void,
+  // What remote devices show: pictures of the slides, or the live deck (HTML).
+  remoteView: RemoteView = 'image',
+  // A live remote measured where its lines break (layoutCheck.ts): compare here.
+  onLayoutReport?: (report: LayoutReport) => void,
 ) => {
   const [channelId] = useState<string>(() => {
     const query = window.location.hash.split('?')[1] || window.location.search;
@@ -68,6 +74,9 @@ export const usePresentationSync = (
   const sendRef = useRef<((msg: SyncMessage, target?: 'all' | 'local' | 'remote') => void) | null>(null);
   const cacheRef = useRef<Map<string, RasterizeResult>>(new Map());
   const queueRef = useRef<Promise<unknown>>(Promise.resolve());
+  // Remote devices: the live deck, or pictures of the slides (imageRemote).
+  const live = !!remoteActive && remoteView === 'live';
+  const imageRemote = !!remoteActive && !live;
 
   // Live presenter state (BroadcastChannel, same machine). The presenter renders
   // live HTML, so `step` (for builds) and `modules` (CSS + scripts) are included.
@@ -102,17 +111,56 @@ export const usePresentationSync = (
     return p;
   }, [rasterize, slides, themeCssUrl, fontCss, slideSize.width, slideSize.height, basePath]);
 
+  // Whether pictures are wanted NOW — the pictures take a while to draw, and the
+  // remote may have been switched to the live deck meanwhile (a late picture would
+  // pull the devices out of it).
+  const imageRemoteRef = useRef(imageRemote);
+  useEffect(() => { imageRemoteRef.current = imageRemote; }, [imageRemote]);
+
   const sendRemoteImages = useCallback(async () => {
-    if (!rasterize || !remoteActive) return;
+    if (!rasterize || !imageRemote) return;
     const ni = nextVisibleIndex(currentSlideIndex);
     const cur = await rasterizeSlide(currentSlideIndex);
     const next = ni !== -1 ? await rasterizeSlide(ni) : null;
+    if (!imageRemoteRef.current) return;
     sendRef.current?.({
       type: 'SYNC_STATE_IMAGE',
       payload: { index: currentSlideIndex, nextIndex: ni, slideCount: slides.length, slideSize, curImage: cur?.dataUrl ?? null, nextImage: next?.dataUrl ?? null, links: cur?.links ?? [], allDrawings: drawings, isOverview: isSlideOverview },
       channelId,
     }, 'remote');
-  }, [rasterize, remoteActive, nextVisibleIndex, currentSlideIndex, rasterizeSlide, slides.length, slideSize, drawings, channelId, isSlideOverview]);
+  }, [rasterize, imageRemote, nextVisibleIndex, currentSlideIndex, rasterizeSlide, slides.length, slideSize, drawings, channelId, isSlideOverview]);
+
+  // The live remote: the deck as the device renders it (what is shown, nothing
+  // more — liveRemote.ts), sent when it changes; a page turn sends the position.
+  // Its URLs are the device's (the desktop app's mdp-file:// / app-asset:// are not),
+  // and the files it needs are granted to this presentation's devices first — the
+  // server hands a device those and nothing else.
+  const deckRevRef = useRef(0);
+  const sendRemoteDeck = useCallback(async () => {
+    const deck: Omit<RemoteDeck, 'rev'> = {
+      slides: slides.map((sl) => {
+        const r = remoteSlide(sl);
+        return { ...r, html: forDevice(r.html), ...(r.header ? { header: forDevice(r.header) } : {}), ...(r.footer ? { footer: forDevice(r.footer) } : {}) };
+      }),
+      slideSize, transition: globalContext?.transition, basePath,
+      themeCssUrl: themeCssUrl ? forDevice(themeCssUrl) : themeCssUrl,
+      fontCss: forDevice(fontCss),
+      modules: Object.values(loadedModules).map((m) => (m.style ? { ...m, style: forDevice(m.style) } : m)),
+      effects: Object.values(loadedEffects),
+    };
+    try { await grantRemoteFiles(channelId, token, await remoteAssetPaths(deck)); } catch { /* sent anyway */ }
+    deckRevRef.current += 1;
+    sendRef.current?.({ type: 'REMOTE_DECK', payload: { rev: deckRevRef.current, ...deck }, channelId }, 'remote');
+  }, [slides, slideSize, globalContext, basePath, themeCssUrl, fontCss, channelId, token]);
+  const sendRemotePos = useCallback(() => {
+    sendRef.current?.({
+      type: 'REMOTE_POS',
+      payload: { rev: deckRevRef.current, index: currentSlideIndex, step: step ?? 0, isOverview: !!isSlideOverview, allDrawings: drawings },
+      channelId,
+    }, 'remote');
+  }, [currentSlideIndex, step, isSlideOverview, drawings, channelId]);
+  const sendPosRef = useRef(sendRemotePos);
+  useEffect(() => { sendPosRef.current = sendRemotePos; }, [sendRemotePos]);
 
   const collectAllImages = useCallback(async (): Promise<(string | null)[]> => {
     const out: (string | null)[] = [];
@@ -139,7 +187,7 @@ export const usePresentationSync = (
       case 'REQUEST_SYNC':
         sendLocalState();
         moduleSyncBus.rebroadcastAll();
-        if (remoteActive) sendRemoteImages();
+        if (live) void sendRemoteDeck().then(() => sendPosRef.current()); else if (imageRemote) sendRemoteImages();
         break;
       case 'MODULE_STATE':
         moduleSyncBus.receiveState(msg.syncId, msg.state);
@@ -201,19 +249,40 @@ export const usePresentationSync = (
       case 'REC_COMMAND':
         if (msg.action === 'start' || msg.action === 'stop') onRecordCommand?.(msg.action, msg.micId);
         break;
+      case 'LAYOUT_REPORT':
+        if (live && msg.payload && Array.isArray(msg.payload.pages)) onLayoutReport?.(msg.payload);
+        break;
     }
   }, electronWsPort);
 
   useEffect(() => {
     sendRef.current = send;
     // This window is the host (owner of interactive-module logic). Module state
-    // is broadcast to the live presenter over BroadcastChannel ('local'); the
-    // remote uses rasterized images and ignores module sync.
-    moduleSyncBus.setSender((m) => send(m as SyncMessage, 'local'));
+    // goes to the live presenter / output over BroadcastChannel ('local') — and to
+    // the remote devices too while they show the live deck (their modules are
+    // mirrors of these); picture remotes have no modules to tell.
+    moduleSyncBus.setSender((m) => send(m as SyncMessage, live ? 'all' : 'local'));
     // App-wide bus events reach every surface (incl. remote controllers).
     mdpBus.setSender((m) => send(m as SyncMessage, 'all'));
     return () => { moduleSyncBus.setSender(null); mdpBus.setSender(null); };
-  }, [send]);
+  }, [send, live]);
+
+  // The live remote: the deck once its content settles (an edit, a theme or font
+  // change, the remote just switched on), then where the show is; every page turn,
+  // build step or stroke sends the position alone.
+  useEffect(() => {
+    if (!live) return undefined;
+    const t = window.setTimeout(() => {
+      void sendRemoteDeck().then(() => {
+        sendPosRef.current();
+        moduleSyncBus.rebroadcastAll();
+      });
+    }, 400);
+    return () => window.clearTimeout(t);
+  }, [live, sendRemoteDeck, lastUpdated]);
+  useEffect(() => {
+    if (live) sendRemotePos();
+  }, [live, sendRemotePos]);
 
   // Push the live presenter state.
   useEffect(() => {
@@ -225,25 +294,25 @@ export const usePresentationSync = (
     cacheRef.current.clear();
   }, [themeCssUrl, fontCss, slideSize.width, slideSize.height]);
 
-  // Pre-render all slides (with progress) once remote becomes active or content changes.
+  // Pre-render all slides (with progress) once picture remotes are on.
   const prevActive = useRef(false);
   useEffect(() => {
-    if (remoteActive && !prevActive.current) {
+    if (imageRemote && !prevActive.current) {
       prevActive.current = true;
       prerenderAll();
-    } else if (!remoteActive) {
+    } else if (!imageRemote) {
       prevActive.current = false;
     }
-  }, [remoteActive, prerenderAll]);
+  }, [imageRemote, prerenderAll]);
 
   // Push current/next image on navigation, edits, drawing, or overview changes.
   useEffect(() => {
-    if (remoteActive) sendRemoteImages();
-  }, [remoteActive, currentSlideIndex, slides, drawings, isSlideOverview, sendRemoteImages]);
+    if (imageRemote) sendRemoteImages();
+  }, [imageRemote, currentSlideIndex, slides, drawings, isSlideOverview, sendRemoteImages]);
 
   // While the overview is active, send the full image grid to remote viewers.
   useEffect(() => {
-    if (!remoteActive || !isSlideOverview || !rasterize) return;
+    if (!imageRemote || !isSlideOverview || !rasterize) return;
     let cancelled = false;
     (async () => {
       const images = await collectAllImages();
@@ -256,7 +325,7 @@ export const usePresentationSync = (
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [remoteActive, isSlideOverview, slides, themeCssUrl, fontCss, slideSize.width, slideSize.height]);
+  }, [imageRemote, isSlideOverview, slides, themeCssUrl, fontCss, slideSize.width, slideSize.height]);
 
   return { channelId, token, send, imagePrep };
 };

@@ -70,7 +70,7 @@ Usage:
     .mdp-br-dot:nth-child(1) { background: #ff5f57; } .mdp-br-dot:nth-child(2) { background: #febc2e; } .mdp-br-dot:nth-child(3) { background: #28c840; }
     .mdp-br-url {
       flex: 1; margin-left: calc(8 * var(--mdp-px, 1px)); background: #fff; border-radius: calc(6 * var(--mdp-px, 1px)); padding: calc(3 * var(--mdp-px, 1px)) calc(10 * var(--mdp-px, 1px));
-      font-size: 0.8em; color: #495057; font-family: ui-monospace, monospace;
+      font-size: 0.8em; color: #495057; font-family: var(--mdp-font-mono, "JetBrains Mono", Consolas, Monaco, "Noto Sans JP", monospace);
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
     .mdp-br-body { line-height: 0; background: #fff; }

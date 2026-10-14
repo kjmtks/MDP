@@ -97,6 +97,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   startRemoteServer: () => ipcRenderer.invoke('startRemoteServer'),
   getRemoteInfo: () => ipcRenderer.invoke('getRemoteInfo'),
   stopRemoteServer: () => ipcRenderer.send('stopRemoteServer'),
+  remoteGrantFiles: (req) => ipcRenderer.invoke('remoteGrantFiles', req),
   captureSlide: (data) => ipcRenderer.invoke('captureSlide', data),
   onCaptureRender: (cb) => {
     const handler = (e, d) => cb(d);

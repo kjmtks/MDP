@@ -355,6 +355,22 @@ ipcMain.handle('startRemoteServer', async () => {
 
 ipcMain.handle('getRemoteInfo', () => remoteServer.getRemoteInfo());
 
+// The live remote (the device renders the deck itself): the files the deck being
+// presented needs, listed by the renderer and resolved HERE against the current
+// workspace (remoteFiles.cjs) — the remote server serves those and nothing else,
+// and only to a device holding that presentation's channel + token.
+ipcMain.handle('remoteGrantFiles', (_event, req) => {
+  const remoteFiles = require('./remoteFiles.cjs');
+  const paths = Array.isArray(req && req.paths) ? req.paths.slice(0, 4000) : [];
+  const entries = [];
+  for (const p of paths) {
+    const rel = remoteFiles.normRel(p);
+    if (!rel) continue;
+    try { entries.push({ rel, target: vresolve(rel) }); } catch { /* not in the workspace */ }
+  }
+  return remoteFiles.grant(String((req && req.channel) || ''), String((req && req.token) || ''), entries);
+});
+
 ipcMain.handle('getAppVersion', () => app.getVersion());
 
 // TTS-server calls from the renderer (an OpenAI-compatible speech API): such

@@ -21,6 +21,7 @@ import { openWebCapturer } from './webCapture';
 import { slideScript } from '../autoplay/autoplay';
 import { scriptKey } from '../slide/talkTime';
 import { firstHeading, newRunId, type NarrationMeasure } from '../rehearsal/rehearsalStore';
+import { focusSignature } from '../focus/focusState';
 
 const bridge = () => (window as unknown as { electronAPI?: { captureSlide?: (d: object) => Promise<Uint8Array> } }).electronAPI;
 
@@ -80,6 +81,7 @@ const frameData = (job: VideoJobInput, seg: VideoSegment, width: number, height:
     buildStep: seg.buildStep, pageNumber: s.pageNumber ?? seg.slideIdx + 1,
     caption: job.options.subtitles ? seg.caption : '',
     outWidth: width, outHeight: height,
+    ...(seg.focus ? { focus: seg.focus } : {}),
   };
 };
 
@@ -178,8 +180,8 @@ export async function exportVideo(
       }
       checkAbort(signal);
 
-      // ---- picture: the same slide/step/subtitle is captured once
-      const key = `${seg.slideIdx}|${seg.buildStep}|${job.options.subtitles ? seg.caption : ''}`;
+      // ---- picture: the same slide/step/subtitle/focus is captured once
+      const key = `${seg.slideIdx}|${seg.buildStep}|${job.options.subtitles ? seg.caption : ''}|${focusSignature(seg.focus)}`;
       const changed: boolean = key !== prevKey || !prev;
       const pic: ImageBitmap = changed ? await capturer.capture(frameData(job, seg, width, height)) : prev!;
       const add = (at: number, n: number, keyFrame: boolean) => video.add(at / FPS, n / FPS, keyFrame ? { keyFrame: true } : undefined);

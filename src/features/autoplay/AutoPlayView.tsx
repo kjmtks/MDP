@@ -22,6 +22,7 @@ import {
   synthesizesAudio, engineLabel,
 } from '../tts/ttsService';
 import { buildPlaylist, scriptSegments, type PlayItem, type ScriptAction } from './autoplay';
+import { applyCues, NO_FOCUS, type FocusState } from '../focus/focusState';
 import { CAPTION_TEXT, captionLang, fitCaptionBox } from './captionFit';
 import { mdpBus } from '../bus/mdpBus';
 import { SpeechServerControls } from '../tts/SpeechServerControls';
@@ -78,6 +79,9 @@ const readUpdate = (): boolean => { try { return localStorage.getItem(UPDATE_KEY
 const remember = (key: string, value: string) => { try { localStorage.setItem(key, value); } catch { /* not remembered */ } };
 
 const SETUP_TABS: ReadonlyArray<readonly [SetupTab, string]> = [['narrator', 'Narrator'], ['show', 'Playback'], ['timing', 'Timing']];
+
+// No focus shown (the slide index -1 matches no slide).
+const NO_SHOWN_FOCUS: { slide: number; state: FocusState } = { slide: -1, state: NO_FOCUS };
 
 // A measurement of the narration in progress: how long each playlist item took to
 // PLAY — its words and the breath after them, a pause, an activity the script waits
@@ -196,6 +200,11 @@ export const AutoPlayView: React.FC<{
   const [vvStatus, setVvStatus] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle');
   const rootRef = useRef<HTMLDivElement>(null);
   const captionRef = useRef<HTMLDivElement>(null);
+  // The focus cues in force on the slide on screen (features/focus): each line's
+  // cues act as it starts, a new slide starts clean. `slide` = whose they are.
+  const focusRef = useRef<{ slide: number; state: FocusState }>(NO_SHOWN_FOCUS);
+  const [shownFocus, setShownFocus] = useState(NO_SHOWN_FOCUS);
+  const resetFocus = () => { focusRef.current = NO_SHOWN_FOCUS; setShownFocus(NO_SHOWN_FOCUS); };
   const [setupTab, setSetupTab] = useState<SetupTab>(readTab);
   const pickTab = (t: SetupTab) => { setSetupTab(t); remember(TAB_KEY, t); };
   const [updateTimes, setUpdateTimes] = useState(readUpdate);
@@ -462,6 +471,14 @@ export const AutoPlayView: React.FC<{
       itemIdxRef.current = i;
       const item = playlist[i];
       setSlideIdx(item.slideIdx); setBuildStep(item.buildStep); setCaption(item.caption || '');
+      // Its focus cues, as its voice begins (a new slide starts with none).
+      const was = focusRef.current;
+      const base = was.slide === item.slideIdx ? was.state : NO_FOCUS;
+      const next = applyCues(base, item.cues);
+      if (next !== was.state || was.slide !== item.slideIdx) {
+        focusRef.current = { slide: item.slideIdx, state: next };
+        setShownFocus(focusRef.current);
+      }
       emitExport({ type: 'item', index: i, total: playlist.length, caption: item.caption || '' });
       const nextClip = clipFor(i + 1);
       // The item's own time, for a measurement: from when it starts PLAYING.
@@ -550,7 +567,7 @@ export const AutoPlayView: React.FC<{
   };
   const cancelPregen = () => { prepTokenRef.current++; pregenAbortRef.current?.abort(); };
 
-  const play = () => { if (finished) { itemIdxRef.current = 0; setSlideIdx(0); run(0); } else run(itemIdxRef.current); };
+  const play = () => { if (finished) { itemIdxRef.current = 0; setSlideIdx(0); resetFocus(); run(0); } else run(itemIdxRef.current); };
   // Leave the setup screen: go TRUE fullscreen (ignored if the browser refuses) and
   // start the narrated show from the chosen slide. Fullscreen is requested FIRST —
   // it needs the click's user activation, which a long pre-generation would consume.
@@ -563,19 +580,21 @@ export const AutoPlayView: React.FC<{
     }
     setSlideIdx(startFrom); setBuildStep(0);
     itemIdxRef.current = from;
+    resetFocus();
     setMeasureNote('');
     if (updateTimes) beginMeasure(); else measureRef.current = null;
     setStarted(true);
     run(from);
   };
   const pause = () => { stopAll(); setPlaying(false); };
-  const restart = () => { stopAll(); setFinished(false); setSlideIdx(0); setBuildStep(0); itemIdxRef.current = 0; run(0); };
+  const restart = () => { stopAll(); setFinished(false); setSlideIdx(0); setBuildStep(0); itemIdxRef.current = 0; resetFocus(); run(0); };
   const jump = (delta: number) => {
     const ni = Math.max(0, Math.min(slides.length - 1, slideIdx + delta));
     const wasPlaying = playing;
     stopAll();
     const it = firstItemOfSlide(ni);
     itemIdxRef.current = it;
+    resetFocus();
     setSlideIdx(ni); setBuildStep(0); setFinished(false);
     if (wasPlaying) run(it); else setPlaying(false);
   };
@@ -651,14 +670,17 @@ export const AutoPlayView: React.FC<{
   // One slide inside the transition layer — during a transition the outgoing one
   // keeps rendering, as in the slideshow itself. Both frames stay `presenting`: a
   // change of it re-runs the slide's module scripts, which would restart the
-  // outgoing slide's modules just as it leaves.
+  // outgoing slide's modules just as it leaves. The focus cues in force are drawn on
+  // their own slide only (an outgoing one leaves without them).
+  const focusShown = started ? shownFocus : NO_SHOWN_FOCUS;
   const renderSlide = useCallback((s: AutoPlaySlide, idx: number, o: { buildStep: number }) => (
     <SlideView
       html={s.html} raw={s.raw} slideSize={slideSize} basePath={basePath}
       buildStep={o.buildStep} presenting isActive slideIndex={idx} moduleRole="owner"
       header={s.header} footer={s.footer} className={s.className} pageNumber={s.pageNumber ?? idx + 1}
+      focus={focusShown.slide === idx ? focusShown.state : null}
     />
-  ), [slideSize, basePath]);
+  ), [slideSize, basePath, focusShown]);
 
   if (!open) return null;
 

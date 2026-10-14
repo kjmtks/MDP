@@ -6,6 +6,7 @@ import type { CaptureSlideData, WebCaptureMessage } from './captureTypes';
 import { applyFontCss, loadWorkspaceFonts } from '../../fonts/fontRuntime';
 import { embedFontCss } from '../../fonts/fontEmbed';
 import { CAPTION_TEXT, captionLang, fitCaptionBox } from '../../autoplay/captionFit';
+import { settleFocusLayers } from '../../focus/focusSettle';
 
 const KATEX_DELIMS = [
   { left: '\\(', right: '\\)', display: false },
@@ -98,6 +99,12 @@ export default function CapturePage() {
       if (captionRef.current && !cancelled) fitCaptionBox(captionRef.current);
       if (nodeRef.current) await waitForRenderReady(nodeRef.current);
       if (cancelled) return;
+      // The focus over the slide, measured on the finished layout (and painted).
+      if ((data.focus || data.focusOutline) && nodeRef.current) {
+        settleFocusLayers(nodeRef.current);
+        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+        if (cancelled) return;
+      }
       if (inIframe) {
         try {
           const bitmap = await drawFrame(nodeRef.current!, data);
@@ -139,6 +146,9 @@ export default function CapturePage() {
             slideSize={{ width: data.width, height: data.height }}
             isActive
             isEnabledPointerEvents={false}
+            focus={data.focus}
+            focusOutline={data.focusOutline}
+            focusAnimate={false}
           />
         )}
         {data?.caption && (
@@ -150,7 +160,8 @@ export default function CapturePage() {
             background: 'rgba(0,0,0,.72)', color: '#fff', textAlign: 'center',
             fontFamily: 'var(--mdp-font-body, "Noto Sans JP", sans-serif)',
             fontSize: data.height * 0.04, lineHeight: 1.35, fontWeight: 600,
-            textShadow: '0 1px 3px rgba(0,0,0,.6)', zIndex: 10,
+            // Above the slide's focus layer (z-index 20): a spotlight never dims it.
+            textShadow: '0 1px 3px rgba(0,0,0,.6)', zIndex: 30,
           }} />
         )}
       </div>

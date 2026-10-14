@@ -8,11 +8,13 @@ import { applyModulesToMarkdown, parseArguments } from '../../modules/moduleProc
 import { applyBuildsToMarkdown } from './buildProcessor';
 import { markScriptReadings, renderScriptChips } from '../../autoplay/autoplay';
 import markedKatex from "marked-katex-extension";
-import { registerMdpKatex } from "./katexExtensions";
+import { mdpKatexOptions, registerMdpKatex } from "./katexExtensions";
 
 marked.use(markedKatex({
   throwOnError: false,
-  output: 'html'
+  output: 'html',
+  // \focus{name}{…}: a formula part a focus cue can point at (katexExtensions).
+  ...mdpKatexOptions(),
 }));
 // `\( … \)` / `\[ … \]` with unrestricted neighbours (marked-katex only does `$…$`).
 registerMdpKatex();

@@ -598,7 +598,7 @@ export const FontsSection: React.FC<Props> = ({ configDir, chain, ownerDir, valu
         <Button size="small" variant="outlined" onClick={downloadOfficial} disabled={!!busy}
           startIcon={busy === 'download' ? <CircularProgress size={14} sx={{ color: 'var(--app-accent)' }} /> : <CloudDownloadIcon fontSize="small" />}
           sx={{ textTransform: 'none', color: 'var(--app-text-secondary)', borderColor: 'var(--app-border-strong)' }}>
-          Get official fonts (≈10 MB)
+          Get official fonts (≈13 MB)
         </Button>
         <Button size="small" variant="outlined" onClick={pickFile} disabled={!!busy}
           startIcon={busy === 'add' ? <CircularProgress size={14} sx={{ color: 'var(--app-accent)' }} /> : <AddIcon fontSize="small" />}
@@ -608,8 +608,8 @@ export const FontsSection: React.FC<Props> = ({ configDir, chain, ownerDir, valu
         <input ref={fileRef} type="file" accept=".woff2,.woff,.ttf,.otf" hidden onChange={onFile} />
       </Stack>
       <Typography sx={{ ...hintSx, mt: 0.75 }}>
-        Official fonts: Noto Sans JP, Noto Serif JP, JetBrains Mono (SIL Open Font License; internet required for the download,
-        then everything works offline). A font file is stored as-is under <code>{configDir}/fonts/</code>.
+        Official fonts: Noto Sans JP, Noto Serif JP, JetBrains Mono and Klee One (handwritten, for sticky notes) — SIL Open Font License; internet required for the download,
+        then everything works offline. A font file is stored as-is under <code>{configDir}/fonts/</code>.
       </Typography>
     </>
   );

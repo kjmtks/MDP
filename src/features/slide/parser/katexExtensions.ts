@@ -13,9 +13,22 @@ import katex from 'katex';
 // `$…$` is still handled by marked-katex-extension (left untouched so literal `$`
 // in prose — e.g. prices — keeps its safe, standard behaviour).
 
+// A part of a formula a focus cue can point at (`[[look: math:rhs]]`):
+// `\focus{rhs}{mc^2}` renders as the formula itself, marked data-mdp-focus="rhs"
+// (features/focus). KaTeX lets an HTML extension through only when trusted —
+// exactly this attribute, nothing else (\href, \url, \includegraphics, \htmlClass,
+// \htmlStyle, any other data-* stay off). A fresh macro table per formula: KaTeX
+// writes \gdef'd macros into the one it is given.
+export const mdpKatexOptions = () => ({
+  macros: { '\\focus': '\\htmlData{mdp-focus=#1}{#2}' } as Record<string, string>,
+  trust: (ctx: { command: string; attributes?: Record<string, string> }) =>
+    ctx.command === '\\htmlData' && Object.keys(ctx.attributes || {}).every((k) => k === 'data-mdp-focus'),
+  strict: (code: string) => (code === 'htmlExtension' ? 'ignore' : 'warn'),
+});
+
 const render = (text: string, displayMode: boolean): string => {
   try {
-    return katex.renderToString(text, { throwOnError: false, output: 'html', displayMode });
+    return katex.renderToString(text, { throwOnError: false, output: 'html', displayMode, ...mdpKatexOptions() });
   } catch {
     return text;
   }

@@ -7,6 +7,7 @@ import { SlideOverviewGrid } from '../../features/slide/components/SlideOverview
 import { useSync, type SyncMessage } from '../../features/remote/hooks/useSync';
 import { moduleSyncBus } from '../../features/modules/moduleSyncBus';
 import { mdpBus } from '../../features/bus/mdpBus';
+import { useBusFocus } from '../../features/focus/focusBus';
 import { registerParsedModule, clearAllModules } from '../../features/modules/moduleManager';
 import { registerParsedEffect, clearAllEffects } from '../../features/effects/effectManager';
 import { useDrawing } from '../../features/drawing/hooks/useDrawing';
@@ -278,6 +279,9 @@ export default function OutputPage() {
     return () => { window.removeEventListener('mousemove', onMove); window.clearTimeout(timer); };
   }, []);
 
+  // What the presenter's focus chips point at on the current slide.
+  const busFocus = useBusFocus(currentIndex);
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const renderSlide = useCallback((slide: any, idx: number, opts: { buildStep: number }) => (
     <SlideScaler width={slideSize.width} height={slideSize.height} marginRate={1}>
@@ -301,11 +305,12 @@ export default function OutputPage() {
             moduleRole="mirror"
             presenting={true}
             onSlideLink={sendLinkNav}
+            focus={idx === currentIndex ? busFocus : null}
           />
         </div>
       )}
     </SlideScaler>
-  ), [slideSize, basePath, slideStyles, drawings, sendLinkNav]);
+  ), [slideSize, basePath, slideStyles, drawings, sendLinkNav, currentIndex, busFocus]);
 
   if (!channelId) return <div style={{ padding: 20, color: '#888', background: '#000', height: '100vh' }}>Invalid channel</div>;
 

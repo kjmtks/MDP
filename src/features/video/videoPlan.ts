@@ -6,6 +6,7 @@
 // rate, with SAMPLES_PER_FRAME samples per frame — so picture and sound can never
 // drift apart, however long the deck.
 import { buildPlaylist } from '../autoplay/autoplay';
+import { applyCues, focusSignature, isEmptyFocus, NO_FOCUS, type FocusState } from '../focus/focusState';
 
 export const FPS = 30;
 export const SAMPLE_RATE = 48000;
@@ -37,6 +38,7 @@ export interface VideoSegment {
   tailFrames: number;         // silence kept after the speech (a breath)
   frames: number;             // silent stretches: known now; speech: set once the audio is known
   fade: boolean;              // cross-fade into this stretch's picture
+  focus?: FocusState;         // the focus cues in force (drawn into the picture); none = no focus
 }
 
 const LEAD_NEW_SLIDE = 0.5;   // s of silence before the first words on a new slide
@@ -52,13 +54,21 @@ export function planSegments(slides: readonly PlanSlide[], cpm: number, opts: Pl
   const playlist = buildPlaylist(shown.map(({ s }) => ({ html: s.html, raw: s.raw, stepCount: s.stepCount })), cpm);
   const out: VideoSegment[] = [];
   let prev: { slideIdx: number; buildStep: number } | null = null;
+  // The focus as the auto-play would show it: each item's cues act as it starts,
+  // and a new slide starts with none. (The cues of an event left out below still
+  // act — on the stretches after it.)
+  let focus: FocusState = NO_FOCUS;
+  let focusSlide = -1;
+  let prevFocus = '';
   for (const item of playlist) {
     const slideIdx = shown[item.slideIdx].i;
+    if (focusSlide !== slideIdx) { focus = NO_FOCUS; focusSlide = slideIdx; }
+    if (item.cues?.length) focus = applyCues(focus, item.cues);
     // Only a timed pause lasts in a video: events (modules, [[wait]]) have nobody
     // to answer them here.
     if (item.action && item.action.kind !== 'pause') continue;
     const newSlide = !prev || prev.slideIdx !== slideIdx;
-    const changed = newSlide || prev!.buildStep !== item.buildStep;
+    const changed = newSlide || prev!.buildStep !== item.buildStep || focusSignature(focus) !== prevFocus;
     const transition = slides[slideIdx].transition || opts.globalTransition || '';
     const fade = !!prev && changed && opts.fade && !(newSlide && transition === 'none');
     const seg: VideoSegment = {
@@ -70,11 +80,13 @@ export function planSegments(slides: readonly PlanSlide[], cpm: number, opts: Pl
       tailFrames: item.text ? toFrames(item.dwellMs) : 0,
       frames: item.text ? 0 : toFrames(item.action ? item.action.timeoutMs || 1000 : item.dwellMs),
       fade,
+      ...(isEmptyFocus(focus) ? {} : { focus }),
     };
     // A fade needs room to happen in.
     if (!item.text && fade) seg.frames = Math.max(seg.frames, FADE_FRAMES);
     out.push(seg);
     prev = { slideIdx, buildStep: item.buildStep };
+    prevFocus = focusSignature(focus);
   }
   return out;
 }

@@ -170,6 +170,14 @@ function setBypassJump(v) {
 // Online → revalidate via stat (serve cache if size+mtime match, else refetch);
 // offline / connection failure → serve the cached copy. Bounded by an LRU size cap.
 // Every cache step is defensively guarded so a cache fault never breaks a real read.
+//
+// The cache is a copy of what the server LAST SAID, for when it cannot be asked —
+// never a second source while it answers. A server that answers "no such file"
+// (the file, or a folder above it, was deleted) or "permission denied" is the truth:
+// the error goes to the caller and the copy is dropped (with everything cached
+// under that path). A fresh listing drops the copies of names the folder no longer
+// has, and the app's own writes / removes / renames drop theirs, so the offline view
+// is the last online view — a deleted `.mdp` theme or image does not live on.
 let cacheDir = null;
 let cacheIndex = {};            // key -> { rpath, host, size, mtime, atime, dir?, listing? }
 let cacheSaveTimer = null;
@@ -223,6 +231,40 @@ function cachePutListing(key, listing, meta) {
   cacheIndex[key] = { ...meta, dir: true, listing, size: 0, atime: Date.now() };
   saveCacheIndexSoon();
 }
+// Drop the cached files and listings of `cfg`'s server whose remote path matches.
+// The index stores only `host` + `rpath`, so the key is recomputed to be sure an
+// entry belongs to this port + user too.
+function cacheDropWhere(cfg, matches) {
+  if (!cacheDir) return;
+  let dropped = false;
+  for (const [k, m] of Object.entries(cacheIndex)) {
+    if (!m || m.host !== cfg.host || typeof m.rpath !== 'string' || !matches(m.rpath)) continue;
+    if (cacheKey(cfg, m.dir ? 'DIR:' + m.rpath : m.rpath) !== k) continue;
+    if (!m.dir) { try { fs.unlinkSync(blobPath(k)); } catch { /* ignore */ } }
+    delete cacheIndex[k];
+    dropped = true;
+  }
+  if (dropped) saveCacheIndexSoon();
+}
+const isAtOrUnder = (p, dir) => p === dir || p.startsWith(dir === '/' ? '/' : `${dir}/`);
+// `rpath` is gone (or no longer ours to read): forget it and everything under it.
+const cacheForget = (cfg, rpath) => cacheDropWhere(cfg, (p) => isAtOrUnder(p, rpath));
+// A FRESH listing of `dir`: forget what was cached under a name it no longer has.
+function cachePrune(cfg, dir, listing) {
+  const names = new Set(listing.map((e) => e.name));
+  const base = dir === '/' ? '/' : `${dir}/`;
+  cacheDropWhere(cfg, (p) => {
+    if (!p.startsWith(base)) return false;
+    const name = p.slice(base.length).split('/')[0];
+    return !!name && !names.has(name);
+  });
+}
+// ssh2 gives an SFTP STATUS reply a NUMERIC `code`: the server was reached and
+// answered — except 6/7 (no connection / connection lost), which are transport
+// failures like a refused or dropped connection (string codes, or none).
+const SFTP_NO_SUCH_FILE = 2, SFTP_PERMISSION_DENIED = 3;
+const serverAnswered = (e) => !!e && typeof e.code === 'number' && e.code !== 6 && e.code !== 7;
+const serverSaysGone = (e) => !!e && (e.code === SFTP_NO_SUCH_FILE || e.code === SFTP_PERMISSION_DENIED);
 function clearCache() {
   for (const k of Object.keys(cacheIndex)) { if (!cacheIndex[k].dir) { try { fs.unlinkSync(blobPath(k)); } catch { /* ignore */ } } }
   cacheIndex = {};
@@ -330,9 +372,14 @@ async function vfsList(target) {
         size: e.attrs.size,
         mtime: (e.attrs.mtime || 0) * 1000,
       }));
-      if (key) cachePutListing(key, mapped, { rpath: target.rpath, host: target.cfg.host });
+      if (key) {
+        cachePutListing(key, mapped, { rpath: target.rpath, host: target.cfg.host });
+        cachePrune(target.cfg, target.rpath, mapped);
+      }
       return mapped;
     } catch (e) {
+      // The server answered (e.g. the folder was deleted) → that is the answer.
+      if (serverAnswered(e)) { if (key && serverSaysGone(e)) cacheForget(target.cfg, target.rpath); throw e; }
       // Offline / connection failure → serve the last cached listing if we have it.
       if (key) { const cached = cacheGetListing(key); if (cached) return cached; }
       throw e;
@@ -349,7 +396,8 @@ async function vfsReadBuffer(target) {
     try {
       const sftp = await getSftp(target.cfg);
       let st = null;
-      try { st = await sftpCall(sftp, 'stat', target.rpath); } catch { /* serve fresh if stat unsupported */ }
+      try { st = await sftpCall(sftp, 'stat', target.rpath); }
+      catch (e) { if (serverSaysGone(e)) throw e; /* else serve fresh (stat unsupported) */ }
       const cached = cacheGetFile(key);
       // Revalidate: an unchanged file (same size+mtime) is served from cache — fast,
       // and avoids re-downloading large images over a slow link.
@@ -358,6 +406,8 @@ async function vfsReadBuffer(target) {
       cachePutFile(key, buf, { rpath: target.rpath, host: target.cfg.host, mtime: st ? st.mtime : 0 });
       return buf;
     } catch (e) {
+      // The server answered (deleted, unreadable, a folder…) → no stale copy.
+      if (serverAnswered(e)) { if (serverSaysGone(e)) cacheForget(target.cfg, target.rpath); throw e; }
       const cached = cacheGetFile(key);
       if (cached) return cached.buf; // offline fallback
       throw e;
@@ -383,6 +433,9 @@ async function vfsWrite(target, buffer) {
     const sftp = await getSftp(target.cfg);
     const dir = target.rpath.replace(/\/[^/]*$/, '') || '/';
     await vfsMkdirp({ kind: 'ssh', cfg: target.cfg, rpath: dir }).catch(() => {});
+    // The cached copy is stale from now on — a rewrite of the same size within the
+    // same second (SFTP mtimes are whole seconds) would pass the revalidation.
+    cacheForget(target.cfg, target.rpath);
     return await sftpCall(sftp, 'writeFile', target.rpath, buffer);
   }
   await fsp.mkdir(path.dirname(target.abs), { recursive: true });
@@ -392,6 +445,7 @@ async function vfsWrite(target, buffer) {
 async function vfsRemove(target) {
   if (target.kind === 'ssh') {
     const sftp = await getSftp(target.cfg);
+    cacheForget(target.cfg, target.rpath);
     const st = await sftpCall(sftp, 'stat', target.rpath).catch(() => null);
     if (st && st.isDirectory()) {
       const list = await sftpCall(sftp, 'readdir', target.rpath);
@@ -426,6 +480,8 @@ async function vfsCopy(src, dst) {
 async function vfsRename(src, dst) {
   if (src.kind === 'ssh' && dst.kind === 'ssh') {
     const sftp = await getSftp(src.cfg);
+    cacheForget(src.cfg, src.rpath);
+    cacheForget(dst.cfg, dst.rpath);
     return await sftpCall(sftp, 'rename', src.rpath, dst.rpath);
   }
   if (src.kind === 'local' && dst.kind === 'local') return await fsp.rename(src.abs, dst.abs);

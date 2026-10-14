@@ -30,6 +30,8 @@ import FactCheckIcon from '@mui/icons-material/FactCheck';
 import FactCheckOutlinedIcon from '@mui/icons-material/FactCheckOutlined';
 import CheckBoxIcon from '@mui/icons-material/CheckBox';
 import CheckBoxOutlineBlankIcon from '@mui/icons-material/CheckBoxOutlineBlank';
+import CenterFocusStrongIcon from '@mui/icons-material/CenterFocusStrong';
+import CenterFocusWeakIcon from '@mui/icons-material/CenterFocusWeak';
 import type { IDockviewPanelProps, IDockviewPanelHeaderProps } from 'dockview';
 
 import { darkMenuSlotProps } from './darkMenu';
@@ -49,6 +51,8 @@ import AccountTreeIcon from '@mui/icons-material/AccountTree';
 import { Sidebar } from '../../../features/fileTree/components/Sidebar';
 import { EditorPanel } from '../../../features/editor/components/EditorPanel';
 import { SlideView } from '../../../features/slide/components/SlideView';
+import { outlineOf } from '../../../features/focus/focusCheck';
+import type { FocusOutlineItem } from '../../../features/focus/focusStyles';
 import { ErrorBoundary } from '../../../components/ErrorBoundary';
 import { PdfView } from '../../../features/pdf/PdfView';
 import { SlideScaler } from '../../../features/slide/components/SlideScaler';
@@ -234,12 +238,14 @@ const imgSize = (value: string): string => {
   return bytes > 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 };
 
+// `overrides`: a file entry shadowing a library alias; `overridden`: the library entry
+// this file shadows; `duplicate`: a second definition of an alias in the file (unused).
 const ImageRow: React.FC<{
-  entry: ImageEntry; overrides: boolean; moveDisabled?: boolean; highlight: boolean; resolveThumb: (v: string) => string;
+  entry: ImageEntry; overrides: boolean; overridden?: boolean; duplicate?: boolean; moveDisabled?: boolean; highlight: boolean; resolveThumb: (v: string) => string;
   onInsert: (alias: string) => void; onEdit: (e: ImageEntry) => void;
   onDelete: (e: ImageEntry) => void; onMove: (alias: string, to: 'file' | 'library') => void;
   onEditDrawio?: (e: ImageEntry) => void; onPreview?: (e: ImageEntry) => void;
-}> = ({ entry, overrides, moveDisabled, highlight, resolveThumb, onInsert, onEdit, onDelete, onMove, onEditDrawio, onPreview }) => {
+}> = ({ entry, overrides, overridden, duplicate, moveDisabled, highlight, resolveThumb, onInsert, onEdit, onDelete, onMove, onEditDrawio, onPreview }) => {
   const [broken, setBroken] = useState(false);
   const [hoverEl, setHoverEl] = useState<HTMLElement | null>(null);
   const src = resolveThumb(entry.value);
@@ -278,17 +284,27 @@ const ImageRow: React.FC<{
           </Box>
         )}
         {overrides && <Chip label="overrides library" size="small" sx={{ height: 16, fontSize: '0.6rem', color: 'var(--app-warning)', bgcolor: 'var(--app-warning-soft)', mt: 0.25 }} />}
+        {overridden && (
+          <Tooltip title="This file defines the same alias — in this deck, references show the file's own image.">
+            <Chip label="overridden in this file" size="small" sx={{ height: 16, fontSize: '0.6rem', color: 'var(--app-warning)', bgcolor: 'var(--app-warning-soft)', mt: 0.25 }} />
+          </Tooltip>
+        )}
+        {duplicate && (
+          <Tooltip title="The alias is defined earlier in this file; references use the first definition. Delete this one, or give it another alias in the editor.">
+            <Chip label="duplicate — not used" size="small" sx={{ height: 16, fontSize: '0.6rem', color: 'var(--app-warning)', bgcolor: 'var(--app-warning-soft)', mt: 0.25 }} />
+          </Tooltip>
+        )}
       </TableCell>
       <TableCell align="right" sx={{ border: 0, p: 0.25, whiteSpace: 'nowrap', width: '1%' }}>
         {onPreview && (
           <Tooltip title="Preview in panel"><IconButton size="small" sx={toolBtnSx} onClick={() => onPreview(entry)}><VisibilityIcon fontSize="small" /></IconButton></Tooltip>
         )}
-        <Tooltip title="Insert reference"><IconButton size="small" sx={toolBtnSx} onClick={() => onInsert(entry.alias)}><InputIcon fontSize="small" /></IconButton></Tooltip>
+        <Tooltip title={overridden ? 'Insert reference (in this deck it shows the file’s own image)' : 'Insert reference'}><IconButton size="small" sx={toolBtnSx} onClick={() => onInsert(entry.alias)}><InputIcon fontSize="small" /></IconButton></Tooltip>
         {onEditDrawio && isSvgValue(entry.value) && (
           <Tooltip title="Edit in drawio"><IconButton size="small" sx={toolBtnSx} onClick={() => onEditDrawio(entry)}><AccountTreeIcon fontSize="small" /></IconButton></Tooltip>
         )}
         <Tooltip title="Edit"><IconButton size="small" sx={toolBtnSx} onClick={() => onEdit(entry)}><EditIcon fontSize="small" /></IconButton></Tooltip>
-        <Tooltip title={moveDisabled ? 'Cannot move: this alias exists in both this file and the library' : (entry.scope === 'file' ? 'Move to library' : 'Move to file')}>
+        <Tooltip title={duplicate ? 'Cannot move a duplicate definition' : moveDisabled ? 'Cannot move: this alias exists in both this file and the library' : (entry.scope === 'file' ? 'Move to library' : 'Move to file')}>
           <span><IconButton size="small" sx={toolBtnSx} disabled={moveDisabled} onClick={() => onMove(entry.alias, entry.scope === 'file' ? 'library' : 'file')}><SwapHorizIcon fontSize="small" /></IconButton></span>
         </Tooltip>
         <Tooltip title="Delete"><IconButton size="small" sx={toolBtnSx} onClick={() => onDelete(entry)}><DeleteOutlineIcon fontSize="small" /></IconButton></Tooltip>
@@ -299,7 +315,7 @@ const ImageRow: React.FC<{
 
 export const ImagesPanel: React.FC = () => {
   const img = useImages();
-  const [dialog, setDialog] = useState<null | { mode: 'add' | 'edit'; scope: 'file' | 'library'; alias: string; value: string; description: string; tags: string[] }>(null);
+  const [dialog, setDialog] = useState<null | { mode: 'add' | 'edit'; scope: 'file' | 'library'; alias: string; value: string; description: string; tags: string[]; nth?: number }>(null);
   const [dragOver, setDragOver] = useState(false);
   const [query, setQuery] = useState('');
   const panelFocused = useRef(false);
@@ -350,9 +366,10 @@ export const ImagesPanel: React.FC = () => {
   useEffect(() => {
     const req = img.editRequest;
     if (!req) return;
-    const entry = [...img.fileImages, ...img.libraryImages].find((e) => e.alias === req.alias);
+    const entry = img.fileImages.find((e) => e.alias === req.alias && (e.nth ?? 0) === (req.nth ?? 0))
+      || [...img.fileImages, ...img.libraryImages].find((e) => e.alias === req.alias);
     img.onEditHandled?.();
-    if (entry) queueMicrotask(() => setDialog({ mode: 'edit', scope: entry.scope, alias: entry.alias, value: entry.value, description: entry.description || '', tags: entry.tags || [] }));
+    if (entry) queueMicrotask(() => setDialog({ mode: 'edit', scope: entry.scope, alias: entry.alias, value: entry.value, description: entry.description || '', tags: entry.tags || [], nth: entry.nth }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [img.editRequest]);
 
@@ -363,8 +380,9 @@ export const ImagesPanel: React.FC = () => {
     if (!alias || !value) return;
     const description = dialog.description.trim();
     const tags = dialog.tags.map((t) => t.trim()).filter(Boolean);
+    if (dialog.mode === 'add' && dialog.scope === 'file' && fileAliases.has(alias)) return; // a second definition would not be used
     if (dialog.mode === 'add') img.onAddImage(dialog.scope, alias, value, description, tags);
-    else img.onEditImage(dialog.scope, alias, value, description, tags);
+    else img.onEditImage(dialog.scope, alias, value, description, tags, dialog.nth);
     setDialog(null);
   };
 
@@ -374,7 +392,7 @@ export const ImagesPanel: React.FC = () => {
   };
 
   const renderSection = (title: string, entries: ImageEntry[], scope: 'file' | 'library') => {
-    const visible = entries.filter(matchesQuery);
+    const visible = entries.map((e, i) => ({ e, i })).filter(({ e }) => matchesQuery(e));
     return (
     <Box>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', bgcolor: 'var(--app-bg-editor)', px: 1, py: 0.25, borderBottom: '1px solid var(--app-border)', position: 'sticky', top: 0, zIndex: 1 }}>
@@ -388,12 +406,13 @@ export const ImagesPanel: React.FC = () => {
         : (
           <Box sx={{ overflowX: 'auto' }}>
           <Table size="small" sx={{ minWidth: 360 }}><TableBody>
-            {visible.map((e) => (
-              <ImageRow key={e.alias} entry={e} overrides={scope === 'file' && libAliases.has(e.alias)}
-                moveDisabled={scope === 'file' ? libAliases.has(e.alias) : fileAliases.has(e.alias)} highlight={img.focusAlias === e.alias}
+            {visible.map(({ e, i }) => (
+              <ImageRow key={`${e.alias}#${i}`} entry={e} overrides={scope === 'file' && !e.nth && libAliases.has(e.alias)}
+                overridden={scope === 'library' && fileAliases.has(e.alias)} duplicate={scope === 'file' && !!e.nth}
+                moveDisabled={scope === 'file' ? (!!e.nth || libAliases.has(e.alias)) : fileAliases.has(e.alias)} highlight={img.focusAlias === e.alias}
                 resolveThumb={img.resolveThumb} onInsert={img.onInsertReference} onPreview={img.onPreview}
-                onEdit={(en) => setDialog({ mode: 'edit', scope: en.scope, alias: en.alias, value: en.value, description: en.description || '', tags: en.tags || [] })}
-                onDelete={(en) => img.onDeleteImage(en.scope, en.alias)} onMove={img.onMove} onEditDrawio={img.onEditDrawio} />
+                onEdit={(en) => setDialog({ mode: 'edit', scope: en.scope, alias: en.alias, value: en.value, description: en.description || '', tags: en.tags || [], nth: en.nth })}
+                onDelete={(en) => img.onDeleteImage(en.scope, en.alias, en.nth)} onMove={img.onMove} onEditDrawio={img.onEditDrawio} />
             ))}
           </TableBody></Table>
           </Box>
@@ -403,6 +422,23 @@ export const ImagesPanel: React.FC = () => {
   };
 
   const dialogIsData = !!dialog && dialog.value.startsWith('data:');
+  // Adding an alias that already exists: in this file → refused (the first definition
+  // would stay in use); in the library → it replaces that image; in the other place →
+  // which image this deck will show.
+  const aliasNote = ((): null | { text: string; block?: boolean; replaces?: boolean } => {
+    if (!dialog || dialog.mode !== 'add') return null;
+    const a = dialog.alias.trim();
+    if (!a) return null;
+    const inFile = fileAliases.has(a), inLib = libAliases.has(a);
+    if (dialog.scope === 'file') {
+      if (inFile) return { block: true, text: `“${a}” is already defined in this file — edit that one, or choose another alias.` };
+      if (inLib) return { text: `The shared library also has “${a}”. This deck will show the image added here.` };
+    } else {
+      if (inLib) return { replaces: true, text: `“${a}” is already in the shared library — this replaces its image.` };
+      if (inFile) return { text: `This file defines “${a}” too — this deck keeps showing its own; other decks get this one.` };
+    }
+    return null;
+  })();
 
   return (
     <Box tabIndex={0}
@@ -464,6 +500,11 @@ export const ImagesPanel: React.FC = () => {
               <Typography sx={{ color: 'var(--app-text-disabled)', fontSize: '0.68rem', mt: 0.4, ml: 0.25 }}>
                 Reference as ![alt](@alias)
               </Typography>
+              {aliasNote && (
+                <Typography sx={{ color: 'var(--app-warning)', fontSize: '0.68rem', mt: 0.4, ml: 0.25 }}>
+                  {aliasNote.text}
+                </Typography>
+              )}
             </Box>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               {dialog?.value
@@ -504,8 +545,8 @@ export const ImagesPanel: React.FC = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDialog(null)} sx={{ color: 'var(--app-text-muted)' }}>Cancel</Button>
-          <Button onClick={submit} disabled={!dialog?.alias.trim() || !dialog?.value.trim()} variant="contained">
-            {dialog?.mode === 'add' ? 'Add' : 'Save'}
+          <Button onClick={submit} disabled={!dialog?.alias.trim() || !dialog?.value.trim() || !!aliasNote?.block} variant="contained">
+            {dialog?.mode === 'add' ? (aliasNote?.replaces ? 'Replace' : 'Add') : 'Save'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -513,10 +554,28 @@ export const ImagesPanel: React.FC = () => {
   );
 };
 
+// The preview's focus marks (remembered per computer): every focus cue's target on
+// the slide outlined and numbered in script order, and what is not found listed.
+// The preview only — never the slideshow or an export.
+const FOCUS_MARKS_KEY = 'mdp.preview.focusTargets';
+const HAS_CUE = /\[\[\s*(?:look|mark|clear)\s*(?::|\]\])/i;
+
 export const PreviewPanel: React.FC = () => {
   const p = usePreview();
   const h = useHeaderActions();
   const [exportAnchor, setExportAnchor] = useState<null | HTMLElement>(null);
+  const [focusMarks, setFocusMarks] = useState(() => { try { return localStorage.getItem(FOCUS_MARKS_KEY) === '1'; } catch { return false; } });
+  const toggleFocusMarks = () => setFocusMarks((on) => {
+    try { localStorage.setItem(FOCUS_MARKS_KEY, on ? '0' : '1'); } catch { /* not remembered */ }
+    return !on;
+  });
+  const deckHasCues = useMemo(() => p.slides.some((sl) => HAS_CUE.test(sl.raw || '')), [p.slides]);
+  const currentRaw = p.slides[p.currentSlideIndex]?.raw || '';
+  const focusOutline = useMemo((): FocusOutlineItem[] | null => {
+    if (!focusMarks || !deckHasCues) return null;
+    const items = outlineOf(currentRaw);
+    return items.length ? items : null;
+  }, [focusMarks, deckHasCues, currentRaw]);
 
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -545,6 +604,15 @@ export const PreviewPanel: React.FC = () => {
           </Tooltip>
         )}
         <Box sx={{ flex: 1 }} />
+        {deckHasCues && (
+          <Tooltip title={focusMarks
+            ? 'Focus targets shown — what each [[look]] / [[mark]] of this slide points at, outlined and numbered (preview only). Click to hide'
+            : 'Show the focus targets — outline what each [[look]] / [[mark]] of this slide points at (preview only; never in the slideshow)'}>
+            <IconButton size="small" sx={{ ...toolBtnSx, color: focusMarks ? 'var(--app-accent)' : 'var(--app-text-muted)' }} onClick={toggleFocusMarks}>
+              {focusMarks ? <CenterFocusStrongIcon fontSize="small" /> : <CenterFocusWeakIcon fontSize="small" />}
+            </IconButton>
+          </Tooltip>
+        )}
         {h.answers && (
           <Tooltip title={h.answers.hidden
             ? 'Answers hidden — @answer blocks are blank frames (handout). Preview, slideshow and every export follow. Click to show them'
@@ -667,6 +735,7 @@ export const PreviewPanel: React.FC = () => {
                       drawings={p.drawings[index] || []}
                       slideIndex={index} moduleRole={p.moduleRole}
                       manipulate={p.manipulate}
+                      focusOutline={focusOutline}
                       onSlideLink={p.onSlideLink}
                       onAddStroke={(stroke) => { p.addStroke(index, stroke); p.send({ type: 'DRAW_STROKE', channelId: p.channelId, pageIndex: index, stroke }); }}
                       isInteracting={p.mode === 'pen'} toolType={p.toolType} color={p.penColor} lineWidth={p.penWidth} penOnly={p.stylusOnly}

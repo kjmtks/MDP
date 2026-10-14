@@ -45,8 +45,8 @@ $ npm run dev
     .mdp-tm-bar { display: flex; align-items: center; gap: calc(7 * var(--mdp-px, 1px)); padding: calc(8 * var(--mdp-px, 1px)) calc(12 * var(--mdp-px, 1px)); background: #313244; }
     .mdp-tm-dot { width: calc(12 * var(--mdp-px, 1px)); height: calc(12 * var(--mdp-px, 1px)); border-radius: 50%; background: #6c7086; }
     .mdp-tm-dot:nth-child(1) { background: #f38ba8; } .mdp-tm-dot:nth-child(2) { background: #f9e2af; } .mdp-tm-dot:nth-child(3) { background: #a6e3a1; }
-    .mdp-tm-title { margin-left: calc(8 * var(--mdp-px, 1px)); color: #cdd6f4; font-size: 0.85em; font-family: ui-monospace, monospace; }
-    .mdp-tm-body { padding: calc(12 * var(--mdp-px, 1px)) calc(14 * var(--mdp-px, 1px)); color: #cdd6f4; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9em; overflow-x: auto; }
+    .mdp-tm-title { margin-left: calc(8 * var(--mdp-px, 1px)); color: #cdd6f4; font-size: 0.85em; font-family: var(--mdp-font-mono, "JetBrains Mono", Consolas, Monaco, "Noto Sans JP", monospace); }
+    .mdp-tm-body { padding: calc(12 * var(--mdp-px, 1px)) calc(14 * var(--mdp-px, 1px)); color: #cdd6f4; font-family: var(--mdp-font-mono, "JetBrains Mono", Consolas, Monaco, "Noto Sans JP", monospace); font-size: 0.9em; overflow-x: auto; }
     .mdp-tm-body pre { margin: 0; background: none; padding: 0; }
     .mdp-tm-body code { background: none; color: inherit; }
     .mdp-tm-body > :first-child { margin-top: 0; } .mdp-tm-body > :last-child { margin-bottom: 0; }

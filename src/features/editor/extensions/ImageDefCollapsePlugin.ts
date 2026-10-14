@@ -13,8 +13,10 @@ import { changeCannotAffectMarkers } from './decoChangeMap';
 
 class ImageDefWidget extends WidgetType {
   readonly alias: string;
-  constructor(alias: string) { super(); this.alias = alias; }
-  eq(other: ImageDefWidget) { return other.alias === this.alias; }
+  // Which definition of the alias in the document (0 = the first — the one used).
+  readonly nth: number;
+  constructor(alias: string, nth: number) { super(); this.alias = alias; this.nth = nth; }
+  eq(other: ImageDefWidget) { return other.alias === this.alias && other.nth === this.nth; }
   ignoreEvent() { return true; }
 
   toDOM() {
@@ -22,7 +24,8 @@ class ImageDefWidget extends WidgetType {
     wrapper.style.cssText = 'display:inline-flex;align-items:center;gap:6px;vertical-align:middle;margin:0 2px;';
 
     const label = document.createElement('span');
-    label.textContent = `🖼️ ${this.alias}`;
+    label.textContent = this.nth ? `🖼️ ${this.alias} — duplicate, not used` : `🖼️ ${this.alias}`;
+    if (this.nth) label.title = `“${this.alias}” is defined earlier in this file; references use the first definition.`;
     label.style.cssText = 'color:var(--app-text-secondary);background-color:var(--app-bg-elevated);padding:2px 8px;border-radius:12px 0 0 12px;font-size:0.85em;user-select:none;border:1px solid var(--app-border-strong);border-right:none;';
 
     const editBtn = document.createElement('button');
@@ -35,7 +38,7 @@ class ImageDefWidget extends WidgetType {
       e.stopPropagation();
       editBtn.dispatchEvent(new CustomEvent('open-image-manager', {
         bubbles: true,
-        detail: { alias: this.alias },
+        detail: { alias: this.alias, nth: this.nth },
       }));
     };
 
@@ -51,8 +54,11 @@ function buildDecorations(state: EditorState): DecorationSet {
   // Fast path: no `@image` defs → skip the whole-doc scan.
   if (!docStr.includes('@image')) return builder.finish();
   // findImageDefRanges returns blocks in document order (sorted by `from`).
+  const seen = new Map<string, number>();
   for (const r of findImageDefRanges(docStr)) {
-    builder.add(r.from, r.to, Decoration.replace({ widget: new ImageDefWidget(r.alias), inclusive: false }));
+    const nth = seen.get(r.alias) ?? 0;
+    seen.set(r.alias, nth + 1);
+    builder.add(r.from, r.to, Decoration.replace({ widget: new ImageDefWidget(r.alias, nth), inclusive: false }));
   }
   return builder.finish();
 }

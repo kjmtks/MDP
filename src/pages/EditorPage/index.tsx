@@ -20,6 +20,10 @@ import { matchAction } from '../../features/settings/shortcuts/matcher';
 import { ACTIONS_BY_SCOPE } from '../../features/settings/shortcuts/registry';
 import { DrawioEditor } from '../../features/drawio/components/DrawioEditor';
 import { ConnectDialog } from '../../features/remote/components/ConnectDialog';
+import { storedRemoteView, storeRemoteView, type RemoteView } from '../../features/remote/liveRemote';
+import { LayoutProbe } from '../../features/remote/LayoutProbe';
+import { compareLayouts, type LayoutReport } from '../../features/remote/layoutCheck';
+import { getFontState } from '../../features/fonts/fontRuntime';
 import { RehearsalDialog } from '../../features/rehearsal/RehearsalDialog';
 import {
   readRehearsals, upsertRehearsal, latestRehearsal, measuredTimesOf, narrationSignature, withMeasuredTimes, narrationRun,
@@ -34,7 +38,6 @@ import { VideoExportDialog } from '../../features/video/VideoExportDialog';
 import { VideoQueuePanel } from '../../features/video/VideoQueuePanel';
 import { enqueueVideo, onVideoJobFinished } from '../../features/video/videoQueue';
 import { refreshVideoFeature, subscribeVideoFeature, videoExportSupported, type VideoOptions } from '../../features/video/videoTypes';
-import { getFontState } from '../../features/fonts/fontRuntime';
 import {
   getRecordingState, onRecordingSaved, preferredMic, recordingSupported, startRecording, stopRecording, subscribeRecording,
 } from '../../features/recording/slideRecorder';
@@ -89,6 +92,7 @@ import type { SidebarSharedProps, PreviewSharedProps, SnippetsShared, ImagesShar
 import { EditorDock } from './dock/EditorDock';
 import { RESET_LAYOUT_EVENT, SHOW_PANEL_EVENT } from './dock/dockShared';
 import { BASE_HEIGHT } from '../../constants';
+import { useBusFocus } from '../../features/focus/focusBus';
 import { reportError, notify, confirmDialog, choiceDialog } from '../../components/error/errorReporter';
 
 import '../../App.css';
@@ -116,6 +120,8 @@ function getBlobUrlFromBase64(dataUrl: string) {
 
 export default function EditorPage() {
   const [currentSlideIndex, setCurrentSlideIndex] = useState<number>(0);
+  // What the presenter's focus chips point at on the slideshow's current slide.
+  const showFocus = useBusFocus(currentSlideIndex);
   const [prevSlidesLength, setPrevSlidesLength] = useState<number>(0);
   const [snipets, setSnipets] = useState<SnippetsCategory[]>([]);
   const [themes, setThemes] = useState<ThemeOption[]>([]);
@@ -531,6 +537,7 @@ export default function EditorPage() {
     return () => window.removeEventListener('mdp-reload-snippets', onReload);
   }, [reloadSnippets]);
 
+  const assetsLoadedRef = useRef(false);
   useEffect(() => {
     let isCancelled = false;
 
@@ -608,7 +615,11 @@ export default function EditorPage() {
     };
 
     const timerId = setTimeout(() => {
-      if (modulePathsString !== '' || effectPathsString !== '' || !hasSelectedFolder) {
+      // Load again once the scope has NO asset paths left either (its `.mdp` folders
+      // were deleted, or the deck moved out of their reach) — the ones registered
+      // before must not stay in use.
+      if (modulePathsString !== '' || effectPathsString !== '' || !hasSelectedFolder || assetsLoadedRef.current) {
+        assetsLoadedRef.current = true;
         loadAllModules();
       } else {
         setAssetsReady(true);   // nothing to load (a folder with no assets)
@@ -1017,19 +1028,13 @@ export default function EditorPage() {
         // CSS+JS re-applies live.
         setModuleEpoch((e) => e + 1);
       } else if (path === `${IMAGES_DIR}/registry.json` || path.endsWith(`/${IMAGES_DIR}/registry.json`)) {
-        // The shared image-alias library changed (panel write or hand-edit):
-        // reload it and force a slide re-parse.
-        try {
-          const parsed = JSON.parse(content);
-          const map: Record<string, string> = (parsed && parsed.images) || {};
-          const desc: Record<string, string> = (parsed && parsed.descriptions) || {};
-          const tags: Record<string, string[]> = (parsed && parsed.tags) || {};
-          setImageLibrary(map);
-          setImageLibraryDesc(desc);
-          setImageLibraryTags(tags);
-          setLibraryImages(map);
-          setModuleEpoch((e) => e + 1);
-        } catch { /* ignore malformed registry */ }
+        // A library registry was saved in the editor (a hand-edit): merge the cascade
+        // again (root→nearest, each registry's files rebased to ITS own
+        // `.mdp/images/`; the merge re-parses the slides when the result changed).
+        // Taking this ONE registry's raw map as the library dropped every other
+        // `.mdp`'s aliases and pointed a nested `.mdp`'s files at the ROOT's
+        // `.mdp/images/` — a same-named file there, or nothing.
+        setImagesEpoch((e) => e + 1);
       } else if (path.includes(`${SNIPPETS_DIR}/`) || path.includes(`${TEMPLATES_DIR}/`) || path.includes(`${THEMES_DIR}/`) || path.includes(`${FONTS_DIR}/`)) {
         scheduleRefresh();
       } else if (/(^|\/)\.mdp\/tts-servers\/[^/]+\.json$/.test(path)) {
@@ -1229,6 +1234,14 @@ export default function EditorPage() {
   const [remoteActive, setRemoteActive] = useState(false);
   const [remotePort, setRemotePort] = useState<number | null>(null);
   const [remoteIps, setRemoteIps] = useState<{ name: string; address: string }[]>([]);
+  // What remote devices show (Connect dialog, remembered per computer): pictures of
+  // the slides, or the live deck (the files it needs are granted to the devices of
+  // this presentation — liveRemote.ts / app/remoteFiles.cjs).
+  const [remoteView, setRemoteView] = useState<RemoteView>(() => storedRemoteView());
+  const changeRemoteView = useCallback((v: RemoteView) => { setRemoteView(v); storeRemoteView(v); }, []);
+  // A live remote asked whether it breaks the lines where this computer does: the
+  // deck is measured here the same way (LayoutProbe) and the answer goes back.
+  const [layoutJob, setLayoutJob] = useState<LayoutReport | null>(null);
 
   const activateRemote = useCallback(async () => {
     setRemoteActive(true);
@@ -1342,7 +1355,8 @@ export default function EditorPage() {
     syncSlides, currentSlideIndex, slideSize, globalContext, baseUrl, themeCssUrl, lastUpdated, drawings,
     moveSlide, addStroke, clear, undo, redo, handleAddBlankSlide, updateStrokes, handleUpdateNote,
     remotePort, rasterize, remoteActive, basePath, isSlideOverview, toggleSlideOverview, selectSlideFromOverview,
-    step, navLink, navBack, navForward, handleUpdateScript, handleRehearsalRun, lastRehearsal, recordCommand
+    step, navLink, navBack, navForward, handleUpdateScript, handleRehearsalRun, lastRehearsal, recordCommand,
+    remoteView, setLayoutJob,
   );
   // The presenter view shows the recorder's state (REC / elapsed time).
   useEffect(() => { send({ type: 'REC_STATE', state: recState, channelId }); }, [recState, send, channelId]);
@@ -1520,7 +1534,7 @@ export default function EditorPage() {
   // surface the findings as a notification. Editor-only; nothing is changed.
   const runDeckCheck = useCallback(() => {
     const text = editorRef.current?.view?.state.doc.toString() ?? previewMarkdown ?? '';
-    const { errors, warnings } = validateDeckText(text, themes);
+    const { errors, warnings } = validateDeckText(text, themes, imageLibrary);
     if (!errors.length && !warnings.length) {
       notify('No problems found in this deck.', { title: 'Deck check', severity: 'success' });
       return;
@@ -1530,7 +1544,7 @@ export default function EditorPage() {
       `${errors.length} error${errors.length === 1 ? '' : 's'}, ${warnings.length} warning${warnings.length === 1 ? '' : 's'}.`,
       { title: 'Deck check', severity: errors.length ? 'error' : 'warning', detail },
     );
-  }, [editorRef, previewMarkdown, themes]);
+  }, [editorRef, previewMarkdown, themes, imageLibrary]);
 
   // The editor-panel toolbar triggers these via window events (keeps that panel
   // decoupled from EditorPage's callbacks).
@@ -1979,7 +1993,7 @@ export default function EditorPage() {
   const [imageFocusAlias, setImageFocusAlias] = useState<string | null>(null);
   // A request to open the edit dialog for an alias (from the editor's @image
   // [edit] widget). A fresh object each click; cleared once the panel handles it.
-  const [imageEditRequest, setImageEditRequest] = useState<{ alias: string } | null>(null);
+  const [imageEditRequest, setImageEditRequest] = useState<{ alias: string; nth?: number } | null>(null);
 
   // Commit a new library map to memory (state + registry singleton) and force a
   // slide re-parse. Persisting the small registry.json is the caller's job (it
@@ -2000,7 +2014,8 @@ export default function EditorPage() {
   useEffect(() => { imageLibraryTagsRef.current = imageLibraryTags; }, [imageLibraryTags]);
 
   // Editing an existing SVG (drawio) image alias in the drawio editor.
-  const [drawioImageEdit, setDrawioImageEdit] = useState<{ alias: string; scope: 'file' | 'library'; base64Xml: string } | null>(null);
+  // `nth`, `description`, `tags`: the file definition being edited (its words are kept).
+  const [drawioImageEdit, setDrawioImageEdit] = useState<{ alias: string; scope: 'file' | 'library'; base64Xml: string; nth?: number; description?: string; tags?: string[] } | null>(null);
   // Creating/editing a drawio diagram from the Images panel's Add/Edit dialog.
   // `initial` is the existing SVG (data URI) to load, or '' for a blank diagram.
   const [drawioForAdd, setDrawioForAdd] = useState<{ initial: string } | null>(null);
@@ -2008,7 +2023,7 @@ export default function EditorPage() {
   const handleEditImageDrawio = useCallback(async (entry: ImageEntry) => {
     try {
       const svg = entry.value.startsWith('data:') ? entry.value : await inlineLibraryImage(entry.value);
-      setDrawioImageEdit({ alias: entry.alias, scope: entry.scope, base64Xml: svg });
+      setDrawioImageEdit({ alias: entry.alias, scope: entry.scope, base64Xml: svg, nth: entry.nth, description: entry.description, tags: entry.tags });
     } catch (e) {
       reportError('Failed to open the diagram for editing.', { detail: e });
     }
@@ -2020,7 +2035,7 @@ export default function EditorPage() {
     if (!cur) return;
     try {
       if (cur.scope === 'file') {
-        const v = editorRef.current?.view; if (v) editFileImageDef(v, cur.alias, dataUri);
+        const v = editorRef.current?.view; if (v) editFileImageDef(v, cur.alias, dataUri, cur.description, cur.tags, cur.nth);
       } else {
         const rebased = await upsertLibraryImage(cur.alias, dataUri, imageLibraryDescRef.current[cur.alias], imageLibraryTagsRef.current[cur.alias]);
         commitLibrary({ ...imageLibraryRef.current, [cur.alias]: rebased }, imageLibraryDescRef.current, imageLibraryTagsRef.current);
@@ -2057,10 +2072,11 @@ export default function EditorPage() {
   useEffect(() => {
     const handler = (e: Event) => {
       const alias = (e as CustomEvent).detail?.alias ?? null;
+      const nth = Number((e as CustomEvent).detail?.nth) || 0;
       setImageFocusAlias(alias);
       // Request the panel open the edit dialog for this alias (handled on mount,
       // so it works even when the panel was closed). New object → re-clickable.
-      if (alias) setImageEditRequest({ alias });
+      if (alias) setImageEditRequest({ alias, nth });
       window.dispatchEvent(new CustomEvent(SHOW_PANEL_EVENT, { detail: { id: 'images' } }));
     };
     document.addEventListener('open-image-manager', handler);
@@ -2070,9 +2086,12 @@ export default function EditorPage() {
   const imagesSlice = useMemo<ImagesShared>(() => {
     // Use the debounced doc: the Images panel's in-file list doesn't need to
     // re-parse `@image` defs (a whole-doc regex) on every keystroke.
-    const fileImages: ImageEntry[] = parseInFileImageDefs(debouncedMarkdown).ranges.map(
-      (r) => ({ alias: r.alias, value: r.value, scope: 'file' as const, description: r.description, tags: r.tags }),
-    );
+    const nthOf = new Map<string, number>();
+    const fileImages: ImageEntry[] = parseInFileImageDefs(debouncedMarkdown).ranges.map((r) => {
+      const nth = nthOf.get(r.alias) ?? 0;
+      nthOf.set(r.alias, nth + 1);
+      return { alias: r.alias, value: r.value, scope: 'file' as const, description: r.description, tags: r.tags, nth };
+    });
     const libraryImagesArr: ImageEntry[] = Object.entries(imageLibrary).map(
       ([alias, value]) => ({ alias, value, scope: 'library' as const, description: imageLibraryDesc[alias], tags: imageLibraryTags[alias] }),
     );
@@ -2116,8 +2135,8 @@ export default function EditorPage() {
           } catch (e) { reportError('Failed to add the image to the library.', { detail: e }); }
         })();
       },
-      onEditImage: (scope, alias, value, description, tags) => {
-        if (scope === 'file') { const v = view(); if (v) editFileImageDef(v, alias, value, description, tags); return; }
+      onEditImage: (scope, alias, value, description, tags, nth) => {
+        if (scope === 'file') { const v = view(); if (v) editFileImageDef(v, alias, value, description, tags, nth); return; }
         (async () => {
           try {
             const rebased = await upsertLibraryImage(alias, value, description, tags);
@@ -2130,10 +2149,18 @@ export default function EditorPage() {
           } catch (e) { reportError('Failed to update the library image.', { detail: e }); }
         })();
       },
-      onDeleteImage: async (scope, alias) => {
-        const ok = await confirmDialog(`Delete image alias “${alias}”? References to it will stop resolving.`, { severity: 'warning', confirmText: 'Delete' });
+      onDeleteImage: async (scope, alias, nth) => {
+        // Say what the references show afterwards — another definition of the alias
+        // may take over (this file's next one, or the shared library's).
+        const inFile = fileImages.filter((e) => e.alias === alias);
+        let msg = `Delete image alias “${alias}”? References to it will stop resolving.`;
+        if (scope === 'file' && nth) msg = `Delete this duplicate definition of “${alias}”? It is not used — references show the first one.`;
+        else if (scope === 'file' && inFile.length > 1) msg = `Delete image alias “${alias}”? References to it will show the next definition in this file instead.`;
+        else if (scope === 'file' && imageLibraryRef.current[alias] != null) msg = `Delete image alias “${alias}”? References to it will show the shared library’s image instead.`;
+        else if (scope === 'library' && inFile.length) msg = `Delete “${alias}” from the shared library? This deck uses its own “${alias}” and is not affected; other decks lose it.`;
+        const ok = await confirmDialog(msg, { severity: 'warning', confirmText: 'Delete' });
         if (!ok) return;
-        if (scope === 'file') { const v = view(); if (v) deleteFileImageDef(v, alias); return; }
+        if (scope === 'file') { const v = view(); if (v) deleteFileImageDef(v, alias, nth); return; }
         try {
           const old = imageLibraryRef.current[alias];
           await removeLibraryImage(alias);
@@ -2242,7 +2269,28 @@ export default function EditorPage() {
       <DrawioEditor open={!!drawioImageEdit} onClose={() => setDrawioImageEdit(null)} initialBase64Xml={drawioImageEdit?.base64Xml} onSave={handleDrawioImageSave} />
       <DrawioEditor open={!!drawioForAdd} onClose={() => setDrawioForAdd(null)} initialBase64Xml={drawioForAdd?.initial || undefined} onSave={handleDrawioForAddSave} />
 
-      <ConnectDialog open={isConnectDialogOpen} onClose={() => setIsConnectDialogOpen(false)} channelId={channelId} token={token} ipCandidates={remoteIps} port={remotePort} />
+      <ConnectDialog open={isConnectDialogOpen} onClose={() => setIsConnectDialogOpen(false)} channelId={channelId} token={token} ipCandidates={remoteIps} port={remotePort}
+        view={remoteView} onViewChange={changeRemoteView} liveSupported />
+      {layoutJob && (
+        <LayoutProbe
+          key={layoutJob.id}
+          slides={syncSlides} slideSize={slideSize} basePath={basePath} fontCss={getFontState().css}
+          onDone={(pages) => {
+            const { same, diffs } = compareLayouts(pages, layoutJob.pages);
+            send({ type: 'LAYOUT_RESULT', payload: { id: layoutJob.id, slides: pages.length, same, diffs }, channelId }, 'remote');
+            const where = [...new Set(diffs.map((d) => d.slide))];
+            notify(diffs.length
+              ? `The device breaks lines differently on slide${where.length > 1 ? 's' : ''} ${where.join(', ')} — the device shows where.`
+              : `The device breaks every line where this computer does (${pages.length} slides).`, { title: 'Remote layout check' });
+            console.log('[MDP] remote layout check', layoutJob.ua, { same, diffs });
+            setLayoutJob(null);
+          }}
+          onError={(e) => {
+            send({ type: 'LAYOUT_RESULT', payload: { id: layoutJob.id, slides: 0, same: 0, diffs: [], error: String((e as Error)?.message || e) }, channelId }, 'remote');
+            setLayoutJob(null);
+          }}
+        />
+      )}
 
       <RehearsalDialog open={rehearseOpen} onClose={() => setRehearseOpen(false)} onRun={handleRehearsalRun}
         slides={mdSlides.map((s) => ({ raw: (s as { raw?: string }).raw || '', measuredSec: (s as { measuredSec?: number }).measuredSec }))} />
@@ -2353,6 +2401,7 @@ export default function EditorPage() {
                               modules just as it leaves. Only input follows `interactive`. */}
                           <SlideView
                             html={slide.html} raw={slide.raw} basePath={basePath} pageNumber={slide.pageNumber} className={slide.className} isActive={true} slideSize={slideSize} isEnabledPointerEvents={opts.interactive && mode === 'view'} header={slide.header} footer={slide.footer} drawings={drawings[idx] || []} buildStep={opts.buildStep} onStepAutoAdvance={opts.onStepAutoAdvance} presenting slideIndex={idx} moduleRole="owner" onSlideLink={navLink}
+                            focus={idx === currentSlideIndex ? showFocus : null}
                             onAddStroke={opts.interactive ? (stroke) => { addStroke(idx, stroke); send({ type: 'DRAW_STROKE', channelId, pageIndex: idx, stroke }); } : undefined}
                             isInteracting={opts.interactive && mode === 'pen'} toolType={toolType} color={penColor} lineWidth={penWidth} penOnly={stylusOnly}
                             onUpdateStrokes={opts.interactive ? (indices, dx, dy) => handleUpdateStrokes(idx, indices, dx, dy) : undefined}

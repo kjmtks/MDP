@@ -100,6 +100,19 @@
       "hash": "c04555bf"
     },
     {
+      "path": "fonts/kleeone/KleeOne-Regular.woff2",
+      "hash": "a3644ce0",
+      "size": 2864032
+    },
+    {
+      "path": "fonts/kleeone/OFL.txt",
+      "hash": "f0f8562d"
+    },
+    {
+      "path": "fonts/kleeone/font.json",
+      "hash": "771aab89"
+    },
+    {
       "path": "fonts/notosansjp/NotoSansJP-VF.woff2",
       "hash": "0d8003d2",
       "size": 4350212
@@ -181,7 +194,7 @@
     },
     {
       "path": "modules/browser.mdpmod.xml",
-      "hash": "0d9a78ea"
+      "hash": "af4f156c"
     },
     {
       "path": "modules/bubble.mdpmod.xml",
@@ -325,7 +338,7 @@
     },
     {
       "path": "modules/kbd.mdpmod.xml",
-      "hash": "6356472a"
+      "hash": "1ceee2bb"
     },
     {
       "path": "modules/label.mdpmod.xml",
@@ -425,7 +438,7 @@
     },
     {
       "path": "modules/quote.mdpmod.xml",
-      "hash": "05c54af2"
+      "hash": "d9164919"
     },
     {
       "path": "modules/radar.mdpmod.xml",
@@ -461,7 +474,7 @@
     },
     {
       "path": "modules/shortcut.mdpmod.xml",
-      "hash": "77003e57"
+      "hash": "74b3d8c0"
     },
     {
       "path": "modules/speak.mdpmod.xml",
@@ -497,7 +510,7 @@
     },
     {
       "path": "modules/sticky.mdpmod.xml",
-      "hash": "17626d23"
+      "hash": "6c1ebdc1"
     },
     {
       "path": "modules/swot.mdpmod.xml",
@@ -509,7 +522,7 @@
     },
     {
       "path": "modules/terminal.mdpmod.xml",
-      "hash": "3dd962e6"
+      "hash": "f97cdb7e"
     },
     {
       "path": "modules/theorem.mdpmod.xml",
@@ -608,7 +621,7 @@
     },
     {
       "path": "themes/terminal.css",
-      "hash": "0b0f2b60"
+      "hash": "2f50888c"
     }
   ],
   "tts-servers": [

@@ -178,6 +178,33 @@ block on a single slide OVERRIDES the global one for that slide; an EMPTY block
     \`mainvoice\`, \`mainextra\`, …, \`subengine\`, …). \`voice: @name\` names a voice preset
     saved in the author's app (engine, voice, prompt and options in one); use one only
     when the author has it — elsewhere the line is read by its language.
+  - **Focus cues (where to look):** show the viewer WHERE on the slide the narration
+    is — in the narrated auto-play, both narrated videos, and (as clickable chips)
+    the presenter view. \`[[look: TARGET]]\` moves the ONE point of attention there
+    (the previous look goes); \`[[mark: TARGET]]\` leaves an annotation that STAYS
+    until \`[[clear]]\` / \`[[clear: TARGET]]\` or the next slide. A style may follow
+    the target(s): look — \`pointer\` (default), \`ring\`, \`arrow\`, \`box\`,
+    \`spotlight\` (dims the rest), \`blur\`; mark — \`marker\` (default, a highlighter),
+    \`underline\`, \`circle\`; \`color=#d32f2f\` is optional.
+    TARGET, as the slide SHOWS it: \`"phrase"\` / \`「語句」\` (\`#2\` = its 2nd
+    occurrence), \`item:"…"\` / \`item:3\` (a bullet), \`cell:"…"\` / \`cell:2,3\`,
+    \`row:…\`, \`col:…\` (numbers count in the first table, the header row included),
+    \`math:2\` (the 2nd formula) or \`math:rhs\` — a PART of a formula, marked in its
+    LaTeX with \`\\focus{rhs}{mc^2}\` (it renders unchanged), \`fig:"label"\` (a text
+    label of an inline SVG figure) / \`fig:name\` (its element with
+    \`data-focus="name"\`), \`@ex1\` (a module given \`tag: ex1\`), \`area:x,y,w,h\` (% of
+    the slide — a spot inside an image). Several things at once are ONE cue:
+    \`[[look: "A", "B"]]\`.
+    TIMING: a cue acts when its narration LINE starts — a line is a subtitle unit,
+    one sentence (a sentence under ~12 characters rides with the next). So write ONE
+    emphasis per sentence, at the start of the sentence about it:
+    \`[[look: item:2]]二つ目の条件は…。[[look: math:rhs]]右辺は…。\`. Two emphases in
+    one sentence both show as it starts (allowed, not recommended); NEVER cut or
+    reword a sentence just to time a cue — every cut is heard. After a \`[[step]]\`
+    the slide is at that build step: point at a build's content only after its
+    \`[[step]]\`. Cues are never spoken, captioned or counted in the talk time. Check
+    with get_focus_targets (the slide's pointable targets and where each cue lands),
+    render_slide_image focus:"outline" / "line:N", and check_deck (\`focus\`).
 - \`<!-- @time 90s -->\` — this slide's speaking-time budget (overrides the estimate,
   a measured one too). Accepts \`90s\`, \`2m\`, \`1m30s\`, \`1:30\` (mm:ss). Shown live in
   the presenter view (per-slide + whole-deck countdown).

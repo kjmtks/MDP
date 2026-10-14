@@ -7,7 +7,8 @@
 //   ...later in the body...  ![alt](@logo)
 //
 // Definitions may live in the slide file (per-deck) and/or a workspace-shared
-// library (.mdp/images/registry.json). On alias conflict the in-file def wins.
+// library (.mdp/images/registry.json). On alias conflict the in-file def wins; of
+// two in-file defs of one alias the FIRST is used (see parseInFileImageDefs).
 
 // --- workspace-shared library registry (module-scoped, like loadedModules) ---
 let libraryImages: Record<string, string> = {};
@@ -27,8 +28,9 @@ const defBlockRegex = () => new RegExp(
 
 export interface ImageDefRange { alias: string; from: number; to: number; value: string; description?: string; tags?: string[]; }
 
-/** A single alias entry surfaced to the Images panel. */
-export interface ImageEntry { alias: string; value: string; scope: 'file' | 'library'; description?: string; tags?: string[]; }
+/** A single alias entry surfaced to the Images panel. `nth` (file entries): which
+ *  definition of the alias in the file — 0 is the first, the one that is used. */
+export interface ImageEntry { alias: string; value: string; scope: 'file' | 'library'; description?: string; tags?: string[]; nth?: number; }
 
 // Parse the optional `@image` directive args: `desc: …; tags: a, b` (`;` separates
 // keys so commas can be used inside the tag list).
@@ -67,13 +69,28 @@ export const parseInFileImageDefs = (
 ): { defs: Record<string, string>; ranges: ImageDefRange[] } => {
   const ranges = findImageDefRanges(markdown || '');
   const defs: Record<string, string> = {};
-  for (const r of ranges) defs[r.alias] = r.value;
+  // Of two definitions of one alias the FIRST is used — the one the Images panel and
+  // the editor's [edit] button change by default; a second (e.g. pasted in with a
+  // slide from another deck) must not silently take over every reference.
+  for (const r of ranges) if (!Object.prototype.hasOwnProperty.call(defs, r.alias)) defs[r.alias] = r.value;
   return { defs, ranges };
 };
 
 // Reference syntax: ![alt](@alias). The leading `@` distinguishes an alias from
 // a normal image URL, so ordinary images are never touched.
 const refRegex = () => /!\[([^\]]*)\]\(@([\w-]+)\)/g;
+
+/** The aliases referenced as `![alt](@alias)` in `markdown` (code samples skipped). */
+export const imageRefAliases = (markdown: string): string[] =>
+  [...(markdown || '').replace(/```[\s\S]*?```|`[^`]+`/g, '').matchAll(refRegex())].map((m) => m[2]);
+
+/** The deck's own definitions counted by alias, code samples skipped (as rendered). */
+export const countInFileImageDefs = (markdown: string): Map<string, number> => {
+  const n = new Map<string, number>();
+  const masked = (markdown || '').replace(/```[\s\S]*?```|`[^`]+`/g, (m) => m.replace(/[^\n]/g, ' '));
+  for (const r of findImageDefRanges(masked)) n.set(r.alias, (n.get(r.alias) || 0) + 1);
+  return n;
+};
 
 /**
  * Expand `![alt](@alias)` references and strip `@image` def blocks. Merges the

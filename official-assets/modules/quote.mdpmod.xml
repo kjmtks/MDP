@@ -80,7 +80,7 @@ ${source ? `<div class="mdp-quote-source">${esc(source)}</div>` : ''}
       font-size: 6em;
       color: rgba(0,0,0,0.05);
       line-height: 1;
-      font-family: serif;
+      font-family: "Noto Serif JP", Georgia, serif;
       user-select: none;
     }
     .mdp-quote-content {

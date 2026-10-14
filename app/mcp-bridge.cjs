@@ -524,12 +524,66 @@ async function readLibrary(baseDir, chain) {
   return byAlias;
 }
 
-// The `.mdp` chain for a deck arg, falling back to the workspace ROOT scope when no
-// deck is given AND none is active — so the library is readable headlessly too.
-async function scopeChain(baseDir, deckArg) {
+// The deck a tool arg names (else the active one, else none) and its `.mdp` chain —
+// the workspace ROOT scope when there is no deck, so the library is readable
+// headlessly too.
+async function deckScope(baseDir, deckArg) {
   const deckPath = deckArg ? requireDeckPath(deckArg) : await activeDeckPath(baseDir).catch(() => '');
-  return mdpChainDirs(baseDir, deckPath);
+  return { deckPath, chain: await mdpChainDirs(baseDir, deckPath) };
 }
+
+// A deck's OWN image definitions (`<!-- @image alias [desc: …; tags: …] -->` value
+// `<!-- @end -->`) in document order, code samples skipped — the editor's
+// imageRegistry.ts (keep in step). In that deck an own definition overrides the
+// library's alias of the same name, and of two definitions the FIRST is used.
+const IMAGE_DEF_RE = /<!--\s*@image\s+([\w-]+)[ \t]*([^\r\n]*?)[ \t]*-->\r?\n([\s\S]*?)\r?\n?\s*<!--\s*@end\s*-->/g;
+const IMAGE_REF_RE = /!\[[^\]]*\]\(@([\w-]+)\)/g;
+const maskCode = (text) => String(text || '').replace(/```[\s\S]*?```|`[^`]+`/g, (m) => m.replace(/[^\n]/g, ' '));
+function deckImageDefs(text) {
+  const out = [];
+  for (const m of maskCode(text).matchAll(IMAGE_DEF_RE)) {
+    const def = { alias: m[1], value: m[3].trim() };
+    for (const seg of (m[2] || '').split(';')) {
+      const i = seg.indexOf(':');
+      if (i < 0) continue;
+      const key = seg.slice(0, i).trim().toLowerCase(), val = seg.slice(i + 1).trim();
+      if ((key === 'desc' || key === 'description') && val) def.description = val;
+      else if (key === 'tags' || key === 'tag') { const t = val.split(',').map((x) => x.trim()).filter(Boolean); if (t.length) def.tags = t; }
+    }
+    out.push(def);
+  }
+  return out;
+}
+// A definition's value as the slides resolve it: data, a URL, or a workspace file —
+// `/…` and a managed `.mdp/images/…` value from the workspace root, anything else
+// from the deck's folder.
+function imageValueEntry(value, deckPath) {
+  const v = String(value || '');
+  if (v.startsWith('data:')) return { kind: 'data', data: v };
+  if (/^https?:/i.test(v)) return { kind: 'url', url: v };
+  if (v.startsWith('/') || /(^|\/)\.mdp\/images\//.test(v)) return { kind: 'path', rel: v.replace(/^\/+/, '') };
+  const dir = (deckPath || '').includes('/') ? deckPath.slice(0, deckPath.lastIndexOf('/') + 1) : '';
+  return { kind: 'path', rel: path.posix.normalize(dir + v).replace(/^(\.\.\/)+/, '') };
+}
+// Image-alias findings for validate_deck / check_deck — the renderer's validateDeckText
+// does the same for the editor's Check (keep in step): an alias defined neither in
+// the deck nor in its library shows as a warning on the slide; a second definition
+// of one alias in the deck is never used.
+async function imageFindings(baseDir, deckPath, text) {
+  const counts = new Map();
+  for (const d of deckImageDefs(text)) counts.set(d.alias, (counts.get(d.alias) || 0) + 1);
+  const lib = await readLibrary(baseDir, await mdpChainDirs(baseDir, deckPath || ''));
+  const warnings = [];
+  splitBlocks(String(text || '')).forEach((block, bi) => {
+    const where = bi === 0 ? 'meta page' : `slide ${bi}`;
+    for (const a of new Set([...maskCode(block).matchAll(IMAGE_REF_RE)].map((m) => m[1]))) {
+      if (!counts.has(a) && !lib.has(a)) warnings.push(`${where}: unknown image alias "@${a}" — not defined in this deck or its image library (see list_images)`);
+    }
+  });
+  for (const [a, n] of counts) if (n > 1) warnings.push(`image alias "${a}" is defined ${n} times in this deck — only the first definition is used; delete or rename the others`);
+  return warnings;
+}
+const withWarnings = (r, extra) => (r && Array.isArray(r.warnings) && extra.length ? { ...r, warnings: [...r.warnings, ...extra] } : r);
 
 // Directives that are part of the slide format itself (not module invocations).
 // `tags` (deck tags — no longer a feature) stays so older decks that still carry one
@@ -604,13 +658,14 @@ function scriptKeyOf(raw) {
 // What a slide's @script COUNTS — identical to talkTime.ts scriptChars (via
 // autoplay.ts stripScriptMarkers / rubyBase): ruby readings (`[[語|よみ]]`) and
 // `[[say:…]]` / `[[step]]` / event markers are not counted.
-const RUBY_RE = /\[\[(?!\s*(?:emit-wait|emit|wait|pause|say)\s*:)((?:\\\((?:(?!\\\))[\s\S])*\\\)|\\\[(?:(?!\\\])[\s\S])*\\\]|[^[\]|\n])+?)\|([^[\]|\n]+?)\]\]/g;
+const RUBY_RE = /\[\[(?!\s*(?:emit-wait|emit|wait|pause|say|look|mark|clear)\s*:)((?:\\\((?:(?!\\\))[\s\S])*\\\)|\\\[(?:(?!\\\])[\s\S])*\\\]|[^[\]|\n])+?)\|([^[\]|\n]+?)\]\]/g;
 function scriptCharsOf(raw) {
   return [...String(raw).matchAll(/<!--\s*@script:\s*([\s\S]*?)-->/g)].map((m) => m[1]).join('')
     .replace(RUBY_RE, (_m, base) => base)
     .replace(/\[\[\s*say\s*:\s*([\s\S]*?)\]\]/gi, ' ')
     .replace(/\[\[\s*step\s*\]\]/gi, ' ')
     .replace(/\[\[\s*(emit-wait|emit|wait|pause)\s*:\s*([^\]]*?)\s*\]\]/gi, ' ')
+    .replace(/\[\[\s*(look|mark|clear)\s*(?::\s*([^\]]*?))?\s*\]\]/gi, '')
     .replace(/\s+/g, '').length;
 }
 function parseTimeToSeconds(str) {
@@ -974,16 +1029,22 @@ async function callToolFor(baseDir, method, params) {
 // Used by check_deck and by the write tools' `verify: true`.
 async function verifyDeck(baseDir, deckPath) {
   const { text } = await currentDeckText(baseDir, deckPath);
-  const [validate, lint, measure, skills] = await Promise.all([
+  // Focus cues ([[look: …]] / [[mark: …]] / [[clear]]): their targets checked on the
+  // rendered slides — only when the deck has any.
+  const hasCues = /\[\[\s*(?:look|mark|clear)\s*(?::|\]\])/i.test(text);
+  const [validate, lint, measure, skills, focus, imageWarn] = await Promise.all([
     rly(baseDir, 'validateDeck', { path: deckPath }, 30000).catch((e) => ({ error: String((e && e.message) || e) })),
     Promise.resolve(lintDeck(text)),
     rly(baseDir, 'measureSlides', { path: deckPath }, 120000).catch((e) => ({ error: String((e && e.message) || e) })),
     skillReview(baseDir, deckPath).catch(() => null),
+    hasCues ? rly(baseDir, 'focusCheck', { path: deckPath }, 120000).catch((e) => ({ error: String((e && e.message) || e) })) : null,
+    imageFindings(baseDir, deckPath, text).catch(() => []),
   ]);
   return {
-    path: deckPath, validate, lint, measure,
+    path: deckPath, validate: withWarnings(validate, imageWarn), lint, measure,
+    ...(focus ? { focus } : {}),
     ...(skills ? { skills } : {}),
-    note: 'validate = syntax/unknown modules/params/structure (errors block rendering); lint = design advisories (use judgment); measure = overflow/empty issues only (all clear when `issues` is empty); skills = the checklists of this folder\'s slide skills — review the deck against them. severity: warn = likely issue, info = style nudge.',
+    note: `validate = syntax/unknown modules/params/structure (errors block rendering); lint = design advisories (use judgment); measure = overflow/empty issues only (all clear when \`issues\` is empty); ${focus ? 'focus = each focus cue\'s targets on the slide as it is when the cue acts (error = nothing drawn; warn = drawn somewhere unintended or not visible then) — the cues\' text-level notes are in validate; ' : ''}skills = the checklists of this folder\'s slide skills — review the deck against them. severity: warn = likely issue, info = style nudge.`,
   };
 }
 
@@ -1429,11 +1490,23 @@ async function callToolInner(method, p, baseDir) {
     }
 
     case 'list_images': {
-      const chain = await scopeChain(baseDir, p.deck);
+      const { deckPath, chain } = await deckScope(baseDir, p.deck);
       const lib = await readLibrary(baseDir, chain);
+      const own = deckPath ? deckImageDefs((await currentDeckText(baseDir, deckPath)).text) : [];
+      const ownAliases = new Set(own.map((d) => d.alias));
       // Expose `path` for managed files; hide the internal `data:` payload (huge).
-      const images = [...lib.values()].map(({ rel, data, ...e }) => ({ ...e, ...(rel ? { path: rel } : {}) }));
-      return { scope: chain, images, hint: 'Reference as ![alt](@alias); use read_image (alias or path) to see one.' };
+      const images = [...lib.values()].map(({ rel, data, ...e }) => ({ ...e, ...(rel ? { path: rel } : {}), ...(ownAliases.has(e.alias) ? { overriddenByDeck: true } : {}) }));
+      const seen = new Set();
+      const deckImages = own.map((d) => {
+        const { rel, data, ...e } = imageValueEntry(d.value, deckPath);
+        const first = !seen.has(d.alias);
+        seen.add(d.alias);
+        return { alias: d.alias, ...e, ...(rel ? { path: rel } : {}), ...(d.description ? { description: d.description } : {}), ...(d.tags ? { tags: d.tags } : {}), ...(first ? {} : { unused: 'defined earlier in this deck — the first definition is used' }) };
+      });
+      return {
+        scope: chain, ...(deckPath ? { deck: deckPath } : {}), images, ...(deckImages.length ? { deckImages } : {}),
+        hint: 'Reference as ![alt](@alias); use read_image (alias or path) to see one. deckImages = the deck\'s own <!-- @image alias --> definitions: in that deck they win over a library image of the same alias (overriddenByDeck).',
+      };
     }
 
     case 'list_templates': {
@@ -1541,16 +1614,24 @@ async function callToolInner(method, p, baseDir) {
     }
 
     // Live tools → renderer.
-    case 'validate_deck': return await rly(baseDir, 'validateDeck', { path: p.path ? requireDeckPath(p.path) : undefined, text: typeof p.text === 'string' ? p.text : undefined }, 30000);
+    case 'validate_deck': {
+      const deckPath = p.path ? requireDeckPath(p.path) : await activeDeckPath(baseDir).catch(() => '');
+      const r = await rly(baseDir, 'validateDeck', { path: p.path ? deckPath : undefined, text: typeof p.text === 'string' ? p.text : undefined }, 30000);
+      const text = typeof p.text === 'string' ? p.text : deckPath ? (await currentDeckText(baseDir, deckPath)).text : '';
+      return withWarnings(r, await imageFindings(baseDir, deckPath, text).catch(() => []));
+    }
     case 'read_image': {
       const maxWidth = p.maxWidth ? Number(p.maxWidth) : undefined;
       if (p.alias) {
-        // Resolve the alias HERE against the deck's `.mdp` library chain (works for
-        // any scope, and headlessly), then hand a concrete path/data to the
-        // renderer to rasterise + downscale.
-        const chain = await scopeChain(baseDir, p.deck);
-        const e = (await readLibrary(baseDir, chain)).get(String(p.alias));
-        if (!e) throw new Error(`Unknown image alias "${p.alias}" in this scope (see list_images).`);
+        // Resolve the alias HERE as the deck's slides do — its OWN definition first
+        // (the first one), then the `.mdp` library chain (works for any scope, and
+        // headlessly) — then hand a concrete path/data to the renderer to rasterise
+        // + downscale.
+        const { deckPath, chain } = await deckScope(baseDir, p.deck);
+        const alias = String(p.alias);
+        const own = deckPath ? deckImageDefs((await currentDeckText(baseDir, deckPath)).text).find((d) => d.alias === alias) : null;
+        const e = own ? imageValueEntry(own.value, deckPath) : (await readLibrary(baseDir, chain)).get(alias);
+        if (!e) throw new Error(`Unknown image alias "${p.alias}" — not defined in this deck or its image library (see list_images).`);
         if (e.kind === 'url') throw new Error(`Alias "${p.alias}" points at a URL — it cannot be fetched (offline-first).`);
         return await rly(baseDir, 'readImage', e.kind === 'data' ? { dataUrl: e.data, maxWidth } : { path: e.rel, maxWidth }, 30000);
       }
@@ -1569,11 +1650,13 @@ async function callToolInner(method, p, baseDir) {
       // it's a DRY RUN: the candidate content is checked without writing anything
       // (no measure — rendering needs a real, open deck).
       if (typeof p.text === 'string' && p.text.trim()) {
-        const [validate, lint] = await Promise.all([
+        const scopeOf = p.path ? requireDeckPath(p.path) : await activeDeckPath(baseDir).catch(() => '');
+        const [validate, lint, imageWarn] = await Promise.all([
           rly(baseDir, 'validateDeck', { text: String(p.text) }, 30000),
           Promise.resolve(lintDeck(String(p.text))),
+          imageFindings(baseDir, scopeOf, String(p.text)).catch(() => []),
         ]);
-        return { dryRun: true, validate, lint, note: 'Dry run on the given text — nothing was written. measure/overflow needs the deck written + open (call check_deck with `path`, or write with verify: true).' };
+        return { dryRun: true, validate: withWarnings(validate, imageWarn), lint, note: 'Dry run on the given text — nothing was written. measure/overflow needs the deck written + open (call check_deck with `path`, or write with verify: true).' };
       }
       const deckPath = p.path ? requireDeckPath(p.path) : await activeDeckPath(baseDir);
       return await verifyDeck(baseDir, deckPath);
@@ -1825,7 +1908,9 @@ async function callToolInner(method, p, baseDir) {
     case 'goto_slide': return await rly(baseDir, 'gotoSlide', { slide: Number(p.slide) }, 10000);
     case 'insert_at_cursor': return await rly(baseDir, 'insertAtCursor', { text: String(p.text ?? '') }, 10000);
     case 'measure_slides': return await rly(baseDir, 'measureSlides', { path: p.path ? requireDeckPath(p.path) : undefined, slides: Array.isArray(p.slides) ? p.slides.map(Number).filter((n) => Number.isInteger(n)) : undefined, all: !!p.all }, 120000);
-    case 'render_slide_image': return await rly(baseDir, 'renderSlideImage', { path: p.path ? requireDeckPath(p.path) : undefined, slide: Number(p.slide), width: p.width ? Number(p.width) : undefined }, 120000);
+    case 'render_slide_image': return await rly(baseDir, 'renderSlideImage', { path: p.path ? requireDeckPath(p.path) : undefined, slide: Number(p.slide), width: p.width ? Number(p.width) : undefined, focus: p.focus !== undefined && p.focus !== null ? String(p.focus) : undefined }, 120000);
+    // Focus cues: what a slide can point at, and where its cues act and land.
+    case 'get_focus_targets': return await rly(baseDir, 'focusTargets', { path: p.path ? requireDeckPath(p.path) : undefined, slide: Number(p.slide) }, 60000);
     // Narrated video export: the renderer queues a job on the open (or given) deck;
     // it runs in the background and is followed with get_video_jobs.
     case 'export_video': return await rly(baseDir, 'exportVideo', {

@@ -255,7 +255,7 @@
 .slide-page-number {
   font-size: 0.6em;
   color: var(--muted-color);
-  font-family: sans-serif;
+  font-family: var(--mdp-font-body, "Noto Sans JP", sans-serif);
 }
 
 /* =========================================
@@ -267,7 +267,7 @@
   border-radius: 8px;
   background-color: var(--code-bg);
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-  font-family: 'Consolas', 'Monaco', 'Andale Mono', 'Ubuntu Mono', monospace;
+  font-family: var(--mdp-font-mono, "JetBrains Mono", Consolas, Monaco, "Andale Mono", "Ubuntu Mono", "Noto Sans JP", monospace);
   font-size: var(--code-font-size);
   line-height: var(--code-line-height);
 }
@@ -327,7 +327,7 @@
   background-color: var(--code-filename-bg);
   color: var(--code-filename-text);
   padding: 0.3rem 0.8rem;
-  font-family: 'Consolas', 'Monaco', monospace;
+  font-family: var(--mdp-font-mono, "JetBrains Mono", Consolas, Monaco, "Noto Sans JP", monospace);
   font-size: 0.85em;
   border-bottom-left-radius: 6px;
   box-shadow: -2px 2px 4px rgba(0,0,0,0.2);
@@ -339,7 +339,7 @@
   color: var(--inline-code-text);
   padding: 0.2em 0.4em;
   border-radius: 4px;
-  font-family: 'Consolas', 'Monaco', monospace;
+  font-family: var(--mdp-font-mono, "JetBrains Mono", Consolas, Monaco, "Noto Sans JP", monospace);
   font-size: 0.9em;
 }
 

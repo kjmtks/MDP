@@ -52,7 +52,7 @@
 }
 
 /* Base Slide Layout & Typography — whole slide uses mono stack */
-.slide-content { background-color: var(--bg-color); color: var(--text-color); font-size: var(--base-font-size); font-family: var(--mdp-font-mono, "JetBrains Mono", "Consolas", "SF Mono", "Monaco", "Ubuntu Mono", "Noto Sans JP", monospace); }
+.slide-content { background-color: var(--bg-color); color: var(--text-color); font-size: var(--base-font-size); font-family: var(--mdp-font-mono, "JetBrains Mono", "Noto Sans JP", "Consolas", "SF Mono", "Monaco", "Ubuntu Mono", monospace); }
 .slide-content h1 { font-size: var(--h1-size); margin: 0 0 0.25em 0; border-bottom: 3px solid var(--accent-color); }
 .slide-content h2 { font-size: var(--h2-size); margin: 0.8em 0 0.25em 0; border-bottom: 1px solid var(--border-color); }
 .slide-content h3 { font-size: var(--h2-size); margin: 0 0 0.25em 0; border-bottom: 1px dashed var(--accent-color); }

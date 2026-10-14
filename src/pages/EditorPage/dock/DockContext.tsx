@@ -153,14 +153,15 @@ export interface ImagesShared {
   libraryImages: ImageEntry[];   // shared workspace library (.mdp/images/registry.json)
   onInsertReference: (alias: string) => void;                       // ![image](@alias)
   onAddImage: (scope: 'file' | 'library', alias: string, value: string, description?: string, tags?: string[]) => void;
-  onEditImage: (scope: 'file' | 'library', alias: string, value: string, description?: string, tags?: string[]) => void;
-  onDeleteImage: (scope: 'file' | 'library', alias: string) => void;
+  // `nth` (file scope): which definition of the alias — 0 = the first (the used one).
+  onEditImage: (scope: 'file' | 'library', alias: string, value: string, description?: string, tags?: string[], nth?: number) => void;
+  onDeleteImage: (scope: 'file' | 'library', alias: string, nth?: number) => void;
   onMove: (alias: string, to: 'file' | 'library') => void;
   onEditDrawio?: (entry: ImageEntry) => void; // edit an SVG image in the drawio editor
   onPreview?: (entry: ImageEntry) => void;    // show the image in the Preview panel
   resolveThumb: (value: string) => string;   // resolve relative paths for <img src>
   focusAlias?: string | null;                // alias to scroll to / highlight
-  editRequest?: { alias: string } | null;    // open the edit dialog for this alias
+  editRequest?: { alias: string; nth?: number } | null;    // open the edit dialog for this alias
   onEditHandled?: () => void;                 // panel acked the edit request
 }
 

@@ -8,6 +8,7 @@ import { buildSlideSpecPrompt, describeModulesByName, findModules, suggestModule
 import { loadTaxonomy } from '../ai/loadTaxonomy';
 import { parseArguments } from '../modules/moduleProcessor';
 import { splitMarkdownToBlocks } from '../slide/parser/slideParser';
+import { countInFileImageDefs, imageRefAliases } from '../images/imageRegistry';
 import { confirmDialog } from '../../components/error/errorReporter';
 import { apiClient, isMcpRenderer } from '../../api/apiClient';
 import type { OpenTab } from '../fileTree/hooks/useFileManager';
@@ -18,6 +19,13 @@ import { videoBaseOf, videoExportSupported, type VideoOptions } from '../video/v
 import { besideDeckPossible } from '../video/videoFiles';
 import { synthesizesAudio, type TtsEngine } from '../tts/ttsService';
 import { estimateDeckSeconds } from '../slide/talkTime';
+import {
+  checkSiteTargets, cueLineProblems, cueSites, cueText, focusAtLine, focusOfMarkers, lineCount, outlineOf, pctBox,
+  type CueSite, type FocusProblem,
+} from '../focus/focusCheck';
+import { listTargets } from '../focus/focusTargets';
+import { slideScript, type FocusCue } from '../autoplay/autoplay';
+import type { RasterizeOptions } from '../remote/capture/captureTypes';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Slide = any;
@@ -77,6 +85,58 @@ interface MeasureJob {
   reject: (e: unknown) => void;
 }
 
+// Slides rendered off-screen at chosen build steps and read while they are up (the
+// focus cues' targets): `run` gets each mount's SlideView wrapper by its key.
+interface ProbeJob {
+  items: { key: string; slide: Slide; buildStep?: number }[];
+  run: (roots: Map<string, HTMLElement>) => unknown;
+  resolve: (v: unknown) => void;
+  reject: (e: unknown) => void;
+}
+
+// A slide whose @script has focus cues ([[look: …]] / [[mark: …]] / [[clear]]).
+const HAS_CUE = /\[\[\s*(?:look|mark|clear)\s*(?::|\]\])/i;
+const focusSites = (slide: Slide, cpm: number): CueSite[] =>
+  (HAS_CUE.test(slideScript(slide?.raw || '')) ? cueSites({ html: slide.html || '', raw: slide.raw || '', stepCount: slide.stepCount }, cpm) : []);
+
+// render_slide_image's `focus`: "outline" (every cue's target numbered, as the
+// preview's marks), "line:N" (the slide as narration line N shows it — at its
+// build step), or cue markers to try ("[[look: item:2 spotlight]]"). The picture's
+// own reading of the targets comes back with it.
+function focusRender(slide: Slide, spec: unknown, cpm: number): { options: Partial<RasterizeOptions>; info: Record<string, unknown> } | null {
+  if (spec === undefined || spec === null || spec === '') return null;
+  const text = String(spec).trim();
+  const inspectCues = (label: string, cues: FocusCue[], buildStep?: number) => (root: HTMLElement) => {
+    const { cues: results, problems } = checkSiteTargets({ line: 0, after: 0, at: label, buildStep: buildStep ?? 0, cues }, root);
+    return { targets: results, ...(problems.length ? { problems } : {}) };
+  };
+  if (/^outline$/i.test(text)) {
+    const outline = outlineOf(slide?.raw || '');
+    if (!outline.length) throw new Error('This slide\'s @script has no focus cue to outline.');
+    return {
+      options: { focusOutline: outline, inspect: inspectCues('the outline', outline.map((o) => o.cue)) },
+      info: { mode: 'outline', numbered: outline.map((o) => `${o.n}. ${cueText(o.cue)}`) },
+    };
+  }
+  const line = /^(?:line\s*:?\s*)?(\d+)$/i.exec(text);
+  if (line) {
+    const k = Number(line[1]);
+    const at = focusAtLine({ html: slide.html || '', raw: slide.raw || '', stepCount: slide.stepCount }, k, cpm);
+    if (!at) throw new Error(`This slide has ${lineCount({ html: slide.html || '', raw: slide.raw || '', stepCount: slide.stepCount }, cpm)} narration line(s); "line:${k}" is past the last.`);
+    const shown = [...at.focus.looks, ...at.focus.marks];
+    return {
+      options: { focus: at.focus, buildStep: at.buildStep, inspect: inspectCues(`line ${k}`, shown, at.buildStep) },
+      info: { mode: `line:${k}`, caption: at.caption, buildStep: at.buildStep, shown: shown.map(cueText) },
+    };
+  }
+  if (HAS_CUE.test(text)) {
+    const state = focusOfMarkers(text);
+    const shown = [...state.looks, ...state.marks];
+    return { options: { focus: state, inspect: inspectCues('the given cues', shown) }, info: { mode: 'cues', shown: shown.map(cueText) } };
+  }
+  throw new Error('"focus" takes "outline", "line:N", or cue markers such as "[[look: item:2 spotlight]]".');
+}
+
 // Directives that are part of the slide format itself (not module invocations).
 // Keep in sync with app/mcp-bridge.cjs. `tags` (deck tags — no longer a feature) stays so
 // older decks that still carry one are not reported as using an unknown module.
@@ -101,8 +161,12 @@ const loadImage = (src: string) => new Promise<HTMLImageElement>((resolve, rejec
 // module/theme/effect names, disabled modules, bad/missing module params, and
 // unbalanced block/@end structure. Cheap to run before any visual check.
 // Exported so the editor's "Check" action can surface the SAME findings to the user.
-export function validateDeckText(text: string, themes: ThemeOption[]) {
+// `library` = the deck's image library (alias → value): given, image aliases are
+// checked too — the editor's Check passes it; for MCP the bridge adds the same
+// findings itself (it knows any deck's library; keep imageFindings in step).
+export function validateDeckText(text: string, themes: ThemeOption[], library?: Record<string, string>) {
   const blocks = splitMarkdownToBlocks(text);
+  const imageDefs = library ? countInFileImageDefs(text) : null;
   const errors: string[] = [];
   const warnings: string[] = [];
   const themeNames = new Set(themes.flatMap((t) => [t.name, t.fileName]));
@@ -175,7 +239,26 @@ export function validateDeckText(text: string, themes: ThemeOption[]) {
       for (const pd of mod.config.parameters) if (pd.required && !(pd.name in args)) errors.push(`${where}: "@${name}" is missing required parameter "${pd.name}"`);
     }
     if (depth > 0) warnings.push(`${where}: a block module/region looks unclosed (missing "<!-- @end -->") — verify (a block module with a custom closer can also cause this).`);
+    // An image alias defined neither in the deck nor in its library shows as a warning
+    // on the slide instead of the image.
+    if (imageDefs && library) {
+      for (const a of new Set(imageRefAliases(block.rawContent))) {
+        if (!imageDefs.has(a) && !(a in library)) warnings.push(`${where}: unknown image alias "@${a}" — not defined in this deck or its image library (see list_images)`);
+      }
+    }
+    // Focus cues, as far as the text tells (whether a target is ON the slide needs
+    // the slide rendered — check_deck's `focus`, get_focus_targets).
+    if (bi > 0 && HAS_CUE.test(slideScript(block.rawContent))) {
+      for (const p of cueLineProblems(cueSites({ html: '', raw: block.rawContent }))) {
+        const at = `${where}${p.line ? `, line ${p.line}` : ''}: focus ${p.cue ? `${p.cue} ` : ''}`;
+        warnings.push(`${at}${p.level === 'note' ? '(not recommended) ' : ''}${p.target ? `"${p.target}" ` : ''}${p.message}`);
+      }
+    }
   });
+  // Of two definitions of one alias in the deck only the FIRST is used.
+  for (const [a, n] of imageDefs || []) {
+    if (n > 1) warnings.push(`image alias "${a}" is defined ${n} times in this deck — only the first definition is used; delete or rename the others`);
+  }
 
   return { ok: errors.length === 0, errors, warnings };
 }
@@ -293,6 +376,37 @@ export const McpBridge: React.FC<{ ctx: McpCtx }> = ({ ctx }) => {
       .finally(() => { if (!cancelled) setMeasureJob(null); });
     return () => { cancelled = true; };
   }, [measureJob]);
+
+  // ---- probes: slides at chosen build steps, read while mounted -------------------
+  const [probeJob, setProbeJob] = useState<ProbeJob | null>(null);
+  const probeHostRef = useRef<HTMLDivElement>(null);
+  const probeChainRef = useRef<Promise<unknown>>(Promise.resolve());
+  useEffect(() => {
+    if (!probeJob) return;
+    let cancelled = false;
+    (async () => {
+      const host = probeHostRef.current;
+      if (!host) throw new Error('Probe mount missing.');
+      await waitForRenderReady(host);
+      if (cancelled) return;
+      const roots = new Map<string, HTMLElement>();
+      host.querySelectorAll<HTMLElement>('[data-mcp-probe]').forEach((box) => {
+        const w = box.querySelector<HTMLElement>('.slide-content-wrapper');
+        if (w && box.dataset.mcpProbe) roots.set(box.dataset.mcpProbe, w);
+      });
+      probeJob.resolve(probeJob.run(roots));
+    })()
+      .catch((e) => probeJob.reject(e))
+      .finally(() => { if (!cancelled) setProbeJob(null); });
+    return () => { cancelled = true; };
+  }, [probeJob]);
+  // One probe at a time (each replaces the mount); callers queue.
+  const probeRef = useRef(<T,>(items: ProbeJob['items'], run: (roots: Map<string, HTMLElement>) => T): Promise<T> => {
+    const next = probeChainRef.current.catch(() => undefined)
+      .then(() => new Promise<T>((resolve, reject) => setProbeJob({ items, run, resolve: resolve as (v: unknown) => void, reject })));
+    probeChainRef.current = next;
+    return next;
+  });
 
   // ---- tool handlers -----------------------------------------------------------
   const rasterizeRef = useRef(rasterize);
@@ -442,7 +556,10 @@ export const McpBridge: React.FC<{ ctx: McpCtx }> = ({ ctx }) => {
   template (list_templates / read_template) when one exists.
 - **Use real assets.** list_images shows the image aliases available to this deck —
   reference them as ![alt](@alias); read_image lets you SEE a figure before writing
-  its caption.
+  its caption. The deck's own \`<!-- @image alias -->\` definitions (deckImages) win
+  over a library image of the same alias in that deck — define a new image under a
+  NEW alias unless you mean to replace the library's in this deck; never define
+  one alias twice (only the first definition is used).
 - **Speaker script.** To write a read-aloud talk manuscript without altering the
   slides, use set_script per slide (mode="append" to build it up) — it shows
   prominently in the presenter view and drives the talk-time estimate at the user's
@@ -866,15 +983,77 @@ Match the user's style throughout (cached profile if present, else get_style_sam
           if (!Number.isInteger(n) || n < 1 || n > d.slideCount) throw new Error(`"slide" must be 1…${d.slideCount}.`);
           const width = Math.min(Math.max(Number(params.width) || 512, 160), 1280);
           const scale = Math.min(1.5, width / cc.slideSize.width);
-          const { dataUrl } = await rasterizeRef.current(cc.slides[n - 1], {
+          const slide = cc.slides[n - 1];
+          const focus = focusRender(slide, params.focus, cc.readingCpm);
+          const { dataUrl, inspected } = await rasterizeRef.current(slide, {
             width: cc.slideSize.width,
             height: cc.slideSize.height,
             scale,
             basePath: cc.basePath,
             themeCssUrl: cc.themeCssUrl,
+            ...(focus ? focus.options : {}),
           });
           const base64 = dataUrl.slice(dataUrl.indexOf(',') + 1);
-          return { __image: base64, mimeType: 'image/webp', deck: d.path, slide: n };
+          return { __image: base64, mimeType: 'image/webp', deck: d.path, slide: n, ...(focus ? { focus: { ...focus.info, ...(inspected as object) } } : {}) };
+        }
+        case 'focusTargets': {
+          // What one slide can point at, and where its cues act and land.
+          const d = await ensureDeck(params.path);
+          const cc = ctxRef.current;
+          const n = Number(params.slide);
+          if (!Number.isInteger(n) || n < 1 || n > d.slideCount) throw new Error(`"slide" must be 1…${d.slideCount}.`);
+          const slide = cc.slides[n - 1];
+          const sites = focusSites(slide, cc.readingCpm);
+          const steps = [...new Set(sites.map((x) => x.buildStep))];
+          const r = await probeRef.current(
+            [{ key: 'all', slide }, ...steps.map((bs) => ({ key: `step${bs}`, slide, buildStep: bs }))],
+            (roots) => {
+              const all = roots.get('all');
+              if (!all) throw new Error('The slide did not render.');
+              const W = all.offsetWidth || 1;
+              const H = all.offsetHeight || 1;
+              return {
+                targets: listTargets(all).map((t) => ({ ...t, box: pctBox(t.box, W, H) })),
+                lines: sites.map((x) => ({ site: x, ...checkSiteTargets(x, roots.get(`step${x.buildStep}`) || all) })),
+              };
+            },
+          );
+          const problems: FocusProblem[] = [...cueLineProblems(sites), ...r.lines.flatMap((l) => l.problems)];
+          return {
+            deck: d.path, slide: n, narrationLines: lineCount(slide, cc.readingCpm), stepCount: slide.stepCount || 0,
+            targets: r.targets,
+            cues: r.lines.map(({ site, cues }) => ({
+              ...(site.line ? { line: site.line } : {}), at: site.at, buildStep: site.buildStep,
+              ...(site.cues.some((c: FocusCue) => c.kind === 'clear') ? { clears: site.cues.filter((c: FocusCue) => c.kind === 'clear').map(cueText) } : {}),
+              cues,
+            })),
+            problems,
+            note: 'targets = what this slide can point at: write the `target` string as is ([[look: TARGET]]); box = x, y (top-left), w, h in % of the slide — the box an area:x,y,w,h target would need. cues = this slide\'s cues as they act: the narration line each goes with (or the wait / last build it rides on — `at`), the build step shown then, and where each target landed. problems: error = nothing drawn; warn = drawn in an unintended place or not visible then; note = works but not recommended. See it: render_slide_image with focus "outline" (all targets numbered) or "line:N" (as narration line N shows it).',
+          };
+        }
+        case 'focusCheck': {
+          // check_deck: every cue of the deck found on its slide, once, visible then.
+          const d = await ensureDeck(params.path);
+          const cc = ctxRef.current;
+          const withCues = cc.slides.map((slide: Slide, i: number) => ({ n: i + 1, slide, sites: focusSites(slide, cc.readingCpm) }))
+            .filter((x: { sites: CueSite[] }) => x.sites.length);
+          if (!withCues.length) return { deck: d.path, slidesWithCues: 0 };
+          const issues: (FocusProblem & { slide: number })[] = [];
+          // A few slides per mount (each build step a cue acts at is its own render).
+          for (let i = 0; i < withCues.length; i += 12) {
+            const batch = withCues.slice(i, i + 12);
+            const mounts = batch.flatMap((x: { n: number; slide: Slide; sites: CueSite[] }) =>
+              [...new Set(x.sites.map((s) => s.buildStep))].map((bs) => ({ key: `${x.n}:${bs}`, slide: x.slide, buildStep: bs })));
+            issues.push(...await probeRef.current(mounts, (roots) => batch.flatMap((x: { n: number; sites: CueSite[] }) => x.sites.flatMap((s) => {
+              const root = roots.get(`${x.n}:${s.buildStep}`);
+              return root ? checkSiteTargets(s, root).problems.map((p) => ({ slide: x.n, ...p }))
+                : [{ slide: x.n, level: 'error' as const, line: s.line, message: 'the slide did not render' }];
+            }))));
+          }
+          return {
+            deck: d.path, slidesWithCues: withCues.length, issues,
+            ...(issues.length ? {} : { ok: `every focus target was found, once and visible, on the ${withCues.length} slide(s) with cues` }),
+          };
         }
         default:
           throw new Error(`Unknown editor method: ${method}`);
@@ -913,6 +1092,23 @@ Match the user's style throughout (cached profile if present, else get_style_sam
   return (
     <>
       {rasterHost}
+      {probeJob && (
+        <div
+          ref={probeHostRef}
+          aria-hidden
+          style={{ position: 'fixed', left: -100000, top: 0, opacity: 0, pointerEvents: 'none', zIndex: -1 }}
+        >
+          {probeJob.items.map(({ key, slide: s, buildStep }) => (
+            <div key={key} data-mcp-probe={key}>
+              <SlideView
+                html={s.html} raw={s.raw} className={s.className} header={s.header} footer={s.footer}
+                basePath={ctx.basePath} slideSize={size} pageNumber={s.pageNumber} buildStep={buildStep}
+                isActive isEnabledPointerEvents={false} moduleRole="mirror"
+              />
+            </div>
+          ))}
+        </div>
+      )}
       {measureJob && (
         <div
           ref={measureHostRef}

@@ -1,0 +1,70 @@
+/* Focus cues drawn over a slide (FocusLayer). Sizes go by --u (the slide's height
+   / 540, in px), so they look the same at any resolution and zoom. Colours: the
+   cue's color=…, else the theme's --mdp-focus-color / --mdp-focus-marker. */
+.mdp-focus-layer {
+  position: absolute; inset: 0; pointer-events: none; z-index: 20; overflow: hidden;
+}
+.mdp-focus-layer > * { position: absolute; }
+
+/* the moving attention */
+.mdp-focus-pointer {
+  border-radius: 50%;
+  background: radial-gradient(circle at 38% 38%, #fff 0 14%, var(--c) 30% 62%, transparent 74%);
+  box-shadow: 0 0 calc(var(--u) * 10) calc(var(--u) * 3) color-mix(in srgb, var(--c) 55%, transparent);
+  transition: left .45s cubic-bezier(.3, .7, .3, 1), top .45s cubic-bezier(.3, .7, .3, 1);
+  animation: mdp-focus-pop .35s ease-out both;
+}
+.mdp-focus-ring {
+  border: calc(var(--u) * 3) solid var(--c); border-radius: calc(var(--u) * 10);
+  box-shadow: 0 0 calc(var(--u) * 8) color-mix(in srgb, var(--c) 45%, transparent);
+  transition: left .45s ease, top .45s ease, width .45s ease, height .45s ease;
+  animation: mdp-focus-fade .3s ease-out both;
+}
+.mdp-focus-arrow { overflow: visible; transition: left .45s ease, top .45s ease; animation: mdp-focus-fade .3s ease-out both; }
+
+/* annotations */
+.mdp-focus-marker {
+  background: var(--c); mix-blend-mode: multiply; border-radius: calc(var(--u) * 2);
+  animation: mdp-focus-sweep .45s ease-out both;
+}
+.mdp-focus-underline {
+  background: var(--c); border-radius: 999px; transform-origin: left center;
+  animation: mdp-focus-draw-x .4s ease-out both;
+}
+.mdp-focus-circle { overflow: visible; }
+.mdp-focus-circle path { stroke-dasharray: 1; stroke-dashoffset: 1; animation: mdp-focus-stroke .6s ease-out forwards; }
+.mdp-focus-box {
+  border: calc(var(--u) * 3) solid var(--c); border-radius: calc(var(--u) * 6);
+  transition: left .45s ease, top .45s ease, width .45s ease, height .45s ease;
+  animation: mdp-focus-settle .3s ease-out both;
+}
+
+/* everything else dimmed / blurred */
+.mdp-focus-dim { inset: 0; animation: mdp-focus-fade .35s ease-out both; }
+.mdp-focus-dim path { transition: d .45s ease; }
+.mdp-focus-blur { inset: 0; animation: mdp-focus-fade .35s ease-out both; }
+
+@keyframes mdp-focus-pop { from { transform: scale(.2); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes mdp-focus-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes mdp-focus-sweep { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+@keyframes mdp-focus-draw-x { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes mdp-focus-stroke { to { stroke-dashoffset: 0; } }
+@keyframes mdp-focus-settle { from { transform: scale(1.1); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+/* a still picture (video frames, MCP renders): the end state at once */
+.mdp-focus-static, .mdp-focus-static * { animation: none !important; transition: none !important; }
+.mdp-focus-static .mdp-focus-circle path { stroke-dashoffset: 0; }
+
+/* the editor preview's target marks */
+.mdp-focus-outline { border: 2px dashed var(--c); border-radius: 4px; background: color-mix(in srgb, var(--c) 8%, transparent); }
+.mdp-focus-badge {
+  min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px; box-sizing: border-box;
+  background: var(--c); color: #fff; font: 700 11px/18px system-ui, sans-serif; text-align: center;
+}
+.mdp-focus-problems {
+  left: 6px; bottom: 6px; max-width: 70%; padding: 4px 8px; border-radius: 6px;
+  background: rgba(255, 255, 255, .94); color: #b91c1c; border: 1px solid #fca5a5;
+  font: 12px/1.45 system-ui, sans-serif;
+}
+
+@media print { .mdp-focus-layer { display: none; } }

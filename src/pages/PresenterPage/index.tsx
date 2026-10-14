@@ -5,7 +5,7 @@ import { SlideOverviewGrid } from '../../features/slide/components/SlideOverview
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import PauseIcon from '@mui/icons-material/Pause';
 import RefreshIcon from '@mui/icons-material/Refresh';
-import { Panel, Group, Separator } from 'react-resizable-panels';
+import { Panel, Group, Separator, useDefaultLayout } from 'react-resizable-panels';
 
 import { useSync, type SyncMessage } from '../../features/remote/hooks/useSync';
 import { useAppSettings } from '../../features/settings/AppSettingsContext';
@@ -13,6 +13,9 @@ import { matchAction } from '../../features/settings/shortcuts/matcher';
 import { ACTIONS_BY_SCOPE } from '../../features/settings/shortcuts/registry';
 import { moduleSyncBus } from '../../features/modules/moduleSyncBus';
 import { mdpBus } from '../../features/bus/mdpBus';
+import { sendFocus, useBusFocus } from '../../features/focus/focusBus';
+import { cleanCue, cueInForce } from '../../features/focus/focusState';
+import { lineCues } from '../../features/autoplay/autoplay';
 import { registerParsedModule, clearAllModules } from '../../features/modules/moduleManager';
 import { registerParsedEffect, clearAllEffects } from '../../features/effects/effectManager';
 import type { ModuleData } from '../../utils/moduleParser';
@@ -162,11 +165,32 @@ export default function PresenterPage() {
   // Speaking-time budgets (seconds): whole deck + the current slide. From each
   // slide's `<!-- @time … -->` when set, else `@script` read time, else estimate.
   const readingCpm = appSettings.readingCharsPerMin;
+  // Where the presenter put the separators — remembered on this computer, so it
+  // survives a reload and the view being rebuilt (it used to fall back to the
+  // defaults). Panels carry fixed ids; sizes are percentages (v4 reads a bare
+  // number as PIXELS).
+  const layoutStorage = useMemo(() => ({
+    getItem: (k: string) => { try { return localStorage.getItem(k); } catch { return null; } },
+    setItem: (k: string, v: string) => { try { localStorage.setItem(k, v); } catch { /* not remembered */ } },
+  }), []);
+  const mainLayout = useDefaultLayout({ id: 'mdp.presenter.layout.main', storage: layoutStorage });
+  const sideLayout = useDefaultLayout({ id: 'mdp.presenter.layout.side', storage: layoutStorage });
   // The script pane's HTML as ONE object per script: the page re-renders every
   // second, and a fresh `{ __html }` makes React replace the pane's nodes each time —
   // which dropped a used chip's ✓ and left a reading popup behind (the mouse "left"
   // nodes that no longer existed).
   const scriptInner = useMemo(() => ({ __html: currentSlide?.scriptHtml || '' }), [currentSlide?.scriptHtml]);
+  // What the focus chips have pointed at on this slide (shown here as on the
+  // slideshow), and which chips are on — a chip clicked again takes its cue away.
+  const shownFocus = useBusFocus(currentIndex);
+  const scriptPaneRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    scriptPaneRef.current?.querySelectorAll<HTMLElement>('.mdp-script-chip[data-chip="focus"]').forEach((chip) => {
+      let cue = null;
+      try { cue = cleanCue(JSON.parse(chip.dataset.cue || 'null')); } catch { /* not a cue */ }
+      chip.classList.toggle('mdp-chip-on', !!(cue && shownFocus && cueInForce(shownFocus, cue)));
+    });
+  }, [shownFocus, scriptInner]);
   const deckSeconds = useMemo(() => estimateDeckSeconds(slides, readingCpm), [slides, readingCpm]);
   const currentBudgetSec = useMemo(() => (currentSlide ? slideSeconds(currentSlide, readingCpm) : 0), [currentSlide, readingCpm]);
   const currentHasExplicit = !!(currentSlide && explicitSlideSeconds(currentSlide.raw || '') != null);
@@ -605,9 +629,9 @@ export default function PresenterPage() {
             : undefined}
         />
 
-        <Group orientation="horizontal" style={{ height: '100%' }}>
+        <Group orientation="horizontal" id="mdp-presenter-main" defaultLayout={mainLayout.defaultLayout} onLayoutChanged={mainLayout.onLayoutChanged} style={{ height: '100%' }}>
 
-          <Panel defaultSize={65} minSize={20}>
+          <Panel id="current" defaultSize="65%" minSize="20%">
             <div className="presenter-main-view" style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: '#000', position: 'relative' }}>
               <span className="presenter-label" style={{position:'absolute', top:10, left:20, zIndex:10}}>
                 CURRENT: {currentIndex + 1} / {slides.length}
@@ -631,6 +655,7 @@ export default function PresenterPage() {
                       slideIndex={currentIndex}
                       moduleRole="mirror"
                       presenting={true}
+                      focus={shownFocus}
                       onSlideLink={sendLinkNav}
                       onAddStroke={handleAddStroke}
                       onUpdateStrokes={(indices, dx, dy) => handleUpdateStrokes(currentIndex, indices, dx, dy)}
@@ -645,11 +670,12 @@ export default function PresenterPage() {
             </div>
           </Panel>
 
-          <Separator className="resize-handle" style={{ width: '6px', background: '#333', cursor: 'col-resize' }} />
+          <Separator className="presenter-sep presenter-sep-v" />
 
-          <Panel defaultSize={35} minSize={20}>
-             <Group orientation="vertical" style={{ height: '100%' }}>
-                <Panel defaultSize={40} minSize={10}>
+          <Panel id="side" defaultSize="35%" minSize="15%">
+             {/* Next slide | script | notes — each its own pane with its own separator. */}
+             <Group orientation="vertical" id="mdp-presenter-side" defaultLayout={sideLayout.defaultLayout} onLayoutChanged={sideLayout.onLayoutChanged} style={{ height: '100%' }}>
+                <Panel id="next" defaultSize="30%" minSize="8%">
                   <div className="presenter-next-preview" style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', backgroundColor: '#2a2a2a', padding: '15px', boxSizing: 'border-box' }}>
                     <span className="presenter-label">NEXT SLIDE</span>
                     <div style={{ flex: 1, position: 'relative', background: '#000', borderRadius:'4px', overflow:'hidden' }}>
@@ -679,10 +705,10 @@ export default function PresenterPage() {
                   </div>
                 </Panel>
 
-                <Separator className="resize-handle" style={{ height: '6px', background: '#333', cursor: 'row-resize' }} />
+                <Separator className="presenter-sep presenter-sep-h" />
 
-                <Panel defaultSize={60} minSize={10}>
-                  <div className="presenter-notes" style={{ width: '100%', height: '100%', padding: '15px', boxSizing: 'border-box', overflowY: 'auto', backgroundColor: '#1e1e1e', color: '#ddd', display: 'flex', flexDirection: 'column' }}>
+                <Panel id="script" defaultSize="40%" minSize="8%">
+                  <div className="presenter-script-pane" style={{ width: '100%', height: '100%', padding: '12px 15px', boxSizing: 'border-box', overflowY: 'auto', backgroundColor: '#1e1e1e', color: '#ddd' }}>
                     {/* Read-aloud @script manuscript, shown prominently above notes.
                         Script markers ([[step]], [[emit…]]) render as inline CHIPS:
                         clicking one fires the same event the narrated auto-play
@@ -703,7 +729,7 @@ export default function PresenterPage() {
                         /* Edit the RAW `@script` blocks, one textarea per source block
                            (a slide often interleaves several with its content), so the
                            write-back keeps each block where the author put it. */
-                        <div style={{ maxHeight: '45vh', overflowY: 'auto', marginTop: 6 }}>
+                        <div style={{ marginTop: 6 }}>
                           {scriptDrafts.map((draft, i) => (
                             <div key={i} style={{ marginBottom: 8 }}>
                               {scriptDrafts.length > 1 && (
@@ -731,6 +757,7 @@ export default function PresenterPage() {
                         </div>
                       ) : currentSlide?.scriptHtml ? (
                         <div
+                          ref={scriptPaneRef}
                           className="markdown-body presenter-script"
                           style={{ marginTop: 6, padding: '10px 12px', background: '#232a36', borderLeft: '3px solid #3b82f6', borderRadius: 4, fontSize: '1.05rem', lineHeight: 1.7 }}
                           onClick={(e) => {
@@ -739,6 +766,15 @@ export default function PresenterPage() {
                             e.preventDefault(); e.stopPropagation();
                             const kind = chip.dataset.chip;
                             if (kind === 'step') { sendNav(1); }
+                            else if (kind === 'focus') {
+                              // Show it on the slideshow — or take it away if it is on.
+                              let cue = null;
+                              try { cue = cleanCue(JSON.parse(chip.dataset.cue || 'null')); } catch { /* not a cue */ }
+                              if (!cue) return;
+                              if (shownFocus && cueInForce(shownFocus, cue)) sendFocus({ slide: currentIndex, remove: cue });
+                              else sendFocus({ slide: currentIndex, cues: lineCues([cue]) });
+                              return;
+                            }
                             else if (kind === 'emit') {
                               const topic = chip.dataset.topic || '';
                               const args = (chip.dataset.args || '').split(' ').filter(Boolean);
@@ -768,6 +804,9 @@ export default function PresenterPage() {
                           .presenter-script .mdp-script-chip:hover { background:rgba(59,130,246,0.35); }
                           .presenter-script .mdp-script-chip.mdp-chip-passive { border-color:#555; background:rgba(255,255,255,0.06); color:#999; cursor:default; }
                           .presenter-script .mdp-script-chip.mdp-chip-used { opacity:0.45; }
+                          .presenter-script .mdp-script-chip.mdp-chip-focus { border-color:#d97706; background:rgba(245,158,11,0.12); color:#fbbf24; }
+                          .presenter-script .mdp-script-chip.mdp-chip-focus:hover { background:rgba(245,158,11,0.3); }
+                          .presenter-script .mdp-script-chip.mdp-chip-focus.mdp-chip-on { background:#d97706; color:#fff; }
                         .presenter-script .mdp-script-chip.mdp-chip-used::after { content:' ✓'; }
                           .presenter-script .mdp-script-ruby { text-decoration:underline dashed rgba(138,180,248,0.85); text-decoration-thickness:1px; text-underline-offset:0.28em; cursor:help; }
                           .presenter-script .mdp-script-ruby:hover { background:rgba(59,130,246,0.18); border-radius:3px; }
@@ -783,6 +822,13 @@ export default function PresenterPage() {
                         </div>
                       )}
                     </div>
+                  </div>
+                </Panel>
+
+                <Separator className="presenter-sep presenter-sep-h" />
+
+                <Panel id="notes" defaultSize="30%" minSize="8%">
+                  <div className="presenter-notes" style={{ width: '100%', height: '100%', padding: '12px 15px', boxSizing: 'border-box', overflowY: 'auto', backgroundColor: '#1e1e1e', color: '#ddd', display: 'flex', flexDirection: 'column' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', borderBottom: '1px solid #444', paddingBottom: '8px', flexShrink: 0 }}>
                       <span className="presenter-label">NOTES</span>
                       <Button

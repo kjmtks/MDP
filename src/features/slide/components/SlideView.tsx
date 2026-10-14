@@ -7,6 +7,9 @@ import { ManipulationLayer, type ManipRuntime } from './ManipulationLayer';
 import { getCachedSvg, getFallback, getSvgNode, loadSvg, registerDataUri, svgPlaceholderAttrs, SVG_INVALIDATED_EVENT } from '../inlineSvg';
 import { executeModuleScripts } from '../../modules/moduleManager';
 import { applyBuildStep, applyBuildStepInstant } from '../../effects/buildRuntime';
+import { FocusLayer } from '../../focus/FocusLayer';
+import type { FocusOutlineItem } from '../../focus/focusStyles';
+import type { FocusState } from '../../focus/focusState';
 import './SlideViewer.css';
 import './SlideBaseDesign.css';
 import './MarkdownDoc.css';
@@ -55,6 +58,12 @@ interface SlideViewProps {
   // Called when an internal slide hyperlink (`a.mdp-slide-link`) is clicked, with
   // its raw target (`#5`, `#id`, `deck.slide.md#…`). Host navigates; mirrors relay.
   onSlideLink?: (target: string) => void;
+  // Focus cues in force (the narration's [[look]] / [[mark]] — features/focus),
+  // drawn over the slide; `focusOutline`: every cue's target marked and numbered
+  // (the editor preview); `focusAnimate` false: a still picture.
+  focus?: FocusState | null;
+  focusOutline?: FocusOutlineItem[] | null;
+  focusAnimate?: boolean;
 }
 
 // Render a Chart.js config (base64 JSON from the `@chartjs` fence) to a STATIC PNG
@@ -132,9 +141,14 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
   runScripts = true,
   flow = false,
   manipulate,
-  onSlideLink
+  onSlideLink,
+  focus,
+  focusOutline,
+  focusAnimate,
 }) => {
   const [containerEl, setContainerEl] = useState<HTMLDivElement | null>(null);
+  // The wrapper, for the focus overlay's coordinates (only needed when it is drawn).
+  const [wrapperEl, setWrapperEl] = useState<HTMLDivElement | null>(null);
   // Header/footer DOM as state too, so the ManipulationLayer can manipulate their
   // modules (in addition to the refs used for running their scripts).
   const [headerEl, setHeaderEl] = useState<HTMLDivElement | null>(null);
@@ -608,6 +622,7 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
 
   return (
     <div
+      ref={setWrapperEl}
       className={`slide-content-wrapper markdown-body ${flow ? 'mdp-doc' : ''} ${className} ${manipulate?.enabled ? 'mdp-manip-editing' : ''}`}
       style={flow ? {
         width: '100%', height: '100%', position: 'relative',
@@ -647,6 +662,10 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
         dangerouslySetInnerHTML={contentHtml}
         style={{ width: '100%', height: flow ? 'auto' : '100%' }}
       />
+
+      {!flow && (focus || focusOutline) && (
+        <FocusLayer root={wrapperEl} content={containerEl} focus={focus} outline={focusOutline} animate={focusAnimate !== false} />
+      )}
 
       {!flow && ((drawings && drawings.length > 0) || isInteracting) && (
         <DrawingOverlay

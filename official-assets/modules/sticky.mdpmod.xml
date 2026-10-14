@@ -17,7 +17,7 @@ Parameters:
   halign     — horizontal text alignment: left (default) | center | right.
   valign     — vertical alignment inside the box: top (default) | middle | bottom.
   rotate     — tilt in degrees (default -2; range -45..45).
-  font       — typeface: handwritten (default, Comic-Sans style) | sans | serif | mono.
+  font       — typeface: handwritten (default; Klee One, a handwritten face that has Japanese too) | sans | serif | mono.
   fontsize   — CSS font size for the note text, e.g. 1.2em or 18px (default "" = theme size).
   width      — note width as a CSS length when NOT placed in Edit layout (default "250px");
                once you move/resize it in Edit layout it fills the placement box instead.
@@ -96,11 +96,13 @@ Please update these figures by the meeting next week!
       display: flex;
       flex-direction: column;
     }
-    /* Font options. Handwritten reproduces the original Comic-Sans look. */
-    .mdp-sticky-font-handwritten { font-family: "Comic Sans MS", "Marker Felt", sans-serif; }
-    .mdp-sticky-font-sans { font-family: system-ui, "Segoe UI", Roboto, sans-serif; }
-    .mdp-sticky-font-serif { font-family: Georgia, "Times New Roman", serif; }
-    .mdp-sticky-font-mono { font-family: "SFMono-Regular", Consolas, "Courier New", monospace; }
+    /* Font options — the official workspace fonts, so a note looks the same on
+       every computer and device (Klee One = handwritten, Japanese included); the
+       OS fonts after them only stand in where a workspace lacks those fonts. */
+    .mdp-sticky-font-handwritten { font-family: "Klee One", "Comic Sans MS", "Marker Felt", "Noto Sans JP", sans-serif; }
+    .mdp-sticky-font-sans { font-family: "Noto Sans JP", system-ui, "Segoe UI", Roboto, sans-serif; }
+    .mdp-sticky-font-serif { font-family: "Noto Serif JP", Georgia, "Times New Roman", serif; }
+    .mdp-sticky-font-mono { font-family: var(--mdp-font-mono, "JetBrains Mono", Consolas, Monaco, "Noto Sans JP", monospace); }
     /* When placed/sized in Edit layout, fill the manip box (otherwise keep the
        default width note). Content that exceeds the box is shown, not clipped or
        scrolled. */

@@ -130,11 +130,36 @@ function groupsOfUser(user) {
   return Object.keys(map).filter((g) => Array.isArray(map[g]) && map[g].includes(user));
 }
 
+const remoteFiles = require('./app/remoteFiles.cjs');
+// A granted file is served to the live remote PAGE only — the request comes from it
+// (Referer …/remote) or from a stylesheet it was granted (a theme's own images).
+// The session cookie rides on every request of that browser, and a signed-in user
+// following a presentation must still get their OWN files in their own editor tab.
+// No Referer at all: only a device signed in as nobody gets the grant.
+function remoteGranted(req, rel) {
+  const ref = String(req.headers.referer || req.headers.referrer || '');
+  let fromRemote = false;
+  if (ref) {
+    try {
+      const u = new URL(ref);
+      const i = u.pathname.indexOf('/files/');
+      fromRemote = /\/remote$/.test(u.pathname) || (i >= 0 && !!remoteFiles.lookup(req, u.pathname.slice(i + '/files/'.length)));
+    } catch { /* not a URL */ }
+  } else {
+    fromRemote = !MULTI || !webspaces.userOf(SPACES, req);
+  }
+  return fromRemote ? remoteFiles.lookup(req, rel) : null;
+}
+
 if (MULTI) {
   app.use((req, res, next) => {
     // Only workspace routes need a user; keep static assets cheap.
     if (!req.path.startsWith('/api/') && !req.path.startsWith('/files/') && req.path !== '/mcp') return next();
     const user = webspaces.userOf(SPACES, req);
+    // A live remote device needs no account: its presentation's session, and then
+    // only the files that presentation granted (remoteFiles.cjs).
+    if (!user && (req.path === '/api/remote/session'
+      || (req.path.startsWith('/files/') && remoteGranted(req, req.path.slice('/files/'.length))))) return next();
     if (!user) return res.status(401).json({ error: 'unidentified user' });
     req.mdpGroups = groupsOfUser(user);   // for {group} spaces (see webspaces)
     next();
@@ -530,7 +555,32 @@ app.post('/api/create', async (req, res) => {
   } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 });
 
-const MIME_BY_EXT = { svg: 'image/svg+xml', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', bmp: 'image/bmp', ico: 'image/x-icon', css: 'text/css', js: 'text/javascript', json: 'application/json', md: 'text/plain', txt: 'text/plain' };
+const MIME_BY_EXT = {
+  svg: 'image/svg+xml', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', bmp: 'image/bmp', ico: 'image/x-icon',
+  css: 'text/css', js: 'text/javascript', json: 'application/json', md: 'text/plain', txt: 'text/plain', vtt: 'text/vtt', pdf: 'application/pdf',
+  // a slide's video / audio (the @video module, a live remote playing it)
+  mp4: 'video/mp4', m4v: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime', ogv: 'video/ogg',
+  mp3: 'audio/mpeg', m4a: 'audio/mp4', aac: 'audio/aac', wav: 'audio/wav', ogg: 'audio/ogg', oga: 'audio/ogg', opus: 'audio/ogg', flac: 'audio/flac',
+};
+
+// The live remote (src/features/remote/liveRemote.ts): the presenting page lists
+// the files its deck needs — resolved with ITS rights — and a device of that
+// presentation (channel + token, as a cookie) may read those and nothing else.
+app.post('/api/remote/grant', (req, res) => {
+  const { channel, token, paths } = req.body || {};
+  const entries = [];
+  for (const p of (Array.isArray(paths) ? paths.slice(0, 4000) : [])) {
+    const rel = remoteFiles.normRel(p);
+    if (!rel) continue;
+    try { entries.push({ rel, target: vres(req, rel) }); } catch { /* not readable by the presenter */ }
+  }
+  res.json({ granted: remoteFiles.grant(String(channel || ''), String(token || ''), entries) });
+});
+app.get('/api/remote/session', (req, res) => {
+  const cookie = remoteFiles.sessionCookie(String(req.query.channel || ''), String(req.query.token || ''));
+  if (!cookie) return res.status(400).end();
+  res.set('Set-Cookie', cookie).set('Cache-Control', 'no-store').status(204).end();
+});
 
 app.get('/files/*path', async (req, res) => {
   let virtualPath = req.params.path || req.params[0];
@@ -539,8 +589,11 @@ app.get('/files/*path', async (req, res) => {
   try { virtualPath = decodeURIComponent(virtualPath); } catch (e) { /* keep raw */ }
   virtualPath = virtualPath.replace(/\.\./g, '');
   try {
-    // VFS-aware: serves files behind a `.mdplink` (local or remote SFTP) too.
-    const buf = await mdplink.vfsReadBuffer(vres(req, virtualPath));
+    // VFS-aware: serves files behind a `.mdplink` (local or remote SFTP) too. A
+    // live remote device may read what its presentation granted.
+    // (The granted file first: under a per-user alias the same path could name the
+    // device user's OWN file.)
+    const target = remoteGranted(req, virtualPath) || vres(req, virtualPath);
     const ext = path.extname(virtualPath).toLowerCase().replace('.', '');
     const fontMime = Object.prototype.hasOwnProperty.call(fontsLib.FONT_MIME, ext) ? fontsLib.FONT_MIME[ext] : '';
     res.set('Content-Type', MIME_BY_EXT[ext] || fontMime || 'application/octet-stream');
@@ -548,7 +601,29 @@ app.get('/files/*path', async (req, res) => {
     // a versioned font URL is immutable — let the browser keep it instead of
     // downloading megabytes on every page load.
     res.set('Cache-Control', fontMime && req.query.v ? 'public, max-age=31536000, immutable' : 'no-store');
-    res.send(buf);
+    // Byte ranges: Safari — every iPhone / iPad browser — plays a video or audio
+    // file only from a server that answers them (a live remote showing @video).
+    res.set('Accept-Ranges', 'bytes');
+    const range = /^bytes=(\d*)-(\d*)$/.exec(String(req.headers.range || '').trim());
+    if (range && (range[1] || range[2])) {
+      const { size } = await mdplink.vfsStat(target);
+      const start = range[1] === '' ? Math.max(0, size - Number(range[2])) : Number(range[1]);
+      const end = Math.min(range[1] !== '' && range[2] !== '' ? Number(range[2]) : size - 1, size - 1);
+      if (!(start <= end) || start >= size) {
+        res.status(416).set('Content-Range', `bytes */${size}`).end();
+        return;
+      }
+      res.status(206).set('Content-Range', `bytes ${start}-${end}/${size}`).set('Content-Length', String(end - start + 1));
+      // A local file: just the requested bytes; one behind an SSH link: from its cached copy.
+      if (target.kind !== 'ssh' && target.abs) {
+        fs.createReadStream(target.abs, { start, end }).on('error', () => res.destroy()).pipe(res);
+        return;
+      }
+      const buf = await mdplink.vfsReadBuffer(target);
+      res.end(buf.subarray(start, end + 1));
+      return;
+    }
+    res.send(await mdplink.vfsReadBuffer(target));
   } catch (e) {
     res.status(404).send('Not found');
   }

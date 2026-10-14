@@ -172,8 +172,13 @@ const TOOLS = [
   },
   {
     name: 'render_slide_image',
-    description: 'Render ONE slide to an image (WebP), exactly as MDP displays it. PASS `path` to target a deck explicitly (opened+waited for; response echoes `deck`). For checking SEVERAL slides use render_slides (one composite image, one call) instead of repeating this. Higher token cost; prefer small widths.',
-    inputSchema: S({ path: str('Deck path (recommended; default: the active deck)'), slide: num('Slide number, 1-based'), width: num('Image width in px (default 512, max 1280)') }, ['slide']),
+    description: 'Render ONE slide to an image (WebP), exactly as MDP displays it. PASS `path` to target a deck explicitly (opened+waited for; response echoes `deck`). For checking SEVERAL slides use render_slides (one composite image, one call) instead of repeating this. Higher token cost; prefer small widths. `focus` draws the slide\'s FOCUS CUES ([[look]] / [[mark]] in its @script) over it — "outline": every cue\'s target outlined and numbered in script order (targets not found are listed on the picture); "line:N": the slide exactly as the narrated auto-play shows it while narration line N plays (that build step, the looks and marks in force then); or cue markers to try before writing them, e.g. "[[look: item:2 spotlight]]". With `focus`, the response also says where each target landed (box in % of the slide) or why it was not found.',
+    inputSchema: S({ path: str('Deck path (recommended; default: the active deck)'), slide: num('Slide number, 1-based'), width: num('Image width in px (default 512, max 1280)'), focus: str('Draw the focus cues: "outline" | "line:N" | cue markers such as "[[look: \\"phrase\\" ring]]"') }, ['slide']),
+  },
+  {
+    name: 'get_focus_targets',
+    description: 'FOCUS CUES of ONE slide — what it can point at, and whether its cues land. Focus cues in a slide\'s @script show the viewer where to look while the narration plays (narrated auto-play, both video modes, and the presenter\'s chips): [[look: TARGET]] moves the one point of attention there (pointer — default —, ring, arrow, box, spotlight, blur); [[mark: TARGET]] leaves an annotation that stays until [[clear]] or the next slide (marker — default —, underline, circle). A cue acts when its narration LINE starts (a line = one subtitle unit, about a sentence; never cut a sentence for a cue). Returns `targets`: every pointable thing on the rendered slide with the exact target string to write — a phrase as shown ("…"), item:"…" / item:N (a bullet), cell:"…" / cell:R,C, row:…, col:…, math:N (the N-th formula) / math:name (a part marked \\focus{name}{…} in the LaTeX), fig:"label" / fig:name (an inline SVG\'s label / its element with data-focus or id), @tag (a module given tag:), images → area:x,y,w,h (% of the slide) — each with its box in % of the slide; `cues`: the slide\'s cues in order, each with the narration line it acts on (or the wait / last build it rides on), the build step shown then and where every target landed; `problems`: error = not found (nothing is drawn), warn = several matches (the first is used — add #n) or not visible at that moment (an unrevealed build), note = several emphases in one line (all shown at once — not recommended) or a cue written far into its line (it shows as the line starts). Use it BEFORE writing cues (take target strings from `targets`) and AFTER (fix `problems`); see the result with render_slide_image focus:"outline" or "line:N". check_deck checks every slide\'s cues the same way.',
+    inputSchema: S({ path: str('Deck path (recommended; default: the active deck)'), slide: num('Slide number, 1-based') }, ['slide']),
   },
   {
     name: 'render_slides',
@@ -207,17 +212,17 @@ const TOOLS = [
   },
   {
     name: 'list_images',
-    description: 'The image-alias library available to a deck (cascading .mdp scope): alias, description, tags, kind and (for stored files) path. Reference an image in slides as ![alt](@alias). Use read_image to actually SEE one. With no `deck` and none open, lists the workspace-root library.',
+    description: 'The image aliases available to a deck: the image library (cascading .mdp scope) and, as deckImages, the deck\'s own <!-- @image alias --> definitions — in that deck an own definition wins over a library image of the same alias (overriddenByDeck), and of two own definitions the first is used. Each: alias, description, tags, kind and (for files) path. Reference an image in slides as ![alt](@alias). Use read_image to actually SEE one. With no `deck` and none open, lists the workspace-root library.',
     inputSchema: S({ deck: str('Deck path whose .mdp scope to use (default: the active deck, else the workspace root)') }),
   },
   {
     name: 'read_image',
-    description: 'View an image (returned as an image block): a library image by `alias` (resolved in the given deck\'s .mdp scope), or any workspace image file by `path`. Use to write accurate captions/alt text or judge whether a figure fits a slide.',
-    inputSchema: S({ alias: str('Image-library alias'), deck: str('Deck whose .mdp scope resolves the alias (default: the active deck, else root)'), path: str('Workspace-relative image path (alternative to alias)'), maxWidth: num('Downscale to this width (default 800)') }),
+    description: 'View an image (returned as an image block): by `alias`, resolved as the given deck\'s slides resolve it (its own @image definition first, then its .mdp image library), or any workspace image file by `path`. Use to write accurate captions/alt text or judge whether a figure fits a slide.',
+    inputSchema: S({ alias: str('Image alias'), deck: str('Deck whose definitions and .mdp scope resolve the alias (default: the active deck, else root)'), path: str('Workspace-relative image path (alternative to alias)'), maxWidth: num('Downscale to this width (default 800)') }),
   },
   {
     name: 'validate_deck',
-    description: 'FAST deterministic lint BEFORE visual checks: unknown module/directive names, disabled modules, unknown @theme / transition / build effect names, unknown or missing-required module parameters, and unbalanced <!-- @end --> per slide. Pass `text` to validate candidate content WITHOUT writing it (dry run). For the full one-shot inspection (this + lint + measure) use check_deck.',
+    description: 'FAST deterministic lint BEFORE visual checks: unknown module/directive names, disabled modules, unknown @theme / transition / build effect names, unknown or missing-required module parameters, unbalanced <!-- @end --> per slide, and image aliases (![](@alias) defined nowhere; an alias defined twice in the deck). Pass `text` to validate candidate content WITHOUT writing it (dry run). For the full one-shot inspection (this + lint + measure) use check_deck.',
     inputSchema: S({ path: str('Deck path (default: the active deck)'), text: str('Candidate deck markdown to validate WITHOUT writing (dry run)') }),
   },
   {
@@ -247,7 +252,7 @@ const TOOLS = [
   },
   {
     name: 'check_deck',
-    description: 'ONE-SHOT full inspection — validate (syntax/unknown modules/params/unbalanced @end) + lint (design advisories incl. script-step-mismatch and math-in-plain-field) + measure (overflow, issues only) in a single response, replacing 3 separate calls; `skills` hands back the checklists of the folder\'s slide skills to review the deck against. DRY RUN: pass `text` instead of `path` to check candidate content BEFORE writing it (validate+lint only; nothing touches the editor or disk).',
+    description: 'ONE-SHOT full inspection — validate (syntax/unknown modules/params/unbalanced @end, and the focus cues\' text-level notes) + lint (design advisories incl. script-step-mismatch and math-in-plain-field) + measure (overflow, issues only) in a single response, replacing 3 separate calls; `focus` (only when the deck has focus cues) checks every [[look]] / [[mark]] target on its slide as rendered when the cue acts — found, in one place, visible; `skills` hands back the checklists of the folder\'s slide skills to review the deck against. DRY RUN: pass `text` instead of `path` to check candidate content BEFORE writing it (validate+lint only; nothing touches the editor or disk).',
     inputSchema: S({ path: str('Deck path to inspect (default: the active deck)'), text: str('Candidate deck markdown to check WITHOUT writing (dry run; validate+lint only)') }),
   },
   {
@@ -315,7 +320,7 @@ const NEEDS_RENDERER = new Set([
   'get_slide_spec', 'get_module_spec', 'get_effect_spec', 'find_modules',
   'suggest_modules', 'suggest_effects', 'validate_deck', 'measure_slides',
   'render_slides', 'render_slide_image', 'render_deck_overview', 'read_image',
-  'bootstrap',
+  'bootstrap', 'get_focus_targets',
 ]);
 
 module.exports = { TOOLS, DESKTOP_ONLY, NEEDS_RENDERER };
