@@ -136,3 +136,20 @@ export function notify(
     message,
   });
 }
+
+// While a show runs in this window (the slideshow, a narrated auto-play, the output
+// window) its notifications WAIT: they would pop up in front of the audience, or
+// time out unseen behind the full screen. NotificationHost shows them once the
+// last hold is released (usePresentingSession).
+export const HOLD_EVENT = 'mdp-notify-hold';
+const holds = new Set<symbol>();
+export const notificationsHeld = (): boolean => holds.size > 0;
+/** Hold this window's notifications; returns the release. */
+export function holdNotifications(reason: string): () => void {
+  const token = Symbol(reason);
+  holds.add(token);
+  window.dispatchEvent(new CustomEvent(HOLD_EVENT));
+  return () => {
+    if (holds.delete(token)) window.dispatchEvent(new CustomEvent(HOLD_EVENT));
+  };
+}

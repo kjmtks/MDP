@@ -16,15 +16,26 @@ import type { AnswerSpec } from './SlideContext';
 // size too — but nothing in it is painted, so a handout printed from the
 // instructor's deck has a frame to write in where each answer was.
 //
+// …and FOCUS places (`<!-- @focus name -->` … `<!-- @end -->`, wrapFocus below).
+//
 // Runs AFTER module processing (modules consume their own `@end`). `@end` /
-// `@endbuild` / `@endanswer` closes the nearest open build or answer; an `@end`
+// `@endbuild` / `@endanswer` / `@endfocus` closes the nearest open block; an `@end`
 // with nothing open is left in place. Returns the rewritten markdown and the
 // slide's total step count.
 
 const escAttr = (s: string): string =>
   s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-interface Frame { kind: 'build' | 'answer'; argsStr: string; inner: string; }
+interface Frame { kind: 'build' | 'answer' | 'focus'; argsStr: string; inner: string; }
+
+// A FOCUS place made of blocks — `<!-- @focus name --> …blocks… <!-- @end -->` — a
+// script points at it with `#name` (features/focus): a list, a table, a code block,
+// a diagram, a figure with its caption. The wrapper is `display: contents`, so the
+// blocks lay out as without it. (Within a line, `\focus{name}{…}` marks words.)
+const wrapFocus = (frame: Frame): string => {
+  const name = frame.argsStr.trim().split(/\s+/)[0] || '';
+  return `\n\n<div class="mdp-focus-anchor mdp-focus-block" data-mdp-focus="${escAttr(name)}">\n\n${frame.inner}\n\n</div>\n\n`;
+};
 
 const wrapBuild = (frame: Frame, globalArgs: Record<string, string>): { html: string; stepCount: number } => {
   const args = { ...globalArgs, ...parseArguments(frame.argsStr) };
@@ -101,7 +112,7 @@ export const applyBuildsToMarkdown = (
   globalBuildArgs: Record<string, string> = {},
   answers?: AnswerSpec,
 ): { markdown: string; stepCount: number } => {
-  if (!markdown || !/@(build|answer)\b/.test(markdown)) {
+  if (!markdown || !/@(build|answer|focus)\b/.test(markdown)) {
     return { markdown: markdown || '', stepCount: 0 };
   }
 
@@ -111,7 +122,7 @@ export const applyBuildsToMarkdown = (
     return `__MDP_BUILD_CB_${codeBlocks.length - 1}__`;
   });
 
-  const tokenRegex = /([ \t]*)<!--\s*@(endbuild|endanswer|end|build|answer)\b\s*([\s\S]*?)\s*-->/g;
+  const tokenRegex = /([ \t]*)<!--\s*@(endbuild|endanswer|endfocus|end|build|answer|focus)\b\s*([\s\S]*?)\s*-->/g;
   const stack: Frame[] = [];
   let root = '';
   let maxStep = 0;
@@ -124,6 +135,7 @@ export const applyBuildsToMarkdown = (
   };
   const close = (frame: Frame) => {
     if (frame.kind === 'answer') { append(wrapAnswer(frame, answers)); return; }
+    if (frame.kind === 'focus') { append(wrapFocus(frame)); return; }
     const { html, stepCount } = wrapBuild(frame, globalBuildArgs);
     if (stepCount > maxStep) maxStep = stepCount;
     append(html);
@@ -136,7 +148,7 @@ export const applyBuildsToMarkdown = (
     const kind = m[2];
     const argsStr = m[3] || '';
 
-    if (kind === 'build' || kind === 'answer') {
+    if (kind === 'build' || kind === 'answer' || kind === 'focus') {
       stack.push({ kind, argsStr, inner: '' });
     } else if (stack.length) {
       close(stack.pop()!);

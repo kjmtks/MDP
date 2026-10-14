@@ -58,6 +58,47 @@ const displayMath: TokenizerAndRendererExtension = {
   renderer(token) { return render(token.text as string, true); },
 };
 
+// ---- A place a focus cue can point at, in the TEXT ------------------------------
+// `\focus{name}{…}` — the same notation as in a formula — around words, an image, a
+// formula: it renders unchanged (the content keeps its own Markdown), marked
+// data-mdp-focus="name", and a script points at it with `#name` (focusTargets). A
+// name the author gave survives edits of the words around it and of the slide's
+// order — what a phrase or a position cannot. Braces inside are counted (a formula's
+// own), escaped ones skipped; an unclosed one stays as text.
+export const FOCUS_NAME_SRC = '[\\p{L}\\p{N}_.-]+';
+const ANCHOR_OPEN = new RegExp(`^\\\\focus\\{(${FOCUS_NAME_SRC})\\}\\{`, 'u');
+const escAttr = (s: string) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+const focusAnchor: TokenizerAndRendererExtension = {
+  name: 'mdpFocusAnchor',
+  level: 'inline',
+  start(src: string) { const i = src.indexOf('\\focus{'); return i < 0 ? undefined : i; },
+  tokenizer(src: string) {
+    const m = ANCHOR_OPEN.exec(src);
+    if (!m) return undefined;
+    let depth = 1;
+    let i = m[0].length;
+    for (; i < src.length; i++) {
+      const c = src[i];
+      if (c === '\\') { i++; continue; }
+      if (c === '{') depth++;
+      else if (c === '}' && --depth === 0) break;
+    }
+    if (depth !== 0) return undefined;
+    const text = src.slice(m[0].length, i);
+    return { type: 'mdpFocusAnchor', raw: src.slice(0, i + 1), name: m[1], text, tokens: this.lexer.inlineTokens(text) };
+  },
+  renderer(token) {
+    const inner = this.parser.parseInline(token.tokens || []);
+    const name = `data-mdp-focus="${escAttr(String(token.name))}"`;
+    // An image comes out as a <figure>, which no span can hold (the page pushes it
+    // out of the paragraph, leaving the span empty): the name goes on the figure.
+    const fig = /^\s*<figure>([\s\S]*)<\/figure>\s*$/.exec(inner);
+    if (fig && !/<figure[\s>]/.test(fig[1])) return `<figure class="mdp-focus-anchor" ${name}>${fig[1]}</figure>`;
+    return `<span class="mdp-focus-anchor" ${name}>${inner}</span>`;
+  },
+};
+
 // ---- `|` inside math in GFM table rows ---------------------------------------
 // marked splits a table row into cells on `|` BEFORE the inline math above is
 // tokenized, so `\(|a|\)` in a cell cut the cell apart, and an escaped `\|` (the
@@ -140,11 +181,12 @@ export const protectTableMath = (markdown: string): string => {
 };
 
 let registered = false;
-/** Register the MDP `\(…\)` / `\[…\]` KaTeX extensions on the shared marked
- *  singleton (idempotent). Call wherever marked-katex-extension is registered.
- *  (Not a React hook — deliberately not named `use*`.) */
+/** Register the MDP `\(…\)` / `\[…\]` KaTeX extensions — and the text's
+ *  `\focus{name}{…}` — on the shared marked singleton (idempotent). Call wherever
+ *  marked-katex-extension is registered. (Not a React hook — deliberately not
+ *  named `use*`.) */
 export const registerMdpKatex = (): void => {
   if (registered) return;
   registered = true;
-  marked.use({ extensions: [displayMath, inlineMath], hooks: { preprocess: protectTableMath } });
+  marked.use({ extensions: [displayMath, inlineMath, focusAnchor], hooks: { preprocess: protectTableMath } });
 };

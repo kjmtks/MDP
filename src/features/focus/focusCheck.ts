@@ -22,7 +22,55 @@ export interface FocusProblem {
   message: string;
 }
 
-const TARGET_KINDS = ['', 'item', 'cell', 'row', 'col', 'math', 'fig', 'area', '@'];
+const TARGET_KINDS = ['', '#', 'item', 'cell', 'row', 'col', 'math', 'fig', 'area', '@'];
+
+/** The names a slide gives places, from its text, with how often: \focus{name}{…}
+ *  (in the text or a formula), <!-- @focus name -->, a module's tag: name, an
+ *  inline SVG's data-focus / id, a cover's parts (title, subtitle…). (An SVG FILE's
+ *  names are only known rendered.) */
+export function slideNames(raw: string): Map<string, number> {
+  const names = new Map<string, number>();
+  const add = (n: string) => names.set(n, (names.get(n) || 0) + 1);
+  const text = String(raw || '').replace(/<!--\s*@(?:script|note):[\s\S]*?-->/g, ' ');
+  for (const m of text.matchAll(/\\focus\{([\p{L}\p{N}_.-]+)\}\{/gu)) add(m[1]);
+  for (const m of text.matchAll(/<!--\s*@focus\s+([^\s>]+?)\s*-->/g)) add(m[1]);
+  for (const m of text.matchAll(/<!--\s*@[a-zA-Z][\w-]*\s[^>]*?\btag:\s*([^,\s>]+)/g)) add(m[1]);
+  // …or the module already expanded (the editor expands the deck's modules first)
+  for (const m of text.matchAll(/\sdata-mdp-tag\s*=\s*"([^"]+)"/g)) add(m[1]);
+  for (const svg of text.matchAll(/<svg[\s\S]*?<\/svg>/gi)) {
+    for (const d of svg[0].matchAll(/\s(?:data-focus|id)\s*=\s*"([^"]+)"/g)) add(d[1]);
+  }
+  // A cover's parts are named by the app (from the meta page: whichever it has).
+  if (/<!--\s*@cover\s*-->/.test(text)) for (const n of ['date', 'title', 'subtitle', 'presenter', 'affiliation', 'contact']) if (!names.has(n)) names.set(n, 1);
+  return names;
+}
+
+/** The name a target points at (#name, item:#name…), or null. */
+export function targetName(t: string): string | null {
+  const p = parseTarget(t);
+  if (!p) return null;
+  if (p.kind === '#') return p.name || null;
+  if (['item', 'cell', 'row', 'col'].includes(p.kind) && p.name?.startsWith('#')) return p.name.slice(1) || null;
+  return null;
+}
+
+/** A target found by the slide's WORDS or POSITION ("phrase", item:2, cell:"…",
+ *  math:1, fig:"label") — it breaks when they change; a name does not. (area: is a
+ *  spot inside a picture: nothing else can point there.) */
+export function pointsByWords(t: string): boolean {
+  const p = parseTarget(t);
+  if (!p) return false;
+  if (p.kind === '' ) return true;
+  if (['item', 'cell', 'row', 'col'].includes(p.kind)) return !p.name?.startsWith('#');
+  if (p.kind === 'math') return !!p.nums;
+  if (p.kind === 'fig') return p.text !== undefined;
+  return false;
+}
+
+/** Names given to more than one place on a slide (#name points at the first). */
+export function duplicateNames(raw: string): string[] {
+  return [...slideNames(raw)].filter(([, n]) => n > 1).map(([name]) => name);
+}
 const STYLES = new Set<string>(FOCUS_STYLES);
 // A cue written this far into its line (full-width characters, ≈ 2 s of speech)
 // shows noticeably before the words it stands by.
@@ -81,9 +129,12 @@ export const outlineOf = (raw: string): FocusOutlineItem[] =>
   scriptCues(slideScript(raw)).map((cue, i) => ({ n: i + 1, cue })).filter((it) => it.cue.targets.length > 0);
 
 /** What can be told from the text alone: several emphases in a line, a cue written
- *  well into its line, an unknown style or target. */
-export function cueLineProblems(sites: readonly CueSite[]): FocusProblem[] {
+ *  well into its line, an unknown style or target — and, given the slide's `raw`,
+ *  a #name that nothing on it is given (unless an SVG file on it may hold it). */
+export function cueLineProblems(sites: readonly CueSite[], raw?: string): FocusProblem[] {
   const out: FocusProblem[] = [];
+  const names = raw !== undefined ? slideNames(raw) : null;
+  const figureFiles = raw !== undefined && /\.svg\b|data:image\/svg/i.test(raw);
   for (const s of sites) {
     const n = emphasisCount(s.cues);
     if (n > 1) {
@@ -101,7 +152,12 @@ export function cueLineProblems(sites: readonly CueSite[]): FocusProblem[] {
       for (const t of c.targets) {
         const p = parseTarget(t);
         if (!p || !TARGET_KINDS.includes(p.kind)) {
-          out.push({ level: 'error', line: s.line, cue, target: t, message: `cannot read the target "${t}" — use "phrase", item:…, cell:…, row:…, col:…, math:…, fig:…, area:x,y,w,h or @tag.` });
+          out.push({ level: 'error', line: s.line, cue, target: t, message: `cannot read the target "${t}" — use #name (a place the slide names), item:#name, cell:#name, row:#name, col:#name, or "phrase", item:…, cell:…, row:…, col:…, math:…, fig:…, area:x,y,w,h, @tag.` });
+          continue;
+        }
+        const name = targetName(t);
+        if (name && names && !names.has(name) && !figureFiles) {
+          out.push({ level: 'error', line: s.line, cue, target: t, message: `nothing on this slide is named "${name}" — mark the place: \\focus{${name}}{…} around words, an image or a formula part, <!-- @focus ${name} -->…<!-- @end --> around blocks, tag: ${name} on a module, data-focus="${name}" in an inline SVG.` });
         }
       }
       if (c.kind !== 'clear' && s.line > 0 && (c.lead || 0) >= EARLY) {
@@ -147,7 +203,12 @@ export function checkSiteTargets(site: CueSite, root: HTMLElement): { cues: CueR
         return { target: t, ok: false, error: r.error };
       }
       if (r.matches && r.matches > 1 && !/#\d+$/.test(t)) {
-        problems.push({ level: 'warn', line: site.line, cue, target: t, message: `found in ${r.matches} places — the first is used. Add #n (${t}#2 …) or quote a longer phrase.` });
+        const name = targetName(t);
+        problems.push({
+          level: 'warn', line: site.line, cue, target: t,
+          message: name ? `"${name}" names ${r.matches} places on the slide — the first is used. Give each place its own name.`
+            : `found in ${r.matches} places — the first is used. Add #n (${t}#2 …) or quote a longer phrase — or name the place (\\focus{name}{…}) and point with #name.`,
+        });
       }
       if (r.hidden) {
         problems.push({ level: 'warn', line: site.line, cue, target: t, message: `not visible when ${whereOf(site)} starts (build step ${site.buildStep}) — it is not drawn. Point at it after the [[step]] that reveals it.` });

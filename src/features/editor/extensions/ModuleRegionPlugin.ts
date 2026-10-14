@@ -37,7 +37,7 @@ const DEPTHS = 6; // distinct nesting colours before they cycle
 
 // Non-module directives that ALSO open a `<!-- … --> … <!-- @end -->` region and
 // benefit from colouring/folding (@build / @answer wrap content; @header/@footer are blocks).
-const SPECIAL_BLOCKS = new Set(['build', 'answer', 'header', 'footer']);
+const SPECIAL_BLOCKS = new Set(['build', 'answer', 'focus', 'header', 'footer']);
 
 function scan(state: EditorState): ModuleScan {
   const doc = state.doc;

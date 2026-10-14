@@ -94,6 +94,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getDisplays: () => ipcRenderer.invoke('getDisplays'),
   moveToDisplay: (displayId) => ipcRenderer.invoke('moveToDisplay', displayId),
   restoreWindowPlacement: () => ipcRenderer.invoke('restoreWindowPlacement'),
+  // While a show runs (slideshow, auto-play, presenter / output window) the display
+  // neither sleeps nor starts the screen saver.
+  setPresenting: (reason, on) => ipcRenderer.invoke('setPresenting', reason, !!on),
   startRemoteServer: () => ipcRenderer.invoke('startRemoteServer'),
   getRemoteInfo: () => ipcRenderer.invoke('getRemoteInfo'),
   stopRemoteServer: () => ipcRenderer.send('stopRemoteServer'),

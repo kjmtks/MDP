@@ -12,8 +12,10 @@ import { applyCues, cleanCue, isEmptyFocus, NO_FOCUS, removeCue, type FocusState
 export const FOCUS_TOPIC = 'focus:cue';
 
 /** `cues`: act as a narration line would (lineCues order); `remove`: take that one
- *  look / mark away (a chip clicked again). */
-export interface FocusCueEvent { slide: number; cues?: FocusCue[]; remove?: FocusCue }
+ *  look / mark away (a chip clicked again); `replay`: start from nothing and act
+ *  these steps in order (the presenter's Shift+Tab: the state before the last step,
+ *  exact whatever was clicked in between — [] = nothing pointed at). */
+export interface FocusCueEvent { slide: number; cues?: FocusCue[]; remove?: FocusCue; replay?: FocusCue[][] }
 
 export const sendFocus = (ev: FocusCueEvent): void => mdpBus.emit(FOCUS_TOPIC, ev);
 
@@ -24,8 +26,15 @@ export function useBusFocus(slideIndex: number): FocusState | null {
   if (state.slide !== slideIndex) setState({ slide: slideIndex, focus: NO_FOCUS });
   useEffect(() => mdpBus.on(FOCUS_TOPIC, (p: FocusCueEvent) => {
     if (!p || p.slide !== slideIndex) return;
-    const cues = Array.isArray(p.cues) ? p.cues.map(cleanCue).filter((c): c is FocusCue => !!c) : [];
+    const clean = (list: unknown): FocusCue[] => (Array.isArray(list) ? list.map(cleanCue).filter((c): c is FocusCue => !!c) : []);
+    const cues = clean(p.cues);
     const remove = p.remove ? cleanCue(p.remove) : null;
+    if (Array.isArray(p.replay)) {
+      let focus = NO_FOCUS;
+      for (const step of p.replay.slice(0, 200)) focus = applyCues(focus, clean(step));
+      setState((s) => ({ slide: slideIndex, focus: { ...focus, seq: (s.focus.seq || 0) + 1 } }));
+      return;
+    }
     if (!cues.length && !remove) return;
     setState((s) => {
       let focus = s.slide === slideIndex ? s.focus : NO_FOCUS;

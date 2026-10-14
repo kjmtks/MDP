@@ -206,17 +206,14 @@ export const renderSlideHTML = (block: RawBlock, globalContext: SlideContext, pa
   // `<!-- @script: … -->` — the read-aloud manuscript (separate from @note).
   const scriptRegex = /<!--\s*@script:\s*([\s\S]*?)\s*-->/g;
   slideMarkdown = slideMarkdown.replace(scriptRegex, (_, scriptContent) => {
-    // Strip the auto-narration control markers from the DISPLAYED script (the
-    // auto-play reads them from the slide's raw markdown): `[[step]]` drives build
-    // stepping, and a ruby `[[語|よみ]]` / `[[say: 読み]]` is the TTS reading of a word
-    // or formula — the presenter reads the text and the rendered math itself, so a
+    // The DISPLAYED script (the auto-play reads the markers from the slide's raw
+    // markdown): a ruby `[[語|よみ]]` / `[[say: 読み]]` is the TTS reading of a word or
+    // formula — the presenter reads the text and the rendered math itself, so a
     // reading is not in the text: its base is marked, the reading shown on hover
-    // (markScriptReadings — here, while code spans are still set aside).
-    extractedScripts.push(
-      markScriptReadings(scriptContent.trim())
-        .replace(/\[\[\s*step\s*\]\]/gi, ' ')
-        .replace(/\s+/g, ' ').trim(),
-    );
+    // (markScriptReadings — here, while code spans are still set aside). `[[step]]`
+    // stays: renderScriptChips makes it the ⏭ chip that reveals the build there by
+    // hand (until 2026-10-14 it was stripped here, so the chip never showed).
+    extractedScripts.push(markScriptReadings(scriptContent.trim()).replace(/\s+/g, ' ').trim());
     return "";
   });
   const scriptMarkdown = restore(extractedScripts.join('\n\n'));

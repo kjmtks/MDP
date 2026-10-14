@@ -34,6 +34,7 @@ import { estimateDeckSeconds, formatClock, scriptKey, slideSeconds, slideTimeBas
 import { setOpenDeck } from '../../features/slide/openDeckRuntime';
 import { SuggestModuleDialog } from '../../features/modules/components/SuggestModuleDialog';
 import { AutoPlayView } from '../../features/autoplay/AutoPlayView';
+import { usePresentingSession } from '../../features/slide/hooks/usePresentingSession';
 import { VideoExportDialog } from '../../features/video/VideoExportDialog';
 import { VideoQueuePanel } from '../../features/video/VideoQueuePanel';
 import { enqueueVideo, onVideoJobFinished } from '../../features/video/videoQueue';
@@ -952,7 +953,7 @@ export default function EditorPage() {
   const {
     isSlideshow, setIsSlideshow, slideshowRef, isSlideOverview, setIsSlideOverview,
     toggleSlideOverview, mode, setMode, showControls, setShowControls, moveSlide, toggleSlideshow,
-    step, setStep
+    step, setStep, cuePos, cueAt, advanceBuild
   } = usePresentation(slides, currentSlideIndex, setCurrentSlideIndex);
 
   // The transform-only suppress above can leave `slides` (used by slideshow /
@@ -1360,7 +1361,7 @@ export default function EditorPage() {
     moveSlide, addStroke, clear, undo, redo, handleAddBlankSlide, updateStrokes, handleUpdateNote,
     remotePort, rasterize, remoteActive, basePath, isSlideOverview, toggleSlideOverview, selectSlideFromOverview,
     step, navLink, navBack, navForward, handleUpdateScript, handleRehearsalRun, lastRehearsal, recordCommand,
-    remoteView, setLayoutJob,
+    remoteView, setLayoutJob, cuePos, cueAt,
   );
   // The presenter view shows the recorder's state (REC / elapsed time).
   useEffect(() => { send({ type: 'REC_STATE', state: recState, channelId }); }, [recState, send, channelId]);
@@ -1487,6 +1488,9 @@ export default function EditorPage() {
 
   const [rehearseOpen, setRehearseOpen] = useState(false);
   const [autoPlayOpen, setAutoPlayOpen] = useState(false);
+  // A show in this window — the slideshow or the narrated auto-play: the screen
+  // stays on, and the notifications wait until it ends.
+  usePresentingSession(isSlideshow || autoPlayOpen, 'show', true);
   // The auto-play's slides: hidden ones are not played, as in the slideshow (the
   // numbers stay the deck's); each knows its place in the deck and its time estimate
   // now, for a measurement of the narration.
@@ -2435,10 +2439,9 @@ export default function EditorPage() {
                   step={step}
                   globalTransition={globalContext.transition}
                   onStepAutoAdvance={() => {
-                    // Auto-advance to the NEXT BUILD only — don't cross the slide
-                    // boundary (the last build stops; cross slides manually).
-                    const sc = (slides[currentSlideIndex] as { stepCount?: number })?.stepCount || 0;
-                    if (step < sc) moveSlide(1);
+                    // Auto-advance to the NEXT BUILD only — no emphasis, never across
+                    // the slide boundary (the last build stops; cross slides manually).
+                    advanceBuild();
                   }}
                   renderSlide={(slide, idx, opts) => (
                     <SlideScaler width={slideSize.width} height={slideSize.height} marginRate={1}>

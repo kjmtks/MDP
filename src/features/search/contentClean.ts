@@ -33,13 +33,32 @@ const MD_LINK_RE = /\[([^\]]*)\]\([^)]*\)/g;
 const HTML_TAG_RE = /<\/?[a-zA-Z][^>]*>/g;
 const HEADING_RE = /^[ \t]{0,3}#{1,6}[ \t]+(.+?)[ \t]*#*[ \t]*$/m;
 
+/** `\focus{name}{…}` (a place a focus cue points at) shows only what it holds.
+ *  Mirrored in app/mcp-bridge.cjs (unwrapFocus) — keep the two identical. */
+export const unwrapFocus = (text: string): string => {
+  let s = text;
+  const open = /\\focus\{[\p{L}\p{N}_.-]+\}\{/u;
+  for (let m = open.exec(s); m; m = open.exec(s)) {
+    let depth = 1;
+    let i = m.index + m[0].length;
+    for (; i < s.length; i++) {
+      if (s[i] === '\\') { i++; continue; }
+      if (s[i] === '{') depth++;
+      else if (s[i] === '}' && --depth === 0) break;
+    }
+    if (depth !== 0) break;                       // unclosed: shown as written
+    s = s.slice(0, m.index) + s.slice(m.index + m[0].length, i) + s.slice(i + 1);
+  }
+  return s;
+};
+
 /** A slide's visible text, as plain lines (markdown markers dropped). */
 const visibleText = (raw: string): string => {
   let s = raw || '';
   // `@image … @end` def blocks hold base64/SVG payloads, not text.
   const ranges = findImageDefRanges(s);
   for (const r of [...ranges].sort((a, b) => b.from - a.from)) s = s.slice(0, r.from) + s.slice(r.to);
-  return s
+  return unwrapFocus(s)
     .replace(BASE64_RE, ' ')
     .replace(SVG_RE, ' ')
     .replace(CAPTION_RE, (_m, caption: string) => `\n${caption || ''}\n`)

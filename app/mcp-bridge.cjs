@@ -592,7 +592,7 @@ const BUILTIN_DIRECTIVES = new Set([
   'title', 'subtitle', 'date', 'presenter', 'affiliation', 'contact', 'tags',
   'aspect', 'theme', 'css', 'transition', 'build', 'header', 'footer', 'end',
   'note', 'script', 'time', 'pageclass', 'id', 'caption', 'cover', 'hide', 'draw', 'drawing', 'addstyle',
-  'image', 'description', 'answer', 'answers', 'resolution', 'endbuild', 'endanswer',
+  'image', 'description', 'answer', 'answers', 'resolution', 'endbuild', 'endanswer', 'focus', 'endfocus',
 ]);
 
 // Lazy up to the closing `-->` (not `[^>]`, which truncates values containing '>').
@@ -695,12 +695,31 @@ function slideSecondsFromRaw(raw, cpm, measuredSec) {
   return Math.round(TT.BASE + bullets * TT.BULLET + visuals * TT.VISUAL + (body / cps) * TT.BODY_W);
 }
 
+// `\focus{name}{…}` (a place a focus cue points at) shows only what it holds —
+// identical to contentClean.ts unwrapFocus.
+function unwrapFocus(text) {
+  let s = text;
+  const open = /\\focus\{[\p{L}\p{N}_.-]+\}\{/u;
+  for (let m = open.exec(s); m; m = open.exec(s)) {
+    let depth = 1;
+    let i = m.index + m[0].length;
+    for (; i < s.length; i++) {
+      if (s[i] === '\\') { i++; continue; }
+      if (s[i] === '{') depth++;
+      else if (s[i] === '}' && --depth === 0) break;
+    }
+    if (depth !== 0) break;
+    s = s.slice(0, m.index) + s.slice(m.index + m[0].length, i) + s.slice(i + 1);
+  }
+  return s;
+}
+
 // A slide's heading and visible text for search_decks — mirrors the app's
 // src/features/search/contentClean.ts: speaker notes, scripts and every other
 // directive (HTML comments) are not searched; a @caption is shown, so its text is.
 function slideSearchText(raw) {
-  const visible = String(raw || '')
-    .replace(/<!--\s*@image\s[^>]*?-->[\s\S]*?<!--\s*@end\s*-->/g, ' ')
+  const visible = unwrapFocus(String(raw || '')
+    .replace(/<!--\s*@image\s[^>]*?-->[\s\S]*?<!--\s*@end\s*-->/g, ' '))
     .replace(/data:[a-zA-Z0-9+./-]+;base64,[A-Za-z0-9+/=]+/g, ' ')
     .replace(/<svg[\s\S]*?<\/svg>/gi, ' ')
     .replace(/<!--\s*@caption\s+([\s\S]*?)\s*-->/gi, (_m, c) => `\n${c || ''}\n`)

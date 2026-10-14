@@ -20,11 +20,12 @@ import { besideDeckPossible } from '../video/videoFiles';
 import { synthesizesAudio, type TtsEngine } from '../tts/ttsService';
 import { estimateDeckSeconds } from '../slide/talkTime';
 import {
-  checkSiteTargets, cueLineProblems, cueSites, cueText, focusAtLine, focusOfMarkers, lineCount, outlineOf, pctBox,
-  type CueSite, type FocusProblem,
+  checkSiteTargets, cueLineProblems, cueSites, cueText, duplicateNames, focusAtLine, focusOfMarkers, lineCount, outlineOf, pctBox,
+  pointsByWords, type CueSite, type FocusProblem,
 } from '../focus/focusCheck';
+import { FOCUS_NAME_SRC } from '../slide/parser/katexExtensions';
 import { listTargets } from '../focus/focusTargets';
-import { slideScript, type FocusCue } from '../autoplay/autoplay';
+import { scriptCues, slideScript, type FocusCue } from '../autoplay/autoplay';
 import type { RasterizeOptions } from '../remote/capture/captureTypes';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -148,7 +149,10 @@ const BUILTIN_DIRECTIVES = new Set([
 ]);
 // Builtin directives that OPEN a `<!-- @end -->`-closed block (for balance checks).
 // `image` is the in-file image DEFINITION (`<!-- @image alias -->…data…<!-- @end -->`).
-const BLOCK_OPENER_BUILTINS = new Set(['header', 'footer', 'addstyle', 'image', 'answer']);
+const BLOCK_OPENER_BUILTINS = new Set(['header', 'footer', 'addstyle', 'image', 'answer', 'focus']);
+// The focus cues' advice (validate, get_focus_targets) when they point by the slide's words or position.
+const NAME_ADVICE = 'Point at places by NAME — it survives edits of the slide: mark the place in the slide (\\focus{name}{…} around words, an image or a formula part; <!-- @focus name -->…<!-- @end --> around blocks; tag: name on a module; data-focus="name" in an inline SVG) and write #name (item:#name / cell:#name / row:#name / col:#name for the bullet / cell / row / column holding it). A target by the slide\'s words or position ("phrase", item:2, cell:2,3, math:1, fig:"label") breaks when those change.';
+const FOCUS_NAME_RE = new RegExp(`^${FOCUS_NAME_SRC}$`, 'u');
 
 const loadImage = (src: string) => new Promise<HTMLImageElement>((resolve, reject) => {
   const img = new Image();
@@ -171,6 +175,7 @@ export function validateDeckText(text: string, themes: ThemeOption[], library?: 
   const warnings: string[] = [];
   const themeNames = new Set(themes.flatMap((t) => [t.name, t.fileName]));
   const effectNames = new Set(Object.keys(loadedEffects));
+  const byWords: string[] = [];        // focus targets found by words / position (the advice)
   const checkEffect = (where: string, kind: string, name?: string) => {
     if (name && !effectNames.has(name)) warnings.push(`${where}: unknown ${kind} effect "${name}"`);
   };
@@ -192,7 +197,7 @@ export function validateDeckText(text: string, themes: ThemeOption[], library?: 
         if (depth === 0) errors.push(`${where}: a section separator "<!-- @ -->" appears with NO open module. A module body must start with an opening "<!-- @name … -->" directive. Add it (get_module_spec shows the exact syntax), or use a plain Markdown list instead.`);
         continue;
       }
-      if (name === 'end' || name === 'endbuild' || name === 'endanswer' || (/^end./i.test(name) && loadedModules[name.slice(3)])) {
+      if (name === 'end' || name === 'endbuild' || name === 'endanswer' || name === 'endfocus' || (/^end./i.test(name) && loadedModules[name.slice(3)])) {
         if (depth === 0) errors.push(`${where}: "<!-- @end -->" with no matching opener. Add the opening "<!-- @name … -->" above it, or remove this stray @end.`);
         else depth--;
         continue;
@@ -215,6 +220,14 @@ export function validateDeckText(text: string, themes: ThemeOption[], library?: 
         const a = argsStr.trim();
         if (bi > 0) warnings.push(`${where}: "<!-- @answers … -->" only works on the meta page (it switches the deck's @answer blocks between shown and hidden).`);
         else if (a && !/^(show|hide)\b/i.test(a) && !/^[\w-]+\s*:/.test(a)) warnings.push(`${where}: "@answers ${a}" — expected "show" or "hide" (optionally followed by label:/frame:/space: defaults).`);
+        continue;
+      }
+      if (name === 'focus') {
+        // A place made of blocks a focus cue points at as #name.
+        const n = argsStr.trim();
+        if (bi === 0) warnings.push(`${where}: "<!-- @focus … -->" names a place on a SLIDE — the meta page shows nothing.`);
+        else if (!FOCUS_NAME_RE.test(n)) warnings.push(`${where}: "<!-- @focus ${n} -->" takes one name (letters, digits, _ . -) — a script points at it as #name.`);
+        depth++;
         continue;
       }
       if (BLOCK_OPENER_BUILTINS.has(name)) { depth++; continue; }
@@ -249,12 +262,21 @@ export function validateDeckText(text: string, themes: ThemeOption[], library?: 
     // Focus cues, as far as the text tells (whether a target is ON the slide needs
     // the slide rendered — check_deck's `focus`, get_focus_targets).
     if (bi > 0 && HAS_CUE.test(slideScript(block.rawContent))) {
-      for (const p of cueLineProblems(cueSites({ html: '', raw: block.rawContent }))) {
+      for (const p of cueLineProblems(cueSites({ html: '', raw: block.rawContent }), block.rawContent)) {
         const at = `${where}${p.line ? `, line ${p.line}` : ''}: focus ${p.cue ? `${p.cue} ` : ''}`;
         warnings.push(`${at}${p.level === 'note' ? '(not recommended) ' : ''}${p.target ? `"${p.target}" ` : ''}${p.message}`);
       }
+      for (const c of scriptCues(slideScript(block.rawContent))) byWords.push(...c.targets.filter(pointsByWords));
+    }
+    if (bi > 0) {
+      for (const n of duplicateNames(block.rawContent)) {
+        warnings.push(`${where}: the name "${n}" is given to more than one place — #${n} points at the first; give each place its own name.`);
+      }
     }
   });
+  if (byWords.length) {
+    warnings.push(`focus (recommended): ${byWords.length} target(s) point by the slide's words or position (e.g. ${[...new Set(byWords)].slice(0, 3).join(', ')}). ${NAME_ADVICE}`);
+  }
   // Of two definitions of one alias in the deck only the FIRST is used.
   for (const [a, n] of imageDefs || []) {
     if (n > 1) warnings.push(`image alias "${a}" is defined ${n} times in this deck — only the first definition is used; delete or rename the others`);
@@ -1018,9 +1040,11 @@ Match the user's style throughout (cached profile if present, else get_style_sam
               };
             },
           );
-          const problems: FocusProblem[] = [...cueLineProblems(sites), ...r.lines.flatMap((l) => l.problems)];
+          const problems: FocusProblem[] = [...cueLineProblems(sites, slide.raw || ''), ...r.lines.flatMap((l) => l.problems)];
+          const byWords = sites.some((s) => s.cues.some((c: FocusCue) => c.targets.some(pointsByWords)));
           return {
             deck: d.path, slide: n, narrationLines: lineCount(slide, cc.readingCpm), stepCount: slide.stepCount || 0,
+            ...(byWords ? { advice: NAME_ADVICE } : {}),
             targets: r.targets,
             cues: r.lines.map(({ site, cues }) => ({
               ...(site.line ? { line: site.line } : {}), at: site.at, buildStep: site.buildStep,

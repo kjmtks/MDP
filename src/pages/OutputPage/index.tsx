@@ -8,6 +8,7 @@ import { useSync, type SyncMessage } from '../../features/remote/hooks/useSync';
 import { moduleSyncBus } from '../../features/modules/moduleSyncBus';
 import { mdpBus } from '../../features/bus/mdpBus';
 import { useBusFocus } from '../../features/focus/focusBus';
+import { usePresentingSession } from '../../features/slide/hooks/usePresentingSession';
 import { registerParsedModule, clearAllModules } from '../../features/modules/moduleManager';
 import { registerParsedEffect, clearAllEffects } from '../../features/effects/effectManager';
 import { useDrawing } from '../../features/drawing/hooks/useDrawing';
@@ -281,6 +282,8 @@ export default function OutputPage() {
 
   // What the presenter's focus chips point at on the current slide.
   const busFocus = useBusFocus(currentIndex);
+  // The audience's screen: it stays on, and this window's notifications wait.
+  usePresentingSession(true, 'output', true);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const renderSlide = useCallback((slide: any, idx: number, opts: { buildStep: number }) => (

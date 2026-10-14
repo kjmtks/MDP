@@ -1,6 +1,9 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import type { AppMode } from '../../drawing/components/SlideControls';
 import { choiceDialog } from '../../../components/error/errorReporter';
+import { focusStepsAt, lineCues, posAfterChip, presentMarkers, pressEnd, pressStart, slideScript, stepsAt } from '../../autoplay/autoplay';
+import { sendFocus } from '../../focus/focusBus';
+import { mdpBus } from '../../bus/mdpBus';
 
 interface DisplayInfo {
   id: number; label: string; width: number; height: number;
@@ -73,28 +76,92 @@ export const usePresentation = (
 
   const slideshowRef = useRef<HTMLDivElement>(null);
 
-  const moveSlide = useCallback((direction: number) => {
-    const inShow = isSlideshowRef.current;
+  // How far → has gone on this slide: the script's markers done (presentMarkers —
+  // its [[step]]s, focus cues and events, in order), then its extra builds.
+  const [cuePos, setCuePos] = useState(0);
+  const cuePosRef = useRef(0);
+  useEffect(() => { cuePosRef.current = cuePos; }, [cuePos]);
+
+  // Every slide change starts at step 0, however it came about — the editor's caret
+  // moves the slide too, and the step the presenter left on the old slide must not
+  // reveal the new slide's builds in the presenter / output windows.
+  const [stepSlide, setStepSlide] = useState(currentSlideIndex);
+  if (stepSlide !== currentSlideIndex) {
+    setStepSlide(currentSlideIndex);
+    if (step !== 0) setStep(0);
+    if (cuePos !== 0) setCuePos(0);
+  }
+
+  const go = useCallback((pos: number, s: number) => {
+    cuePosRef.current = pos; setCuePos(pos);
+    stepRef.current = s; setStep(s);
+  }, []);
+  const markersOf = useCallback((i: number) => {
+    const slide = slides[i];
+    const stepCount = slide?.stepCount || 0;
+    return { stepCount, ...presentMarkers(slideScript(slide?.raw || ''), stepCount) };
+  }, [slides]);
+
+  // → / ←. In a show, → goes through the slide's script in its order — each press
+  // the next group of markers: its builds ([[step]]), the emphases written there
+  // (focus cues, sent to every surface over the app bus), its events ([[emit]],
+  // fired as their chips would — never waited for) — then the builds the script
+  // never reveals, then the next slide; ← back one press (builds and emphases
+  // rebuilt from the slide's start; an event is not taken back), then the previous
+  // slide, fresh. `builds`: a show even though this window shows no slideshow — a
+  // presentation given from the presenter view (or a remote device) with the
+  // output window, while this one keeps the editor. Outside a show → just turns
+  // the slide.
+  const moveSlide = useCallback((direction: number, builds = false) => {
+    const inShow = isSlideshowRef.current || builds;
+    const { stepCount, markers, extra } = inShow ? markersOf(currentSlideIndex) : { stepCount: 0, markers: [], extra: 0 };
+    const p = cuePosRef.current;
     if (direction > 0) {
-      // Advance: consume in-slide build steps first, then move to the next slide.
-      const stepCount = inShow ? (slides[currentSlideIndex]?.stepCount || 0) : 0;
-      if (stepRef.current < stepCount) { setStep(stepRef.current + 1); return; }
+      if (inShow && p < markers.length + extra) {
+        const q = pressEnd(markers, p);
+        go(q, Math.max(stepRef.current, stepsAt(markers, q, stepCount)));
+        const done = markers.slice(p, Math.min(q, markers.length));
+        const cues = done.flatMap((m) => (m.kind === 'cue' && m.cue ? [m.cue] : []));
+        if (cues.length) sendFocus({ slide: currentSlideIndex, cues: lineCues(cues) });
+        for (const m of done) if (m.kind === 'event' && m.action?.topic) mdpBus.emit(m.action.topic, { args: m.action.args || [] });
+        return;
+      }
+      if (inShow && stepRef.current < stepCount) { go(p, stepRef.current + 1); return; }
       let next = currentSlideIndex + 1;
       while (next < slides.length && slides[next].isHidden) next++;
-      if (next < slides.length) { setStep(0); setCurrentSlideIndex(next); }
+      if (next < slides.length) { go(0, 0); setCurrentSlideIndex(next); }
     } else if (direction < 0) {
-      // Retreat: step back through builds within the slide; once at 0, move to
-      // the previous slide and start it fresh (all builds hidden, step 0) — the
-      // same as arriving forward. Every slide change starts at step 0.
-      if (inShow && stepRef.current > 0) { setStep(stepRef.current - 1); return; }
+      if (inShow && p > 0) {
+        const s = pressStart(markers, p);
+        go(s, stepsAt(markers, s, stepCount));
+        if (markers.slice(0, p).some((m) => m.kind === 'cue')) sendFocus({ slide: currentSlideIndex, replay: focusStepsAt(markers, s) });
+        return;
+      }
+      if (inShow && stepRef.current > 0) { go(0, stepRef.current - 1); return; }
+      // The previous slide starts fresh (no build, nothing pointed at) — the same
+      // as arriving forward.
       let prev = currentSlideIndex - 1;
       while (prev >= 0 && slides[prev].isHidden) prev--;
-      if (prev >= 0) {
-        setStep(0);
-        setCurrentSlideIndex(prev);
-      }
+      if (prev >= 0) { go(0, 0); setCurrentSlideIndex(prev); }
     }
-  }, [currentSlideIndex, slides, setCurrentSlideIndex]);
+  }, [currentSlideIndex, slides, setCurrentSlideIndex, go, markersOf]);
+
+  /** A chip clicked in the presenter's script (its own emphasis / event already
+   *  done there): → goes on right after it, and the builds up to it are shown (what
+   *  it points at may be in one). `chip`: its place among the pane's chips. */
+  const cueAt = useCallback((slide: number, chip: number) => {
+    if (slide !== currentSlideIndex) return;
+    const { stepCount, markers } = markersOf(currentSlideIndex);
+    const pos = posAfterChip(markers, chip);
+    go(pos, Math.max(stepRef.current, stepsAt(markers, pos, stepCount)));
+  }, [currentSlideIndex, go, markersOf]);
+
+  /** A build's own `auto:` timer: the next build only — no emphasis, never the next
+   *  slide (the presenter's → stays where it was in the script). */
+  const advanceBuild = useCallback(() => {
+    const stepCount = slides[currentSlideIndex]?.stepCount || 0;
+    if (stepRef.current < stepCount) { stepRef.current += 1; setStep(stepRef.current); }
+  }, [currentSlideIndex, slides]);
 
   const toggleSlideOverview = useCallback(() => {
     setIsSlideOverview(prev => !prev);
@@ -155,7 +222,7 @@ export const usePresentation = (
     mode, setMode,
     showControls, setShowControls,
     isTouchDevice,
-    step, setStep,
-    moveSlide, toggleSlideshow
+    step, setStep, cuePos, cueAt,
+    moveSlide, advanceBuild, toggleSlideshow
   };
 };

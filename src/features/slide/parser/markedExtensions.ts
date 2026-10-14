@@ -58,14 +58,16 @@ export const slideRenderer = (context: SlideContext, baseUrl: string = "", lastU
         return "";
     }
     if (command.type === 'COVER') {
+        // Each part carries its name for the focus cues ([[look: #title]]): the cover
+        // is made from the meta page, where no \focus{…} can be written.
         let html = `<div class="cover-title-wrapper">`;
         const m = context.meta;
-        if (m.date) html += `<div class="date">${renderMeta(m.date)}</div>`;
-        if (m.title) html += `<div class="title">${renderMeta(m.title)}</div>`;
-        if (m.subtitle) html += `<div class="subtitle">${renderMeta(m.subtitle)}</div>`;
-        if (m.presenter) html += `<div class="presenter">${renderMeta(m.presenter)}</div>`;
-        if (m.affiliation) html += `<div class="affiliation">${renderMeta(m.affiliation)}</div>`;
-        if (m.contact) html += `<div class="contact">${renderMeta(m.contact)}</div>`;
+        if (m.date) html += `<div class="date" data-mdp-focus="date">${renderMeta(m.date)}</div>`;
+        if (m.title) html += `<div class="title" data-mdp-focus="title">${renderMeta(m.title)}</div>`;
+        if (m.subtitle) html += `<div class="subtitle" data-mdp-focus="subtitle">${renderMeta(m.subtitle)}</div>`;
+        if (m.presenter) html += `<div class="presenter" data-mdp-focus="presenter">${renderMeta(m.presenter)}</div>`;
+        if (m.affiliation) html += `<div class="affiliation" data-mdp-focus="affiliation">${renderMeta(m.affiliation)}</div>`;
+        if (m.contact) html += `<div class="contact" data-mdp-focus="contact">${renderMeta(m.contact)}</div>`;
         html += `</div>`;
         return html;
     }

@@ -13,6 +13,10 @@
 .mdp-build-active .mdp-build { visibility: hidden; }
 .mdp-build-active .mdp-build.mdp-build-shown { visibility: visible; }
 
+/* A focus place made of blocks (`<!-- @focus name -->` … `<!-- @end -->`): only a
+ * name for the script's `#name` — its blocks lay out as without it. */
+.mdp-focus-block { display: contents; }
+
 /* `@answer` blocks hidden for a handout (buildProcessor). The answer keeps its
  * place and size, but nothing in it is painted — so it is in no PDF, PNG or
  * PPTX either; `!important` also beats a nested build's `visibility: visible`.

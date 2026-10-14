@@ -189,15 +189,23 @@ block on a single slide OVERRIDES the global one for that slide; an EMPTY block
     on \`.mdp-focus-layer\`: \`--mdp-focus-color\` (looks), \`--mdp-focus-pen\` (underline,
     circle), \`--mdp-focus-marker\`, \`--mdp-focus-line\` / \`--mdp-focus-gap\` (× the line
     width / the room from the text), \`--mdp-focus-dim\`, \`--mdp-focus-blur\`.
-    TARGET, as the slide SHOWS it: \`"phrase"\` / \`「語句」\` (\`#2\` = its 2nd
-    occurrence), \`item:"…"\` / \`item:3\` (a bullet), \`cell:"…"\` / \`cell:2,3\`,
-    \`row:…\`, \`col:…\` (numbers count in the first table, the header row included),
-    \`math:2\` (the 2nd formula) or \`math:rhs\` — a PART of a formula, marked in its
-    LaTeX with \`\\focus{rhs}{mc^2}\` (it renders unchanged), \`fig:"label"\` (a text
-    label of an inline SVG figure) / \`fig:name\` (its element with
-    \`data-focus="name"\`), \`@ex1\` (a module given \`tag: ex1\`), \`area:x,y,w,h\` (% of
-    the slide — a spot inside an image). Several things at once are ONE cue:
-    \`[[look: "A", "B"]]\`.
+    TARGET — NAME the place in the slide, then point at the name (write them this
+    way: a name survives every later edit of the slide's words and order). Wrap the
+    words — or an image, or a formula — in \`\\focus{name}{…}\`: it renders unchanged,
+    inside LaTeX too (\`\\(E=\\focus{rhs}{mc^2}\\)\` marks a PART of a formula); wrap
+    whole blocks (a list, a table, a code block, a diagram) in
+    \`<!-- @focus name -->\` … \`<!-- @end -->\`; a module is named by its \`tag: name\`,
+    a part of an inline SVG figure by \`data-focus="name"\`; a cover's parts are
+    named \`title\`, \`subtitle\`, \`date\`, \`presenter\`, \`affiliation\`, \`contact\`.
+    Then \`[[look: #name]]\`;
+    \`item:#name\` / \`cell:#name\` / \`row:#name\` / \`col:#name\` = the bullet / cell /
+    row / column holding it. Names: letters, digits, \`_ - .\`, one place per name on
+    a slide. Pointing by what the slide SHOWS also works — \`"phrase"\` / \`「語句」\`
+    (\`#2\` = its 2nd occurrence), \`item:3\`, \`cell:2,3\`, \`row:…\`, \`col:…\` (the first
+    table, header row included), \`math:2\`, \`fig:"label"\` — but breaks when those
+    change: don't write it. \`area:x,y,w,h\` (% of the slide) is for a spot inside an
+    image, which a name cannot mark. Several things at once are ONE cue:
+    \`[[look: #a, #b]]\`.
     TIMING: a cue acts when its narration LINE starts — a line is a subtitle unit,
     one sentence (a sentence under ~12 characters rides with the next). So write ONE
     emphasis per sentence, at the start of the sentence about it:
@@ -208,6 +216,11 @@ block on a single slide OVERRIDES the global one for that slide; an EMPTY block
     \`[[step]]\`. Cues are never spoken, captioned or counted in the talk time. Check
     with get_focus_targets (the slide's pointable targets and where each cue lands),
     render_slide_image focus:"outline" / "line:N", and check_deck (\`focus\`).
+    A talk given BY HAND follows the same order: → does the script's \`[[step]]\`s,
+    cues and events (\`[[emit]]\` / \`[[emit-wait]]\`, fired — not waited for) one press
+    at a time, as written (markers with nothing but spaces between them —
+    \`[[step]][[look: row:2]]\` — are one press; a press ends after an
+    \`[[emit-wait]]\` and at a \`[[wait]]\` / \`[[pause]]\`), then turns the slide.
 - \`<!-- @time 90s -->\` — this slide's speaking-time budget (overrides the estimate,
   a measured one too). Accepts \`90s\`, \`2m\`, \`1m30s\`, \`1:30\` (mm:ss). Shown live in
   the presenter view (per-slide + whole-deck countdown).

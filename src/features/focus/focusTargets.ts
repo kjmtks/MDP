@@ -1,6 +1,13 @@
 // Where a focus cue's TARGET is on a rendered slide — measured from the DOM that
 // SlideView drew, in the slide's own CSS pixels (whatever the surface's zoom).
 //
+//   #name                      a place the slide NAMES — the way to point that
+//                              survives edits of its words and order: words / an
+//                              image / a formula part marked \focus{name}{…}, blocks
+//                              in <!-- @focus name -->…<!-- @end -->, a module's
+//                              tag: name, an inline SVG's data-focus="name" (or id)
+//   item:#name / cell:#name / row:#name / col:#name   the bullet / cell / row /
+//                              column holding that place
 //   "語句" / 「語句」(#n)        a phrase as SHOWN on the slide (n-th occurrence) —
 //                               whitespace, full/half width and (as a fallback) case
 //                               and Markdown marks do not matter; a bare word too
@@ -41,6 +48,7 @@ export function parseTarget(raw: string): Parsed | null {
   const s = String(raw || '').trim();
   if (!s) return null;
   if (s.startsWith('@')) return s.length > 1 ? { kind: '@', name: s.slice(1), nth: 1 } : null;
+  if (s.startsWith('#')) return s.length > 1 ? { kind: '#', name: s.slice(1), nth: 1 } : null;
   const q = /^(?:([A-Za-z]+):)?(?:"([^"]*)"|「([^」]*)」)(?:#(\d+))?$/.exec(s);
   if (q) return { kind: (q[1] || '').toLowerCase(), text: q[2] ?? q[3] ?? '', nth: q[4] ? Math.max(1, +q[4]) : 1 };
   const n = /^([A-Za-z]+):(\d+(?:\.\d+)?(?:,\d+(?:\.\d+)?)*)$/.exec(s);
@@ -199,6 +207,11 @@ function writtenLines(els: Element[], conv: (r: DOMRect | DOMRectReadOnly) => Fo
       const b = katexBox(k, conv);
       if (b) boxes.push(b);
     });
+    // Pictures in it (an image, an inline SVG figure, a canvas…) are written too.
+    el.querySelectorAll('img, canvas, video, iframe, object, svg').forEach((m) => {
+      if (m.closest('.katex') || (m.tagName.toLowerCase() === 'svg' && m.parentElement?.closest('svg'))) return;
+      boxes.push(conv(m.getBoundingClientRect()));
+    });
   }
   return lineBoxes(boxes);
 }
@@ -242,6 +255,32 @@ function findText(root: HTMLElement, text: string, nth: number, target: string, 
   return { range: rangeOf(index, hits[nth - 1]), count: hits.length };
 }
 
+/** The places the slide names `name` — in the text or a formula (\focus{name}{…}), a
+ *  block (@focus name), a module (tag:), an inline SVG (data-focus / id) — in the
+ *  slide's order. */
+function namedPlaces(root: HTMLElement, name: string): Element[] {
+  const n = cssEsc(name);
+  return Array.from(root.querySelectorAll(`[data-mdp-focus="${n}"], [data-mdp-tag="${n}"], svg [data-focus="${n}"], svg [id="${n}"]`))
+    .filter((e) => !e.closest(SKIP));
+}
+const nothingNamed = (target: string, name: string): FocusMiss => ({
+  target,
+  error: `nothing on the slide is named "${name}" — mark the place: \\focus{${name}}{…} around words, an image or a formula part, <!-- @focus ${name} -->…<!-- @end --> around blocks, tag: ${name} on a module, data-focus="${name}" in an inline SVG`,
+});
+/** A named place: words / an image marked in the text hug what is written (the
+ *  lines it is on); a block is its blocks; a formula part, a module, an SVG part
+ *  their own box. */
+const placeHit = (target: string, el: Element, root: HTMLElement, matches: number): FocusResolution => {
+  if (el.closest('.katex-html') || el.hasAttribute('data-mdp-tag') || el.closest('svg')) return elementHit(target, el, root, matches);
+  return elementHit(target, el, root, matches, el.classList.contains('mdp-focus-block') ? true : 'hug');
+};
+/** `kind:#name` — the bullet / cell holding a named place. */
+function holderOf(root: HTMLElement, target: string, name: string, sel: string, what: string): Element | FocusMiss {
+  const place = namedPlaces(root, name)[0];
+  if (!place) return nothingNamed(target, name);
+  return place.closest(sel) || { target, error: `"#${name}" is not in ${what}` };
+}
+
 const tablesOf = (root: HTMLElement) => Array.from(root.querySelectorAll('table')) as HTMLTableElement[];
 const columnOf = (cell: HTMLTableCellElement): HTMLTableCellElement[] => {
   const table = cell.closest('table') as HTMLTableElement | null;
@@ -269,6 +308,10 @@ export function resolveTarget(target: string, root: HTMLElement): FocusResolutio
       if (![x, y, w, h].every((v) => Number.isFinite(v))) return { target, error: 'area takes x,y,w,h in % of the slide' };
       const box = { x: (x / 100) * W, y: (y / 100) * H, w: (w / 100) * W, h: (h / 100) * H };
       return { target, kind: 'area', boxes: [box], box };
+    }
+    case '#': {
+      const places = namedPlaces(root, p.name!);
+      return places.length ? placeHit(target, places[0], root, places.length) : nothingNamed(target, p.name!);
     }
     case '@': {
       const el = root.querySelector(`[data-mdp-tag="${cssEsc(p.name!)}"]`);
@@ -301,6 +344,10 @@ export function resolveTarget(target: string, root: HTMLElement): FocusResolutio
       return { target, error: 'fig takes a "label" or a name' };
     }
     case 'item': {
+      if (p.name?.startsWith('#')) {
+        const li = holderOf(root, target, p.name.slice(1), 'li', 'a bullet');
+        return 'error' in li ? li : elementHit(target, li, root, undefined, 'hug');
+      }
       if (p.nums) {
         const li = nthOf(Array.from(root.querySelectorAll('li')), p.nums[0], 'bullet', target);
         return 'error' in li ? li : elementHit(target, li, root, undefined, 'hug');
@@ -311,6 +358,14 @@ export function resolveTarget(target: string, root: HTMLElement): FocusResolutio
       return li ? elementHit(target, li, root, found.count, 'hug') : { target, error: `"${p.text}" is not in a bullet` };
     }
     case 'cell': case 'row': case 'col': {
+      if (p.name?.startsWith('#')) {
+        const held = holderOf(root, target, p.name.slice(1), 'td, th', 'a table');
+        if ('error' in held) return held;
+        const cell = held as HTMLTableCellElement;
+        if (p.kind === 'cell') return elementHit(target, cell, root, undefined, true);
+        if (p.kind === 'row') return elementHit(target, cell.parentElement!, root, undefined, true);
+        return boxesHit(target, columnOf(cell), root);
+      }
       if (p.nums) {
         const table = tablesOf(root)[0];
         if (!table) return { target, error: 'the slide has no table' };
@@ -353,7 +408,7 @@ export function resolveTarget(target: string, root: HTMLElement): FocusResolutio
       };
     }
     default:
-      return { target, error: `unknown kind "${p.kind}:" (item, cell, row, col, math, fig, area, @tag, or "text")` };
+      return { target, error: `unknown kind "${p.kind}:" (#name, item, cell, row, col, math, fig, area, @tag, or "text")` };
   }
 }
 
@@ -374,6 +429,23 @@ export function listTargets(root: HTMLElement): FocusTargetInfo[] {
     if (box.w > 0.5 || box.h > 0.5) out.push({ target, what, box, ...(note ? { note } : {}) });
   };
   const content = (root.querySelector('.slide-content') as HTMLElement | null) || root;
+  // The places the slide NAMES come first: #name is the way to point that survives
+  // edits (the rest below are found by their words or position).
+  const named = new Set<string>();
+  content.querySelectorAll('[data-mdp-focus], [data-mdp-tag], svg [data-focus]').forEach((el) => {
+    const name = el.getAttribute('data-mdp-focus') ?? el.getAttribute('data-mdp-tag') ?? el.getAttribute('data-focus') ?? '';
+    if (!name || named.has(name) || el.closest(SKIP)) return;
+    named.add(name);
+    const hit = resolveTarget(`#${name}`, root);
+    if (!isHit(hit)) return;
+    const what = el.closest('.katex-html') ? 'formula part' : el.hasAttribute('data-mdp-tag') ? 'module'
+      : el.closest('svg') ? 'figure part' : el.classList.contains('mdp-focus-block') ? 'named blocks' : 'named words';
+    const holders = [el.closest('li') && `item:#${name}`, el.closest('td, th') && `cell:#${name} · row:#${name} · col:#${name}`].filter(Boolean);
+    const also = what === 'formula part' ? `also math:${name}` : what === 'module' ? `also @${name}` : what === 'figure part' ? `also fig:${name}` : '';
+    const note = [also, holders.length ? `its ${el.closest('li') ? 'bullet' : 'cell / row / column'}: ${holders.join(' · ')}` : '',
+      hit.matches && hit.matches > 1 ? `named ${hit.matches} times on the slide — give each place its own name` : ''].filter(Boolean).join('; ');
+    out.push({ target: `#${name}`, what, box: hit.box, ...(note ? { note } : {}) });
+  });
   content.querySelectorAll('h1, h2, h3, h4, h5, h6').forEach((h) => {
     const t = short(h.textContent || '');
     if (t) add(quote(t), `heading ${h.tagName.toLowerCase()}`, h);
@@ -392,19 +464,18 @@ export function listTargets(root: HTMLElement): FocusTargetInfo[] {
         ti === 0 ? `also cell:${r + 1},${c + 1} · row:${r + 1} · col:${c + 1}` : 'a later table: point at it by its text');
     }));
   });
-  content.querySelectorAll('[data-mdp-tag]').forEach((m) => add(`@${(m as HTMLElement).dataset.mdpTag}`, 'module', m));
+  // (named modules, formula parts and figure parts are the #name entries above)
   content.querySelectorAll('[class*="mdp-mod-"]').forEach((m) => {
     if (m.closest('[data-mdp-tag]')) return;
     const name = (Array.from(m.classList).find((c) => c.startsWith('mdp-mod-') && c !== 'mdp-mod-inited') || '').slice(8);
-    if (name) add(`@…`, `module @${name}`, m, 'give its directive `tag: NAME` to point at it as @NAME');
+    if (name) add(`#…`, `module @${name}`, m, 'give its directive `tag: NAME` to point at it as #NAME');
   });
-  Array.from(content.querySelectorAll('.katex')).forEach((k, i) => add(`math:${i + 1}`, 'formula', k.querySelector('.katex-html') || k));
-  content.querySelectorAll('[data-mdp-focus]').forEach((m) => add(`math:${(m as HTMLElement).dataset.mdpFocus}`, 'formula part', m));
+  Array.from(content.querySelectorAll('.katex')).forEach((k, i) => add(`math:${i + 1}`, 'formula', k.querySelector('.katex-html') || k,
+    'by position: name it (or a part) with \\focus{name}{…} in its LaTeX to point as #name'));
   content.querySelectorAll('svg text').forEach((t) => {
     const s = short(t.textContent || '');
     if (s) add(`fig:${quote(s)}`, 'figure label', t);
   });
-  content.querySelectorAll('svg [data-focus]').forEach((g) => add(`fig:${g.getAttribute('data-focus')}`, 'figure part', g));
-  content.querySelectorAll('img').forEach((img, i) => add(`area:…`, `image ${i + 1}`, img, 'point into it with area:x,y,w,h (% of the slide); its box is given'));
+  content.querySelectorAll('img').forEach((img, i) => add(`area:…`, `image ${i + 1}`, img, 'point into it with area:x,y,w,h (% of the slide); its box is given — or name the image: \\focus{name}{![…](…)}'));
   return out;
 }

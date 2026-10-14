@@ -456,6 +456,36 @@ ipcMain.handle('restoreWindowPlacement', () => {
   return { success: true };
 });
 
+// ---- The screen stays on while a show runs ------------------------------------
+// The slideshow, a narrated auto-play, the presenter view and the output window
+// each say while they run (`setPresenting(reason, on)`); while any does, the display
+// neither sleeps nor starts the screen saver (a display-required power request on
+// Windows, an assertion on macOS, an inhibit on Linux). A window that closes takes
+// its reasons with it — a crashed page never keeps the screen on.
+const { powerSaveBlocker } = require('electron');
+const presentingBy = new Map();   // webContents id → Set of reasons
+let screenBlocker = null;
+function updateScreenBlocker() {
+  const on = [...presentingBy.values()].some((s) => s.size > 0);
+  const running = screenBlocker != null && powerSaveBlocker.isStarted(screenBlocker);
+  if (on && !running) screenBlocker = powerSaveBlocker.start('prevent-display-sleep');
+  else if (!on && running) { powerSaveBlocker.stop(screenBlocker); screenBlocker = null; }
+}
+ipcMain.handle('setPresenting', (event, reason, on) => {
+  const wc = event.sender;
+  let set = presentingBy.get(wc.id);
+  if (!set) {
+    set = new Set();
+    presentingBy.set(wc.id, set);
+    const id = wc.id;
+    wc.once('destroyed', () => { presentingBy.delete(id); updateScreenBlocker(); });
+  }
+  const r = String(reason || 'show').slice(0, 40);
+  if (on) set.add(r); else set.delete(r);
+  updateScreenBlocker();
+  return { screenOn: screenBlocker != null };
+});
+
 let captureWin = null;
 async function ensureCaptureWin() {
   if (captureWin && !captureWin.isDestroyed()) return captureWin;

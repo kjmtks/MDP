@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions, Button, Box, Typography,
   Collapse, Snackbar, Alert, Tooltip,
@@ -9,7 +9,7 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import CheckIcon from '@mui/icons-material/Check';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
-import { NOTIFY_EVENT, CONFIRM_EVENT, CHOICE_EVENT, reportError, resolveConfirm, resolveChoice, type AppNotification, type ConfirmRequest, type ChoiceRequest } from './errorReporter';
+import { NOTIFY_EVENT, CONFIRM_EVENT, CHOICE_EVENT, HOLD_EVENT, notificationsHeld, reportError, resolveConfirm, resolveChoice, type AppNotification, type ConfirmRequest, type ChoiceRequest } from './errorReporter';
 
 const IGNORE = /ResizeObserver loop|Script error\.?$/i;
 
@@ -21,6 +21,29 @@ export function NotificationHost() {
   const [detailOpenId, setDetailOpenId] = useState<number | null>(null);
   const [copiedId, setCopiedId] = useState<number | null>(null);
 
+  // A show running in this window holds the notifications (holdNotifications): the
+  // errors wait in their queue, the toasts here — the last few are shown together
+  // when it ends.
+  const [held, setHeld] = useState(notificationsHeld);
+  const heldRef = useRef(held);
+  const heldToasts = useRef<AppNotification[]>([]);
+  useEffect(() => {
+    const onHold = () => {
+      const now = notificationsHeld();
+      heldRef.current = now;
+      setHeld(now);
+      if (!now && heldToasts.current.length) {
+        const list = heldToasts.current;
+        heldToasts.current = [];
+        const last = list[list.length - 1];
+        const lines = [...new Set(list.map((t) => t.message))].slice(-3);
+        setToast({ ...last, message: lines.join('\n') });
+      }
+    };
+    window.addEventListener(HOLD_EVENT, onHold);
+    return () => window.removeEventListener(HOLD_EVENT, onHold);
+  }, []);
+
   const current = queue[0] ?? null;
   const showDetail = current != null && detailOpenId === current.id;
   const copied = current != null && copiedId === current.id;
@@ -31,6 +54,8 @@ export function NotificationHost() {
       if (!n) return;
       if (n.severity === 'error' || n.severity === 'warning') {
         setQueue(prev => [...prev, n]);
+      } else if (heldRef.current) {
+        heldToasts.current.push(n);
       } else {
         setToast(n);
       }
@@ -114,7 +139,7 @@ export function NotificationHost() {
 
   return (
     <>
-      <Dialog open={!!current} onClose={close} maxWidth="sm" fullWidth>
+      <Dialog open={!!current && !held} onClose={close} maxWidth="sm" fullWidth>
         {current && (
           <>
             <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, pb: 1 }}>
@@ -177,7 +202,7 @@ export function NotificationHost() {
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
         {toast ? (
-          <Alert severity={toast.severity === 'info' ? 'info' : 'success'} variant="filled" onClose={() => setToast(null)} sx={{ width: '100%' }}>
+          <Alert severity={toast.severity === 'info' ? 'info' : 'success'} variant="filled" onClose={() => setToast(null)} sx={{ width: '100%', whiteSpace: 'pre-line' }}>
             {toast.message}
           </Alert>
         ) : undefined}

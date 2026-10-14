@@ -37,6 +37,9 @@ export type SyncMessage =
   | { type: 'BUS_EVENT'; topic: string; payload?: any; channelId?: string }
   | { type: 'SYNC_STATE_IMAGE'; payload: ImageSyncPayload; channelId?: string }
   | { type: 'NAV'; direction: number; channelId: string }
+  // A chip clicked in the presenter's script (mirror → host): → goes on right after
+  // it. `chip`: its place among the pane's chips (presentMarkers).
+  | { type: 'CUE_AT'; slide: number; chip: number; channelId?: string }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   | { type: 'DRAW_STROKE'; pageIndex: number; stroke: any; channelId?: string }
   | { type: 'CLEAR_DRAWING'; pageIndex: number; channelId?: string }

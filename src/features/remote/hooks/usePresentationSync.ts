@@ -53,6 +53,11 @@ export const usePresentationSync = (
   remoteView: RemoteView = 'image',
   // A live remote measured where its lines break (layoutCheck.ts): compare here.
   onLayoutReport?: (report: LayoutReport) => void,
+  // How far → has gone through the slide's script (usePresentation): the presenter
+  // view rings what the next → shows.
+  cuePos = 0,
+  // A chip clicked in the presenter's script: → goes on right after it.
+  onCueAt?: (slide: number, chip: number) => void,
 ) => {
   const [channelId] = useState<string>(() => {
     const query = window.location.hash.split('?')[1] || window.location.search;
@@ -86,10 +91,10 @@ export const usePresentationSync = (
       type: 'SYNC_STATE',
       // `basePath` travels too: a mirror needs it to resolve a slide's drawio/SVG
       // and image paths (SlideView builds those from `raw` + basePath).
-      payload: { slides, index: currentSlideIndex, step: step ?? 0, slideSize, globalContext, baseUrl, basePath, themeCssUrl, fontCss, lastUpdated, allDrawings: drawings, isOverview: isSlideOverview, modules: Object.values(loadedModules), effects: Object.values(loadedEffects), lastRehearsal: lastRehearsal ?? null },
+      payload: { slides, index: currentSlideIndex, step: step ?? 0, cuePos, slideSize, globalContext, baseUrl, basePath, themeCssUrl, fontCss, lastUpdated, allDrawings: drawings, isOverview: isSlideOverview, modules: Object.values(loadedModules), effects: Object.values(loadedEffects), lastRehearsal: lastRehearsal ?? null },
       channelId,
     }, 'local');
-  }, [slides, currentSlideIndex, step, slideSize, globalContext, baseUrl, basePath, themeCssUrl, fontCss, lastUpdated, drawings, channelId, isSlideOverview, lastRehearsal]);
+  }, [slides, currentSlideIndex, step, cuePos, slideSize, globalContext, baseUrl, basePath, themeCssUrl, fontCss, lastUpdated, drawings, channelId, isSlideOverview, lastRehearsal]);
 
   const nextVisibleIndex = useCallback((from: number) => {
     let n = from + 1;
@@ -199,7 +204,12 @@ export const usePresentationSync = (
         mdpBus.receiveRemote(msg.topic, msg.payload);
         break;
       case 'NAV':
-        moveSlide(msg.direction);
+        // From the presenter view / a remote: a presentation, builds included —
+        // even when this window keeps the editor (the show is in the output window).
+        moveSlide(msg.direction, true);
+        break;
+      case 'CUE_AT':
+        if (typeof msg.slide === 'number' && typeof msg.chip === 'number') onCueAt?.(msg.slide, msg.chip);
         break;
       case 'DRAW_STROKE':
         addStroke(msg.pageIndex, msg.stroke, false);

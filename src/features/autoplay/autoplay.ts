@@ -84,6 +84,94 @@ export function scriptCues(script: string): FocusCue[] {
   return [...String(script || '').matchAll(cueMarkerRe())].map((m) => parseFocusCue(m[1], m[2]));
 }
 
+/** One thing → does in a talk given by hand, in the script's order: a build
+ *  ([[step]]), a focus cue, an event ([[emit]] / [[emit-wait]] — fired, never waited
+ *  for). Markers with only spaces (or a reading) between them share a `group` — one
+ *  press: its builds, then its cues (lineCues order), then its events — so
+ *  `[[step]][[look: row:2]]` reveals the row and points at it. A press ENDS where the
+ *  auto-play would stop: after an [[emit-wait]], at a [[wait]] or a [[pause]] (the
+ *  timer starts with one press, its answer comes with the next). `chip`: its place
+ *  among the presenter pane's chips (⏭ / 👁🖍✕ / ▶, in the script's order). */
+export interface PresentMarker { kind: 'step' | 'cue' | 'event'; group: number; chip: number; cue?: FocusCue; action?: ScriptAction }
+
+/** The markers → goes through on a slide — what the auto-play does as it reads,
+ *  pressed by hand; a [[step]] past the slide's builds is left out (it would do
+ *  nothing) — and the builds the script never reveals (`extra`: one press each,
+ *  after the markers). A position on the slide = how many markers are done, then
+ *  how many extra builds. */
+export function presentMarkers(script: string, stepCount: number): { markers: PresentMarker[]; extra: number } {
+  const s = String(script || '');
+  const re = /(\[\[\s*step\s*\]\])|(\[\[\s*(?:look|mark|clear)\s*(?::[^\]]*?)?\s*\]\])|(\[\[\s*(emit-wait|emit)\s*:\s*([^\]]*?)\s*\]\])|(\[\[\s*(?:wait|pause)\s*:[^\]]*?\]\])|\[\[\s*say\s*:[^\]]*?\]\]/gi;
+  const markers: PresentMarker[] = [];
+  let group = -1;
+  let open = false;
+  let last = 0;
+  let chip = -1;
+  let built = 0;
+  for (let m = re.exec(s); m; m = re.exec(s)) {
+    if (/\S/.test(s.slice(last, m.index))) open = false;    // words in between: a new press
+    last = m.index + m[0].length;
+    if (m[6]) { open = false; continue; }                    // a wait / a pause: the press ends
+    if (!m[1] && !m[2] && !m[3]) continue;                   // a reading
+    chip++;
+    if (!open) { group++; open = true; }
+    if (m[1]) {
+      if (built < stepCount) { built++; markers.push({ kind: 'step', group, chip }); }
+    } else if (m[2]) {
+      const c = cueMarkerRe().exec(m[2]);
+      if (c) markers.push({ kind: 'cue', group, chip, cue: parseFocusCue(c[1], c[2]) });
+    } else {
+      markers.push({ kind: 'event', group, chip, action: parseScriptAction(m[4], m[5]) });
+      if (m[4].toLowerCase() === 'emit-wait') open = false;  // the auto-play waits here: the press ends
+    }
+  }
+  return { markers, extra: Math.max(0, stepCount - built) };
+}
+
+/** Where one → from `pos` ends: the rest of the press (group) it is in; past the
+ *  markers, one extra build. */
+export function pressEnd(markers: readonly PresentMarker[], pos: number): number {
+  if (pos >= markers.length) return pos + 1;
+  let q = pos;
+  while (q < markers.length && markers[q].group === markers[pos].group) q++;
+  return q;
+}
+
+/** Where one ← from `pos` goes: the start of the press before it. */
+export function pressStart(markers: readonly PresentMarker[], pos: number): number {
+  if (pos > markers.length) return pos - 1;
+  if (pos <= 0) return 0;
+  let s = pos - 1;
+  while (s > 0 && markers[s - 1].group === markers[pos - 1].group) s--;
+  return s;
+}
+
+/** The build step at `pos` (its [[step]]s done, then the extra builds). */
+export function stepsAt(markers: readonly PresentMarker[], pos: number, stepCount: number): number {
+  const done = markers.slice(0, pos).filter((m) => m.kind === 'step').length;
+  return Math.min(stepCount, done + Math.max(0, pos - markers.length));
+}
+
+/** The focus at `pos`, as presses to act from nothing (focusBus `replay`). */
+export function focusStepsAt(markers: readonly PresentMarker[], pos: number): FocusCue[][] {
+  const groups = new Map<number, FocusCue[]>();
+  for (const m of markers.slice(0, pos)) if (m.kind === 'cue' && m.cue) groups.set(m.group, [...(groups.get(m.group) || []), m.cue]);
+  return [...groups.values()].map((cues) => lineCues(cues));
+}
+
+/** How many presses are left from `pos` on this slide (then → turns it). */
+export function pressesLeft(markers: readonly PresentMarker[], extra: number, pos: number): number {
+  return new Set(markers.slice(pos).map((m) => m.group)).size + Math.max(0, extra - Math.max(0, pos - markers.length));
+}
+
+/** The position after a chip clicked in the presenter pane: right after it (a ⏭
+ *  past the builds, left out, counts as the marker that follows). */
+export function posAfterChip(markers: readonly PresentMarker[], chip: number): number {
+  const i = markers.findIndex((m) => m.chip >= chip);
+  if (i < 0) return markers.length;
+  return markers[i].chip === chip ? i + 1 : i;
+}
+
 // Extract the concatenated @script text from a slide's raw markdown.
 export function slideScript(raw: string): string {
   return [...String(raw || '').matchAll(/<!--\s*@script:\s*([\s\S]*?)\s*-->/g)]
@@ -215,7 +303,7 @@ export function markScriptReadings(script: string): string {
 export function renderScriptChips(scriptMarkdown: string): string {
   const esc = escAttr;
   return String(scriptMarkdown || '')
-    .replace(/\[\[\s*step\s*\]\]/gi, '<button type="button" class="mdp-script-chip" data-chip="step" title="ビルドを1歩進める">⏭</button>')
+    .replace(/\[\[\s*step\s*\]\]/gi, '<button type="button" class="mdp-script-chip mdp-chip-step" data-chip="step" title="クリックでここまでのビルドを出す（→ はこの次から）">⏭ ビルド</button>')
     .replace(actionMarkerRe(), (_m, kindRaw: string, body: string) => {
       const a = parseScriptAction(kindRaw, body);
       if (a.kind === 'pause') return `<span class="mdp-script-chip mdp-chip-passive" title="自動再生時の間">⏸${a.label ? ' ' + esc(a.label) : ''}</span>`;

@@ -9,13 +9,14 @@ import { Panel, Group, Separator, useDefaultLayout } from 'react-resizable-panel
 
 import { useSync, type SyncMessage } from '../../features/remote/hooks/useSync';
 import { useAppSettings } from '../../features/settings/AppSettingsContext';
-import { matchAction } from '../../features/settings/shortcuts/matcher';
-import { ACTIONS_BY_SCOPE } from '../../features/settings/shortcuts/registry';
+import { matchAction, prettyCombo, resolveKeys } from '../../features/settings/shortcuts/matcher';
+import { ACTIONS_BY_SCOPE, actionById } from '../../features/settings/shortcuts/registry';
+import { usePresentingSession } from '../../features/slide/hooks/usePresentingSession';
 import { moduleSyncBus } from '../../features/modules/moduleSyncBus';
 import { mdpBus } from '../../features/bus/mdpBus';
 import { sendFocus, useBusFocus } from '../../features/focus/focusBus';
 import { cleanCue, cueInForce } from '../../features/focus/focusState';
-import { lineCues } from '../../features/autoplay/autoplay';
+import { lineCues, presentMarkers, pressEnd, pressesLeft, slideScript } from '../../features/autoplay/autoplay';
 import { registerParsedModule, clearAllModules } from '../../features/modules/moduleManager';
 import { registerParsedEffect, clearAllEffects } from '../../features/effects/effectManager';
 import type { ModuleData } from '../../utils/moduleParser';
@@ -41,6 +42,8 @@ interface SyncData {
   slides: any[];
   index: number;
   step?: number;
+  // How far → has gone through the current slide's script (presentMarkers).
+  cuePos?: number;
   slideSize: { width: number; height: number };
   themeCssUrl?: string;
   // Workspace-font CSS (@font-face + folder font variables) from the main window.
@@ -191,6 +194,41 @@ export default function PresenterPage() {
       chip.classList.toggle('mdp-chip-on', !!(cue && shownFocus && cueInForce(shownFocus, cue)));
     });
   }, [shownFocus, scriptInner]);
+  // The presentation is on while this view is open: the screen stays on.
+  usePresentingSession(true, 'presenter');
+
+  // → goes through the slide's script in its order (usePresentation, in the main
+  // window): its builds, emphases and events, then the next slide. Here the chips of
+  // what the next → does are ringed (the pane scrolled to them), the ones done are
+  // dimmed, and the presses the slide has left are counted. A chip clicked does its
+  // own thing and tells the main window → goes on after it (CUE_AT).
+  const [cuePos, setCuePos] = useState(0);        // from SYNC_STATE
+  const plan = useMemo(() => presentMarkers(slideScript(currentSlide?.raw || ''), currentSlide?.stepCount || 0), [currentSlide?.raw, currentSlide?.stepCount]);
+  const scriptChips = useCallback(() => Array.from(scriptPaneRef.current?.querySelectorAll<HTMLElement>('.mdp-script-chip[data-chip="step"], .mdp-script-chip[data-chip="focus"], .mdp-script-chip[data-chip="emit"]') || []), []);
+  useEffect(() => {
+    const chips = scriptChips();
+    const { markers } = plan;
+    const next = new Set(markers.slice(cuePos, pressEnd(markers, cuePos)).map((m) => m.chip));
+    const done = new Set(markers.slice(0, cuePos).map((m) => m.chip));
+    chips.forEach((chip, i) => {
+      chip.classList.toggle('mdp-chip-next', next.has(i));
+      chip.classList.toggle('mdp-chip-done', done.has(i));
+    });
+    // Bring them into view — the pane alone (scrollIntoView could scroll the panels).
+    const first = chips.find((_, i) => next.has(i));
+    const pane = scriptPaneRef.current?.closest('.presenter-script-pane') as HTMLElement | null;
+    if (first && pane) {
+      const p = pane.getBoundingClientRect();
+      const c = first.getBoundingClientRect();
+      if (c.top < p.top + 8 || c.bottom > p.bottom - 8) pane.scrollTop += c.top - p.top - p.height / 3;
+    }
+  }, [plan, cuePos, scriptInner, scriptChips]);
+  const movesLeft = pressesLeft(plan.markers, plan.extra, cuePos);
+  const hasPlan = plan.markers.length > 0 || plan.extra > 0;
+  const nextKey = useMemo(() => {
+    const a = actionById('presenter.next');
+    return prettyCombo((a && resolveKeys(a, appSettings)[0]) || 'ArrowRight');
+  }, [appSettings]);
   const deckSeconds = useMemo(() => estimateDeckSeconds(slides, readingCpm), [slides, readingCpm]);
   const currentBudgetSec = useMemo(() => (currentSlide ? slideSeconds(currentSlide, readingCpm) : 0), [currentSlide, readingCpm]);
   const currentHasExplicit = !!(currentSlide && explicitSlideSeconds(currentSlide.raw || '') != null);
@@ -232,6 +270,7 @@ export default function PresenterPage() {
         if (data.slides) setSlides(data.slides);
         if (typeof data.index === 'number') setCurrentIndex(data.index);
         if (typeof data.step === 'number') setStep(data.step);
+        setCuePos(typeof data.cuePos === 'number' ? data.cuePos : 0);
         if (data.slideSize) setSlideSize(data.slideSize);
         if ('basePath' in data) setBasePath(data.basePath);
         if (data.allDrawings) syncDrawings(data.allDrawings);
@@ -716,6 +755,11 @@ export default function PresenterPage() {
                     <div style={{ flexShrink: 0, marginBottom: 12 }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span className="presenter-label" style={{ color: '#8ab4f8' }}>SCRIPT — read aloud</span>
+                        {hasPlan && !isEditingScript && (
+                          <span title="→ で台本の順にビルド・強調・イベント（点線の枠）を出し、出し切ったら次のスライドへ。← でひとつ戻る（イベントは取り消さない）。チップを押すと、→ はその次から" style={{ marginLeft: 'auto', marginRight: 8, fontSize: '0.75rem', color: '#a8a29e' }}>
+                            <kbd className="presenter-kbd">{nextKey}</kbd> {movesLeft > 0 ? <>台本の順に · あと {movesLeft}</> : <>次のスライドへ</>}
+                          </span>
+                        )}
                         <Button
                           size="small"
                           startIcon={isEditingScript ? <SaveIcon /> : <EditIcon />}
@@ -765,7 +809,11 @@ export default function PresenterPage() {
                             if (!chip) return;
                             e.preventDefault(); e.stopPropagation();
                             const kind = chip.dataset.chip;
-                            if (kind === 'step') { sendNav(1); }
+                            // → goes on right after this chip (the main window also shows
+                            // the builds up to it — so ⏭ shows its build).
+                            const at = scriptChips().indexOf(chip);
+                            if (at >= 0 && channelId) send({ type: 'CUE_AT', slide: currentIndex, chip: at, channelId });
+                            if (kind === 'step') return;
                             else if (kind === 'focus') {
                               // Show it on the slideshow — or take it away if it is on.
                               let cue = null;
@@ -807,6 +855,9 @@ export default function PresenterPage() {
                           .presenter-script .mdp-script-chip.mdp-chip-focus { border-color:#d97706; background:rgba(245,158,11,0.12); color:#fbbf24; }
                           .presenter-script .mdp-script-chip.mdp-chip-focus:hover { background:rgba(245,158,11,0.3); }
                           .presenter-script .mdp-script-chip.mdp-chip-focus.mdp-chip-on { background:#d97706; color:#fff; }
+                          .presenter-script .mdp-script-chip.mdp-chip-next { outline:2px dashed #fde68a; outline-offset:2px; }
+                          .presenter-script .mdp-script-chip.mdp-chip-done:not(.mdp-chip-on):not(.mdp-chip-next) { opacity:0.5; }
+                          .presenter-kbd { display:inline-block; padding:0 5px; border:1px solid #57534e; border-radius:4px; background:#292524; color:#e7e5e4; font:inherit; font-size:0.95em; line-height:1.35; }
                         .presenter-script .mdp-script-chip.mdp-chip-used::after { content:' ✓'; }
                           .presenter-script .mdp-script-ruby { text-decoration:underline dashed rgba(138,180,248,0.85); text-decoration-thickness:1px; text-underline-offset:0.28em; cursor:help; }
                           .presenter-script .mdp-script-ruby:hover { background:rgba(59,130,246,0.18); border-radius:3px; }
