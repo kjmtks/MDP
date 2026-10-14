@@ -30,7 +30,9 @@ const stripBom = (text) => (text.charCodeAt(0) === 0xfeff ? text.slice(1) : text
 // A small YAML subset is enough for skill frontmatter: `key: value` scalars
 // (quoted or bare, true/false), `key: >` / `key: |` blocks and `- item` lists.
 function parseFrontmatter(text) {
-  const src = stripBom(String(text)).replace(/\r\n?/g, '\n');
+  // Empty lines above the opening `---` (an editor's stray newline) must not turn
+  // the frontmatter into body text — the skill would lose its description and `always`.
+  const src = stripBom(String(text)).replace(/\r\n?/g, '\n').replace(/^(?:[ \t]*\n)+(?=---)/, '');
   const m = /^---[ \t]*\n([\s\S]*?)\n(?:---|\.\.\.)[ \t]*(?:\n|$)/.exec(src);
   if (!m) return { data: {}, body: src, hasFrontmatter: false };
   const data = {};

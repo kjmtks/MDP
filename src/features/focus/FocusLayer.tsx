@@ -120,10 +120,12 @@ export const FocusLayer: React.FC<{
           break;
         }
         case 'arrow': {
-          const w = 74 * u;
-          const hgt = 44 * u;
           const tipX = (h.kind === 'area' ? b.x : ax) - 5 * u;
           const tipY = h.kind === 'area' ? b.y + b.h / 2 : ay;
+          // The tail sits up-left of the tip: a target near the slide's left edge (a
+          // bullet) gets a shorter arrow, so the tail is not cut off by the edge.
+          const w = Math.max(28 * u, Math.min(74 * u, tipX - 4 * u));
+          const hgt = 44 * u;
           items.push(
             <svg key={k} className="mdp-focus-arrow" width={w} height={hgt} viewBox={`0 0 ${w} ${hgt}`} style={{ ...vars, left: tipX - w, top: tipY - hgt }}>
               <path d={`M ${3 * u} ${3 * u} Q ${w * 0.55} ${3 * u} ${w - 2 * u} ${hgt - 2 * u}`} fill="none" stroke={c} strokeWidth={4 * u} strokeLinecap="round" />

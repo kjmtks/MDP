@@ -735,6 +735,7 @@ export const PreviewPanel: React.FC = () => {
                       drawings={p.drawings[index] || []}
                       slideIndex={index} moduleRole={p.moduleRole}
                       manipulate={p.manipulate}
+                      focus={p.focus || undefined}
                       focusOutline={focusOutline}
                       onSlideLink={p.onSlideLink}
                       onAddStroke={(stroke) => { p.addStroke(index, stroke); p.send({ type: 'DRAW_STROKE', channelId: p.channelId, pageIndex: index, stroke }); }}

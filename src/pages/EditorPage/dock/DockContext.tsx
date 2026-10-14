@@ -7,6 +7,7 @@ import type { ManipRuntime } from '../../../features/slide/components/Manipulati
 import type { OpenTab } from '../../../features/fileTree/hooks/useFileManager';
 import type { Bookmark } from '../hooks/useBookmarks';
 import type { ImageEntry } from '../../../features/images/imageRegistry';
+import type { FocusState } from '../../../features/focus/focusState';
 
 export interface SidebarSharedProps {
   currentFileName: string | null;
@@ -41,6 +42,8 @@ export interface SidebarSharedProps {
 
 export interface PreviewSharedProps {
   effectiveFileType: FileType;
+  // What the focus chips (the editor's script, the presenter's) show on the slide.
+  focus?: FocusState | null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   slides: any[];
   currentSlideIndex: number;

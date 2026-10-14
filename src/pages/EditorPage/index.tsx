@@ -92,7 +92,11 @@ import type { SidebarSharedProps, PreviewSharedProps, SnippetsShared, ImagesShar
 import { EditorDock } from './dock/EditorDock';
 import { RESET_LAYOUT_EVENT, SHOW_PANEL_EVENT } from './dock/dockShared';
 import { BASE_HEIGHT } from '../../constants';
-import { useBusFocus } from '../../features/focus/focusBus';
+import { sendFocus, useBusFocus } from '../../features/focus/focusBus';
+import { cueInForce } from '../../features/focus/focusState';
+import { lineCues } from '../../features/autoplay/autoplay';
+import { mdpBus } from '../../features/bus/mdpBus';
+import { EDITOR_CHIP_EVENT, setChipFocus, type ChipFocus, type EditorChipDetail } from '../../features/editor/extensions/ScriptChipsPlugin';
 import { reportError, notify, confirmDialog, choiceDialog } from '../../components/error/errorReporter';
 
 import '../../App.css';
@@ -1950,8 +1954,52 @@ export default function EditorPage() {
     bookmarks, isBookmarked, toggleBookmark, reorderBookmarks, updateBookmark, renameTab, closeTabsByPaths,
     handleOpenDeck]);
 
+  // Chips in the editor's script (ScriptChipsPlugin), as in the presenter's script
+  // pane: a focus cue is shown on its slide — the preview, the slideshow, the
+  // presenter, the output window —, a lit chip clicked again takes it away; an event
+  // marker fires its event on the app bus. The preview goes to that slide first, and
+  // what is sent waits until it is shown there (the focus listens per slide; a module
+  // must be mounted to answer an event).
+  const chipStateRef = useRef({ slide: currentSlideIndex, focus: showFocus, deck: currentFileName === previewFileName, count: slides.length });
+  useEffect(() => {
+    chipStateRef.current = { slide: currentSlideIndex, focus: showFocus, deck: currentFileName === previewFileName, count: slides.length };
+  }, [currentSlideIndex, showFocus, currentFileName, previewFileName, slides.length]);
+  useEffect(() => {
+    const onChip = (e: Event) => {
+      const d = (e as CustomEvent<EditorChipDetail>).detail;
+      const st = chipStateRef.current;
+      if (!d || !st.deck || d.slide < 0 || d.slide >= st.count) return;
+      const moved = d.slide !== st.slide;
+      if (moved) setCurrentSlideIndex(d.slide);
+      const act = () => {
+        if (d.kind === 'focus') {
+          const shown = moved ? null : st.focus;
+          if (shown && cueInForce(shown, d.cue)) sendFocus({ slide: d.slide, remove: d.cue });
+          else sendFocus({ slide: d.slide, cues: lineCues([d.cue]) });
+        } else {
+          mdpBus.emit(d.topic, { args: d.args });
+        }
+      };
+      if (moved) window.setTimeout(act, d.kind === 'emit' ? 400 : 150);
+      else act();
+    };
+    document.addEventListener(EDITOR_CHIP_EVENT, onChip);
+    return () => document.removeEventListener(EDITOR_CHIP_EVENT, onChip);
+  }, []);
+  // Light the editor's chips of what is shown (only when that changes — rebuilding
+  // the chips scans the document).
+  const litRef = useRef<ChipFocus | null>(null);
+  useEffect(() => {
+    const view = editorRef.current?.view;
+    const lit = currentFileName === previewFileName && showFocus ? { slide: currentSlideIndex, focus: showFocus } : null;
+    if (!view || (!lit && !litRef.current)) return;
+    litRef.current = lit;
+    view.dispatch({ effects: setChipFocus.of(lit) });
+  }, [showFocus, currentSlideIndex, currentFileName, previewFileName, editorRef]);
+
   const previewSlice = useMemo<PreviewSharedProps>(() => ({
     effectiveFileType: previewFileType, slides, currentSlideIndex, slideSize, basePath, drawings,
+    focus: showFocus,
     mode, setMode, showControls, moveSlide, handleAddBlankSlide, clear, send, channelId,
     toolType, setToolType, penColor, setPenColor, penWidth, setPenWidth,
     canUndo, canRedo, undo, redo, stylusOnly, setStylusOnly, addStroke, handleUpdateStrokes,
@@ -1982,7 +2030,7 @@ export default function EditorPage() {
     setStylusOnly, addStroke, handleUpdateStrokes, isSlideshow, onEditDrawio, previewImage,
     manipulate, editLayout, canEditLayout, snapOn, livePreview, previewStale,
     currentFileName, effectiveFileType, markdownRef, reloadSlides,
-    docHtml, previewFileName, lastUpdated,
+    docHtml, previewFileName, lastUpdated, showFocus,
     navLink, navBack, navForward, navCanBack, navCanForward]);
 
   const snippetsSlice = useMemo<SnippetsShared>(() => ({

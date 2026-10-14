@@ -128,6 +128,41 @@ export const unionBox = (boxes: FocusBox[]): FocusBox => {
   return { x, y, w: Math.max(...boxes.map((b) => b.x + b.w)) - x, h: Math.max(...boxes.map((b) => b.y + b.h)) - y };
 };
 
+/** A formula, or a part of one (`\focus`): KaTeX lays fractions, limits and roots out
+ *  in positioned stacks that stick out of their parent's line box, so a part's own box
+ *  cut a fraction's numerator and denominator in half. The painted pieces are united
+ *  instead — the glyphs (a Range over the text), the rules (fraction bars, over- and
+ *  underlines) and the SVG pieces (roots, stretchy brackets and arrows). */
+function katexBox(el: Element, conv: (r: DOMRect | DOMRectReadOnly) => FocusBox): FocusBox | null {
+  const doc = el.ownerDocument;
+  const boxes: FocusBox[] = [];
+  const range = doc.createRange();
+  const walker = doc.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    if (!n.nodeValue || !n.nodeValue.trim()) continue;
+    range.selectNodeContents(n);
+    for (const r of Array.from(range.getClientRects())) boxes.push(conv(r));
+  }
+  el.querySelectorAll('svg, .frac-line, .overline-line, .underline-line, .hline, .rule')
+    .forEach((p) => boxes.push(conv(p.getBoundingClientRect())));
+  const painted = boxes.filter((b) => b.w > 0.5 || b.h > 0.5);
+  return painted.length ? unionBox(painted) : null;
+}
+
+/** Where an element sits on the slide. A `display: contents` element has no box of
+ *  its own — the layout-neutral wrapper a block module that cannot be moved gets,
+ *  which is where its `tag:` lands (moduleProcessor) — so its children are united. */
+function elementBox(el: Element, conv: (r: DOMRect | DOMRectReadOnly) => FocusBox): FocusBox {
+  if (el.closest('.katex-html')) {
+    const k = katexBox(el, conv);
+    if (k) return k;
+  }
+  const own = conv(el.getBoundingClientRect());
+  if (own.w > 0.5 || own.h > 0.5 || getComputedStyle(el).display !== 'contents') return own;
+  const kids = Array.from(el.children).map((c) => elementBox(c, conv)).filter((b) => b.w > 0.5 || b.h > 0.5);
+  return kids.length ? unionBox(kids) : own;
+}
+
 /** A phrase's boxes, one per line it sits on. */
 function lineBoxes(boxes: FocusBox[]): FocusBox[] {
   const sorted = boxes.filter((b) => b.w > 0.5 && b.h > 0.5).sort((p, q) => p.y - q.y || p.x - q.x);
@@ -152,7 +187,7 @@ function isShown(node: Node, root: HTMLElement): boolean {
 }
 
 const elementHit = (target: string, el: Element, root: HTMLElement, matches?: number): FocusResolution => {
-  const box = toSlide(root)(el.getBoundingClientRect());
+  const box = elementBox(el, toSlide(root));
   if (box.w <= 0.5 && box.h <= 0.5) return { target, error: 'it is not on screen now (an unrevealed build step?)' };
   return { target, kind: 'element', boxes: [box], box, ...(matches && matches > 1 ? { matches } : {}), ...(isShown(el, root) ? {} : { hidden: true }) };
 };
@@ -184,7 +219,7 @@ const columnOf = (cell: HTMLTableCellElement): HTMLTableCellElement[] => {
 };
 const boxesHit = (target: string, els: Element[], root: HTMLElement, matches?: number): FocusResolution => {
   const conv = toSlide(root);
-  const boxes = els.map((e) => conv(e.getBoundingClientRect())).filter((b) => b.w > 0.5 || b.h > 0.5);
+  const boxes = els.map((e) => elementBox(e, conv)).filter((b) => b.w > 0.5 || b.h > 0.5);
   if (!boxes.length) return { target, error: 'it is not on screen now' };
   const box = unionBox(boxes);
   return { target, kind: 'element', boxes: [box], box, ...(matches && matches > 1 ? { matches } : {}), ...(els.every((e) => isShown(e, root)) ? {} : { hidden: true }) };
@@ -276,7 +311,7 @@ export function resolveTarget(target: string, root: HTMLElement): FocusResolutio
       // Some text (SVG labels) gives no line boxes: its element's box will do.
       if (!boxes.length) {
         const el = found.range.startContainer.parentElement;
-        if (el) boxes = [conv(el.getBoundingClientRect())].filter((b) => b.w > 0.5 && b.h > 0.5);
+        if (el) boxes = [elementBox(el, conv)].filter((b) => b.w > 0.5 && b.h > 0.5);
       }
       if (!boxes.length) return { target, error: `"${p.text}" is not on screen now (an unrevealed build step?)` };
       return {
@@ -304,7 +339,7 @@ export function listTargets(root: HTMLElement): FocusTargetInfo[] {
   };
   const quote = (s: string) => `"${s.replace(/"/g, '')}"`;
   const add = (target: string, what: string, el: Element, note?: string) => {
-    const box = conv(el.getBoundingClientRect());
+    const box = elementBox(el, conv);
     if (box.w > 0.5 || box.h > 0.5) out.push({ target, what, box, ...(note ? { note } : {}) });
   };
   const content = (root.querySelector('.slide-content') as HTMLElement | null) || root;
