@@ -1,6 +1,20 @@
 /* Focus cues drawn over a slide (FocusLayer). Sizes go by --u (the slide's height
-   / 540, in px), so they look the same at any resolution and zoom. Colours: the
-   cue's color=…, else the theme's --mdp-focus-color / --mdp-focus-marker. */
+   / 540, in px), so they look the same at any resolution and zoom. The lines are
+   thin and see-through and keep clear of the text: they point at it, never cover it.
+
+   A theme may tune them — set any of these on .mdp-focus-layer (or :root):
+     --mdp-focus-color   look: pointer, ring, arrow, box       default red #e53935
+     --mdp-focus-pen     mark: underline, circle               default orange #ef6c00
+     --mdp-focus-marker  mark: the highlighter                 default rgba(255, 214, 0, .55)
+     --mdp-focus-line    line width, times the default         1
+     --mdp-focus-gap     room between a line and the text, times the default   1
+     --mdp-focus-dim     spotlight: the shade over the rest    rgba(0, 0, 0, .4)
+     --mdp-focus-blur    blur: its radius in px of a 960×540 slide            3
+   A cue's own color=… wins over the colours. Every shape is a class below (a ring's
+   or a box's frame is its ::before), so a theme can also restyle one whole.
+   An <svg>'s paint (stroke-width, fill) is set on the <svg>, never on its paths: the
+   picture renderer (html-to-image: MCP renders, the web video) copies an <svg> whole,
+   without the stylesheet — its paths keep only what they inherit from it. */
 .mdp-focus-layer {
   position: absolute; inset: 0; pointer-events: none; z-index: 20; overflow: hidden;
 }
@@ -10,17 +24,35 @@
 .mdp-focus-pointer {
   border-radius: 50%;
   background: radial-gradient(circle at 38% 38%, #fff 0 14%, var(--c) 30% 62%, transparent 74%);
-  box-shadow: 0 0 calc(var(--u) * 10) calc(var(--u) * 3) color-mix(in srgb, var(--c) 55%, transparent);
+  box-shadow: 0 0 calc(var(--u) * 8) calc(var(--u) * 2) color-mix(in srgb, var(--c) 40%, transparent);
   transition: left .45s cubic-bezier(.3, .7, .3, 1), top .45s cubic-bezier(.3, .7, .3, 1);
   animation: mdp-focus-pop .35s ease-out both;
 }
-.mdp-focus-ring {
-  border: calc(var(--u) * 3) solid var(--c); border-radius: calc(var(--u) * 10);
-  box-shadow: 0 0 calc(var(--u) * 8) color-mix(in srgb, var(--c) 45%, transparent);
-  transition: left .45s ease, top .45s ease, width .45s ease, height .45s ease;
-  animation: mdp-focus-fade .3s ease-out both;
+/* ring / box: the element lies on the target, its frame (::before) around it — further
+   out round a block (a row, a bullet: their own padding leaves room) than round a
+   phrase, whose neighbours are close */
+.mdp-focus-ring, .mdp-focus-box { transition: left .45s ease, top .45s ease, width .45s ease, height .45s ease; }
+.mdp-focus-ring::before, .mdp-focus-box::before {
+  content: ''; position: absolute; box-sizing: border-box;
+  inset: calc(var(--u) * -7 * var(--mdp-focus-gap, 1));
 }
-.mdp-focus-arrow { overflow: visible; transition: left .45s ease, top .45s ease; animation: mdp-focus-fade .3s ease-out both; }
+.mdp-focus-inline::before { inset: calc(var(--u) * -3.5 * var(--mdp-focus-gap, 1)) calc(var(--u) * -4 * var(--mdp-focus-gap, 1)); }
+.mdp-focus-ring { animation: mdp-focus-fade .3s ease-out both; }
+.mdp-focus-ring::before {
+  border: calc(var(--u) * 2.5 * var(--mdp-focus-line, 1)) solid color-mix(in srgb, var(--c) 70%, transparent);
+  border-radius: calc(var(--u) * 12);
+  box-shadow: 0 0 calc(var(--u) * 6) color-mix(in srgb, var(--c) 20%, transparent);
+}
+.mdp-focus-arrow {
+  overflow: visible; opacity: .85; stroke-width: calc(var(--u) * 3 * var(--mdp-focus-line, 1));
+  transition: left .45s ease, top .45s ease; animation: mdp-focus-fade-85 .3s ease-out both;
+}
+.mdp-focus-box { animation: mdp-focus-settle .3s ease-out both; }
+.mdp-focus-box::before {
+  border: calc(var(--u) * 2 * var(--mdp-focus-line, 1)) solid color-mix(in srgb, var(--c) 60%, transparent);
+  border-radius: calc(var(--u) * 8);
+  background: color-mix(in srgb, var(--c) 6%, transparent);
+}
 
 /* annotations */
 .mdp-focus-marker {
@@ -28,24 +60,35 @@
   animation: mdp-focus-sweep .45s ease-out both;
 }
 .mdp-focus-underline {
-  background: var(--c); border-radius: 999px; transform-origin: left center;
+  height: calc(var(--u) * 2.5 * var(--mdp-focus-line, 1)); margin-top: calc(var(--u) * var(--mdp-focus-gap, 1));
+  background: color-mix(in srgb, var(--c) 90%, transparent); border-radius: 999px; transform-origin: left center;
   animation: mdp-focus-draw-x .4s ease-out both;
 }
-.mdp-focus-circle { overflow: visible; }
+.mdp-focus-circle { overflow: visible; opacity: .9; stroke-width: calc(var(--u) * 3 * var(--mdp-focus-line, 1)); }
 .mdp-focus-circle path { stroke-dasharray: 1; stroke-dashoffset: 1; animation: mdp-focus-stroke .6s ease-out forwards; }
-.mdp-focus-box {
-  border: calc(var(--u) * 3) solid var(--c); border-radius: calc(var(--u) * 6);
-  transition: left .45s ease, top .45s ease, width .45s ease, height .45s ease;
-  animation: mdp-focus-settle .3s ease-out both;
-}
 
 /* everything else dimmed / blurred */
-.mdp-focus-dim { inset: 0; animation: mdp-focus-fade .35s ease-out both; }
+.mdp-focus-dim { inset: 0; fill: var(--mdp-focus-dim, rgba(0, 0, 0, .4)); animation: mdp-focus-fade .35s ease-out both; }
 .mdp-focus-dim path { transition: d .45s ease; }
-.mdp-focus-blur { inset: 0; animation: mdp-focus-fade .35s ease-out both; }
+.mdp-focus-blur {
+  inset: 0; animation: mdp-focus-fade .35s ease-out both;
+  background: rgba(255, 255, 255, .12);
+  -webkit-backdrop-filter: blur(calc(var(--u) * var(--mdp-focus-blur, 3)));
+  backdrop-filter: blur(calc(var(--u) * var(--mdp-focus-blur, 3)));
+}
+
+/* WebKit before Safari 16.2 (an old iPad as a live remote) has no color-mix(), and a
+   declaration holding one would leave the frame without any border: solid lines, faded */
+@supports not (color: color-mix(in srgb, red 50%, transparent)) {
+  .mdp-focus-ring::before { border: calc(var(--u) * 2.5 * var(--mdp-focus-line, 1)) solid var(--c); opacity: .7; box-shadow: none; }
+  .mdp-focus-box::before { border: calc(var(--u) * 2 * var(--mdp-focus-line, 1)) solid var(--c); opacity: .6; background: none; }
+  .mdp-focus-underline { background: var(--c); opacity: .9; }
+  .mdp-focus-pointer { box-shadow: none; }
+}
 
 @keyframes mdp-focus-pop { from { transform: scale(.2); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 @keyframes mdp-focus-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes mdp-focus-fade-85 { from { opacity: 0; } to { opacity: .85; } }
 @keyframes mdp-focus-sweep { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
 @keyframes mdp-focus-draw-x { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 @keyframes mdp-focus-stroke { to { stroke-dashoffset: 0; } }

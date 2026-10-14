@@ -19,7 +19,8 @@ export interface FocusBox { x: number; y: number; w: number; h: number }
 export interface FocusHit {
   target: string;
   kind: 'text' | 'element' | 'area';
-  /** One box per line for a phrase (it may wrap), else one. */
+  /** One box per line of WRITING — of a phrase (it may wrap), a bullet, a cell, a row
+   *  or a column: what an underline or a highlighter follows. Else the element's box. */
   boxes: FocusBox[];
   /** All of them together. */
   box: FocusBox;
@@ -178,6 +179,30 @@ function lineBoxes(boxes: FocusBox[]): FocusBox[] {
   return lines.map(unionBox);
 }
 
+/** The lines of what is written in elements (a bullet, a cell, a row, a column): an
+ *  underline or a highlighter goes under / over the words — a bullet's own box spans
+ *  the slide, a cell's reaches into its padding, where a box around the row runs. A
+ *  formula counts as one piece (a fraction's numerator is not a line of its own). */
+function writtenLines(els: Element[], conv: (r: DOMRect | DOMRectReadOnly) => FocusBox): FocusBox[] {
+  const boxes: FocusBox[] = [];
+  for (const el of els) {
+    const doc = el.ownerDocument;
+    const range = doc.createRange();
+    const walker = doc.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
+      acceptNode: (n) => (n.nodeValue?.trim() && !n.parentElement?.closest(`${SKIP}, .katex`) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT),
+    });
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      range.selectNodeContents(n);
+      for (const r of Array.from(range.getClientRects())) boxes.push(conv(r));
+    }
+    el.querySelectorAll('.katex-html').forEach((k) => {
+      const b = katexBox(k, conv);
+      if (b) boxes.push(b);
+    });
+  }
+  return lineBoxes(boxes);
+}
+
 function isShown(node: Node, root: HTMLElement): boolean {
   for (let el: Element | null = node.nodeType === 1 ? node as Element : node.parentElement; el && el !== root; el = el.parentElement) {
     const cs = getComputedStyle(el);
@@ -186,10 +211,16 @@ function isShown(node: Node, root: HTMLElement): boolean {
   return true;
 }
 
-const elementHit = (target: string, el: Element, root: HTMLElement, matches?: number): FocusResolution => {
-  const box = elementBox(el, toSlide(root));
-  if (box.w <= 0.5 && box.h <= 0.5) return { target, error: 'it is not on screen now (an unrevealed build step?)' };
-  return { target, kind: 'element', boxes: [box], box, ...(matches && matches > 1 ? { matches } : {}), ...(isShown(el, root) ? {} : { hidden: true }) };
+/** `written`: its lines of writing are its `boxes` (a cell, a row); 'hug': its `box`
+ *  too — a bullet's own box spans the slide however short it is, and a ring round it
+ *  ran the slide's width. */
+const elementHit = (target: string, el: Element, root: HTMLElement, matches?: number, written: boolean | 'hug' = false): FocusResolution => {
+  const conv = toSlide(root);
+  const own = elementBox(el, conv);
+  if (own.w <= 0.5 && own.h <= 0.5) return { target, error: 'it is not on screen now (an unrevealed build step?)' };
+  const lines = written ? writtenLines([el], conv) : [];
+  const box = written === 'hug' && lines.length ? unionBox(lines) : own;
+  return { target, kind: 'element', boxes: lines.length ? lines : [own], box, ...(matches && matches > 1 ? { matches } : {}), ...(isShown(el, root) ? {} : { hidden: true }) };
 };
 
 // ---- finding ---------------------------------------------------------------------
@@ -222,7 +253,8 @@ const boxesHit = (target: string, els: Element[], root: HTMLElement, matches?: n
   const boxes = els.map((e) => elementBox(e, conv)).filter((b) => b.w > 0.5 || b.h > 0.5);
   if (!boxes.length) return { target, error: 'it is not on screen now' };
   const box = unionBox(boxes);
-  return { target, kind: 'element', boxes: [box], box, ...(matches && matches > 1 ? { matches } : {}), ...(els.every((e) => isShown(e, root)) ? {} : { hidden: true }) };
+  const lines = writtenLines(els, conv);
+  return { target, kind: 'element', boxes: lines.length ? lines : [box], box, ...(matches && matches > 1 ? { matches } : {}), ...(els.every((e) => isShown(e, root)) ? {} : { hidden: true }) };
 };
 
 /** Resolve one target on a rendered slide (`root` = SlideView's wrapper). */
@@ -271,12 +303,12 @@ export function resolveTarget(target: string, root: HTMLElement): FocusResolutio
     case 'item': {
       if (p.nums) {
         const li = nthOf(Array.from(root.querySelectorAll('li')), p.nums[0], 'bullet', target);
-        return 'error' in li ? li : elementHit(target, li, root);
+        return 'error' in li ? li : elementHit(target, li, root, undefined, 'hug');
       }
       const found = findText(root, p.text || '', p.nth, target);
       if ('error' in found) return found;
       const li = found.range.startContainer.parentElement?.closest('li');
-      return li ? elementHit(target, li, root, found.count) : { target, error: `"${p.text}" is not in a bullet` };
+      return li ? elementHit(target, li, root, found.count, 'hug') : { target, error: `"${p.text}" is not in a bullet` };
     }
     case 'cell': case 'row': case 'col': {
       if (p.nums) {
@@ -289,18 +321,18 @@ export function resolveTarget(target: string, root: HTMLElement): FocusResolutio
         }
         const row = table.rows[a - 1];
         if (!row) return { target, error: `the table has ${table.rows.length} rows, not ${a}` };
-        if (p.kind === 'row') return elementHit(target, row, root);
+        if (p.kind === 'row') return elementHit(target, row, root, undefined, true);
         const at = row.cells[(b || 1) - 1];
         if (!at) return { target, error: `row ${a} has ${row.cells.length} cells, not ${b}` };
-        return elementHit(target, at, root);
+        return elementHit(target, at, root, undefined, true);
       }
       const found = findText(root, p.text || '', p.nth, target);
       if ('error' in found) return found;
       const count = found.count;
       const cell = (found.range.startContainer.parentElement?.closest('td, th') as HTMLTableCellElement | null) || null;
       if (!cell) return { target, error: `"${p.text}" is not in a table` };
-      if (p.kind === 'cell') return elementHit(target, cell, root, count);
-      if (p.kind === 'row') return elementHit(target, cell.parentElement!, root, count);
+      if (p.kind === 'cell') return elementHit(target, cell, root, count, true);
+      if (p.kind === 'row') return elementHit(target, cell.parentElement!, root, count, true);
       return boxesHit(target, columnOf(cell), root, count);
     }
     case '': {
@@ -338,8 +370,7 @@ export function listTargets(root: HTMLElement): FocusTargetInfo[] {
     return t.length > 24 ? t.slice(0, 24) : t;
   };
   const quote = (s: string) => `"${s.replace(/"/g, '')}"`;
-  const add = (target: string, what: string, el: Element, note?: string) => {
-    const box = elementBox(el, conv);
+  const add = (target: string, what: string, el: Element, note?: string, box = elementBox(el, conv)) => {
     if (box.w > 0.5 || box.h > 0.5) out.push({ target, what, box, ...(note ? { note } : {}) });
   };
   const content = (root.querySelector('.slide-content') as HTMLElement | null) || root;
@@ -351,7 +382,8 @@ export function listTargets(root: HTMLElement): FocusTargetInfo[] {
     const own = Array.from(li.childNodes).filter((n) => n.nodeType === 3 || (n as Element).tagName !== 'UL' && (n as Element).tagName !== 'OL')
       .map((n) => n.textContent || '').join(' ');
     const t = short(own);
-    add(t ? `item:${quote(t)}` : `item:${i + 1}`, `bullet ${i + 1}`, li, t ? `also item:${i + 1}` : undefined);
+    const lines = writtenLines([li], conv);      // where it is written, as resolveTarget gives it
+    add(t ? `item:${quote(t)}` : `item:${i + 1}`, `bullet ${i + 1}`, li, t ? `also item:${i + 1}` : undefined, lines.length ? unionBox(lines) : undefined);
   });
   tablesOf(content).forEach((table, ti) => {
     Array.from(table.rows).forEach((row, r) => Array.from(row.cells).forEach((cell, c) => {

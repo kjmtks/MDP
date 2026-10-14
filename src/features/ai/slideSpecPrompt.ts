@@ -185,7 +185,10 @@ block on a single slide OVERRIDES the global one for that slide; an EMPTY block
     until \`[[clear]]\` / \`[[clear: TARGET]]\` or the next slide. A style may follow
     the target(s): look — \`pointer\` (default), \`ring\`, \`arrow\`, \`box\`,
     \`spotlight\` (dims the rest), \`blur\`; mark — \`marker\` (default, a highlighter),
-    \`underline\`, \`circle\`; \`color=#d32f2f\` is optional.
+    \`underline\`, \`circle\`; \`color=#d32f2f\` is optional. A theme may tune their look
+    on \`.mdp-focus-layer\`: \`--mdp-focus-color\` (looks), \`--mdp-focus-pen\` (underline,
+    circle), \`--mdp-focus-marker\`, \`--mdp-focus-line\` / \`--mdp-focus-gap\` (× the line
+    width / the room from the text), \`--mdp-focus-dim\`, \`--mdp-focus-blur\`.
     TARGET, as the slide SHOWS it: \`"phrase"\` / \`「語句」\` (\`#2\` = its 2nd
     occurrence), \`item:"…"\` / \`item:3\` (a bullet), \`cell:"…"\` / \`cell:2,3\`,
     \`row:…\`, \`col:…\` (numbers count in the first table, the header row included),

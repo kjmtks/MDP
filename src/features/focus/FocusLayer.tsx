@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import type { FocusCue } from '../autoplay/autoplay';
 import type { FocusState } from './focusState';
-import { isHit, resolveTarget, unionBox, type FocusBox, type FocusHit } from './focusTargets';
+import { isHit, resolveTarget, type FocusBox, type FocusHit } from './focusTargets';
 import { styleOf, type FocusOutlineItem, type FocusStyle } from './focusStyles';
 import { registerFocusLayer } from './focusSettle';
 import './FocusLayer.css';
@@ -86,13 +86,18 @@ export const FocusLayer: React.FC<{
   const { W, H } = geo;
   const u = H / 540;
   const colorOf = (c: FocusCue, fallback: string) => (COLOR.test(c.options.color || '') ? c.options.color : fallback);
+  // The moving attention (look) is red; the annotations that stay (mark) are a pen
+  // of another colour, so a mark is never taken for a look where they meet (an
+  // underline under a boxed row) — and the highlighter is yellow.
   const stroke = 'var(--mdp-focus-color, #e53935)';
+  const pen = 'var(--mdp-focus-pen, #ef6c00)';
   const markerColor = 'var(--mdp-focus-marker, rgba(255, 214, 0, .55))';
   const items: React.ReactNode[] = [];
   const holes: { box: FocusBox; spot: boolean }[] = [];
 
   const draw = (p: Placed, key: string, moving: boolean) => {
-    const c = colorOf(p.cue, p.style === 'marker' ? markerColor : p.style === 'pointer' ? 'var(--mdp-focus-color, #ff2d2d)' : stroke);
+    const c = colorOf(p.cue, p.style === 'marker' ? markerColor : p.style === 'pointer' ? 'var(--mdp-focus-color, #ff2d2d)'
+      : p.style === 'underline' || p.style === 'circle' ? pen : stroke);
     const vars = { '--c': c } as React.CSSProperties;
     p.hits.forEach((h, i) => {
       // A look that moves keeps its element (it slides to the new place); the rest
@@ -109,16 +114,11 @@ export const FocusLayer: React.FC<{
           items.push(<div key={k} className="mdp-focus-pointer" style={{ ...vars, left: x, top: ay - d / 2, width: d, height: d }} />);
           break;
         }
-        case 'ring': {
-          const pad = 6 * u;
-          items.push(<div key={k} className="mdp-focus-ring" style={{ ...vars, left: b.x - pad, top: b.y - pad, width: b.w + 2 * pad, height: b.h + 2 * pad, boxSizing: 'border-box' }} />);
+        case 'ring': case 'box':
+          // On the target itself; the frame around it, and how far out, is the
+          // stylesheet's (a theme's) — a phrase among other words gets less room.
+          items.push(<div key={k} className={`mdp-focus-${p.style}${h.kind === 'text' ? ' mdp-focus-inline' : ''}`} style={{ ...vars, left: b.x, top: b.y, width: b.w, height: b.h }} />);
           break;
-        }
-        case 'box': {
-          const pad = 5 * u;
-          items.push(<div key={k} className="mdp-focus-box" style={{ ...vars, left: b.x - pad, top: b.y - pad, width: b.w + 2 * pad, height: b.h + 2 * pad, boxSizing: 'border-box' }} />);
-          break;
-        }
         case 'arrow': {
           const tipX = (h.kind === 'area' ? b.x : ax) - 5 * u;
           const tipY = h.kind === 'area' ? b.y + b.h / 2 : ay;
@@ -128,8 +128,8 @@ export const FocusLayer: React.FC<{
           const hgt = 44 * u;
           items.push(
             <svg key={k} className="mdp-focus-arrow" width={w} height={hgt} viewBox={`0 0 ${w} ${hgt}`} style={{ ...vars, left: tipX - w, top: tipY - hgt }}>
-              <path d={`M ${3 * u} ${3 * u} Q ${w * 0.55} ${3 * u} ${w - 2 * u} ${hgt - 2 * u}`} fill="none" stroke={c} strokeWidth={4 * u} strokeLinecap="round" />
-              <path d={`M ${w - 2 * u} ${hgt - 2 * u} l ${-15 * u} ${-3 * u} M ${w - 2 * u} ${hgt - 2 * u} l ${-1 * u} ${-15 * u}`} fill="none" stroke={c} strokeWidth={4 * u} strokeLinecap="round" />
+              <path d={`M ${3 * u} ${3 * u} Q ${w * 0.55} ${3 * u} ${w - 2 * u} ${hgt - 2 * u}`} fill="none" stroke={c} strokeLinecap="round" />
+              <path d={`M ${w - 2 * u} ${hgt - 2 * u} l ${-13 * u} ${-3 * u} M ${w - 2 * u} ${hgt - 2 * u} l ${-1 * u} ${-13 * u}`} fill="none" stroke={c} strokeLinecap="round" />
             </svg>,
           );
           break;
@@ -141,7 +141,7 @@ export const FocusLayer: React.FC<{
           break;
         case 'underline':
           h.boxes.forEach((l, j) => items.push(
-            <div key={`${k}-${j}`} className="mdp-focus-underline" style={{ ...vars, left: l.x, top: l.y + l.h - 0.5 * u, width: l.w, height: 3 * u, animationDelay: animate ? `${j * 0.25}s` : undefined }} />,
+            <div key={`${k}-${j}`} className="mdp-focus-underline" style={{ ...vars, left: l.x, top: l.y + l.h, width: l.w, animationDelay: animate ? `${j * 0.25}s` : undefined }} />,
           ));
           break;
         case 'circle': {
@@ -161,7 +161,7 @@ export const FocusLayer: React.FC<{
           const path = `M ${at(-35)} A ${rx} ${ry} 0 0 1 ${at(145)} A ${rx * 1.04} ${ry * 1.06} 0 1 1 ${at(-15, 1.04, 1.06)}`;
           items.push(
             <svg key={k} className="mdp-focus-circle" width={w} height={hgt} viewBox={`0 0 ${w} ${hgt}`} style={{ ...vars, left: b.x - pad, top: b.y - pad, transform: 'rotate(-2deg)' }}>
-              <path d={path} pathLength={1} fill="none" stroke={c} strokeWidth={3.5 * u} strokeLinecap="round" />
+              <path d={path} pathLength={1} fill="none" stroke={c} strokeLinecap="round" />
             </svg>,
           );
           break;
@@ -191,7 +191,7 @@ export const FocusLayer: React.FC<{
   if (spots.length) {
     layers.push(
       <svg key="dim" className="mdp-focus-dim" width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
-        <path d={`${frame} ${holePath(spots, 7 * u)}`} fillRule="evenodd" fill="rgba(0, 0, 0, .5)" />
+        <path d={`${frame} ${holePath(spots, 7 * u)}`} fillRule="evenodd" />
       </svg>,
     );
   }
@@ -199,9 +199,7 @@ export const FocusLayer: React.FC<{
     const mask = `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='${W}' height='${H}'><path d='${frame} ${holePath(blurs, 7 * u)}' fill-rule='evenodd'/></svg>`)}")`;
     layers.push(
       <div key="blur" className="mdp-focus-blur" style={{
-        backdropFilter: `blur(${3.5 * u}px)`, WebkitBackdropFilter: `blur(${3.5 * u}px)`,
         maskImage: mask, WebkitMaskImage: mask, maskSize: '100% 100%', WebkitMaskSize: '100% 100%',
-        background: 'rgba(255, 255, 255, .12)',
       } as React.CSSProperties} />,
     );
   }
@@ -211,7 +209,7 @@ export const FocusLayer: React.FC<{
   geo.outline.forEach(({ n, cue, hits }) => {
     const c = cue.kind === 'mark' ? '#ea580c' : cue.kind === 'look' ? '#2563eb' : '#64748b';
     hits.forEach((h, i) => {
-      const b = h.boxes.length > 1 ? unionBox(h.boxes) : h.box;
+      const b = h.box;
       marks.push(<div key={`o-${n}-${i}`} className="mdp-focus-outline" style={{ '--c': c, left: b.x - 3, top: b.y - 3, width: b.w + 6, height: b.h + 6, boxSizing: 'border-box' } as React.CSSProperties} />);
       marks.push(<div key={`b-${n}-${i}`} className="mdp-focus-badge" style={{ '--c': c, left: Math.max(0, b.x - 10), top: Math.max(0, b.y - 12) } as React.CSSProperties}>{n}</div>);
     });
