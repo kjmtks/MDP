@@ -210,8 +210,9 @@ export default function OutputPage() {
   // The output window DRIVES the show as well as displaying it: keys, clicks and
   // the wheel move the host (which then broadcasts the new state back here), so the
   // deck can be run from this window alone — no need to reach for the main window.
-  const sendNav = useCallback((direction: number) => {
-    if (channelId) send({ type: 'NAV', direction, channelId });
+  // `whole` (↑ / ↓): the slide itself, its builds, emphases and events skipped.
+  const sendNav = useCallback((direction: number, whole = false) => {
+    if (channelId) send({ type: 'NAV', direction, ...(whole ? { whole: true } : {}), channelId });
   }, [channelId, send]);
   const sendLinkNav = useCallback((target: string) => {
     if (channelId) send({ type: 'LINK_NAV', target, channelId });
@@ -236,6 +237,8 @@ export default function OutputPage() {
       const action = matchAction(e, ACTIONS_BY_SCOPE.slideshow, appSettings);
       if (action?.id === 'slideshow.next' && !inInteractive(e)) { e.preventDefault(); sendNav(1); }
       else if (action?.id === 'slideshow.prev' && !inInteractive(e)) { e.preventDefault(); sendNav(-1); }
+      else if (action?.id === 'slideshow.nextSlide' && !inInteractive(e)) { e.preventDefault(); sendNav(1, true); }
+      else if (action?.id === 'slideshow.prevSlide' && !inInteractive(e)) { e.preventDefault(); sendNav(-1, true); }
     };
     // Click / wheel advance only while a slide is shown: in the overview a click
     // means "jump to THIS slide" (handled by the grid).

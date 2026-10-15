@@ -36,7 +36,9 @@ export type SyncMessage =
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   | { type: 'BUS_EVENT'; topic: string; payload?: any; channelId?: string }
   | { type: 'SYNC_STATE_IMAGE'; payload: ImageSyncPayload; channelId?: string }
-  | { type: 'NAV'; direction: number; channelId: string }
+  // `whole`: to the next / previous slide itself, skipping its builds, emphases and
+  // events (↑ / ↓) — else through the script's steps first (→ / ←).
+  | { type: 'NAV'; direction: number; whole?: boolean; channelId: string }
   // A chip clicked in the presenter's script (mirror → host): → goes on right after
   // it. `chip`: its place among the pane's chips (presentMarkers).
   | { type: 'CUE_AT'; slide: number; chip: number; channelId?: string }

@@ -111,9 +111,10 @@ export const usePresentation = (
   // slide, fresh. `builds`: a show even though this window shows no slideshow — a
   // presentation given from the presenter view (or a remote device) with the
   // output window, while this one keeps the editor. Outside a show → just turns
-  // the slide.
-  const moveSlide = useCallback((direction: number, builds = false) => {
-    const inShow = isSlideshowRef.current || builds;
+  // the slide. `whole` (↑ / ↓): straight to the next / previous slide, fresh —
+  // its builds, emphases and events skipped.
+  const moveSlide = useCallback((direction: number, builds = false, whole = false) => {
+    const inShow = (isSlideshowRef.current || builds) && !whole;
     const { stepCount, markers, extra } = inShow ? markersOf(currentSlideIndex) : { stepCount: 0, markers: [], extra: 0 };
     const p = cuePosRef.current;
     if (direction > 0) {

@@ -664,6 +664,7 @@ function scriptCharsOf(raw) {
     .replace(RUBY_RE, (_m, base) => base)
     .replace(/\[\[\s*say\s*:\s*([\s\S]*?)\]\]/gi, ' ')
     .replace(/\[\[\s*step\s*\]\]/gi, ' ')
+    .replace(/\[\[\s*then\s*\]\]/gi, '')
     .replace(/\[\[\s*(emit-wait|emit|wait|pause)\s*:\s*([^\]]*?)\s*\]\]/gi, ' ')
     .replace(/\[\[\s*(look|mark|clear)\s*(?::\s*([^\]]*?))?\s*\]\]/gi, '')
     .replace(/\s+/g, '').length;

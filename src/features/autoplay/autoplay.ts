@@ -6,6 +6,11 @@
 import { captionChunks, displayWidth, splitSentences, UNIT_MAX } from './captionSplit';
 
 const STEP_MARKER = /\[\[\s*step\s*\]\]/gi;
+// `[[then]]` — in a talk given BY HAND, the next → starts here: markers on its two
+// sides come with separate presses (`[[step]][[then]][[look: …]]`: show the build, then
+// point). Nothing else — never spoken, shown or counted, and the auto-play ignores it
+// (its narration lines are its clock; to make it wait too, write a [[pause]]).
+const THEN_MARKER = /\[\[\s*then\s*\]\]/gi;
 
 // ---- Focus cues: where to look, in time with the narration ------------------------
 //
@@ -90,8 +95,9 @@ export function scriptCues(script: string): FocusCue[] {
  *  press: its builds, then its cues (lineCues order), then its events — so
  *  `[[step]][[look: row:2]]` reveals the row and points at it. A press ENDS where the
  *  auto-play would stop: after an [[emit-wait]], at a [[wait]] or a [[pause]] (the
- *  timer starts with one press, its answer comes with the next). `chip`: its place
- *  among the presenter pane's chips (⏭ / 👁🖍✕ / ▶, in the script's order). */
+ *  timer starts with one press, its answer comes with the next) — and at a [[then]],
+ *  which does nothing else. `chip`: its place among the presenter pane's chips
+ *  (⏭ / 👁🖍✕ / ▶, in the script's order). */
 export interface PresentMarker { kind: 'step' | 'cue' | 'event'; group: number; chip: number; cue?: FocusCue; action?: ScriptAction }
 
 /** The markers → goes through on a slide — what the auto-play does as it reads,
@@ -101,7 +107,7 @@ export interface PresentMarker { kind: 'step' | 'cue' | 'event'; group: number; 
  *  how many extra builds. */
 export function presentMarkers(script: string, stepCount: number): { markers: PresentMarker[]; extra: number } {
   const s = String(script || '');
-  const re = /(\[\[\s*step\s*\]\])|(\[\[\s*(?:look|mark|clear)\s*(?::[^\]]*?)?\s*\]\])|(\[\[\s*(emit-wait|emit)\s*:\s*([^\]]*?)\s*\]\])|(\[\[\s*(?:wait|pause)\s*:[^\]]*?\]\])|\[\[\s*say\s*:[^\]]*?\]\]/gi;
+  const re = /(\[\[\s*step\s*\]\])|(\[\[\s*(?:look|mark|clear)\s*(?::[^\]]*?)?\s*\]\])|(\[\[\s*(emit-wait|emit)\s*:\s*([^\]]*?)\s*\]\])|(\[\[\s*(?:wait|pause)\s*:[^\]]*?\]\]|\[\[\s*then\s*\]\])|\[\[\s*say\s*:[^\]]*?\]\]/gi;
   const markers: PresentMarker[] = [];
   let group = -1;
   let open = false;
@@ -111,7 +117,7 @@ export function presentMarkers(script: string, stepCount: number): { markers: Pr
   for (let m = re.exec(s); m; m = re.exec(s)) {
     if (/\S/.test(s.slice(last, m.index))) open = false;    // words in between: a new press
     last = m.index + m[0].length;
-    if (m[6]) { open = false; continue; }                    // a wait / a pause: the press ends
+    if (m[6]) { open = false; continue; }                    // a wait / a pause / [[then]]: the press ends
     if (!m[1] && !m[2] && !m[3]) continue;                   // a reading
     chip++;
     if (!open) { group++; open = true; }
@@ -304,6 +310,7 @@ export function renderScriptChips(scriptMarkdown: string): string {
   const esc = escAttr;
   return String(scriptMarkdown || '')
     .replace(/\[\[\s*step\s*\]\]/gi, '<button type="button" class="mdp-script-chip mdp-chip-step" data-chip="step" title="クリックでここまでのビルドを出す（→ はこの次から）">⏭ ビルド</button>')
+    .replace(THEN_MARKER, '<span class="mdp-script-chip mdp-chip-passive mdp-chip-then" title="→ はここで区切る（手動の発表．自動読み上げでは何もしない）">→</span>')
     .replace(actionMarkerRe(), (_m, kindRaw: string, body: string) => {
       const a = parseScriptAction(kindRaw, body);
       if (a.kind === 'pause') return `<span class="mdp-script-chip mdp-chip-passive" title="自動再生時の間">⏸${a.label ? ' ' + esc(a.label) : ''}</span>`;
@@ -342,6 +349,7 @@ export function captionText(seg: string): string {
   return rubyBase(seg)
     .replace(SAY_MARKER, ' ')
     .replace(STEP_MARKER, ' ')
+    .replace(THEN_MARKER, '')
     .replace(actionMarkerRe(), ' ')
     .replace(cueMarkerRe(), '')
     .replace(/[ \t]+/g, ' ')
@@ -356,6 +364,7 @@ export function speechText(seg: string): string {
     .replace(SAY_MARKER, ' $1 ')
     .replace(MATH_SPAN, ' ')
     .replace(STEP_MARKER, ' ')
+    .replace(THEN_MARKER, '')
     .replace(actionMarkerRe(), ' ')
     .replace(cueMarkerRe(), '')
     .replace(/\s+/g, ' ')
@@ -363,11 +372,11 @@ export function speechText(seg: string): string {
 }
 
 // The script as SHOWN, without any control: rubies reduced to their base, the
-// `[[say:…]]` readings and `[[step]]` / event / focus markers removed (math kept).
+// `[[say:…]]` readings and `[[step]]` / `[[then]]` / event / focus markers removed (math kept).
 // Also what the talk-time estimate counts (talkTime.scriptChars) — mirrored in
 // app/mcp-bridge.cjs scriptCharsOf.
 export function stripScriptMarkers(s: string): string {
-  return rubyBase(s).replace(SAY_MARKER, ' ').replace(STEP_MARKER, ' ').replace(actionMarkerRe(), ' ')
+  return rubyBase(s).replace(SAY_MARKER, ' ').replace(STEP_MARKER, ' ').replace(THEN_MARKER, '').replace(actionMarkerRe(), ' ')
     .replace(cueMarkerRe(), '').replace(/[ \t]+/g, ' ').trim();
 }
 
@@ -406,7 +415,7 @@ export function scriptUnits(seg: string, maxWidth = UNIT_MAX): ScriptUnit[] {
     cues.push(parseFocusCue(kind, body || ''));
     return `${CUE_OPEN}${cues.length - 1}${CUE_CLOSE}`;
   });
-  const masked = eachRuby(marked.replace(STEP_MARKER, ' ').replace(actionMarkerRe(), ' '),
+  const masked = eachRuby(marked.replace(STEP_MARKER, ' ').replace(THEN_MARKER, '').replace(actionMarkerRe(), ' '),
     (h) => atom(h.base, h.math ? ` ${h.reading} ` : h.reading))
     // math span + optional attached reading → one indivisible token
     .replace(/(\\\([\s\S]*?\\\)|\\\[[\s\S]*?\\\])\s*(?:\[\[\s*say\s*:\s*([\s\S]*?)\]\])?/g,

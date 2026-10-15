@@ -28,7 +28,7 @@ export interface ChipFocus { slide: number; focus: FocusState | null }
 export const setChipFocus = StateEffect.define<ChipFocus | null>();
 
 const SCRIPT_SRC = '<' + '!--\\s*@script:[\\s\\S]{0,20000}?--' + '>';
-const MARKER_SRC = '\\[\\[\\s*(look|mark|clear|emit-wait|emit|wait|pause|step)\\s*(?::\\s*([^\\]]*?))?\\s*\\]\\]';
+const MARKER_SRC = '\\[\\[\\s*(look|mark|clear|emit-wait|emit|wait|pause|step|then)\\s*(?::\\s*([^\\]]*?))?\\s*\\]\\]';
 
 /** The slide (0-based, the meta page is -1) holding the given line. */
 function slideAtLine(blocks: ReturnType<typeof splitMarkdownToBlocks>, line: number): number {

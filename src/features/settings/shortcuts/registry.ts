@@ -48,8 +48,10 @@ export const ACTIONS: ActionDef[] = [
   { id: 'slideshow.redo', label: 'Redo drawing', scope: 'slideshow', defaultKeys: ['Mod-y'] },
   { id: 'slideshow.clear', label: 'Clear drawing', scope: 'slideshow', defaultKeys: ['c'] },
   { id: 'slideshow.addSlide', label: 'Add blank slide', scope: 'slideshow', defaultKeys: ['n'] },
-  { id: 'slideshow.next', label: 'Next slide', scope: 'slideshow', defaultKeys: ['ArrowRight', 'ArrowDown', 'Space', 'Enter', 'PageDown'] },
-  { id: 'slideshow.prev', label: 'Previous slide', scope: 'slideshow', defaultKeys: ['ArrowLeft', 'ArrowUp', 'PageUp'] },
+  { id: 'slideshow.next', label: 'Next — the script\'s builds, emphases and events in order, then the next slide', scope: 'slideshow', defaultKeys: ['ArrowRight', 'Space', 'Enter', 'PageDown'] },
+  { id: 'slideshow.prev', label: 'Back — one step of the script, then the previous slide', scope: 'slideshow', defaultKeys: ['ArrowLeft', 'PageUp'] },
+  { id: 'slideshow.nextSlide', label: 'Next slide, skipping its builds, emphases and events', scope: 'slideshow', defaultKeys: ['ArrowDown'] },
+  { id: 'slideshow.prevSlide', label: 'Previous slide, skipping its builds, emphases and events', scope: 'slideshow', defaultKeys: ['ArrowUp'] },
 
   // ---- presenter -----------------------------------------------------------
   { id: 'presenter.penToggle', label: 'Toggle pen', scope: 'presenter', defaultKeys: ['p'] },
@@ -57,8 +59,10 @@ export const ACTIONS: ActionDef[] = [
   { id: 'presenter.redo', label: 'Redo drawing', scope: 'presenter', defaultKeys: ['Mod-y'] },
   { id: 'presenter.clear', label: 'Clear drawing', scope: 'presenter', defaultKeys: ['c'] },
   { id: 'presenter.addSlide', label: 'Add blank slide', scope: 'presenter', defaultKeys: ['n'] },
-  { id: 'presenter.next', label: 'Next slide', scope: 'presenter', defaultKeys: ['ArrowRight', 'ArrowDown', 'Space', 'Enter', 'PageDown'] },
-  { id: 'presenter.prev', label: 'Previous slide', scope: 'presenter', defaultKeys: ['ArrowLeft', 'ArrowUp', 'PageUp'] },
+  { id: 'presenter.next', label: 'Next — the script\'s builds, emphases and events in order, then the next slide', scope: 'presenter', defaultKeys: ['ArrowRight', 'Space', 'Enter', 'PageDown'] },
+  { id: 'presenter.prev', label: 'Back — one step of the script, then the previous slide', scope: 'presenter', defaultKeys: ['ArrowLeft', 'PageUp'] },
+  { id: 'presenter.nextSlide', label: 'Next slide, skipping its builds, emphases and events', scope: 'presenter', defaultKeys: ['ArrowDown'] },
+  { id: 'presenter.prevSlide', label: 'Previous slide, skipping its builds, emphases and events', scope: 'presenter', defaultKeys: ['ArrowUp'] },
   { id: 'presenter.historyBack', label: 'Navigate back (hyperlink history)', scope: 'presenter', defaultKeys: ['Alt-ArrowLeft'] },
   { id: 'presenter.historyForward', label: 'Navigate forward (hyperlink history)', scope: 'presenter', defaultKeys: ['Alt-ArrowRight'] },
 

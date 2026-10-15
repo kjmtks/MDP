@@ -225,10 +225,11 @@ export default function PresenterPage() {
   }, [plan, cuePos, scriptInner, scriptChips]);
   const movesLeft = pressesLeft(plan.markers, plan.extra, cuePos);
   const hasPlan = plan.markers.length > 0 || plan.extra > 0;
-  const nextKey = useMemo(() => {
-    const a = actionById('presenter.next');
-    return prettyCombo((a && resolveKeys(a, appSettings)[0]) || 'ArrowRight');
-  }, [appSettings]);
+  const [nextKey, slideKey] = useMemo(() => ['presenter.next', 'presenter.nextSlide'].map((id) => {
+    const a = actionById(id);
+    const k = a ? resolveKeys(a, appSettings)[0] : '';
+    return k ? prettyCombo(k) : '';
+  }), [appSettings]);
   const deckSeconds = useMemo(() => estimateDeckSeconds(slides, readingCpm), [slides, readingCpm]);
   const currentBudgetSec = useMemo(() => (currentSlide ? slideSeconds(currentSlide, readingCpm) : 0), [currentSlide, readingCpm]);
   const currentHasExplicit = !!(currentSlide && explicitSlideSeconds(currentSlide.raw || '') != null);
@@ -495,9 +496,10 @@ export default function PresenterPage() {
     return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
-  const sendNav = useCallback((direction: number) => {
+  // `whole` (↑ / ↓): the slide itself, its builds, emphases and events skipped.
+  const sendNav = useCallback((direction: number, whole = false) => {
     if (channelId) {
-      send({ type: 'NAV', direction, channelId });
+      send({ type: 'NAV', direction, ...(whole ? { whole: true } : {}), channelId });
     }
   }, [channelId, send]);
 
@@ -555,6 +557,8 @@ export default function PresenterPage() {
         case 'presenter.addSlide': handleAddSlide(); break;
         case 'presenter.next': e.preventDefault(); sendNav(1); break;
         case 'presenter.prev': e.preventDefault(); sendNav(-1); break;
+        case 'presenter.nextSlide': e.preventDefault(); sendNav(1, true); break;
+        case 'presenter.prevSlide': e.preventDefault(); sendNav(-1, true); break;
         case 'presenter.historyBack': e.preventDefault(); sendHistoryNav(-1); break;
         case 'presenter.historyForward': e.preventDefault(); sendHistoryNav(1); break;
       }
@@ -756,8 +760,9 @@ export default function PresenterPage() {
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span className="presenter-label" style={{ color: '#8ab4f8' }}>SCRIPT — read aloud</span>
                         {hasPlan && !isEditingScript && (
-                          <span title="→ で台本の順にビルド・強調・イベント（点線の枠）を出し、出し切ったら次のスライドへ。← でひとつ戻る（イベントは取り消さない）。チップを押すと、→ はその次から" style={{ marginLeft: 'auto', marginRight: 8, fontSize: '0.75rem', color: '#a8a29e' }}>
-                            <kbd className="presenter-kbd">{nextKey}</kbd> {movesLeft > 0 ? <>台本の順に · あと {movesLeft}</> : <>次のスライドへ</>}
+                          <span title="→ で台本の順にビルド・強調・イベント（点線の枠）を出し、出し切ったら次のスライドへ。← でひとつ戻る（イベントは取り消さない）。チップを押すと、→ はその次から。↓ / ↑ はビルド・強調・イベントを飛ばして次 / 前のスライドへ" style={{ marginLeft: 'auto', marginRight: 8, fontSize: '0.75rem', color: '#a8a29e' }}>
+                            {nextKey && <><kbd className="presenter-kbd">{nextKey}</kbd> {movesLeft > 0 ? <>台本の順に · あと {movesLeft}</> : <>次のスライドへ</>}</>}
+                            {slideKey && movesLeft > 0 && <>{nextKey ? '　' : ''}<kbd className="presenter-kbd">{slideKey}</kbd> 次のスライドへ</>}
                           </span>
                         )}
                         <Button

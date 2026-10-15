@@ -221,6 +221,9 @@ block on a single slide OVERRIDES the global one for that slide; an EMPTY block
     at a time, as written (markers with nothing but spaces between them —
     \`[[step]][[look: row:2]]\` — are one press; a press ends after an
     \`[[emit-wait]]\` and at a \`[[wait]]\` / \`[[pause]]\`), then turns the slide.
+    \`[[then]]\` splits there and does nothing else: \`[[step]][[then]][[look: row:2]]\`
+    shows the build with one press and points with the next (by hand; the auto-play
+    ignores it — a \`[[pause: 1s]]\` would make it wait too).
 - \`<!-- @time 90s -->\` — this slide's speaking-time budget (overrides the estimate,
   a measured one too). Accepts \`90s\`, \`2m\`, \`1m30s\`, \`1:30\` (mm:ss). Shown live in
   the presenter view (per-slide + whole-deck countdown).

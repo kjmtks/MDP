@@ -9,7 +9,7 @@ export const useShortcuts = (
   isSlideshow: boolean, setIsSlideshow: (val: boolean) => void,
   mode: AppMode, setMode: React.Dispatch<React.SetStateAction<AppMode>>,
   showControls: boolean, setShowControls: React.Dispatch<React.SetStateAction<boolean>>,
-  currentSlideIndex: number, moveSlide: (dir: number) => void,
+  currentSlideIndex: number, moveSlide: (dir: number, builds?: boolean, whole?: boolean) => void,
   undo: (pageIndex: number) => void, redo: (pageIndex: number) => void, clear: (pageIndex: number) => void,
   handleAddBlankSlide: (pageIndex: number) => void, send: (msg: SyncMessage) => void, channelId: string
 ) => {
@@ -45,6 +45,13 @@ export const useShortcuts = (
           break;
         case 'slideshow.prev':
           if (!inInteractive(e)) { e.preventDefault(); moveSlide(-1); }
+          break;
+        // ↑ / ↓: the slide itself, its builds, emphases and events skipped
+        case 'slideshow.nextSlide':
+          if (!inInteractive(e)) { e.preventDefault(); moveSlide(1, false, true); }
+          break;
+        case 'slideshow.prevSlide':
+          if (!inInteractive(e)) { e.preventDefault(); moveSlide(-1, false, true); }
           break;
       }
     };

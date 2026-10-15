@@ -205,8 +205,9 @@ export const usePresentationSync = (
         break;
       case 'NAV':
         // From the presenter view / a remote: a presentation, builds included —
-        // even when this window keeps the editor (the show is in the output window).
-        moveSlide(msg.direction, true);
+        // even when this window keeps the editor (the show is in the output window);
+        // `whole`: straight to the next / previous slide (↑ / ↓).
+        moveSlide(msg.direction, true, !!msg.whole);
         break;
       case 'CUE_AT':
         if (typeof msg.slide === 'number' && typeof msg.chip === 'number') onCueAt?.(msg.slide, msg.chip);
