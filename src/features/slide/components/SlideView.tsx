@@ -67,9 +67,6 @@ interface SlideViewProps {
   focusAnimate?: boolean;
 }
 
-// A slide whose script draws ink ([[ink: …]]) — the edit-layout mode lets it be reshaped.
-const HAS_INK = /\[\[\s*ink\s*(?::|\]\])/i;
-
 // Render a Chart.js config (base64 JSON from the `@chartjs` fence) to a STATIC PNG
 // data-URL, off-screen, once — cached by config+size. Every surface (live preview,
 // thumbnail, print, overview) then just shows the SAME <img>, exactly like the
@@ -683,8 +680,8 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
         <ManipulationLayer container={containerEl} headerContainer={headerEl} footerContainer={footerEl} runtime={manipulate} />
       )}
 
-      {/* The edit-layout mode reshapes the script's [[ink]] too (the editor preview). */}
-      {!flow && manipulate?.enabled && manipulate.onInkChange && HAS_INK.test(raw || '') && (
+      {/* The edit-layout mode reshapes the script's [[ink]] too, and makes new ink (the editor preview). */}
+      {!flow && manipulate?.enabled && manipulate.onInkChange && (
         <InkEditLayer root={wrapperEl} content={containerEl} raw={raw || ''} slide={slideIndex ?? 0} runtime={manipulate} />
       )}
 

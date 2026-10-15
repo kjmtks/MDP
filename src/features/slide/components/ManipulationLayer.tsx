@@ -33,6 +33,11 @@ export interface ManipRuntime {
   onInkSelect?: (slide: number, nth: number) => void;
   // Ctrl+Z / Ctrl+Y while the ink layer has the keyboard: the editor's undo / redo.
   onInkUndo?: (redo: boolean) => void;
+  // A new ink made on the preview: the slide's narration lines to show it with (and
+  // the one to offer first); then its marker written for the line picked (-1: the
+  // slide has no narration), returning its place among the slide's inks.
+  onInkLines?: (slide: number) => { lines: { n: number; caption: string; emphases: number }[]; suggest: number } | null;
+  onInkCreate?: (slide: number, line: number, text: string) => number | null;
 }
 
 // Another layer of the edit-layout mode took the selection (an ink was picked):

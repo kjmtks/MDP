@@ -238,9 +238,10 @@ block on a single slide OVERRIDES the global one for that slide; an EMPTY block
     one per sentence, like a look or a mark. get_focus_targets reports each ink cue as
     drawn (\`ink\`: the side and bend taken, how much of it runs over text, off the
     slide, and \`via\` when it chose the route — write that to keep it); see it with
-    render_slide_image focus:"line:N". The author may reshape ink by hand in the
-    preview (edit layout): it writes the same text — an end re-anchored, \`via=\`,
-    \`color=\`, the shape —, so keep such choices.
+    render_slide_image focus:"line:N". The author may reshape or add ink by hand in
+    the preview (edit layout): it writes the same text — an end re-anchored, \`via=\`,
+    \`color=\`, the shape; a new ink right before the words of the line picked —, so
+    keep such choices.
     A talk given BY HAND follows the same order: → does the script's \`[[step]]\`s,
     cues and events (\`[[emit]]\` / \`[[emit-wait]]\`, fired — not waited for) one press
     at a time, as written (markers with nothing but spaces between them —

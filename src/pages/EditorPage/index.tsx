@@ -96,7 +96,7 @@ import { RESET_LAYOUT_EVENT, SHOW_PANEL_EVENT } from './dock/dockShared';
 import { BASE_HEIGHT } from '../../constants';
 import { sendFocus, useBusFocus } from '../../features/focus/focusBus';
 import { cueInForce } from '../../features/focus/focusState';
-import { replaceInkMarker, selectInkMarker } from '../../features/focus/inkDocEdits';
+import { inkLinesOf, insertInkMarker, replaceInkMarker, selectInkMarker } from '../../features/focus/inkDocEdits';
 import { undo as editorUndo, redo as editorRedo } from '@codemirror/commands';
 import { lineCues } from '../../features/autoplay/autoplay';
 import { mdpBus } from '../../features/bus/mdpBus';
@@ -1995,6 +1995,19 @@ export default function EditorPage() {
       if (!view) return;
       (again ? editorRedo : editorUndo)(view);
       flushManipPreview();
+    },
+    // A new ink drawn on the preview: the slide's narration lines (the one the caret is
+    // in offered first), then its marker written right before the line picked.
+    onInkLines: (slide) => {
+      const view = editorRef.current?.view;
+      return view ? inkLinesOf(view, slide) : null;
+    },
+    onInkCreate: (slide, line, text) => {
+      const view = editorRef.current?.view;
+      if (!view) return null;
+      const nth = insertInkMarker(view, slide, line, text);
+      flushManipPreview();
+      return nth;
     },
   }), [editLayout, canEditLayout, snapOn, snapStep, editorRef, flushManipPreview]);
 

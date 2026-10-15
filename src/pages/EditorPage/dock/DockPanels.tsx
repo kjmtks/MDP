@@ -32,9 +32,11 @@ import CheckBoxIcon from '@mui/icons-material/CheckBox';
 import CheckBoxOutlineBlankIcon from '@mui/icons-material/CheckBoxOutlineBlank';
 import CenterFocusStrongIcon from '@mui/icons-material/CenterFocusStrong';
 import CenterFocusWeakIcon from '@mui/icons-material/CenterFocusWeak';
+import DrawIcon from '@mui/icons-material/Draw';
 import type { IDockviewPanelProps, IDockviewPanelHeaderProps } from 'dockview';
 
 import { darkMenuSlotProps } from './darkMenu';
+import { setInkTool, useInkTool } from '../../../features/focus/inkTool';
 
 import { Table, TableBody, TableRow, TableCell, Dialog, DialogTitle, DialogContent, DialogActions, ToggleButtonGroup, ToggleButton, Chip, Popover, Autocomplete } from '@mui/material';
 import VisibilityIcon from '@mui/icons-material/Visibility';
@@ -558,12 +560,25 @@ export const ImagesPanel: React.FC = () => {
 // the slide outlined and numbered in script order, and what is not found listed.
 // The preview only — never the slideshow or an export.
 const FOCUS_MARKS_KEY = 'mdp.preview.focusTargets';
+// The edit-layout mode's "add ink" menu: the shape the next drawing on the slide makes.
+const INK_TOOLS: [string, string, string][] = [
+  ['arrow', '→', 'Arrow — press where it starts, release on what it points at'],
+  ['line', '—', 'Line (no head)'],
+  ['circle', '◯', 'Circle — click a place'],
+  ['box', '▭', 'Box'],
+  ['underline', '＿', 'Underline'],
+  ['cross', '✕', 'Cross out'],
+  ['check', '✓', 'Check mark'],
+  ['bracket', '〕', 'Bracket'],
+];
 const HAS_CUE = /\[\[\s*(?:look|mark|clear|ink)\s*(?::|\]\])/i;
 
 export const PreviewPanel: React.FC = () => {
   const p = usePreview();
   const h = useHeaderActions();
   const [exportAnchor, setExportAnchor] = useState<null | HTMLElement>(null);
+  const [inkMenu, setInkMenu] = useState<null | HTMLElement>(null);
+  const inkTool = useInkTool();
   const [focusMarks, setFocusMarks] = useState(() => { try { return localStorage.getItem(FOCUS_MARKS_KEY) === '1'; } catch { return false; } });
   const toggleFocusMarks = () => setFocusMarks((on) => {
     try { localStorage.setItem(FOCUS_MARKS_KEY, on ? '0' : '1'); } catch { /* not remembered */ }
@@ -603,6 +618,22 @@ export const PreviewPanel: React.FC = () => {
             <span><IconButton size="small" sx={{ ...toolBtnSx, color: p.snapOn ? 'var(--app-accent)' : 'var(--app-text-muted)' }} onClick={p.onToggleSnap}><GridOnIcon fontSize="small" /></IconButton></span>
           </Tooltip>
         )}
+        {p.editLayout && p.canEditLayout && (
+          <Tooltip title={inkTool
+            ? `Drawing a new ${inkTool} on the slide — then pick the narration line it goes with. Esc or click here to stop`
+            : 'Add ink — pick a shape, draw it on the slide, then pick the narration line it goes with (or right-click a place on the slide)'}>
+            <IconButton size="small" sx={{ ...toolBtnSx, color: inkTool ? 'var(--app-accent)' : 'var(--app-text-muted)' }}
+              onClick={(e) => (inkTool ? setInkTool(null) : setInkMenu(e.currentTarget))}><DrawIcon fontSize="small" /></IconButton>
+          </Tooltip>
+        )}
+        {/* Gone at once when a shape is picked: its fading backdrop would take the first press on the slide. */}
+        <Menu anchorEl={inkMenu} open={!!inkMenu} onClose={() => setInkMenu(null)} transitionDuration={{ enter: 120, exit: 0 }}>
+          {INK_TOOLS.map(([shape, icon, label]) => (
+            <MenuItem key={shape} dense onClick={() => { setInkMenu(null); setInkTool(shape); }}>
+              <ListItemIcon sx={{ fontSize: '1.05rem', color: 'inherit' }}>{icon}</ListItemIcon>{label}
+            </MenuItem>
+          ))}
+        </Menu>
         <Box sx={{ flex: 1 }} />
         {deckHasCues && (
           <Tooltip title={focusMarks
