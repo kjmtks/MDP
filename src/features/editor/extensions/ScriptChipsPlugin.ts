@@ -28,7 +28,7 @@ export interface ChipFocus { slide: number; focus: FocusState | null }
 export const setChipFocus = StateEffect.define<ChipFocus | null>();
 
 const SCRIPT_SRC = '<' + '!--\\s*@script:[\\s\\S]{0,20000}?--' + '>';
-const MARKER_SRC = '\\[\\[\\s*(look|mark|clear|emit-wait|emit|wait|pause|step|then)\\s*(?::\\s*([^\\]]*?))?\\s*\\]\\]';
+const MARKER_SRC = '\\[\\[\\s*(look|mark|clear|ink|emit-wait|emit|wait|pause|step|then)\\s*(?::\\s*([^\\]]*?))?\\s*\\]\\]';
 
 /** The slide (0-based, the meta page is -1) holding the given line. */
 function slideAtLine(blocks: ReturnType<typeof splitMarkdownToBlocks>, line: number): number {
@@ -51,7 +51,7 @@ class ChipWidget extends WidgetType {
     b.type = 'button';
     if (d.kind === 'focus') {
       b.className = `cm-mdp-chip cm-mdp-chip-focus${this.on ? ' cm-mdp-chip-on' : ''}`;
-      b.textContent = d.cue.kind === 'look' ? '👁' : d.cue.kind === 'mark' ? '🖍' : '✕';
+      b.textContent = d.cue.kind === 'look' ? '👁' : d.cue.kind === 'mark' ? '🖍' : d.cue.kind === 'ink' ? '🖊' : '✕';
       b.title = d.cue.kind === 'clear' ? 'Clear the focus on this slide' : (this.on ? 'Shown — click to take it away' : 'Show this on the slide (preview, slideshow, presenter)');
     } else {
       b.className = 'cm-mdp-chip cm-mdp-chip-event';
@@ -95,7 +95,7 @@ function buildChips(state: EditorState, lit: ChipFocus | null): DecorationSet {
       const from = s.index + m.index;
       const to = from + m[0].length;
       const kind = m[1].toLowerCase();
-      if (kind === 'look' || kind === 'mark' || kind === 'clear') {
+      if (kind === 'look' || kind === 'mark' || kind === 'clear' || kind === 'ink') {
         const cue = parseFocusCue(kind, m[2] || '');
         const on = !!(blocks && lit && lit.focus && kind !== 'clear'
           && slideAtLine(blocks, state.doc.lineAt(from).number) === lit.slide && cueInForce(lit.focus, cue));

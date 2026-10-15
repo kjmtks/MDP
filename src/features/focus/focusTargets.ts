@@ -13,6 +13,8 @@
 //                               and Markdown marks do not matter; a bare word too
 //   item:"…" / item:N          the bullet holding the phrase / the N-th bullet
 //   cell:"…" / cell:R,C        a table cell (rows counted from the header, 1-based)
+//                              — a phrase is looked for among the bullets' / the
+//                              cells' words only, and #n counts there
 //   row:"…" / row:N            a table row;  col:"…" / col:N  a column
 //   @tag                       a module given `tag: …`
 //   math:name / math:N         a formula part \focus{name}{…} / the N-th formula
@@ -352,8 +354,10 @@ export function resolveTarget(target: string, root: HTMLElement): FocusResolutio
         const li = nthOf(Array.from(root.querySelectorAll('li')), p.nums[0], 'bullet', target);
         return 'error' in li ? li : elementHit(target, li, root, undefined, 'hug');
       }
-      const found = findText(root, p.text || '', p.nth, target);
-      if ('error' in found) return found;
+      // the phrase among the bullets' words only (#n counts there): the same words
+      // elsewhere on the slide — a heading, a formula — never hide the bullet
+      const found = findText(root, p.text || '', p.nth, target, (t) => !!t.parentElement?.closest('li'));
+      if ('error' in found) return { ...found, error: found.error.replace('on the slide', 'in a bullet') };
       const li = found.range.startContainer.parentElement?.closest('li');
       return li ? elementHit(target, li, root, found.count, 'hug') : { target, error: `"${p.text}" is not in a bullet` };
     }
@@ -381,8 +385,9 @@ export function resolveTarget(target: string, root: HTMLElement): FocusResolutio
         if (!at) return { target, error: `row ${a} has ${row.cells.length} cells, not ${b}` };
         return elementHit(target, at, root, undefined, true);
       }
-      const found = findText(root, p.text || '', p.nth, target);
-      if ('error' in found) return found;
+      // the phrase among the tables' cells only (#n counts there)
+      const found = findText(root, p.text || '', p.nth, target, (t) => !!t.parentElement?.closest('td, th'));
+      if ('error' in found) return { ...found, error: found.error.replace('on the slide', 'in a table') };
       const count = found.count;
       const cell = (found.range.startContainer.parentElement?.closest('td, th') as HTMLTableCellElement | null) || null;
       if (!cell) return { target, error: `"${p.text}" is not in a table` };
@@ -410,6 +415,32 @@ export function resolveTarget(target: string, root: HTMLElement): FocusResolutio
     default:
       return { target, error: `unknown kind "${p.kind}:" (#name, item, cell, row, col, math, fig, area, @tag, or "text")` };
   }
+}
+
+/** Where text is written on the slide — each run of a line, each formula, a figure's
+ *  labels; also text a build has not revealed yet (it will be there) — what an ink
+ *  line should not run over. Runs are not merged across a line: two columns keep the
+ *  gap between them. */
+export function textLines(root: HTMLElement): FocusBox[] {
+  const content = (root.querySelector('.slide-content') as HTMLElement | null) || root;
+  const conv = toSlide(root);
+  const out: FocusBox[] = [];
+  const range = document.createRange();
+  const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT, {
+    acceptNode: (n) => (n.nodeValue?.trim() && !n.parentElement?.closest(`${SKIP}, .katex`) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT),
+  });
+  for (let n = walker.nextNode(); n && out.length < 800; n = walker.nextNode()) {
+    range.selectNodeContents(n);
+    for (const r of Array.from(range.getClientRects())) {
+      const b = conv(r);
+      if (b.w > 0.5 && b.h > 0.5) out.push(b);
+    }
+  }
+  content.querySelectorAll('.katex-html').forEach((k) => {
+    const b = katexBox(k, conv);
+    if (b) out.push(b);
+  });
+  return out;
 }
 
 // ---- what can be pointed at (MCP get_focus_targets) -------------------------------
@@ -446,22 +477,44 @@ export function listTargets(root: HTMLElement): FocusTargetInfo[] {
       hit.matches && hit.matches > 1 ? `named ${hit.matches} times on the slide — give each place its own name` : ''].filter(Boolean).join('; ');
     out.push({ target: `#${name}`, what, box: hit.box, ...(note ? { note } : {}) });
   });
+  // A target found by its words must lead back to THIS element — the same words may
+  // be written twice (a sum "13" in two cells, "+9" on two edges): then #2, #3 …
+  const inside = (b: FocusBox, el: Element) => {
+    const e = elementBox(el, conv);
+    const x = b.x + b.w / 2;
+    const y = b.y + b.h / 2;
+    return x >= e.x - 1 && x <= e.x + e.w + 1 && y >= e.y - 1 && y <= e.y + e.h + 1;
+  };
+  const pin = (base: string, el: Element): string | null => {
+    for (let n = 1; n <= 9; n++) {
+      const t = n === 1 ? base : `${base}#${n}`;
+      const r = resolveTarget(t, root);
+      if (!isHit(r)) return null;
+      if (inside(r.box, el)) return t;
+    }
+    return null;
+  };
   content.querySelectorAll('h1, h2, h3, h4, h5, h6').forEach((h) => {
     const t = short(h.textContent || '');
-    if (t) add(quote(t), `heading ${h.tagName.toLowerCase()}`, h);
+    const by = t ? pin(quote(t), h) : null;
+    if (by) add(by, `heading ${h.tagName.toLowerCase()}`, h);
   });
   Array.from(content.querySelectorAll('li')).forEach((li, i) => {
     const own = Array.from(li.childNodes).filter((n) => n.nodeType === 3 || (n as Element).tagName !== 'UL' && (n as Element).tagName !== 'OL')
       .map((n) => n.textContent || '').join(' ');
     const t = short(own);
     const lines = writtenLines([li], conv);      // where it is written, as resolveTarget gives it
-    add(t ? `item:${quote(t)}` : `item:${i + 1}`, `bullet ${i + 1}`, li, t ? `also item:${i + 1}` : undefined, lines.length ? unionBox(lines) : undefined);
+    const by = t ? pin(`item:${quote(t)}`, li) : null;
+    add(by || `item:${i + 1}`, `bullet ${i + 1}`, li, by ? `also item:${i + 1}` : undefined, lines.length ? unionBox(lines) : undefined);
   });
   tablesOf(content).forEach((table, ti) => {
     Array.from(table.rows).forEach((row, r) => Array.from(row.cells).forEach((cell, c) => {
       const t = short(cell.textContent || '');
-      add(t ? `cell:${quote(t)}` : `cell:${r + 1},${c + 1}`, `table ${ti + 1} row ${r + 1} col ${c + 1}`, cell,
-        ti === 0 ? `also cell:${r + 1},${c + 1} · row:${r + 1} · col:${c + 1}` : 'a later table: point at it by its text');
+      const by = t ? pin(`cell:${quote(t)}`, cell) : null;
+      // by position: the first table only
+      if (!by && ti > 0) return;
+      add(by || `cell:${r + 1},${c + 1}`, `table ${ti + 1} row ${r + 1} col ${c + 1}`, cell,
+        ti === 0 ? `also ${by ? `cell:${r + 1},${c + 1} · ` : ''}row:${r + 1} · col:${c + 1}` : 'a later table: point at it by its text');
     }));
   });
   // (named modules, formula parts and figure parts are the #name entries above)
@@ -474,7 +527,8 @@ export function listTargets(root: HTMLElement): FocusTargetInfo[] {
     'by position: name it (or a part) with \\focus{name}{…} in its LaTeX to point as #name'));
   content.querySelectorAll('svg text').forEach((t) => {
     const s = short(t.textContent || '');
-    if (s) add(`fig:${quote(s)}`, 'figure label', t);
+    const by = s ? pin(`fig:${quote(s)}`, t) : null;
+    if (by) add(by, 'figure label', t);
   });
   content.querySelectorAll('img').forEach((img, i) => add(`area:…`, `image ${i + 1}`, img, 'point into it with area:x,y,w,h (% of the slide); its box is given — or name the image: \\focus{name}{![…](…)}'));
   return out;

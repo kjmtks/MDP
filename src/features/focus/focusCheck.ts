@@ -7,7 +7,9 @@
 import { buildPlaylist, emphasisCount, lineCues, scriptCues, slideScript, type FocusCue, type PlaylistSlide } from '../autoplay/autoplay';
 import { applyCues, NO_FOCUS, type FocusState } from './focusState';
 import { FOCUS_STYLES, type FocusOutlineItem } from './focusStyles';
-import { isHit, parseTarget, resolveTarget, type FocusBox } from './focusTargets';
+import { isHit, parseTarget, resolveTarget, textLines, type FocusBox } from './focusTargets';
+import { inkAnchor, inkText, inkTextProblems } from './ink';
+import { placeInk } from './inkLayout';
 
 /** Where cues act: a narration line (`line` ≥ 1, `at` = its caption), or another
  *  item (`line` 0, `after` lines before it): a wait / pause, the slide's last build
@@ -76,8 +78,13 @@ const STYLES = new Set<string>(FOCUS_STYLES);
 // shows noticeably before the words it stands by.
 const EARLY = 15;
 
+/** The targets a cue points at — an ink cue's anchors without the point inside
+ *  them ("#fig(62,40)" → "#fig"). */
+export const cueBases = (c: FocusCue): string[] => (c.kind === 'ink' ? c.targets.map((t) => inkAnchor(t).base) : c.targets);
+
 /** A cue written back as its marker. */
 export function cueText(c: FocusCue): string {
+  if (c.kind === 'ink') return inkText(c);
   const body = [c.targets.join(', '), c.style, ...Object.entries(c.options).map(([k, v]) => `${k}=${v}`)].filter(Boolean).join(' ');
   return `[[${c.kind}${body ? `: ${body}` : ''}]]`;
 }
@@ -145,11 +152,13 @@ export function cueLineProblems(sites: readonly CueSite[], raw?: string): FocusP
     }
     for (const c of s.cues) {
       const cue = cueText(c);
-      if (c.style && !STYLES.has(c.style)) {
+      if (c.kind === 'ink') {
+        for (const p of inkTextProblems(c)) out.push({ level: p.level, line: s.line, cue, message: p.message });
+      } else if (c.style && !STYLES.has(c.style)) {
         out.push({ level: 'warn', line: s.line, cue, message: `unknown style "${c.style}" — the default (${c.kind === 'mark' ? 'marker' : 'pointer'}) is used. Styles: ${FOCUS_STYLES.join(', ')}.` });
       }
-      if (c.kind !== 'clear' && !c.targets.length) out.push({ level: 'error', line: s.line, cue, message: 'no target — nothing is pointed at.' });
-      for (const t of c.targets) {
+      if (c.kind !== 'clear' && c.kind !== 'ink' && !c.targets.length) out.push({ level: 'error', line: s.line, cue, message: 'no target — nothing is pointed at.' });
+      for (const t of cueBases(c)) {
         const p = parseTarget(t);
         if (!p || !TARGET_KINDS.includes(p.kind)) {
           out.push({ level: 'error', line: s.line, cue, target: t, message: `cannot read the target "${t}" — use #name (a place the slide names), item:#name, cell:#name, row:#name, col:#name, or "phrase", item:…, cell:…, row:…, col:…, math:…, fig:…, area:x,y,w,h, @tag.` });
@@ -181,7 +190,17 @@ export interface TargetResult {
   hidden?: boolean;
   error?: string;
 }
-export interface CueResult { cue: string; targets: TargetResult[] }
+/** An ink cue as drawn now: the side and bend its arrow took, how much of it runs
+ *  over text (%) and how many lines of text it crosses, whether it runs off the slide. */
+export interface InkResult {
+  shape: string; side?: string; bend?: number; overText?: number; crossesText?: number; offSlide?: boolean; drawn: boolean;
+  /** An arrow / a line: where it starts and ends, in % of the slide. */
+  from?: { x: number; y: number }; to?: { x: number; y: number };
+  /** The route it took through points beside the line (chosen, not written): add
+   *  via=… to the cue to keep it so. */
+  via?: string;
+}
+export interface CueResult { cue: string; targets: TargetResult[]; ink?: InkResult }
 
 const r1 = (v: number) => Math.round(v * 10) / 10;
 /** A box in the slide's pixels → % of the slide. */
@@ -194,10 +213,11 @@ export function checkSiteTargets(site: CueSite, root: HTMLElement): { cues: CueR
   const W = root.offsetWidth || 1;
   const H = root.offsetHeight || 1;
   const problems: FocusProblem[] = [];
+  const obstacles = site.cues.some((c) => c.kind === 'ink') ? textLines(root) : undefined;
   const cues = site.cues.filter((c) => c.kind !== 'clear').map((c): CueResult => {
     const cue = cueText(c);
     const targets = c.targets.map((t): TargetResult => {
-      const r = resolveTarget(t, root);
+      const r = resolveTarget(c.kind === 'ink' ? inkAnchor(t).base : t, root);
       if (!isHit(r)) {
         problems.push({ level: 'error', line: site.line, cue, target: t, message: `${r.error} — nothing is drawn for it.` });
         return { target: t, ok: false, error: r.error };
@@ -218,7 +238,26 @@ export function checkSiteTargets(site: CueSite, root: HTMLElement): { cues: CueR
         ...(r.matches && r.matches > 1 ? { matches: r.matches } : {}), ...(r.hidden ? { hidden: true } : {}),
       };
     });
-    return { cue, targets };
+    if (c.kind !== 'ink') return { cue, targets };
+    // Ink: the strokes as they are worked out on this slide now.
+    const placed = placeInk(c, root, obstacles);
+    const drawn = placed.plan.strokes.length > 0;
+    for (const p of placed.plan.problems) problems.push({ level: 'warn', line: site.line, cue, message: `${p}.` });
+    return {
+      cue, targets,
+      ink: {
+        shape: c.style, drawn,
+        ...(placed.plan.side !== undefined ? { side: placed.plan.side || 'straight' } : {}),
+        ...(placed.plan.bend !== undefined ? { bend: placed.plan.bend } : {}),
+        ...(drawn && ['arrow', 'line'].includes(c.style) ? { overText: Math.round(placed.plan.overlap * 100), crossesText: placed.plan.crosses || 0 } : {}),
+        ...(placed.plan.off ? { offSlide: true } : {}),
+        ...(placed.plan.via ? { via: placed.plan.via } : {}),
+        ...(placed.plan.endsAt ? {
+          from: { x: r1((placed.plan.endsAt.from.x / W) * 100), y: r1((placed.plan.endsAt.from.y / H) * 100) },
+          to: { x: r1((placed.plan.endsAt.to.x / W) * 100), y: r1((placed.plan.endsAt.to.y / H) * 100) },
+        } : {}),
+      },
+    };
   });
   return { cues, problems };
 }

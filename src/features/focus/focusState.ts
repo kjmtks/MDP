@@ -5,11 +5,14 @@
 //   look  — the one moving attention: a line's looks REPLACE the previous ones (all
 //           of a line's looks show together; the line is the unit of time);
 //   mark  — stays, like chalk on a board, until a clear or the next slide;
+//   ink   — a pen's strokes (ink.ts), kept like a mark;
 //   clear — [[clear]] takes everything away, [[clear: TARGET]] that target.
 import type { FocusCue } from '../autoplay/autoplay';
+import { inkTouches } from './ink';
 
 export interface FocusState {
   looks: FocusCue[];
+  /** What stays: the marks and the ink. */
   marks: FocusCue[];
   /** Bumped by every change (a repeated look restarts its animation). */
   seq: number;
@@ -21,9 +24,11 @@ const sameCue = (a: FocusCue, b: FocusCue): boolean =>
   a.kind === b.kind && a.style === b.style && a.targets.join('\u0001') === b.targets.join('\u0001')
   && JSON.stringify(a.options) === JSON.stringify(b.options);
 
-/** `cue` without `target` — the cue goes when nothing is left. */
+/** `cue` without `target` — the cue goes when nothing is left; ink about it goes
+ *  whole (an arrow without one of its ends is no arrow). */
 const without = (cues: FocusCue[], target: string): FocusCue[] => cues
-  .map((c) => (c.targets.includes(target) ? { ...c, targets: c.targets.filter((t) => t !== target) } : c))
+  .filter((c) => c.kind !== 'ink' || !inkTouches(c, target))
+  .map((c) => (c.kind !== 'ink' && c.targets.includes(target) ? { ...c, targets: c.targets.filter((t) => t !== target) } : c))
   .filter((c) => c.targets.length > 0);
 
 /** The state after a line's cues (in lineCues order: its clears, then its emphases). */
@@ -45,11 +50,11 @@ export function applyCues(state: FocusState, cues: readonly FocusCue[] | undefin
   return { looks, marks, seq: state.seq + 1 };
 }
 
-/** Whether this look / mark is shown now (a presenter's chip toggles it). */
+/** Whether this look / mark / ink is shown now (a presenter's chip toggles it). */
 export const cueInForce = (state: FocusState, cue: FocusCue): boolean =>
-  (cue.kind === 'look' ? state.looks : cue.kind === 'mark' ? state.marks : []).some((c) => sameCue(c, cue));
+  (cue.kind === 'look' ? state.looks : cue.kind === 'mark' || cue.kind === 'ink' ? state.marks : []).some((c) => sameCue(c, cue));
 
-/** The state without this one look / mark (other cues on the same target stay). */
+/** The state without this one look / mark / ink (other cues on the same target stay). */
 export function removeCue(state: FocusState, cue: FocusCue): FocusState {
   const keep = (list: FocusCue[]) => list.filter((c) => !sameCue(c, cue));
   return { looks: keep(state.looks), marks: keep(state.marks), seq: state.seq + 1 };
@@ -58,7 +63,7 @@ export function removeCue(state: FocusState, cue: FocusCue): FocusState {
 /** A cue that came from outside (the app bus): only the known shape, or nothing. */
 export function cleanCue(raw: unknown): FocusCue | null {
   const c = raw as Partial<FocusCue> | null;
-  if (!c || typeof c !== 'object' || !['look', 'mark', 'clear'].includes(c.kind as string)) return null;
+  if (!c || typeof c !== 'object' || !['look', 'mark', 'clear', 'ink'].includes(c.kind as string)) return null;
   const targets = Array.isArray(c.targets) ? c.targets.filter((t): t is string => typeof t === 'string').slice(0, 20) : [];
   const options: Record<string, string> = {};
   if (c.options && typeof c.options === 'object') {

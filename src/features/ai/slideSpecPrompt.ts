@@ -219,6 +219,28 @@ block on a single slide OVERRIDES the global one for that slide; an EMPTY block
     \`[[step]]\`. Cues are never spoken, captioned or counted in the talk time. Check
     with get_focus_targets (the slide's pointable targets and where each cue lands),
     render_slide_image focus:"outline" / "line:N", and check_deck (\`focus\`).
+    PEN INK — \`[[ink: SHAPE …]]\` writes on the slide like a pen, stroke by stroke,
+    as its line starts, and STAYS like a mark (until \`[[clear]]\` / \`[[clear: #name]]\` —
+    which takes an arrow touching #name away whole — or the next slide): \`[[ink: arrow
+    #from → #to]]\` (\`line\` = without a head), \`[[ink: circle #a]]\` (several:
+    \`#a, #b\`), \`underline\`, \`box\`, \`cross\`, \`check #q [left|right]\`, \`bracket #rows
+    [left|right]\`. Write the INTENT, never coordinates: an arrow's ends are targets —
+    named places above all — and it attaches to their edges; a spot inside a picture
+    is \`#fig(62,40)\` (62 %, 40 % of the named picture's box). The strokes are worked out
+    every time the slide is shown, from where its targets are THEN, so the ink follows
+    the slide when the author later adds a line, changes a font or moves a figure. An
+    arrow finds its own way — off the text, short and simple (a gentle bow, between two
+    rows of a table, round a block); to choose, add \`above\` /
+    \`below\` / \`left\` / \`right\`, \`bend=0.3\` (how far, a fraction of its length; 0 =
+    straight) or, for a longer route, \`via=0.5/0.4\` (points it passes: t along it 0 → 1,
+    s across it, + = its left, fractions of its length — they move with its ends).
+    \`color=\`, \`dur=1.2s\` (how long it takes to write) are optional. Ink is an emphasis:
+    one per sentence, like a look or a mark. get_focus_targets reports each ink cue as
+    drawn (\`ink\`: the side and bend taken, how much of it runs over text, off the
+    slide, and \`via\` when it chose the route — write that to keep it); see it with
+    render_slide_image focus:"line:N". The author may reshape ink by hand in the
+    preview (edit layout): it writes the same text — an end re-anchored, \`via=\`,
+    \`color=\`, the shape —, so keep such choices.
     A talk given BY HAND follows the same order: → does the script's \`[[step]]\`s,
     cues and events (\`[[emit]]\` / \`[[emit-wait]]\`, fired — not waited for) one press
     at a time, as written (markers with nothing but spaces between them —

@@ -10,6 +10,8 @@
      --mdp-focus-gap     room between a line and the text, times the default   1
      --mdp-focus-dim     spotlight: the shade over the rest    rgba(0, 0, 0, .4)
      --mdp-focus-blur    blur: its radius in px of a 960×540 slide            3
+     --mdp-ink-color     ink: the pen's colour                  default: --mdp-focus-pen
+     --mdp-ink-line      ink: its line width, times the default  default: --mdp-focus-line
    A cue's own color=… wins over the colours. Every shape is a class below (a ring's
    or a box's frame is its ::before), so a theme can also restyle one whole.
    An <svg>'s paint (stroke-width, fill) is set on the <svg>, never on its paths: the
@@ -67,6 +69,19 @@
 .mdp-focus-circle { overflow: visible; opacity: .9; stroke-width: calc(var(--u) * 3 * var(--mdp-focus-line, 1)); }
 .mdp-focus-circle path { stroke-dasharray: 1; stroke-dashoffset: 1; animation: mdp-focus-stroke .6s ease-out forwards; }
 
+/* ink (ink.ts): a pen's strokes, each written at the pen's pace — its own --d and
+   --delay, one after another; nothing of a stroke shows before its turn */
+.mdp-ink {
+  inset: 0; overflow: visible; opacity: .92;
+  stroke-width: calc(var(--u) * 2.6 * var(--mdp-ink-line, var(--mdp-focus-line, 1)));
+}
+.mdp-ink path {
+  stroke-dasharray: 1; stroke-dashoffset: 1;
+  animation: mdp-ink-write var(--d, .6s) cubic-bezier(.45, .05, .35, 1) var(--delay, 0s) both;
+}
+/* the preview's marks: where an ink cue will be drawn */
+.mdp-ink-route { inset: 0; overflow: visible; opacity: .6; stroke-width: 2px; stroke-dasharray: 5 4; }
+
 /* everything else dimmed / blurred */
 .mdp-focus-dim { inset: 0; fill: var(--mdp-focus-dim, rgba(0, 0, 0, .4)); animation: mdp-focus-fade .35s ease-out both; }
 .mdp-focus-dim path { transition: d .45s ease; }
@@ -93,10 +108,12 @@
 @keyframes mdp-focus-draw-x { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 @keyframes mdp-focus-stroke { to { stroke-dashoffset: 0; } }
 @keyframes mdp-focus-settle { from { transform: scale(1.1); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes mdp-ink-write { 0% { stroke-dashoffset: 1; opacity: 0; } 1% { opacity: 1; } 100% { stroke-dashoffset: 0; opacity: 1; } }
 
 /* a still picture (video frames, MCP renders): the end state at once */
 .mdp-focus-static, .mdp-focus-static * { animation: none !important; transition: none !important; }
 .mdp-focus-static .mdp-focus-circle path { stroke-dashoffset: 0; }
+.mdp-focus-static .mdp-ink path { stroke-dashoffset: 0; opacity: 1; }
 
 /* the editor preview's target marks */
 .mdp-focus-outline { border: 2px dashed var(--c); border-radius: 4px; background: color-mix(in srgb, var(--c) 8%, transparent); }

@@ -779,7 +779,7 @@ function scriptKeyOf(raw) {
 // What a slide's @script COUNTS — identical to talkTime.ts scriptChars (via
 // autoplay.ts stripScriptMarkers / rubyBase): ruby readings (`[[語|よみ]]`) and
 // `[[say:…]]` / `[[step]]` / event markers are not counted.
-const RUBY_RE = /\[\[(?!\s*(?:emit-wait|emit|wait|pause|say|look|mark|clear)\s*:)((?:\\\((?:(?!\\\))[\s\S])*\\\)|\\\[(?:(?!\\\])[\s\S])*\\\]|[^[\]|\n])+?)\|([^[\]|\n]+?)\]\]/g;
+const RUBY_RE = /\[\[(?!\s*(?:emit-wait|emit|wait|pause|say|look|mark|clear|ink)\s*:)((?:\\\((?:(?!\\\))[\s\S])*\\\)|\\\[(?:(?!\\\])[\s\S])*\\\]|[^[\]|\n])+?)\|([^[\]|\n]+?)\]\]/g;
 function scriptCharsOf(raw) {
   return [...String(raw).matchAll(/<!--\s*@script:\s*([\s\S]*?)-->/g)].map((m) => m[1]).join('')
     .replace(RUBY_RE, (_m, base) => base)
@@ -787,7 +787,7 @@ function scriptCharsOf(raw) {
     .replace(/\[\[\s*step\s*\]\]/gi, ' ')
     .replace(/\[\[\s*then\s*\]\]/gi, '')
     .replace(/\[\[\s*(emit-wait|emit|wait|pause)\s*:\s*([^\]]*?)\s*\]\]/gi, ' ')
-    .replace(/\[\[\s*(look|mark|clear)\s*(?::\s*([^\]]*?))?\s*\]\]/gi, '')
+    .replace(/\[\[\s*(look|mark|clear|ink)\s*(?::\s*([^\]]*?))?\s*\]\]/gi, '')
     .replace(/\s+/g, '').length;
 }
 function parseTimeToSeconds(str) {
@@ -1172,7 +1172,7 @@ async function verifyDeck(baseDir, deckPath) {
   const { text } = await currentDeckText(baseDir, deckPath);
   // Focus cues ([[look: …]] / [[mark: …]] / [[clear]]): their targets checked on the
   // rendered slides — only when the deck has any.
-  const hasCues = /\[\[\s*(?:look|mark|clear)\s*(?::|\]\])/i.test(text);
+  const hasCues = /\[\[\s*(?:look|mark|clear|ink)\s*(?::|\]\])/i.test(text);
   const [validate, lint, measure, skills, focus, imageWarn, glossary] = await Promise.all([
     rly(baseDir, 'validateDeck', { path: deckPath }, 30000).catch((e) => ({ error: String((e && e.message) || e) })),
     Promise.resolve(lintDeck(text)),

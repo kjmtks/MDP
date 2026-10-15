@@ -5,6 +5,7 @@
 
 import { captionChunks, displayWidth, splitSentences, UNIT_MAX } from './captionSplit';
 import { applyGlossary, getDeckGlossary, narrationLang, type DeckGlossary } from '../glossary/glossary';
+import { inkLabel, parseInkCue } from '../focus/ink';
 
 /** A narration text read with the deck's glossary: each term a ruby, as if written
  *  (features/glossary) — in the text's own language. */
@@ -23,6 +24,9 @@ const THEN_MARKER = /\[\[\s*then\s*\]\]/gi;
 //   [[look: TARGET [STYLE] [key=value…]]]   the one point of attention moves there
 //   [[mark: TARGET [STYLE] [key=value…]]]   an annotation that stays (until [[clear]]
 //                                            or the next slide), like chalk on a board
+//   [[ink: SHAPE …]]                        a pen's strokes, kept like a mark — an
+//                                            arrow FROM → TO, a circle, an underline…
+//                                            (features/focus/ink.ts)
 //   [[clear]] / [[clear: TARGET]]           take them away
 // Several things pointed at AT ONCE ("これとこれを比べます") are one emphasis with
 // several targets: [[look: "A", "B"]].
@@ -31,19 +35,21 @@ const THEN_MARKER = /\[\[\s*then\s*\]\]/gi;
 // and shows when that line starts — the moment its voice begins, exact for every
 // engine. The lines never change for a cue: they are cut from the script's words
 // alone, exactly as without any cue (captionSplit), since every cut is heard and
-// breaks the tempo. Write ONE emphasis (look / mark) per line — its own sentence;
+// breaks the tempo. Write ONE emphasis (look / mark / ink) per line — its own sentence;
 // a line that has several still shows every one of them, together as it starts
 // (never dropped, never timed by a guess), and a check reports it.
 // Like the other markers they are never spoken, captioned or counted in the talk time.
-const CUE_MARKER_SRC = '\\[\\[\\s*(look|mark|clear)\\s*(?::\\s*([^\\]]*?))?\\s*\\]\\]';
+const CUE_MARKER_SRC = '\\[\\[\\s*(look|mark|clear|ink)\\s*(?::\\s*([^\\]]*?))?\\s*\\]\\]';
 const cueMarkerRe = () => new RegExp(CUE_MARKER_SRC, 'gi');
 
 export interface FocusCue {
-  kind: 'look' | 'mark' | 'clear';
+  kind: 'look' | 'mark' | 'clear' | 'ink';
   /** What it points at, as written: "語句", item:"…", cell:"…", @tag, math:name,
-   *  area:x,y,w,h… — several = one emphasis on all of them; none (clear) = all. */
+   *  area:x,y,w,h… — several = one emphasis on all of them; none (clear) = all.
+   *  Ink: its anchors (an arrow's FROM and TO), a point inside one as "#fig(62,40)". */
   targets: string[];
-  /** How it looks (pointer, marker, spotlight…); '' = the default for its kind. */
+  /** How it looks (pointer, marker, spotlight…); '' = the default for its kind.
+   *  Ink: its shape (arrow, circle, underline…). */
   style: string;
   /** key=value options (color=…). */
   options: Record<string, string>;
@@ -60,6 +66,7 @@ const CUE_TARGET = /^((?:[A-Za-z]+:)?(?:"[^"]*"|「[^」]*」)(?:#\d+)?|[A-Za-z]
 /** A cue's body: TARGET[, TARGET…] [STYLE] [key=value…]. */
 export function parseFocusCue(kindRaw: string, bodyRaw = ''): FocusCue {
   const kind = kindRaw.toLowerCase() as FocusCue['kind'];
+  if (kind === 'ink') return { kind, ...parseInkCue(bodyRaw) };
   let rest = String(bodyRaw || '').trim();
   const targets: string[] = [];
   for (let m = CUE_TARGET.exec(rest); m; m = CUE_TARGET.exec(rest)) {
@@ -113,7 +120,7 @@ export interface PresentMarker { kind: 'step' | 'cue' | 'event'; group: number; 
  *  how many extra builds. */
 export function presentMarkers(script: string, stepCount: number): { markers: PresentMarker[]; extra: number } {
   const s = String(script || '');
-  const re = /(\[\[\s*step\s*\]\])|(\[\[\s*(?:look|mark|clear)\s*(?::[^\]]*?)?\s*\]\])|(\[\[\s*(emit-wait|emit)\s*:\s*([^\]]*?)\s*\]\])|(\[\[\s*(?:wait|pause)\s*:[^\]]*?\]\]|\[\[\s*then\s*\]\])|\[\[\s*say\s*:[^\]]*?\]\]/gi;
+  const re = /(\[\[\s*step\s*\]\])|(\[\[\s*(?:look|mark|clear|ink)\s*(?::[^\]]*?)?\s*\]\])|(\[\[\s*(emit-wait|emit)\s*:\s*([^\]]*?)\s*\]\])|(\[\[\s*(?:wait|pause)\s*:[^\]]*?\]\]|\[\[\s*then\s*\]\])|\[\[\s*say\s*:[^\]]*?\]\]/gi;
   const markers: PresentMarker[] = [];
   let group = -1;
   let open = false;
@@ -282,7 +289,7 @@ export function segmentParts(seg: string): SegmentPart[] {
 // label]]`…) and `[[say: …]]` are not rubies; after a formula, `[[say: よみ]]` still
 // works as before.
 // Mirrored for the talk-time count in app/mcp-bridge.cjs — keep the two identical.
-const RUBY = /\[\[(?!\s*(?:emit-wait|emit|wait|pause|say|look|mark|clear)\s*:)((?:\\\((?:(?!\\\))[\s\S])*\\\)|\\\[(?:(?!\\\])[\s\S])*\\\]|[^[\]|\n])+?)\|([^[\]|\n]+?)\]\]/g;
+const RUBY = /\[\[(?!\s*(?:emit-wait|emit|wait|pause|say|look|mark|clear|ink)\s*:)((?:\\\((?:(?!\\\))[\s\S])*\\\)|\\\[(?:(?!\\\])[\s\S])*\\\]|[^[\]|\n])+?)\|([^[\]|\n]+?)\]\]/g;
 
 interface RubyHit { base: string; reading: string; math: boolean }
 function eachRuby(text: string, fn: (hit: RubyHit) => string): string {
@@ -362,8 +369,9 @@ export function renderScriptChips(scriptMarkdown: string): string {
     // slideshow (focusBus; a second click takes it away).
     .replace(cueMarkerRe(), (_m, kindRaw: string, body?: string) => {
       const c = parseFocusCue(kindRaw, body || '');
-      const icon = c.kind === 'look' ? '👁' : c.kind === 'mark' ? '🖍' : '✕';
-      const what = c.targets.map((t) => t.replace(/^[A-Za-z]+:(?=["「])/, '').replace(/^["「]|["」](#\d+)?$/g, '')).join('・');
+      const icon = c.kind === 'look' ? '👁' : c.kind === 'mark' ? '🖍' : c.kind === 'ink' ? '🖊' : '✕';
+      const what = c.kind === 'ink' ? inkLabel(c)
+        : c.targets.map((t) => t.replace(/^[A-Za-z]+:(?=["「])/, '').replace(/^["「]|["」](#\d+)?$/g, '')).join('・');
       const title = c.kind === 'clear' ? 'クリックで注目を消す' : 'クリックでスライドに注目を表示（もう一度で消す）';
       return `<button type="button" class="mdp-script-chip mdp-chip-focus" data-chip="focus" data-cue="${esc(JSON.stringify(c))}" title="${title}">${icon}${what ? ` ${esc(what)}` : ''}</button>`;
     })

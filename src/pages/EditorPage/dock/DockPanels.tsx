@@ -558,7 +558,7 @@ export const ImagesPanel: React.FC = () => {
 // the slide outlined and numbered in script order, and what is not found listed.
 // The preview only — never the slideshow or an export.
 const FOCUS_MARKS_KEY = 'mdp.preview.focusTargets';
-const HAS_CUE = /\[\[\s*(?:look|mark|clear)\s*(?::|\]\])/i;
+const HAS_CUE = /\[\[\s*(?:look|mark|clear|ink)\s*(?::|\]\])/i;
 
 export const PreviewPanel: React.FC = () => {
   const p = usePreview();
@@ -595,7 +595,7 @@ export const PreviewPanel: React.FC = () => {
         <Tooltip title="Reload slides — re-fetch replaced images / referenced files (bypass cache)">
           <IconButton size="small" sx={toolBtnSx} onClick={p.onReloadSlides}><CachedIcon fontSize="small" /></IconButton>
         </Tooltip>
-        <Tooltip title={p.canEditLayout ? 'Edit layout (move/resize/rotate modules)' : 'Edit layout — open the slide being previewed to enable'}>
+        <Tooltip title={p.canEditLayout ? 'Edit layout (move/resize/rotate modules; reshape the [[ink]] of the script — drag its ends or middle)' : 'Edit layout — open the slide being previewed to enable'}>
           <span><IconButton size="small" sx={{ ...toolBtnSx, color: p.editLayout ? 'var(--app-accent)' : 'var(--app-text-muted)' }} disabled={!p.canEditLayout} onClick={p.onToggleEditLayout}><ControlCameraIcon fontSize="small" /></IconButton></span>
         </Tooltip>
         {p.editLayout && (
@@ -606,8 +606,8 @@ export const PreviewPanel: React.FC = () => {
         <Box sx={{ flex: 1 }} />
         {deckHasCues && (
           <Tooltip title={focusMarks
-            ? 'Focus targets shown — what each [[look]] / [[mark]] of this slide points at, outlined and numbered (preview only). Click to hide'
-            : 'Show the focus targets — outline what each [[look]] / [[mark]] of this slide points at (preview only; never in the slideshow)'}>
+            ? 'Focus targets shown — what each [[look]] / [[mark]] of this slide points at, outlined and numbered, and where its [[ink]] runs (preview only). Click to hide'
+            : 'Show the focus targets — outline what each [[look]] / [[mark]] of this slide points at, and where its [[ink]] runs (preview only; never in the slideshow)'}>
             <IconButton size="small" sx={{ ...toolBtnSx, color: focusMarks ? 'var(--app-accent)' : 'var(--app-text-muted)' }} onClick={toggleFocusMarks}>
               {focusMarks ? <CenterFocusStrongIcon fontSize="small" /> : <CenterFocusWeakIcon fontSize="small" />}
             </IconButton>

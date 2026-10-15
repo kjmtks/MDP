@@ -1,9 +1,11 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import type { FocusCue } from '../autoplay/autoplay';
 import type { FocusState } from './focusState';
-import { isHit, resolveTarget, type FocusBox, type FocusHit } from './focusTargets';
+import { isHit, resolveTarget, textLines, type FocusBox, type FocusHit } from './focusTargets';
 import { styleOf, type FocusOutlineItem, type FocusStyle } from './focusStyles';
 import { registerFocusLayer } from './focusSettle';
+import { inkAnchor, inkText } from './ink';
+import { placeInk, type PlacedInk } from './inkLayout';
 import './FocusLayer.css';
 
 interface Placed { cue: FocusCue; style: FocusStyle; hits: FocusHit[] }
@@ -11,7 +13,8 @@ interface Geometry {
   W: number; H: number;
   looks: Placed[];
   marks: Placed[];
-  outline: { n: number; cue: FocusCue; hits: FocusHit[] }[];
+  inks: PlacedInk[];
+  outline: { n: number; cue: FocusCue; hits: FocusHit[]; ink?: PlacedInk }[];
   misses: { n: number; target: string; error: string }[];
 }
 
@@ -42,15 +45,24 @@ export const FocusLayer: React.FC<{
     if (!root) return;
     const W = root.offsetWidth;
     const H = root.offsetHeight;
+    // The slide's text, once, for every ink line that should keep off it.
+    let text: FocusBox[] | undefined;
+    const obstacles = () => (text ??= textLines(root));
     const outlined = (outline || []).map(({ n, cue }) => {
-      const res = cue.targets.map((t) => ({ t, r: resolveTarget(t, root) }));
-      return { n, cue, hits: res.map((x) => x.r).filter(isHit), misses: res.filter((x) => !isHit(x.r)).map((x) => ({ n, target: x.t, error: (x.r as { error: string }).error })) };
+      const res = cue.targets.map((t) => ({ t, r: resolveTarget(cue.kind === 'ink' ? inkAnchor(t).base : t, root) }));
+      return {
+        n, cue, hits: res.map((x) => x.r).filter(isHit),
+        misses: res.filter((x) => !isHit(x.r)).map((x) => ({ n, target: x.t, error: (x.r as { error: string }).error })),
+        ...(cue.kind === 'ink' ? { ink: placeInk(cue, root, obstacles()) } : {}),
+      };
     });
+    const kept = focus?.marks || [];
     setGeo({
       W, H,
       looks: (focus?.looks || []).map((c) => place(c, root)),
-      marks: (focus?.marks || []).map((c) => place(c, root)),
-      outline: outlined.map(({ n, cue, hits }) => ({ n, cue, hits })),
+      marks: kept.filter((c) => c.kind !== 'ink').map((c) => place(c, root)),
+      inks: kept.filter((c) => c.kind === 'ink').map((c) => placeInk(c, root, obstacles())),
+      outline: outlined.map(({ n, cue, hits, ink }) => ({ n, cue, hits, ...(ink ? { ink } : {}) })),
       misses: outlined.flatMap((o) => o.misses),
     });
   }, [root, focus, outline]);
@@ -174,6 +186,22 @@ export const FocusLayer: React.FC<{
   };
 
   geo.marks.forEach((p, i) => draw(p, `mark-${i}`, false));
+  // Ink: written stroke by stroke at a pen's pace (the stylesheet animates each path;
+  // a still picture has them whole). Its element is kept while the cue stays — keyed
+  // by the cue — so a new measurement moves the strokes without writing them again.
+  const ink = 'var(--mdp-ink-color, var(--mdp-focus-pen, #ef6c00))';
+  geo.inks.forEach((p) => {
+    if (!p.plan.strokes.length) return;
+    const c = colorOf(p.cue, ink);
+    items.push(
+      <svg key={`ink-${inkText(p.cue)}`} className="mdp-ink" width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ left: 0, top: 0 }}>
+        {p.plan.strokes.map((s, j) => (
+          <path key={j} d={s.d} pathLength={1} fill="none" stroke={c} strokeLinecap="round" strokeLinejoin="round"
+            style={{ '--d': `${s.dur}s`, '--delay': `${s.delay}s` } as React.CSSProperties} />
+        ))}
+      </svg>,
+    );
+  });
   geo.looks.forEach((p, i) => draw(p, `look-${p.style}-${i}`, true));
 
   // Dimming / blurring everything but the holes: one layer each.
@@ -206,8 +234,16 @@ export const FocusLayer: React.FC<{
 
   // The preview's marks: each target outlined and numbered; what is not found, listed.
   const marks: React.ReactNode[] = [];
-  geo.outline.forEach(({ n, cue, hits }) => {
-    const c = cue.kind === 'mark' ? '#ea580c' : cue.kind === 'look' ? '#2563eb' : '#64748b';
+  geo.outline.forEach(({ n, cue, hits, ink: placed }) => {
+    const c = cue.kind === 'mark' ? '#ea580c' : cue.kind === 'look' ? '#2563eb' : cue.kind === 'ink' ? '#7c3aed' : '#64748b';
+    // An ink cue's route, faint and dashed — where it will be drawn.
+    if (placed && placed.plan.strokes.length) {
+      marks.push(
+        <svg key={`oi-${n}`} className="mdp-ink-route" width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ left: 0, top: 0, '--c': c } as React.CSSProperties}>
+          {placed.plan.strokes.map((s, j) => <path key={j} d={s.d} fill="none" stroke={c} strokeLinecap="round" strokeLinejoin="round" />)}
+        </svg>,
+      );
+    }
     hits.forEach((h, i) => {
       const b = h.box;
       marks.push(<div key={`o-${n}-${i}`} className="mdp-focus-outline" style={{ '--c': c, left: b.x - 3, top: b.y - 3, width: b.w + 6, height: b.h + 6, boxSizing: 'border-box' } as React.CSSProperties} />);

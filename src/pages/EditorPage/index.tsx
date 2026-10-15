@@ -96,6 +96,8 @@ import { RESET_LAYOUT_EVENT, SHOW_PANEL_EVENT } from './dock/dockShared';
 import { BASE_HEIGHT } from '../../constants';
 import { sendFocus, useBusFocus } from '../../features/focus/focusBus';
 import { cueInForce } from '../../features/focus/focusState';
+import { replaceInkMarker, selectInkMarker } from '../../features/focus/inkDocEdits';
+import { undo as editorUndo, redo as editorRedo } from '@codemirror/commands';
 import { lineCues } from '../../features/autoplay/autoplay';
 import { mdpBus } from '../../features/bus/mdpBus';
 import { EDITOR_CHIP_EVENT, setChipFocus, type ChipFocus, type EditorChipDetail } from '../../features/editor/extensions/ScriptChipsPlugin';
@@ -1976,6 +1978,23 @@ export default function EditorPage() {
         from: dir.openFrom, to: dir.openTo,
         original: doc.slice(dir.openFrom, dir.openTo),
       });
+    },
+    // Ink (the slide script's [[ink: …]]), reshaped on the preview: its marker
+    // rewritten — or taken out — in one transaction; picked → the caret on it.
+    onInkChange: (slide, nth, text) => {
+      const view = editorRef.current?.view;
+      if (!view || !replaceInkMarker(view, slide, nth, text)) return;
+      flushManipPreview();
+    },
+    onInkSelect: (slide, nth) => {
+      const view = editorRef.current?.view;
+      if (view) selectInkMarker(view, slide, nth);
+    },
+    onInkUndo: (again) => {
+      const view = editorRef.current?.view;
+      if (!view) return;
+      (again ? editorRedo : editorUndo)(view);
+      flushManipPreview();
     },
   }), [editLayout, canEditLayout, snapOn, snapStep, editorRef, flushManipPreview]);
 

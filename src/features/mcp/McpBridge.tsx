@@ -21,7 +21,7 @@ import { synthesizesAudio, type TtsEngine } from '../tts/ttsService';
 import { estimateDeckSeconds } from '../slide/talkTime';
 import {
   checkSiteTargets, cueLineProblems, cueSites, cueText, duplicateNames, focusAtLine, focusOfMarkers, lineCount, outlineOf, pctBox,
-  pointsByWords, type CueSite, type FocusProblem,
+  pointsByWords, cueBases, type CueSite, type FocusProblem,
 } from '../focus/focusCheck';
 import { FOCUS_NAME_SRC } from '../slide/parser/katexExtensions';
 import { listTargets } from '../focus/focusTargets';
@@ -107,7 +107,7 @@ interface ProbeJob {
 }
 
 // A slide whose @script has focus cues ([[look: …]] / [[mark: …]] / [[clear]]).
-const HAS_CUE = /\[\[\s*(?:look|mark|clear)\s*(?::|\]\])/i;
+const HAS_CUE = /\[\[\s*(?:look|mark|clear|ink)\s*(?::|\]\])/i;
 const focusSites = (slide: Slide, cpm: number): CueSite[] =>
   (HAS_CUE.test(slideScript(slide?.raw || '')) ? cueSites({ html: slide.html || '', raw: slide.raw || '', stepCount: slide.stepCount }, cpm) : []);
 
@@ -286,7 +286,7 @@ export function validateDeckText(text: string, themes: ThemeOption[], library?: 
         const at = `${where}${p.line ? `, line ${p.line}` : ''}: focus ${p.cue ? `${p.cue} ` : ''}`;
         warnings.push(`${at}${p.level === 'note' ? '(not recommended) ' : ''}${p.target ? `"${p.target}" ` : ''}${p.message}`);
       }
-      for (const c of scriptCues(slideScript(block.rawContent))) byWords.push(...c.targets.filter(pointsByWords));
+      for (const c of scriptCues(slideScript(block.rawContent))) byWords.push(...cueBases(c).filter(pointsByWords));
     }
     if (bi > 0) {
       for (const n of duplicateNames(block.rawContent)) {
@@ -1123,7 +1123,7 @@ Match the user's style throughout (cached profile if present, else get_style_sam
             },
           );
           const problems: FocusProblem[] = [...cueLineProblems(sites, slide.raw || ''), ...r.lines.flatMap((l) => l.problems)];
-          const byWords = sites.some((s) => s.cues.some((c: FocusCue) => c.targets.some(pointsByWords)));
+          const byWords = sites.some((s) => s.cues.some((c: FocusCue) => cueBases(c).some(pointsByWords)));
           return {
             deck: d.path, slide: n, narrationLines: lineCount(slide, cc.readingCpm), stepCount: slide.stepCount || 0,
             ...(byWords ? { advice: NAME_ADVICE } : {}),

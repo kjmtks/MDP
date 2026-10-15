@@ -26,7 +26,18 @@ export interface ManipRuntime {
   onPaste?: (afterSel: DirectiveSelector, text: string) => number | null;
   // Paste on empty canvas: drop a copy of `text` into the current slide at (x, y) %.
   onPasteAt?: (text: string, x: number, y: number) => number | null;
+  // Ink (a slide script's [[ink: …]], reshaped on the preview by InkEditLayer): the
+  // n-th of slide `slide` rewritten as `text` (null = taken out); picked → the
+  // editor's caret goes to it.
+  onInkChange?: (slide: number, nth: number, text: string | null) => void;
+  onInkSelect?: (slide: number, nth: number) => void;
+  // Ctrl+Z / Ctrl+Y while the ink layer has the keyboard: the editor's undo / redo.
+  onInkUndo?: (redo: boolean) => void;
 }
+
+// Another layer of the edit-layout mode took the selection (an ink was picked):
+// the modules' selection is dropped, so one Delete never removes both.
+export const MANIP_DESELECT_EVENT = 'mdp-manip-deselect';
 
 // Clipboard for module copy/paste. Module-level (not React state) so it persists
 // across slide switches — each SlideView mounts its own ManipulationLayer.
@@ -629,6 +640,12 @@ export const ManipulationLayer: React.FC<Props> = ({ container, headerContainer,
 
   // Drop selection when leaving edit mode.
   useEffect(() => { if (!enabled) { setSelected([]); setMarquee(null); setFrameBoxes({}); setCtxMenu(null); setGuides([]); } }, [enabled]);
+  // …and when another layer (ink) takes the selection.
+  useEffect(() => {
+    const drop = () => { setSelected([]); setCtxMenu(null); };
+    window.addEventListener(MANIP_DESELECT_EVENT, drop);
+    return () => window.removeEventListener(MANIP_DESELECT_EVENT, drop);
+  }, []);
 
   if (!enabled) return null;
 

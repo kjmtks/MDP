@@ -8,6 +8,7 @@ import { getCachedSvg, getFallback, getSvgNode, loadSvg, registerDataUri, svgPla
 import { executeModuleScripts } from '../../modules/moduleManager';
 import { applyBuildStep, applyBuildStepInstant } from '../../effects/buildRuntime';
 import { FocusLayer } from '../../focus/FocusLayer';
+import { InkEditLayer } from '../../focus/InkEditLayer';
 import type { FocusOutlineItem } from '../../focus/focusStyles';
 import type { FocusState } from '../../focus/focusState';
 import './SlideViewer.css';
@@ -65,6 +66,9 @@ interface SlideViewProps {
   focusOutline?: FocusOutlineItem[] | null;
   focusAnimate?: boolean;
 }
+
+// A slide whose script draws ink ([[ink: …]]) — the edit-layout mode lets it be reshaped.
+const HAS_INK = /\[\[\s*ink\s*(?::|\]\])/i;
 
 // Render a Chart.js config (base64 JSON from the `@chartjs` fence) to a STATIC PNG
 // data-URL, off-screen, once — cached by config+size. Every surface (live preview,
@@ -677,6 +681,11 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
 
       {!flow && manipulate && (
         <ManipulationLayer container={containerEl} headerContainer={headerEl} footerContainer={footerEl} runtime={manipulate} />
+      )}
+
+      {/* The edit-layout mode reshapes the script's [[ink]] too (the editor preview). */}
+      {!flow && manipulate?.enabled && manipulate.onInkChange && HAS_INK.test(raw || '') && (
+        <InkEditLayer root={wrapperEl} content={containerEl} raw={raw || ''} slide={slideIndex ?? 0} runtime={manipulate} />
       )}
 
       {!flow && footer && <div ref={setFooterNode} className="slide-footer" dangerouslySetInnerHTML={footerHtml} />}

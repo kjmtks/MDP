@@ -1,0 +1,44 @@
+/* The edit-layout mode's ink editing (InkEditLayer, the preview only): every [[ink]]
+   of the slide drawn whole, picked by its strokes, reshaped with handles. Above the
+   module layer (.mdp-manip-overlay, z-index 60), but only its strokes and handles
+   take the pointer — the rest of the slide stays the module layer's. */
+.mdp-ink-edit { position: absolute; inset: 0; z-index: 62; pointer-events: none; outline: none; }
+.mdp-ink-edit > svg { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
+.mdp-ink-edit-ink { opacity: .92; }
+.mdp-ink-edit-faint { opacity: .35; }
+.mdp-ink-edit .mdp-ink-hit { pointer-events: stroke; cursor: pointer; }
+
+/* what the picked ink is attached to; while an end is dragged, where it can go */
+.mdp-ink-edit-anchor { fill: none; stroke: #3b82f6; }
+.mdp-ink-edit-spot { fill: rgba(59, 130, 246, .05); stroke: rgba(59, 130, 246, .45); stroke-dasharray: 3 3; }
+.mdp-ink-edit-hot { fill: rgba(59, 130, 246, .12); stroke: #3b82f6; }
+.mdp-ink-edit-bad { fill: rgba(220, 38, 38, .1); stroke: #dc2626; }
+
+.mdp-ink-edit .mdp-ink-handle { fill: #fff; stroke: #3b82f6; pointer-events: all; cursor: grab; }
+.mdp-ink-edit .mdp-ink-handle:active { cursor: grabbing; }
+.mdp-ink-edit .mdp-ink-handle-mid { fill: #3b82f6; stroke: #fff; }
+
+/* an ink whose place is not on the slide: said in a corner */
+.mdp-ink-edit-missing {
+  position: absolute; left: 6px; bottom: 6px; max-width: 70%;
+  padding: 4px 8px; border-radius: 4px; font: 12px/1.4 system-ui, sans-serif;
+  background: rgba(220, 38, 38, .9); color: #fff; pointer-events: none;
+}
+
+/* the panel by the picked ink (in <body>, beside the zoomed slide) */
+.mdp-ink-toolbar {
+  position: fixed; z-index: 10002; display: flex; align-items: center; gap: 2px; padding: 3px;
+  background: var(--app-bg-panel, #fff); color: var(--app-text-secondary, #333);
+  border: 1px solid var(--app-border, #ccc); border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .35); font-size: 14px; white-space: nowrap; user-select: none;
+}
+.mdp-ink-toolbar button {
+  min-width: 26px; height: 26px; padding: 0 4px; border: 1px solid transparent; border-radius: 4px;
+  background: transparent; color: inherit; font: inherit; line-height: 1; cursor: pointer;
+}
+.mdp-ink-toolbar button:hover { background: var(--app-bg-hover, rgba(0, 0, 0, .06)); }
+.mdp-ink-toolbar button.on { border-color: var(--app-accent, #3b82f6); color: var(--app-accent, #3b82f6); }
+.mdp-ink-toolbar button.danger { color: var(--app-danger, #dc2626); }
+.mdp-ink-toolbar button.swatch { min-width: 22px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+.mdp-ink-toolbar button.swatch > span { width: 14px; height: 14px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .25); }
+.mdp-ink-toolbar .sep { width: 1px; align-self: stretch; margin: 3px 3px; background: var(--app-border, #ccc); }
