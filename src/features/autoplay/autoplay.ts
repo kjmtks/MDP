@@ -4,6 +4,12 @@
 // spoken words stay in sync with the reveals. The markers are stripped before TTS.
 
 import { captionChunks, displayWidth, splitSentences, UNIT_MAX } from './captionSplit';
+import { applyGlossary, getDeckGlossary, narrationLang, type DeckGlossary } from '../glossary/glossary';
+
+/** A narration text read with the deck's glossary: each term a ruby, as if written
+ *  (features/glossary) — in the text's own language. */
+const withGlossary = (seg: string, glossary: DeckGlossary | null | undefined): string =>
+  (glossary && glossary.entries.length ? applyGlossary(seg, glossary, narrationLang(stripScriptMarkers(seg))) : seg);
 
 const STEP_MARKER = /\[\[\s*step\s*\]\]/gi;
 // `[[then]]` — in a talk given BY HAND, the next → starts here: markers on its two
@@ -287,6 +293,12 @@ function eachRuby(text: string, fn: (hit: RubyHit) => string): string {
 export const rubyBase = (text: string): string => eachRuby(text, (h) => h.base);
 /** The script as SPOKEN: every ruby replaced by its reading. */
 export const rubyReading = (text: string): string => eachRuby(text, (h) => (h.math ? ` ${h.reading} ` : h.reading));
+/** The rubies written in a script, in order (is one only repeating the glossary?). */
+export function scriptRubies(text: string): { base: string; reading: string }[] {
+  const out: { base: string; reading: string }[] = [];
+  eachRuby(text, (h) => { out.push({ base: h.base, reading: h.reading }); return ''; });
+  return out;
+}
 
 const escAttr = (v: string) => v.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
@@ -301,6 +313,34 @@ export function markScriptReadings(script: string): string {
     .replace(/(\\\([\s\S]*?\\\)|\\\[[\s\S]*?\\\])\s*\[\[\s*say\s*:\s*([\s\S]*?)\]\]/gi, (_m, math: string, say: string) =>
       (say.trim() ? mark(math, say.trim()) : math))
     .replace(/\[\[\s*say\s*:[\s\S]*?\]\]/gi, ' ');
+}
+
+// Where a marker stood, while a script is made readable (scriptForReader).
+const READER_GAP = String.fromCharCode(0xe004);
+const READER_JA = '[\u3040-\u30ff\u3400-\u9fff\u3000-\u303f\uff00-\uffef]';
+const READER_GAP_JA = new RegExp(`(${READER_JA})${READER_GAP}+(?=${READER_JA})`, 'g');
+const READER_GAPS = new RegExp(`${READER_GAP}+`, 'g');
+
+/** A script for a PERSON to read from — PowerPoint's notes pane, where nothing
+ *  is rendered or hovered: every marker gone ([[step]], [[then]], events, waits,
+ *  pauses, focus cues), a word's ruby its base, and each formula handed to
+ *  `formula` with its reading when the script gives one (a ruby on it, or a
+ *  [[say:…]] after it). Line breaks stay. */
+export function scriptForReader(script: string, formula: (math: string, reading?: string) => string): string {
+  return eachRuby(String(script || ''), (h) => (h.math ? formula(h.base, h.reading) : h.base))
+    .replace(/(\\\([\s\S]*?\\\)|\\\[[\s\S]*?\\\])\s*\[\[\s*say\s*:\s*([\s\S]*?)\]\]/gi, (_m, math: string, say: string) => formula(math, say.trim() || undefined))
+    .replace(SAY_MARKER, READER_GAP)
+    .replace(MATH_SPAN, (m) => formula(m))
+    .replace(STEP_MARKER, READER_GAP)
+    .replace(THEN_MARKER, '')
+    .replace(actionMarkerRe(), READER_GAP)
+    .replace(cueMarkerRe(), '')
+    // where a marker stood: nothing between Japanese words, a space elsewhere
+    .replace(READER_GAP_JA, '$1')
+    .replace(READER_GAPS, ' ')
+    .split('\n').map((l) => l.replace(/[ \t]+/g, ' ').trim()).join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 // Render a script's markdown for the PRESENTER pane: markers become inline chip
@@ -359,8 +399,8 @@ export function captionText(seg: string): string {
 // The SPOKEN form of a script segment: each ruby and `[[say: 読み]]` becomes its
 // reading, the remaining math spans go (a formula is SHOWN in the caption, and only
 // SPOKEN when the author gave it a reading), and the markers go. Whitespace collapses.
-export function speechText(seg: string): string {
-  return rubyReading(seg)
+export function speechText(seg: string, glossary: DeckGlossary | null = getDeckGlossary()): string {
+  return rubyReading(withGlossary(seg, glossary))
     .replace(SAY_MARKER, ' $1 ')
     .replace(MATH_SPAN, ' ')
     .replace(STEP_MARKER, ' ')
@@ -402,7 +442,9 @@ const CUE_CLOSE = String.fromCharCode(0xe003);
 // twice — the caption shows the base / the math, the speech says the reading (or
 // nothing, for a formula without one). A long paragraph that merely CONTAINS a small
 // formula is therefore still split normally.
-export function scriptUnits(seg: string, maxWidth = UNIT_MAX): ScriptUnit[] {
+export function scriptUnits(seg: string, maxWidth = UNIT_MAX, glossary: DeckGlossary | null = getDeckGlossary()): ScriptUnit[] {
+  // The glossary's terms are read like rubies the author wrote (an atom each).
+  seg = withGlossary(seg, glossary);
   // `speech` carries its own spacing: a formula's reading is set apart, a word's
   // reading takes the word's place in the sentence.
   const atoms: { caption: string; speech: string }[] = [];
@@ -493,7 +535,7 @@ export interface PlaylistSlide { html: string; raw: string; stepCount?: number }
 /** Flatten a deck into narration steps: one per subtitle unit of each @script
  *  segment (segments split at `[[step]]`), plus dwell items for script-less slides
  *  and trailing build reveals. `cpm` = the human reading speed (dwell lengths). */
-export function buildPlaylist(slides: readonly PlaylistSlide[], cpm: number): PlayItem[] {
+export function buildPlaylist(slides: readonly PlaylistSlide[], cpm: number, glossary: DeckGlossary | null = getDeckGlossary()): PlayItem[] {
   const out: PlayItem[] = [];
   slides.forEach((s, si) => {
     const segs = scriptSegments(s.raw);
@@ -529,7 +571,7 @@ export function buildPlaylist(slides: readonly PlaylistSlide[], cpm: number): Pl
           push({ slideIdx: si, buildStep: bs, text: null, caption: '', dwellMs: 0, action: part.action });
           continue;
         }
-        for (const u of scriptUnits(part.text)) {
+        for (const u of scriptUnits(part.text, UNIT_MAX, glossary)) {
           if (!u.caption && !u.speech) { pending.push(...(u.cues || []), ...(u.cuesAfter || [])); continue; }
           if (u.speech) {
             push({ slideIdx: si, buildStep: bs, text: u.speech, caption: u.caption, dwellMs: 90 }, u.cues);

@@ -11,6 +11,7 @@ import type { ModuleData } from '../../utils/moduleParser';
 import type { EffectData } from '../../utils/effectParser';
 import type { PlanSlide } from './videoPlan';
 import type { NarrationMeasure } from '../rehearsal/rehearsalStore';
+import type { DeckGlossary } from '../glossary/glossary';
 
 export interface VideoSlide extends PlanSlide {
   className?: string;
@@ -54,6 +55,8 @@ export interface VideoJobInput {
   effects?: EffectData[];     // exact mode: the effect definitions (transitions, builds)
   tts: TtsConfig;
   cpm: number;
+  /** How the narrator reads the deck's terms (its glossaries, when queued). */
+  glossary?: DeckGlossary;
   options: VideoOptions;
   /** Desktop: the .mp4 picked in the save dialog (absolute) — omitted: beside the
    *  deck. A deck behind an SSH link needs one (nothing can be written there). */
@@ -147,6 +150,8 @@ export interface ShowExportDeck {
   globalMotion?: MotionSpec;
   tts: TtsConfig;
   cpm: number;
+  /** How the narrator reads the deck's terms (the job's glossary). */
+  glossary?: DeckGlossary;
   captions: boolean;
   /** Measure each slide's narration (the job's options.updateTimes). */
   measure?: boolean;

@@ -10,6 +10,7 @@ const mdplink = require('./app/mdplink.cjs');
 const fontsLib = require('./app/fonts.cjs');
 const fontInstall = require('./app/fontInstall.cjs');
 const skillsLib = require('./app/skills.cjs');
+const glossaryLib = require('./app/glossary.cjs');
 // Machine-local SSH state (jump-host bypass toggle, cache config) + offline cache
 // dir, kept next to the server.
 mdplink.initLocalState(path.join(__dirname, '.mdp-local.json'), path.join(__dirname, '.mdp-cache'));
@@ -778,6 +779,13 @@ app.get('/api/fonts', async (req, res) => {
 // first, then root→nearest; NEAREST wins by name). See app/skills.cjs.
 app.get('/api/skills', async (req, res) => {
   try { res.json(await skillsLib.listSkills(assetChain(req.query.dirs), (rel) => vres(req, rel), mdplink)); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Glossaries (`<cdir>/glossary/<name>.md`) across the chain (site-wide dirs first,
+// then root→nearest). See app/glossary.cjs.
+app.get('/api/glossaries', async (req, res) => {
+  try { res.json(await glossaryLib.listGlossaries(assetChain(req.query.dirs), (rel) => vres(req, rel), mdplink)); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 

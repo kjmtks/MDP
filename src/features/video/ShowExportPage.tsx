@@ -3,6 +3,7 @@ import { AutoPlayView, type AutoPlayExportEvent, type AutoPlayExportMode } from 
 import { clearAllModules, registerParsedModule } from '../modules/moduleManager';
 import { clearAllEffects, registerParsedEffect } from '../effects/effectManager';
 import { applyFontCss } from '../fonts/fontRuntime';
+import { setDeckGlossary } from '../glossary/glossary';
 import { showExportChannel, type ShowExportDeck, type ShowExportMessage } from './videoTypes';
 
 // The hidden window of an "exact" video export (`#/show-export?job=…`, opened by the
@@ -29,6 +30,8 @@ export default function ShowExportPage() {
         clearAllEffects();
         m.deck.effects.forEach(registerParsedEffect);
         applyFontCss(document, m.deck.fontCss || '');
+        // The narration reads the deck's terms as the job's glossary says.
+        setDeckGlossary(m.deck.glossary);
         if (m.deck.themeCssUrl) {
           const link = document.createElement('link');
           link.rel = 'stylesheet';

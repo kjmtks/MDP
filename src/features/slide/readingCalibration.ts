@@ -35,7 +35,7 @@ export function scriptsInReadingOrder(slides: readonly OpenDeckSlide[], current:
     if (!slide || slide.isHidden) return;
     const raw = slide.raw || '';
     const chars = scriptChars(raw);
-    const spoken = chars ? scriptSegments(raw).map(speechText).filter(Boolean).join(' ') : '';
+    const spoken = chars ? scriptSegments(raw).map((s) => speechText(s)).filter(Boolean).join(' ') : '';
     if (spoken) all.push({ slide: i + 1, spoken, chars });
   });
   const at = all.findIndex((s) => s.slide === Math.floor(current) + 1);

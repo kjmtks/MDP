@@ -128,7 +128,7 @@ export async function recordShow(
   const deck: ShowExportDeck = {
     slides, slideSize: job.slideSize, basePath: job.basePath, themeCssUrl: job.themeCssUrl, fontCss: job.fontCss,
     modules: job.modules || [], effects: job.effects || [], globalMotion: job.globalMotion,
-    tts: job.tts, cpm: job.cpm, captions: job.options.subtitles, measure: !!job.options.updateTimes,
+    tts: job.tts, cpm: job.cpm, glossary: job.glossary, captions: job.options.subtitles, measure: !!job.options.updateTimes,
   };
 
   // Everything that can end the job early funnels into `fail`; the waits below race it.

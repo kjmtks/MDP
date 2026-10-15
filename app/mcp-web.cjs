@@ -33,6 +33,8 @@ const INSTRUCTIONS = [
   '(spec + decks + templates + images); read the folder\'s slide skills that fit the task',
   'with get_skill (the author\'s guides — follow them, and review against their checklists;',
   'record a rule the user gives you with patch_skill), then get_module_spec for the modules you pick.',
+  'The folder\'s glossaries (in the spec) give the narrator\'s readings of its terms — no ruby for',
+  'those; add a recurring term the TTS misreads with patch_glossary.',
   'There is no editor window here: always pass an explicit `path` / `deck`.',
 ].join(' ');
 
@@ -76,6 +78,7 @@ function mount(app, deps) {
     // A write from an AI should show up in the browsers that have this workspace open.
     refreshTree: () => { pokeClients(); return { ok: true }; },
     contentChanged: () => { pokeClients(); return { ok: true }; },
+    glossaryChanged: () => { pokeClients(); return { ok: true }; },
     // The desktop asks the user to review an AI-authored asset before saving it.
     // There is nobody at this screen; the write is already limited to the folders
     // this user may write, and write_asset says so in its result.

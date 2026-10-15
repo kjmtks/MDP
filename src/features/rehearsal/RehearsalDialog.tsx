@@ -19,7 +19,7 @@ interface Step { index: number; title: string; script: string; budget: number }
 // What the narrator reads: the script's SPOKEN form, as in the auto-play — ruby and
 // [[say:…]] readings in place, formulas without a reading and all markers left out
 // (the displayed text would read raw math and skip the readings).
-const spokenScript = (raw: string): string => scriptSegments(raw).map(speechText).filter(Boolean).join(' ');
+const spokenScript = (raw: string): string => scriptSegments(raw).map((s) => speechText(s)).filter(Boolean).join(' ');
 
 const firstHeading = (raw: string): string => {
   const noComments = raw.replace(/<!--[\s\S]*?-->/g, ' ');

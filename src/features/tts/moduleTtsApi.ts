@@ -64,6 +64,7 @@ import {
   type VoicevoxStyle,
 } from './ttsService';
 import { mergeOptions, parseExtra, speaksLanguage, type SpeechServerDescription } from './speechOptions';
+import { getDeckGlossary, narrationLang, speakWithGlossary } from '../glossary/glossary';
 
 /** An engine as a call names it (see engineFromName); 'auto' = pick automatically. */
 export type MdpTtsEngineName = TtsEngine | 'server' | 'tts' | 'irodori' | 'auto';
@@ -102,6 +103,7 @@ export interface MdpTtsSpeakOptions {
   onEngine?: (info: MdpTtsEngineInfo) => void;
   notice?: string;      // something to report with the first onEngine (e.g. a missing preset)
   exclusive?: boolean;  // default true: stop the previous mdpTts utterance first
+  glossary?: boolean;   // default true: the deck's glossary terms are read as it says (features/glossary)
   // Spoken-position callback for read-along highlighting. Web Speech reports
   // { charIndex, charLength? } per word; VOICEVOX / the TTS server report { fraction }
   // (0..1 of playback time). Indices refer to the trimmed text passed to speak().
@@ -392,11 +394,23 @@ function attemptsFor(engine: TtsEngine, opts: MdpTtsSpeakOptions): Attempt[] {
 
 const api: MdpTtsApi = {
   speak(text: string, opts: MdpTtsSpeakOptions = {}): Utterance {
-    const t = String(text ?? '').trim();
-    if (!t) return NOOP;
+    const written = String(text ?? '').trim();
+    if (!written) return NOOP;
     let stopped = false;
     let inner: Utterance | null = null;
-    const onProgress = typeof opts.onProgress === 'function' ? opts.onProgress : undefined;
+    // The deck's glossary terms are spoken as their readings; the read-along
+    // positions are mapped back onto the words as written.
+    const spoken = speakWithGlossary(written, opts.glossary === false ? null : getDeckGlossary(), opts.lang || narrationLang(written));
+    const t = spoken.text;
+    const given = typeof opts.onProgress === 'function' ? opts.onProgress : undefined;
+    const onProgress: SpeakProgressCallback | undefined = given && t !== written
+      ? (p) => {
+        if (typeof p.charIndex !== 'number') { given(p); return; }
+        const start = spoken.toWritten(p.charIndex);
+        const end = typeof p.charLength === 'number' ? spoken.toWritten(p.charIndex + p.charLength) : undefined;
+        given({ ...p, charIndex: start, ...(end !== undefined ? { charLength: Math.max(1, end - start) } : {}) });
+      }
+      : given;
     const report = (info: MdpTtsEngineInfo) => {
       try { opts.onEngine?.(info); } catch { /* a module's own callback failing is not ours */ }
     };

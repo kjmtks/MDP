@@ -8,6 +8,7 @@ import { loadedModules } from '../../modules/moduleManager';
 import { type MdpContent, parseContent, contentPath, effectiveDisabledModules, effectiveAiNotes, effectiveStyleProfile, effectiveFonts } from '../../workspace/mdpContent';
 import { FontsSection } from '../../fonts/FontsSection';
 import { SkillsSection } from '../../skills/SkillsSection';
+import { GlossarySection } from '../../glossary/GlossarySection';
 import { mergeRequirements, requirementStatuses } from '../../fonts/fontRequirements';
 import { isFontInstalledLocally } from '../../fonts/fontRuntime';
 import { resolveMdpConfigDirs, collectScopedAssetPaths } from '../../workspace/mdpScope';
@@ -65,11 +66,12 @@ export const ConfigureMdpDialog: React.FC<Props> = ({ open, configDir, fileTree,
     if (!configDir || promptBusy) return;
     setPromptBusy(true);
     try {
-      const [allMods, allFx, themes, fonts, reqFiles, skills] = await Promise.all([
+      const [allMods, allFx, themes, fonts, reqFiles, skills, glossaries] = await Promise.all([
         apiClient.getModules(), apiClient.getEffects(), apiClient.getThemes(chain),
         apiClient.getFonts(chain).catch(() => []),
         apiClient.getFontRequirements(chain).catch(() => []),
         apiClient.getSkills(chain).catch(() => []),
+        apiClient.getGlossaries(chain).catch(() => []),
       ]);
       const fontRequirements = requirementStatuses(mergeRequirements(reqFiles).fonts, fonts, (f) => isFontInstalledLocally(f));
       const modByName = new Map<string, ModuleConfig>();
@@ -100,8 +102,10 @@ export const ConfigureMdpDialog: React.FC<Props> = ({ open, configDir, fileTree,
         {
           effects: [...fxByName.values()], themes, taxonomy,
           fonts, fontDefaults: effectiveFonts([...contents.slice(0, -1), content]), fontRequirements,
-          // A copied prompt has no get_skill tool — the skills go in full.
+          // A copied prompt has no get_skill tool — the skills go in full (and the
+          // glossaries' terms, as many as fit).
           skills, skillsInline: true,
+          glossaries, glossariesInline: true,
           aiNotes: effectiveAiNotes([...contents.slice(0, -1), content]),
           styleProfile: effectiveStyleProfile([...contents.slice(0, -1), content]).text,
         },
@@ -239,6 +243,14 @@ export const ConfigureMdpDialog: React.FC<Props> = ({ open, configDir, fileTree,
 
         {configDir && !loading && (
           <SkillsSection
+            configDir={configDir}
+            chain={chain.length ? chain : [configDir]}
+            onOpenFile={onOpenFile}
+          />
+        )}
+
+        {configDir && !loading && (
+          <GlossarySection
             configDir={configDir}
             chain={chain.length ? chain : [configDir]}
             onOpenFile={onOpenFile}

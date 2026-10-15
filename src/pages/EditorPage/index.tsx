@@ -35,6 +35,7 @@ import { setOpenDeck } from '../../features/slide/openDeckRuntime';
 import { SuggestModuleDialog } from '../../features/modules/components/SuggestModuleDialog';
 import { AutoPlayView } from '../../features/autoplay/AutoPlayView';
 import { usePresentingSession } from '../../features/slide/hooks/usePresentingSession';
+import { getDeckGlossary, mergeGlossaries, setDeckGlossary, type GlossaryFile } from '../../features/glossary/glossary';
 import { VideoExportDialog } from '../../features/video/VideoExportDialog';
 import { VideoQueuePanel } from '../../features/video/VideoQueuePanel';
 import { enqueueVideo, onVideoJobFinished } from '../../features/video/videoQueue';
@@ -87,7 +88,7 @@ import { useCatalogSync } from '../../features/catalog/hooks/useCatalogSync';
 import { syncOfficialCatalog } from '../../features/catalog/syncService';
 import { useSlideRasterizer } from '../../features/remote/capture/useSlideRasterizer';
 import { useImageExport } from '../../features/export/useImageExport';
-import { usePptxExport, type PptxMode } from '../../features/export/usePptxExport';
+import { usePptxExport } from '../../features/export/usePptxExport';
 import { DockProvider } from './dock/DockProvider';
 import type { SidebarSharedProps, PreviewSharedProps, SnippetsShared, ImagesShared, HeaderActions, EditorSharedProps } from './dock/DockContext';
 import { EditorDock } from './dock/EditorDock';
@@ -379,6 +380,28 @@ export default function EditorPage() {
     });
     return () => { cancelled = true; };
   }, [ttsServerPathsString, ttsServersEpoch]);
+
+  // Glossaries (`.mdp/glossary/*.md` along the scope chain): how the narrator reads the
+  // field's terms (features/glossary) — read again when one is saved, added or removed
+  // (the tree's list of them changes) or an AI wrote one (glossaryChanged).
+  const glossaryPathsString = useMemo(
+    () => collectScopedAssetPaths(fileTree, scopeDirs, 'glossary', '.md').sort().join(','),
+    [fileTree, scopeDirs],
+  );
+  const [glossaryEpoch, setGlossaryEpoch] = useState(0);
+  const [glossaryFiles, setGlossaryFiles] = useState<GlossaryFile[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    apiClient.getGlossaries(scopeDirs).then((files) => { if (!cancelled) setGlossaryFiles(files || []); })
+      .catch(() => { if (!cancelled) setGlossaryFiles([]); });
+    return () => { cancelled = true; };
+  }, [scopeDirs, glossaryPathsString, glossaryEpoch]);
+  useEffect(() => { setDeckGlossary(mergeGlossaries(glossaryFiles)); }, [glossaryFiles]);
+  useEffect(() => {
+    const onChanged = () => setGlossaryEpoch((e) => e + 1);
+    window.addEventListener('mdp-glossary-changed', onChanged);
+    return () => window.removeEventListener('mdp-glossary-changed', onChanged);
+  }, []);
 
   // Incremented whenever modules/effects finish (re)loading. Threaded into slide
   // generation so slides parsed before registration are re-parsed once their
@@ -1044,6 +1067,8 @@ export default function EditorPage() {
         scheduleRefresh();
       } else if (/(^|\/)\.mdp\/tts-servers\/[^/]+\.json$/.test(path)) {
         setTtsServersEpoch((e) => e + 1);
+      } else if (/(^|\/)\.mdp\/glossary\/[^/]+\.md$/.test(path)) {
+        setGlossaryEpoch((e) => e + 1);
       }
     };
 
@@ -1168,7 +1193,7 @@ export default function EditorPage() {
     const n = currentFileName?.split('/').pop() || 'MDP_Presentation';
     return n.replace(/\.slide\.md$/i, '').replace(/\.md$/i, '') || 'MDP_Presentation';
   }, [currentFileName]);
-  const { exportPptx, exporting: pptxExporting, host: pptxHost } = usePptxExport({
+  const { exportPptx, exporting: pptxExporting } = usePptxExport({
     slides, slideSize, basePath, themeCssUrl, title: pptxTitle, rasterize, onSaved: () => fetchFileTree(),
   });
 
@@ -1218,6 +1243,8 @@ export default function EditorPage() {
       fontCss: getFontState().css,
       tts: { ...appSettings.tts },
       cpm: appSettings.readingCharsPerMin || 320,
+      // The deck's glossary as it is now — the job may run after another deck opens.
+      glossary: getDeckGlossary(),
       options,
       tabStream,
     });
@@ -1578,7 +1605,10 @@ export default function EditorPage() {
     if (remoteActive) void prewarmSvgs(slides.map((s) => (s as { html?: string }).html || ''), basePath);
   }, [remoteActive, slides, basePath]);
 
-  const handlePrint = useCallback(async () => {
+  const handlePrint = useCallback(async (to?: unknown) => {
+    // `to` (MCP export_pdf): a workspace path to print into, without the dialog. A
+    // click handler passes its event here — anything but a string means the dialog.
+    const target = typeof to === 'string' ? to : '';
     const originalTitle = document.title;
     let baseName = 'MDP_Presentation';
     const deckTitle = (globalContext.meta?.title || '').trim();
@@ -1677,12 +1707,16 @@ export default function EditorPage() {
       document.getElementById('preload-print-style')?.remove();
     };
     try {
-      if (isElectron()) {
+      if (target) {
+        await apiClient.exportPdfTo(target);
+      } else if (isElectron()) {
         await apiClient.exportPdf(safeTitle);
       } else {
         window.print();
       }
     } finally {
+      // The MCP print is finished when the file is written.
+      if (target) cleanup();
       // Always restore — even if export throws — so the off-screen print
       // container never stays mounted (a stuck giant blank area).
       setTimeout(cleanup, 1500);
@@ -2271,7 +2305,7 @@ export default function EditorPage() {
     onSuggestModule: openSuggestModule,
     onToggleSlideshow: toggleSlideshow,
     onPrint: handlePrint,
-    onExportPptx: (mode: PptxMode) => { void exportPptx(mode); },
+    onExportPptx: () => { void exportPptx(); },
     onExportImages: () => { void exportImages(); },
     onExportVideo: canExportVideo ? () => setVideoDialogOpen(true) : undefined,
     imagesBusy: !!imageExporting,
@@ -2388,7 +2422,6 @@ export default function EditorPage() {
       )}
 
       {rasterHost}
-      {pptxHost}
 
       {imagePrep && (
         <div style={{ position: 'fixed', bottom: 20, left: '50%', transform: 'translateX(-50%)', zIndex: 2000, background: 'rgba(30,30,30,0.92)', color: '#fff', padding: '10px 18px', borderRadius: 8, fontSize: '0.85rem', boxShadow: '0 4px 16px rgba(0,0,0,0.4)' }}>
@@ -2489,6 +2522,12 @@ export default function EditorPage() {
           onRefreshTree: handleManualRefresh,
           // Narrated video export (export_video): the same queue as the Export menu.
           queueVideo, ttsEngine: appSettings.tts.engine, readingCpm: appSettings.readingCharsPerMin || 320,
+          // export_pdf / export_pptx: the Export menu's PDF and PowerPoint, saved into
+          // the workspace; a handout = the PDF with the answers hidden for a moment.
+          exportPdf: (rel: string) => handlePrint(rel),
+          exportPptx: (rel: string) => exportPptx(rel),
+          answers: { has: !!hasAnswers, hidden: answersHidden, toggle: answersToggle },
+          setAnswersToggle,
         }} />
       )}
 

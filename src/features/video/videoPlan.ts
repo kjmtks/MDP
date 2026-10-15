@@ -6,6 +6,7 @@
 // rate, with SAMPLES_PER_FRAME samples per frame — so picture and sound can never
 // drift apart, however long the deck.
 import { buildPlaylist } from '../autoplay/autoplay';
+import type { DeckGlossary } from '../glossary/glossary';
 import { applyCues, focusSignature, isEmptyFocus, NO_FOCUS, type FocusState } from '../focus/focusState';
 
 export const FPS = 30;
@@ -24,6 +25,7 @@ export interface PlanOptions {
   includeHidden: boolean;     // hidden slides are not presented — normally left out
   fade: boolean;              // cross-fade picture changes (else hard cuts)
   globalTransition?: string;  // the deck's @transition (a slide's own one wins)
+  glossary?: DeckGlossary;    // how the narrator reads the terms (a job's snapshot; else the open deck's)
 }
 
 /** One stretch of the video: a slide at a build step with a caption, `frames`
@@ -51,7 +53,7 @@ const toFrames = (ms: number) => Math.max(1, Math.round((ms / 1000) * FPS));
  *  from `withSpeech` once their audio has been synthesized. */
 export function planSegments(slides: readonly PlanSlide[], cpm: number, opts: PlanOptions): VideoSegment[] {
   const shown = slides.map((s, i) => ({ s, i })).filter(({ s }) => opts.includeHidden || !s.isHidden);
-  const playlist = buildPlaylist(shown.map(({ s }) => ({ html: s.html, raw: s.raw, stepCount: s.stepCount })), cpm);
+  const playlist = buildPlaylist(shown.map(({ s }) => ({ html: s.html, raw: s.raw, stepCount: s.stepCount })), cpm, opts.glossary);
   const out: VideoSegment[] = [];
   let prev: { slideIdx: number; buildStep: number } | null = null;
   // The focus as the auto-play would show it: each item's cues act as it starts,

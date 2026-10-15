@@ -8,6 +8,7 @@ const mdplink = require('./mdplink.cjs');
 const fontsLib = require('./fonts.cjs');
 const fontInstall = require('./fontInstall.cjs');
 const skillsLib = require('./skills.cjs');
+const glossaryLib = require('./glossary.cjs');
 const sshTunnel = require('./sshTunnel.cjs');
 const { openPartFile } = require('./partFile.cjs');
 // Resolve a workspace-relative path through any `.mdplink` it crosses.
@@ -1226,6 +1227,22 @@ ipcMain.on('export-pdf', async (event, filename) => {
   }
 });
 
+// MCP export_pdf: the same print, written straight into the workspace (beside the
+// deck — the bridge picks the name; a workspace path only, no dialog).
+ipcMain.handle('exportPdfTo', async (event, rel) => {
+  const { BrowserWindow } = require('electron');
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win || win.isDestroyed()) throw new Error('No window to print.');
+  if (!currentBaseDir) throw new Error('No workspace folder is open.');
+  const p = String(rel || '').replace(/\\/g, '/');
+  if (!/\.pdf$/i.test(p) || p.startsWith('/') || /^[a-z]:/i.test(p) || p.split('/').includes('..')) {
+    throw new Error('A workspace-relative .pdf path is required.');
+  }
+  const pdfData = await win.webContents.printToPDF({ printBackground: true, preferCSSPageSize: true });
+  await mdplink.vfsWrite(vresolve(p), pdfData);
+  return { bytes: pdfData.length };
+});
+
 // Save arbitrary BASE64 binary content via a native "Save As" dialog (used by the
 // PowerPoint/PPTX export). Returns { saved, filePath } or { saved:false, canceled }.
 // The dialog opens in the workspace folder, or in Downloads when `outsideWorkspace`
@@ -1289,6 +1306,14 @@ ipcMain.handle('getSkills', async (event, dirs) => {
   if (!currentBaseDir) return [];
   const chain = Array.isArray(dirs) && dirs.length ? dirs : ['.mdp'];
   return await skillsLib.listSkills(chain, vresolve, mdplink);
+});
+
+// Glossaries (`<cdir>/glossary/<name>.md` — how the narrator reads a field's terms)
+// across the deck's `.mdp` chain, root→nearest (a nearer file of the same name wins).
+ipcMain.handle('getGlossaries', async (event, dirs) => {
+  if (!currentBaseDir) return [];
+  const chain = Array.isArray(dirs) && dirs.length ? dirs : ['.mdp'];
+  return await glossaryLib.listGlossaries(chain, vresolve, mdplink);
 });
 
 // The fonts the chain's `.mdp`s DECLARE (`<cdir>/fonts/requirements.json`, raw

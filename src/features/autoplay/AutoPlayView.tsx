@@ -30,6 +30,7 @@ import { scriptKey } from '../slide/talkTime';
 import { firstHeading, newRunId, type NarrationMeasure } from '../rehearsal/rehearsalStore';
 import { TimeEstimatesPanel, type DeckTimingInfo } from '../rehearsal/TimeEstimatesPanel';
 import { narratorLabel } from '../video/videoTypes';
+import { useDeckGlossary } from '../glossary/glossary';
 
 // KaTeX delimiters for rendering a caption's inline/display math.
 const KATEX_DELIMS = [
@@ -150,8 +151,10 @@ export const AutoPlayView: React.FC<{
   const canPregen = synthesizesAudio(ttsCfg.engine);
   const pregenMode = canPregen && (!!exportMode || settings.tts.pregenerate);
 
-  // Flatten the deck into narration steps (shared with the video export).
-  const playlist = useMemo<PlayItem[]>(() => buildPlaylist(slides, cpm), [slides, cpm]);
+  // Flatten the deck into narration steps (shared with the video export), its terms
+  // read as the deck's glossary says (the export window has the job's).
+  const glossary = useDeckGlossary();
+  const playlist = useMemo<PlayItem[]>(() => buildPlaylist(slides, cpm, glossary), [slides, cpm, glossary]);
   const firstItemOfSlide = (si: number) => { const i = playlist.findIndex((it) => it.slideIdx === si); return i < 0 ? 0 : i; };
 
   const [slideIdx, setSlideIdx] = useState(0);

@@ -1,6 +1,7 @@
 import { WEB_BASE } from './base';
 import type { WorkspaceFont, FontInspection, RequirementsFile, FontInstallResult } from '../features/fonts/fontTypes';
 import type { SlideSkill } from '../features/skills/skillTypes';
+import type { GlossaryFile } from '../features/glossary/glossary';
 declare const __APP_VERSION__: string;
 // Baked in at build time (Vite `define`). Falls back gracefully if undefined.
 const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.0.0';
@@ -295,6 +296,13 @@ export const apiClient = {
     if (isElectron()) (window as any).electronAPI.exportPdf(filename);
   },
 
+  // The same print written straight into the workspace (MCP export_pdf) — desktop only.
+  exportPdfTo: async (rel: string): Promise<{ bytes: number }> => {
+    if (!isElectron()) throw new Error('Exporting a PDF into the workspace needs the MDP desktop app.');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return await (window as any).electronAPI.exportPdfTo(rel);
+  },
+
   // Save base64 binary content. Electron shows a native "Save As" dialog; the web
   // build triggers a browser download. Returns true if the file was written/started.
   // Write bytes to an ABSOLUTE path (from pickFile({ directory: true })).
@@ -400,6 +408,16 @@ export const apiClient = {
     const qs = dirs && dirs.length ? `?dirs=${encodeURIComponent(dirs.join(','))}` : '';
     const res = await fetch(`${WEB_BASE}/api/skills${qs}`);
     if (!res.ok) throw new Error(`skills: HTTP ${res.status}`);
+    return await res.json();
+  },
+
+  // Glossaries of a `.mdp` chain (root→nearest; a nearer file of the same name wins).
+  getGlossaries: async (dirs?: string[]): Promise<GlossaryFile[]> => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (isElectron()) return await (window as any).electronAPI.getGlossaries(dirs);
+    const qs = dirs && dirs.length ? `?dirs=${encodeURIComponent(dirs.join(','))}` : '';
+    const res = await fetch(`${WEB_BASE}/api/glossaries${qs}`);
+    if (!res.ok) throw new Error(`glossaries: HTTP ${res.status}`);
     return await res.json();
   },
 

@@ -60,3 +60,73 @@ export function dataUrlToWebp(src: string, width: number, height: number, scale 
     img.src = src;
   });
 }
+
+/** `n` animation frames (a layer drawn, then painted) — or, for a page that gets no
+ *  frames (a covered or minimized window, a display asleep: MDP behind the user's
+ *  AI client during an MCP call), `maxMs`. Waiting for frames alone hung
+ *  render_slide_image with `focus` until the MCP relay timed out. */
+export function afterFrames(n = 2, maxMs = 100): Promise<void> {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = () => { if (!done) { done = true; resolve(); } };
+    const step = (k: number) => requestAnimationFrame(() => (k <= 1 ? finish() : step(k - 1)));
+    step(n);
+    setTimeout(finish, maxMs);
+  });
+}
+
+// ---- frames for a page that gets none -----------------------------------------------
+// html-to-image waits for one animation frame per picture (createImage). A page that
+// gets no frames — a covered or minimized window, a display gone to sleep, a
+// background tab — would wait forever: an MCP export runs while the user is in their
+// AI client, MDP behind it. While withFrameFallback runs, every requestAnimationFrame
+// callback fires at the next frame or after FALLBACK_MS, whichever comes first.
+const FALLBACK_MS = 50;
+let fallbackDepth = 0;
+let nativeRaf: typeof window.requestAnimationFrame | null = null;
+let nativeCaf: typeof window.cancelAnimationFrame | null = null;
+let fallbackSeq = 2e9;
+const pendingFrames = new Map<number, { raf: number; timer: number }>();
+
+function installFrameFallback(): void {
+  nativeRaf = window.requestAnimationFrame;
+  nativeCaf = window.cancelAnimationFrame;
+  const raf = nativeRaf;
+  window.requestAnimationFrame = (cb: FrameRequestCallback): number => {
+    const id = ++fallbackSeq;
+    let fired = false;
+    const run = (t: number) => {
+      if (fired) return;
+      fired = true;
+      const e = pendingFrames.get(id);
+      pendingFrames.delete(id);
+      if (e) { window.clearTimeout(e.timer); nativeCaf?.call(window, e.raf); }
+      cb(t);
+    };
+    pendingFrames.set(id, { raf: raf.call(window, run), timer: window.setTimeout(() => run(performance.now()), FALLBACK_MS) });
+    return id;
+  };
+  window.cancelAnimationFrame = (id: number): void => {
+    const e = pendingFrames.get(id);
+    if (!e) { nativeCaf?.call(window, id); return; }
+    pendingFrames.delete(id);
+    window.clearTimeout(e.timer);
+    nativeCaf?.call(window, e.raf);
+  };
+}
+
+/** Run `fn` with animation frames that come even when the page gets none (see
+ *  above). Nests: the native functions come back when the outermost call ends. */
+export async function withFrameFallback<T>(fn: () => Promise<T>): Promise<T> {
+  if (fallbackDepth++ === 0) installFrameFallback();
+  try {
+    return await fn();
+  } finally {
+    if (--fallbackDepth === 0 && nativeRaf && nativeCaf) {
+      window.requestAnimationFrame = nativeRaf;
+      window.cancelAnimationFrame = nativeCaf;
+      nativeRaf = null;
+      nativeCaf = null;
+    }
+  }
+}

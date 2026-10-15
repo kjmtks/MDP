@@ -1,13 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { SlideView } from '../slide/components/SlideView';
+import { useCallback, useState } from 'react';
 import { apiClient } from '../../api/apiClient';
-import { waitForRenderReady } from '../remote/capture/captureReady';
+import { withFrameFallback } from '../remote/capture/captureReady';
 import type { RasterizeOptions, RasterizeResult } from '../remote/capture/captureTypes';
-import { createPptx, pptxToBase64, addImageSlide, addEditableSlide, toPngDataUrl } from './pptxExport';
+import { createPptx, pptxToBase64, addImageSlide, toPngDataUrl } from './pptxExport';
+import { scriptNotes } from './scriptNotes';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Slide = any;
-export type PptxMode = 'image' | 'editable';
 
 interface Opts {
   slides: Slide[];
@@ -22,63 +21,43 @@ interface Opts {
 }
 
 export interface PptxExportState {
-  exportPptx: (mode: PptxMode) => Promise<void>;
-  exporting: { mode: PptxMode; done: number; total: number } | null;
-  host: React.ReactNode;
+  /** `toPath` (MCP export_pptx): save there in the workspace, no dialog — and fail
+   *  loudly. → the saved name, or null (cancelled / nothing to export). */
+  exportPptx: (toPath?: string) => Promise<string | null>;
+  exporting: { done: number; total: number } | null;
 }
 
 /**
- * Export the deck to a .pptx. IMAGE mode snapshots each slide full-bleed (math /
- * charts pixel-perfect). EDITABLE mode renders each slide off-screen and rebuilds
- * it as positioned text boxes + image regions (see addEditableSlide). Saved via
- * the platform save path (Electron dialog / web download).
+ * Export the deck to a .pptx: each slide a full-bleed picture (math / charts
+ * pixel-perfect), its @script in the notes pane. Saved via the platform save path
+ * (Electron dialog / web download), or into the workspace (`toPath`).
  */
 export function usePptxExport({ slides, slideSize, basePath, themeCssUrl, title, rasterize, onSaved }: Opts): PptxExportState {
   const [exporting, setExporting] = useState<PptxExportState['exporting']>(null);
-  // Off-screen render slot used by EDITABLE mode (needs the live DOM to read
-  // element boxes and capture visual regions).
-  const [renderSlide, setRenderSlide] = useState<Slide | null>(null);
-  const nodeRef = useRef<HTMLDivElement>(null);
-  const readyRef = useRef<((node: HTMLElement) => void) | null>(null);
 
-  useEffect(() => {
-    if (!renderSlide) return;
-    let cancelled = false;
-    (async () => {
-      const node = nodeRef.current;
-      if (!node) return;
-      await waitForRenderReady(node);
-      if (!cancelled && readyRef.current) readyRef.current(node);
-    })();
-    return () => { cancelled = true; };
-  }, [renderSlide]);
-
-  const renderOne = useCallback(
-    (slide: Slide) => new Promise<HTMLElement>((resolve) => { readyRef.current = resolve; setRenderSlide(slide); }),
-    [],
-  );
-
-  const exportPptx = useCallback(async (mode: PptxMode) => {
-    if (!slides.length || exporting) return;
-    setExporting({ mode, done: 0, total: slides.length });
+  const exportPptx = useCallback(async (toPath?: string): Promise<string | null> => {
+    if (!slides.length || exporting) {
+      if (toPath) throw new Error(exporting ? 'A PowerPoint export is already running.' : 'The deck has no slides.');
+      return null;
+    }
+    setExporting({ done: 0, total: slides.length });
     try {
       const pptx = createPptx(slideSize);
-      if (mode === 'image') {
+      // The web build draws each picture with html-to-image, which waits for an
+      // animation frame: frames must come even while the tab is in the background.
+      await withFrameFallback(async () => {
         for (let i = 0; i < slides.length; i++) {
           const shot = await rasterize(slides[i], { width: slideSize.width, height: slideSize.height, basePath, themeCssUrl });
-          addImageSlide(pptx, await toPngDataUrl(shot.dataUrl), slideSize);
-          setExporting({ mode, done: i + 1, total: slides.length });
+          addImageSlide(pptx, await toPngDataUrl(shot.dataUrl), slideSize, scriptNotes(slides[i]?.raw || ''));
+          setExporting({ done: i + 1, total: slides.length });
         }
-      } else {
-        const htmlToImage = await import('html-to-image');
-        const capture = (el: HTMLElement) => htmlToImage.toPng(el, { cacheBust: true, pixelRatio: 2 });
-        for (let i = 0; i < slides.length; i++) {
-          const node = await renderOne(slides[i]);
-          await addEditableSlide(pptx, node, slideSize, capture);
-          setExporting({ mode, done: i + 1, total: slides.length });
-        }
-      }
+      });
       const b64 = await pptxToBase64(pptx);
+      if (toPath) {
+        await apiClient.saveFile(toPath, b64, true);
+        onSaved?.(toPath);
+        return toPath;
+      }
       const safe = (title || 'slides').replace(/[\\/:*?"<>|]/g, '_');
       const fileName = `${safe}.pptx`;
       const saved = await apiClient.saveBinaryWithDialog(fileName, b64, {
@@ -87,37 +66,16 @@ export function usePptxExport({ slides, slideSize, basePath, themeCssUrl, title,
         mime: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
       });
       if (saved) onSaved?.(fileName);
+      return saved ? fileName : null;
     } catch (e) {
+      if (toPath) throw e;
       console.error('PPTX export failed', e);
       alert('PowerPoint export failed: ' + ((e as Error)?.message || e));
+      return null;
     } finally {
       setExporting(null);
-      setRenderSlide(null);
-      readyRef.current = null;
     }
-  }, [slides, slideSize, basePath, themeCssUrl, rasterize, renderOne, title, exporting, onSaved]);
+  }, [slides, slideSize, basePath, themeCssUrl, rasterize, title, exporting, onSaved]);
 
-  const host = renderSlide ? (
-    <div
-      style={{ position: 'fixed', left: -100000, top: 0, width: slideSize.width, height: slideSize.height, pointerEvents: 'none', opacity: 0, zIndex: -1 }}
-      aria-hidden
-    >
-      <div ref={nodeRef}>
-        <SlideView
-          html={renderSlide.html}
-          className={renderSlide.className}
-          header={renderSlide.header}
-          footer={renderSlide.footer}
-          basePath={basePath}
-          slideSize={slideSize}
-          isActive
-          isEnabledPointerEvents={false}
-          runScripts={false}
-          moduleRole="mirror"
-        />
-      </div>
-    </div>
-  ) : null;
-
-  return { exportPptx, exporting, host };
+  return { exportPptx, exporting };
 }

@@ -18,6 +18,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   maximize: () => ipcRenderer.send('window-maximize'),
   close: () => ipcRenderer.send('window-close'),
   exportPdf: (filename) => ipcRenderer.send('export-pdf', filename),
+  exportPdfTo: (rel) => ipcRenderer.invoke('exportPdfTo', rel),
   // Lock THIS window's content aspect ratio (output window); no-op elsewhere.
   setWindowAspectRatio: (ratio) => ipcRenderer.send('window-set-aspect-ratio', ratio),
   // TTS-server request relayed through the main process (such servers send no CORS headers).
@@ -79,6 +80,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getFonts: (dirs) => ipcRenderer.invoke('getFonts', dirs),
   getFontRequirements: (dirs) => ipcRenderer.invoke('getFontRequirements', dirs),
   getSkills: (dirs) => ipcRenderer.invoke('getSkills', dirs),
+  getGlossaries: (dirs) => ipcRenderer.invoke('getGlossaries', dirs),
   installFont: (args) => ipcRenderer.invoke('installFont', args),
   inspectFont: (base64) => ipcRenderer.invoke('inspectFont', base64),
   statFiles: (paths) => ipcRenderer.invoke('statFiles', paths),

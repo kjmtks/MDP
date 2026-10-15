@@ -139,7 +139,10 @@ block on a single slide OVERRIDES the global one for that slide; an EMPTY block
     and the talk-time estimate show / count only the base, and the presenter view
     shows the base with a dashed underline, its reading popping up on hover — never
     on the slide. Use it where a TTS would misread (technical terms, names,
-    acronyms, unusual readings), not for everyday words.
+    acronyms, unusual readings), not for everyday words. A term in the folder's
+    GLOSSARY ("Glossary for this folder" below, when there is one) is already read
+    with its reading in every deck of the folder — write no ruby for it, unless
+    that sentence must read it differently (a written ruby always wins).
   - **Math in the script:** write formulas in KaTeX — \`\\(…\\)\` inline, \`\\[…\\]\`
     display — and they are RENDERED in the on-screen subtitle (the caption and the
     spoken audio are separate, so the caption can show real math). A formula is SPOKEN
@@ -499,7 +502,7 @@ Timing
   talk-time estimate reflect it. Reserve @note for brief reminders. Write any maths in
   the script as KaTeX (\`\\(…\\)\`) so the subtitle renders it, give each formula a
   spoken reading with a ruby \`[[\\(…\\)|よみ]]\`, and add rubies (\`[[語|よみ]]\`) to words
-  a TTS would misread (see @script above).
+  a TTS would misread (see @script above) — not to the folder's glossary terms.
 - A slide's measured time (\`measuredSec\` in get_deck_outline) is what its narration
   really took; prefer it over the length estimate when balancing a deck. Rewriting a
   script retires its measurement — the estimate falls back to the script's length
@@ -1023,6 +1026,59 @@ function describeSkillsForAI(skills: SkillForAI[], inlineAll = false): string {
   ].join('\n\n');
 }
 
+/** One glossary of the folder (`.mdp/glossary/<name>.md`): how the narrator reads
+ *  the field's terms (features/glossary). */
+export interface GlossaryForAI {
+  name: string;
+  description: string;
+  lang: string;
+  terms: { term: string; reading: string }[];
+}
+const MAX_SPEC_TERMS = 300;
+const MAX_SPEC_TERMS_INLINE = 1500;
+
+/** The folder's glossaries: what they are, and their terms (merged as the narrator
+ *  reads them — a nearer glossary wins on a term of its language), so an AI neither
+ *  repeats them as rubies nor leaves a recurring term without one. A long list is cut
+ *  (get_glossary has every term). `inlineAll`: a prompt pasted into a chat — no
+ *  tools, a longer list. */
+function describeGlossariesForAI(glossaries: GlossaryForAI[], inlineAll = false): string {
+  const files = glossaries.filter((g) => g.terms && g.terms.length);
+  if (!files.length) return '';
+  const lang = (l: string) => String(l || '').toLowerCase().split(/[-_]/)[0];
+  const merged = new Map<string, { term: string; reading: string; lang: string }>();
+  for (const g of files) for (const t of g.terms) merged.set(`${lang(g.lang)}\u0000${t.term}`, { term: t.term, reading: t.reading, lang: lang(g.lang) });
+  const cap = inlineAll ? MAX_SPEC_TERMS_INLINE : MAX_SPEC_TERMS;
+  const all = [...merged.values()];
+  const shown = all.slice(0, cap);
+  const groups = new Map<string, string[]>();
+  for (const t of shown) groups.set(t.lang, [...(groups.get(t.lang) || []), `${t.term}→${t.reading}`]);
+  const index = files
+    .map((g) => `- \`${g.name}\` (${g.lang ? `${g.lang} lines` : 'every language'}, ${g.terms.length} term${g.terms.length === 1 ? '' : 's'})${g.description ? ` — ${g.description}` : ''}`)
+    .join('\n');
+  const terms = [...groups.entries()]
+    .map(([l, list]) => `**Terms${l ? ` (${l} lines)` : ' (every language)'}:** ${list.join('; ')}`)
+    .join('\n\n');
+  const more = all.length > shown.length
+    ? `\n\n…and ${all.length - shown.length} more${inlineAll ? '' : ' — get_glossary(terms: [...]) looks any term up'}.`
+    : '';
+  const howTo = inlineAll
+    ? 'When a script needs a term the TTS would misread that is not here, give it a ruby — and suggest the author add it to a glossary, so later decks need none.'
+    : 'When a term the TTS would misread will recur in this field, ADD it to a glossary — `patch_glossary(name, set: [{term, reading}])` — instead of writing the same ruby in deck after deck (the user may be asked to confirm); `get_glossary` lists the glossaries and looks terms up, `write_glossary` starts one for a new field. A ruby stays right for a reading that belongs to one sentence only.';
+  return [
+    '## Glossary for this folder (the narrator\'s readings)',
+    'The author keeps GLOSSARIES of how the narrator reads this field\'s terms (`.mdp/glossary/<name>.md`). In every deck of ' +
+    'this folder the narrated auto-play, the narrated videos and the rehearsal read each term below with its reading, as if ' +
+    'it had a ruby — so write NO ruby for these terms (a ruby you write still wins: use one only where a sentence must read ' +
+    'a term differently). Captions, the presenter view and the talk time show the term as written. Terms match as written: ' +
+    'case-sensitive, a Latin term only as a whole word ("SHAP" is not read inside "SHAPE"), and a space where Latin meets ' +
+    'Japanese may stand or not ("Shapley 値" = "Shapley値"); a glossary for one language reads only lines in that language.',
+    index,
+    howTo,
+    terms + more,
+  ].join('\n\n');
+}
+
 export interface SlideSpecExtras {
   effects?: EffectConfig[];
   themes?: ThemeOption[];
@@ -1030,6 +1086,10 @@ export interface SlideSpecExtras {
   // them (a copied prompt has no get_skill tool) or only the `always` ones (MCP).
   skills?: SkillForAI[];
   skillsInline?: boolean;
+  // The folder's glossaries (the narrator's readings of its terms); `glossariesInline`
+  // = a copied prompt (no tools: more terms, no tool advice).
+  glossaries?: GlossaryForAI[];
+  glossariesInline?: boolean;
   // Workspace fonts stored in the folder's `.mdp/fonts` chain, and the folder's
   // default-font choices (content.json `fonts`).
   fonts?: { family: string; category: string }[];
@@ -1096,6 +1156,8 @@ export function buildSlideSpecPrompt(modules: ModuleConfig[], extras: SlideSpecE
   // Folder-specific guides, style + instructions come LAST so they override anything above.
   const skillsPart = describeSkillsForAI(extras.skills || [], !!extras.skillsInline);
   if (skillsPart) parts.push(skillsPart);
+  const glossaryPart = describeGlossariesForAI(extras.glossaries || [], !!extras.glossariesInline);
+  if (glossaryPart) parts.push(glossaryPart);
   if (extras.styleProfile && extras.styleProfile.trim()) {
     parts.push(`## The author's writing style\n\nA style profile distilled from this author's existing decks — WRITE IN THIS VOICE (wording, density, structure). It is current; you do not need to re-read their decks:\n\n${extras.styleProfile.trim()}`);
   }

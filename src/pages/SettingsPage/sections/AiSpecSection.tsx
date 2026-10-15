@@ -39,6 +39,7 @@ export const AiSpecSection: React.FC = () => {
     const taxonomy = await loadTaxonomy(scopeDirs || []).catch(() => undefined);
     // A copied prompt has no get_skill tool — the folder's skills go in full.
     const skills = await apiClient.getSkills(scopeDirs).catch(() => []);
+    const glossaries = await apiClient.getGlossaries(scopeDirs || []).catch(() => []);
     const modules = Object.values(loadedModules).map((m) => m.config).filter((c) => !isModuleDisabled(c.name));
     const effects = Object.values(loadedEffects).map((e) => e.config);
     setPrompt(buildSlideSpecPrompt(modules, {
@@ -46,6 +47,7 @@ export const AiSpecSection: React.FC = () => {
       fonts: scopeFonts?.fonts || [], fontDefaults: scopeFonts?.defaults || {},
       fontRequirements: scopeFonts?.requirements || [],
       skills, skillsInline: true,
+      glossaries, glossariesInline: true,
     }));
     setCopied(false);
   }, []);

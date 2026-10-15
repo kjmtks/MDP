@@ -25,7 +25,11 @@ import {
 } from '../focus/focusCheck';
 import { FOCUS_NAME_SRC } from '../slide/parser/katexExtensions';
 import { listTargets } from '../focus/focusTargets';
-import { scriptCues, slideScript, type FocusCue } from '../autoplay/autoplay';
+import {
+  buildPlaylist, presentMarkers, scriptCues, scriptRubies, scriptSegments, segmentParts, slideScript, stripScriptMarkers,
+  type FocusCue, type ScriptAction,
+} from '../autoplay/autoplay';
+import { glossaryEntryOf, mergeGlossaries, narrationLang, readWithGlossary, type GlossaryEntry } from '../glossary/glossary';
 import type { RasterizeOptions } from '../remote/capture/captureTypes';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -75,6 +79,13 @@ export interface McpCtx {
   queueVideo: (options: VideoOptions) => string | null;
   ttsEngine: TtsEngine;
   readingCpm: number;
+  // export_pdf / export_pptx: the Export menu's PDF (printed into this workspace
+  // path) and PowerPoint (saved there); the deck's answers — whether it has any,
+  // whether they are hidden now, and the editor's own show/hide override.
+  exportPdf: (rel: string) => Promise<void>;
+  exportPptx: (rel: string) => Promise<string | null>;
+  answers: { has: boolean; hidden: boolean; toggle: { deck: string; mode: 'show' | 'hide' } | null };
+  setAnswersToggle: (t: { deck: string; mode: 'show' | 'hide' } | null) => void;
 }
 
 interface MeasureJob {
@@ -153,6 +164,15 @@ const BLOCK_OPENER_BUILTINS = new Set(['header', 'footer', 'addstyle', 'image', 
 // The focus cues' advice (validate, get_focus_targets) when they point by the slide's words or position.
 const NAME_ADVICE = 'Point at places by NAME — it survives edits of the slide: mark the place in the slide (\\focus{name}{…} around words, an image or a formula part; <!-- @focus name -->…<!-- @end --> around blocks; tag: name on a module; data-focus="name" in an inline SVG) and write #name (item:#name / cell:#name / row:#name / col:#name for the bullet / cell / row / column holding it). A target by the slide\'s words or position ("phrase", item:2, cell:2,3, math:1, fig:"label") breaks when those change.';
 const FOCUS_NAME_RE = new RegExp(`^${FOCUS_NAME_SRC}$`, 'u');
+
+// A narration marker as written (get_narration).
+function actionText(a: ScriptAction): string {
+  const sec = (ms?: number) => `${Math.round((ms || 0) / 100) / 10}s`;
+  if (a.kind === 'pause') return `[[pause: ${sec(a.timeoutMs)}]]`;
+  const body = [a.topic, ...(a.args || [])].filter(Boolean).join(' ');
+  return `[[${a.kind}: ${body}${a.timeoutMs && a.kind !== 'emit' ? ` timeout=${sec(a.timeoutMs)}` : ''}${a.label ? ` | ${a.label}` : ''}]]`;
+}
+const sameReading = (a: string, b: string) => a.replace(/\s+/g, '') === b.replace(/\s+/g, '');
 
 const loadImage = (src: string) => new Promise<HTMLImageElement>((resolve, reject) => {
   const img = new Image();
@@ -560,8 +580,11 @@ export const McpBridge: React.FC<{ ctx: McpCtx }> = ({ ctx }) => {
           // The bridge names the deck's `.mdp` chain (bootstrap may target a deck
           // other than the active one; the shared server has no active deck).
           const skillDirs: string[] = Array.isArray(params?.skillDirs) && params.skillDirs.length ? params.skillDirs.map(String) : c.scopeDirs;
-          const skills = await apiClient.getSkills(skillDirs).catch(() => []);
-          return buildSlideSpecPrompt(modules, { effects, themes, fonts: c.fonts, fontDefaults: c.fontDefaults, fontRequirements: c.fontRequirements, aiNotes: c.aiNotes, styleProfile: c.styleProfile, taxonomy, skills }) + `
+          const [skills, glossaries] = await Promise.all([
+            apiClient.getSkills(skillDirs).catch(() => []),
+            apiClient.getGlossaries(skillDirs).catch(() => []),
+          ]);
+          return buildSlideSpecPrompt(modules, { effects, themes, fonts: c.fonts, fontDefaults: c.fontDefaults, fontRequirements: c.fontRequirements, aiNotes: c.aiNotes, styleProfile: c.styleProfile, taxonomy, skills, glossaries }) + `
 
 ## MCP workflow tips
 
@@ -593,10 +616,17 @@ export const McpBridge: React.FC<{ ctx: McpCtx }> = ({ ctx }) => {
   estimates: rebalance @time and trim/expand @script where the speaker over/under-runs.
   For the TTS narrator, give hard or ambiguous words a ruby \`[[語|よみ]]\` and
   formulas a spoken reading \`[[\\(…\\)|よみ]]\` — readings are spoken, never shown.
+  Terms in the folder's GLOSSARY need no ruby; a term that will recur in the field
+  belongs in a glossary (patch_glossary), not in rubies deck after deck.
+  get_narration shows what the narrator will say and show, line by line.
 - **Narrated video.** export_video queues a video of the narrated auto-play beside
   the deck (exact = the real auto-play recorded, as long as the show; fast = still
   pictures); follow it with get_video_jobs. The narrator must produce audio
   (VOICEVOX or a TTS server, not Web Speech).
+- **PDF, handouts, PowerPoint.** export_pdf saves the deck's PDF beside it — with
+  \`answers: "hide"\` the HANDOUT of a quiz deck (every @answer a blank of its size);
+  export_pptx saves a PowerPoint of slide pictures with each slide's @script in its
+  notes (desktop app).
 - **Verify in three passes.** After writing or editing: (1) validate_deck — fixes
   unknown modules/themes/effects and bad parameters deterministically; (2)
   measure_slides — overflowX/overflowY > 0 px means clipped content (split or
@@ -822,6 +852,51 @@ Match the user's style throughout (cached profile if present, else get_style_sam
               + (options.updateTimes ? ' When it is done, each narrated slide\'s measured time becomes its time estimate (get_deck_outline: measuredSec).' : ''),
           };
         }
+        // export_pdf: the Export menu's PDF of the deck, printed straight into the
+        // workspace — with its answers shown or hidden for the print (a handout),
+        // the editor's own setting put back afterwards.
+        case 'exportPdf': {
+          const d = await ensureDeck(params?.path ? String(params.path) : undefined);
+          const output = String(params?.output || '');
+          if (!output) throw new Error('No output path.');
+          const want: 'show' | 'hide' | null = params?.answers === 'hide' || params?.answers === 'show' ? params.answers : null;
+          const start = ctxRef.current;
+          const prev = start.answers.toggle;
+          let switched = false;
+          try {
+            if (want && start.answers.has && (want === 'hide') !== start.answers.hidden) {
+              const old = start.slides;
+              start.setAnswersToggle({ deck: d.path, mode: want });
+              switched = true;
+              const t0 = Date.now();
+              const done = () => ctxRef.current.slides !== old && ctxRef.current.answers.hidden === (want === 'hide');
+              while (Date.now() - t0 < 15000 && !done()) await new Promise((r) => setTimeout(r, 100));
+              if (!done()) throw new Error(`The answers could not be ${want === 'hide' ? 'hidden' : 'shown'} for the print — try again.`);
+              // The print container renders the new slides.
+              await new Promise((r) => setTimeout(r, 500));
+            }
+            const cc = ctxRef.current;
+            await cc.exportPdf(output);
+            return {
+              saved: output, deck: d.path,
+              answers: cc.answers.has ? (cc.answers.hidden ? 'hidden (a handout: each answer a blank of its size)' : 'shown') : 'the deck has no @answer',
+            };
+          } finally {
+            if (switched) ctxRef.current.setAnswersToggle(prev);
+          }
+        }
+        // export_pptx: the Export menu's PowerPoint (pictures, the scripts as notes),
+        // saved into the workspace.
+        case 'exportPptx': {
+          const d = await ensureDeck(params?.path ? String(params.path) : undefined);
+          const output = String(params?.output || '');
+          if (!output) throw new Error('No output path.');
+          const cc = ctxRef.current;
+          const saved = await cc.exportPptx(output);
+          if (!saved) throw new Error('The deck could not be exported.');
+          const withScript = cc.slides.filter((s: Slide) => slideScript(s?.raw || '')).length;
+          return { saved, deck: d.path, slides: cc.slides.length, slidesWithScript: withScript };
+        }
         case 'videoJobs': {
           const jobs = getVideoJobs().map((j) => ({
             id: j.id, deck: j.deckPath, narrator: j.narrator, status: j.status,
@@ -861,6 +936,13 @@ Match the user's style throughout (cached profile if present, else get_style_sam
           c.onRefreshTree();
           return { ok: true };
         }
+        case 'glossaryChanged': {
+          // A glossary was written (write / patch / delete_glossary) → the open deck
+          // re-reads its glossaries, so the narration follows at once.
+          window.dispatchEvent(new CustomEvent('mdp-glossary-changed'));
+          c.onRefreshTree();
+          return { ok: true };
+        }
         case 'contentChanged': {
           // A `.mdp/content.json` was written (e.g. save_style_profile) → re-read the
           // cascade so the new profile/notes inject into the spec immediately.
@@ -878,7 +960,7 @@ Match the user's style throughout (cached profile if present, else get_style_sam
           const kind = String(params.kind || 'asset');
           const preview = String(params.content || '').slice(0, 1200);
           const approved = await confirmDialog(
-            `An MCP client wants to ${action} ${kind === 'skill' ? `the skill "${params.name}"` : `a ${kind}`} at:\n${params.rel}${scriptWarn}\n\n— ${action === 'delete' ? 'details' : action === 'update' ? 'change' : 'preview'} —\n${preview}${String(params.content || '').length > 1200 ? '\n…(truncated)' : ''}${action !== 'create' ? '\n\n(The previous version is kept in .mdp/mcp-backups.)' : ''}`,
+            `An MCP client wants to ${action} ${kind === 'skill' || kind === 'glossary' ? `the ${kind} "${params.name}"` : `a ${kind}`} at:\n${params.rel}${scriptWarn}\n\n— ${action === 'delete' ? 'details' : action === 'update' ? 'change' : 'preview'} —\n${preview}${String(params.content || '').length > 1200 ? '\n…(truncated)' : ''}${action !== 'create' ? '\n\n(The previous version is kept in .mdp/mcp-backups.)' : ''}`,
             {
               title: action === 'delete' ? `Allow AI to delete this ${kind}?` : action === 'update' ? `Allow AI to update this ${kind}?` : 'Allow AI to create this asset?',
               confirmText: action === 'delete' ? 'Delete' : 'Save',
@@ -1053,6 +1135,91 @@ Match the user's style throughout (cached profile if present, else get_style_sam
             })),
             problems,
             note: 'targets = what this slide can point at: write the `target` string as is ([[look: TARGET]]); box = x, y (top-left), w, h in % of the slide — the box an area:x,y,w,h target would need. cues = this slide\'s cues as they act: the narration line each goes with (or the wait / last build it rides on — `at`), the build step shown then, and where each target landed. problems: error = nothing drawn; warn = drawn in an unintended place or not visible then; note = works but not recommended. See it: render_slide_image with focus "outline" (all targets numbered) or "line:N" (as narration line N shows it).',
+          };
+        }
+        case 'narration': {
+          // get_narration: what the narration SHOWS and SAYS, line by line — each line
+          // as captioned and as spoken (rubies, the folder's glossary, formulas'
+          // readings), the events / waits / holds between, the focus cues as they act —
+          // and what each → does in a talk given by hand.
+          const d = await ensureDeck(params.path);
+          const cc = ctxRef.current;
+          const asked: unknown[] = Array.isArray(params.slides) ? params.slides
+            : params.slide !== undefined && params.slide !== null ? [params.slide] : [];
+          const inRange = (n: number) => Number.isInteger(n) && n >= 1 && n <= d.slideCount;
+          let wanted: number[] = asked.length
+            ? [...new Set(asked.map(Number))].filter(inRange)
+            : cc.slides.map((s: Slide, i: number) => (slideScript(s?.raw || '') ? i + 1 : 0)).filter((n: number) => n > 0);
+          if (asked.length && !wanted.length) throw new Error(`"slide" / "slides" must be 1…${d.slideCount}.`);
+          const total = wanted.length;
+          wanted = wanted.slice(0, 30);
+          // The deck's glossaries as they are NOW (a write a moment ago included).
+          const files = await apiClient.getGlossaries(cc.scopeDirs).catch(() => []);
+          const glossary = mergeGlossaries(files);
+          const rows = wanted.map((n) => {
+            const slide = cc.slides[n - 1];
+            const raw = String(slide?.raw || '');
+            const script = slideScript(raw);
+            const stepCount = slide?.stepCount || 0;
+            let line = 0;
+            const lines = buildPlaylist([{ html: slide?.html || '', raw, stepCount }], cc.readingCpm, glossary).map((it) => {
+              const cues = it.cues && it.cues.length ? { cues: it.cues.map(cueText) } : {};
+              if (it.action) return { event: actionText(it.action), step: it.buildStep, ...cues };
+              if (!it.text && !it.caption) return { hold: `${Math.round(it.dwellMs / 100) / 10}s`, step: it.buildStep, ...cues };
+              line++;
+              return {
+                line, step: it.buildStep, caption: it.caption,
+                ...(it.text === null ? { speech: '', silent: true } : it.text !== it.caption ? { speech: it.text } : {}),
+                ...cues,
+              };
+            });
+            // The terms the glossary read here, and the rubies it makes needless.
+            const hits = new Map<string, GlossaryEntry>();
+            const redundant: string[] = [];
+            const over: string[] = [];
+            for (const seg of scriptSegments(raw)) {
+              for (const part of segmentParts(seg)) {
+                if (!('text' in part)) continue;
+                const lang = narrationLang(stripScriptMarkers(part.text));
+                for (const h of readWithGlossary(part.text, glossary, lang).hits) hits.set(h.term, h);
+                for (const r of scriptRubies(part.text)) {
+                  const g = glossaryEntryOf(r.base, glossary, lang);
+                  if (!g) continue;
+                  if (sameReading(g.reading, r.reading)) redundant.push(`[[${r.base}|${r.reading}]] (${g.from})`);
+                  else over.push(`[[${r.base}|${r.reading}]] — the glossary ${g.from} reads ${g.reading}`);
+                }
+              }
+            }
+            // A talk given by hand: what each → does here, in order.
+            const { markers, extra } = presentMarkers(script, stepCount);
+            const groups = new Map<number, string[]>();
+            let built = 0;
+            for (const m of markers) {
+              const what = m.kind === 'step' ? `build ${++built}` : m.kind === 'cue' && m.cue ? cueText(m.cue) : m.action ? actionText(m.action) : '';
+              groups.set(m.group, [...(groups.get(m.group) || []), what]);
+            }
+            const presses = [...groups.values()].map((g) => g.join(' + '));
+            for (let k = 0; k < extra; k++) presses.push(`build ${++built} (no [[step]] for it)`);
+            presses.push('next slide');
+            return {
+              slide: n,
+              ...(slide?.pageNumber != null ? { page: slide.pageNumber } : {}),
+              ...(slide?.isHidden ? { hidden: true } : {}),
+              ...(script ? {} : { noScript: true }),
+              ...(stepCount ? { stepCount } : {}),
+              lines,
+              ...(hits.size ? { glossary: [...hits.values()].map((h) => `${h.term}→${h.reading} (${h.from})`) } : {}),
+              ...(redundant.length ? { redundantRubies: redundant } : {}),
+              ...(over.length ? { rubiesOverGlossary: over } : {}),
+              presses,
+            };
+          });
+          return {
+            deck: d.path,
+            ...(files.length ? { glossaries: files.map((f) => `${f.name} (${f.terms.length} terms${f.lang ? `, ${f.lang}` : ''})`) } : {}),
+            slides: rows,
+            ...(total > wanted.length ? { truncated: `showing ${wanted.length} of ${total} slides with a script — pass "slides" for the others` } : {}),
+            note: 'Each slide as the narrated auto-play and the videos run it. lines: a line is one subtitle unit (its number N is what render_slide_image focus "line:N" takes); caption = what the subtitle shows (KaTeX rendered), speech = what the narrator SAYS — rubies, the folder\'s glossary and formulas\' readings applied (omitted when it says the caption as is; silent = a formula without a reading, only shown); event / hold = what runs between the lines; step = the build step shown; cues = the focus cues acting as it starts. glossary = the terms the folder\'s glossaries read on this slide; redundantRubies = rubies that only repeat the glossary (they can go); rubiesOverGlossary = rubies reading a glossary term otherwise (they win — check it is meant). presses = a talk given BY HAND: what each → does on the slide, in order (markers with only spaces between them share a press; [[then]], [[wait]], [[pause]] and an [[emit-wait]] end one).',
           };
         }
         case 'focusCheck': {

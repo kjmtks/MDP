@@ -126,6 +126,7 @@ export async function exportVideo(
   const codecs = await chooseCodecs(width, height);
   const segments = planSegments(job.slides, job.cpm, {
     includeHidden: job.options.includeHidden, fade: job.options.fade, globalTransition: job.globalTransition,
+    glossary: job.glossary,
   });
   if (!segments.length) throw new Error('The deck has no slide to show.');
   checkAbort(signal);

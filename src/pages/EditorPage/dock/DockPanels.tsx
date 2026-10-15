@@ -647,13 +647,8 @@ export const PreviewPanel: React.FC = () => {
           </MenuItem>
           {h.onExportPptx && <Divider />}
           {h.onExportPptx && (
-            <MenuItem onClick={() => { setExportAnchor(null); h.onExportPptx!('image'); }} dense>
-              <ListItemIcon><SlideshowIcon fontSize="small" /></ListItemIcon>PowerPoint — image (exact, math-perfect)
-            </MenuItem>
-          )}
-          {h.onExportPptx && (
-            <MenuItem onClick={() => { setExportAnchor(null); h.onExportPptx!('editable'); }} dense>
-              <ListItemIcon><SlideshowIcon fontSize="small" /></ListItemIcon>PowerPoint — editable text (beta)
+            <MenuItem onClick={() => { setExportAnchor(null); h.onExportPptx!(); }} dense>
+              <ListItemIcon><SlideshowIcon fontSize="small" /></ListItemIcon>PowerPoint — slides as pictures, script in the notes
             </MenuItem>
           )}
           {h.onExportImages && <Divider />}

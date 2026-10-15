@@ -26,7 +26,9 @@ const INSTRUCTIONS = [
   'author\'s own guides for making slides: read every skill that fits the task with get_skill',
   'BEFORE planning or writing, follow it, and review the result against its checklist',
   '(check_deck / verify:true). When the user corrects your slides, offer to record the rule',
-  'in the skill (patch_skill with `append`) so later decks get it right.',
+  'in the skill (patch_skill with `append`) so later decks get it right. The folder\'s GLOSSARIES',
+  '(listed in the spec) give the narrator\'s readings of the field\'s terms: write no ruby for those',
+  'terms, and add a term the TTS misreads that recurs in the field with patch_glossary.',
 ].join(' ');
 
 // ---- bridge ----------------------------------------------------------------

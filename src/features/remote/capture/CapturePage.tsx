@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import renderMathInElement from 'katex/contrib/auto-render';
 import { SlideView } from '../../slide/components/SlideView';
-import { waitForRenderReady } from './captureReady';
+import { afterFrames, waitForRenderReady } from './captureReady';
 import type { CaptureSlideData, WebCaptureMessage } from './captureTypes';
 import { applyFontCss, loadWorkspaceFonts } from '../../fonts/fontRuntime';
 import { embedFontCss } from '../../fonts/fontEmbed';
@@ -102,7 +102,7 @@ export default function CapturePage() {
       // The focus over the slide, measured on the finished layout (and painted).
       if ((data.focus || data.focusOutline) && nodeRef.current) {
         settleFocusLayers(nodeRef.current);
-        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+        await afterFrames(2);
         if (cancelled) return;
       }
       if (inIframe) {

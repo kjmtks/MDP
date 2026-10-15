@@ -12,6 +12,7 @@ const path = require('path');
 const os = require('os');
 const mdplink = require('./mdplink.cjs');
 const skillsLib = require('./skills.cjs');
+const glossaryLib = require('./glossary.cjs');
 
 let ctx = null;         // { getBaseDir, getWindow, getAssetPath }
 
@@ -46,6 +47,7 @@ const ASSET_KINDS = {
   theme:   { sub: 'themes',   ext: '.css'        },
   snippet: { sub: 'snippets', ext: '.json'       },
   skill:   { sub: 'skills',   ext: '/SKILL.md'   },   // a folder per skill
+  glossary: { sub: 'glossary', ext: '.md'         },
 };
 
 // Detailed authoring contract per asset kind — what get_asset_templates teaches so an
@@ -105,6 +107,17 @@ const ASSET_GUIDES = {
     '• When the user corrects your slides ("don\'t …", "always …"), offer to record the rule in the folder\'s skill so the next deck gets it right: patch_skill with `append` adds it under the right heading.',
     'WRITE with write_skill (new skill / full rewrite), patch_skill (exact-text edits, `append` a rule, `description` / `always`), delete_skill. Overwritten and deleted files are backed up to .mdp/mcp-backups.',
     'FIND existing: get_skill() (no name) lists the skills for a deck\'s folder.',
+  ].join('\n'),
+  glossary: [
+    'GLOSSARY (.mdp/glossary/<name>.md) — how the NARRATOR reads a field\'s terms. Every deck beneath the folder reads each term with its reading in the narrated auto-play, the narrated videos and the rehearsal, as if its script had a ruby [[term|reading]] there — so no deck has to spell the readings out. One file per FIELD (machine-learning, statistics, 倫理…), reused by every deck of the field; a folder may have several.',
+    '• The terms are Markdown table rows: the columns 用語 / term and 読み / reading (else the first two); a third column (メモ / note) is for people. Text around the table is free.',
+    '• Frontmatter (optional): `description` — one line, the field it covers; `lang` — the narration language its readings are for (ja, en …). Without one, Japanese readings mean ja. A ja glossary never reads an English line (an English deck gets its own `lang: en` glossary).',
+    '• Matching: as written — case-sensitive; a Latin term only as a whole word ("SHAP" is not read inside "SHAPE"); a space where Latin meets Japanese may stand or not ("Shapley 値" = "Shapley値"); the longest term wins ("Shapley値" before "Shapley"). Never inside a ruby, a marker, a formula or `code`.',
+    '• A ruby written in a script still wins (for a reading only that sentence needs). Captions, the presenter view and the talk time show the term as written.',
+    '• Cascade: a nearer .mdp\'s glossary of the same NAME replaces a parent\'s; on a TERM, the nearer glossary wins.',
+    '• What belongs: terms a TTS misreads that RECUR in the field — acronyms (SHAP シャップ, ROC アールオーシー), names (Shapley シャプレー), field readings (重み おもみ, 標本 ひょうほん). A reading that one sentence needs stays a ruby in that script.',
+    'WRITE with write_glossary (a new glossary or a full rewrite: `terms` or `content`), patch_glossary (`set` terms — added, or changed in place —, `remove` terms, `description` / `lang`), delete_glossary. Overwritten and deleted files are backed up to .mdp/mcp-backups.',
+    'FIND existing: get_glossary() lists the glossaries a deck\'s folder reads; get_glossary(terms: […]) looks terms up; get_narration shows a slide\'s narration as spoken.',
   ].join('\n'),
 };
 
@@ -300,6 +313,111 @@ async function readTextKeepingFormat(baseDir, rel) {
 }
 const withFormat = (text, fmt) => (fmt.bom ? BOM : '') + (fmt.crlf ? text.replace(/\n/g, '\r\n') : text);
 
+// ---- glossaries: the narrator's readings of a field's terms -----------------------
+// `<cdir>/glossary/<name>.md` (app/glossary.cjs): every deck beneath reads each term
+// with its reading, as if its script had a ruby. get_glossary reads them; write /
+// patch / delete_glossary change them — confirmed like the other assets, the previous
+// version backed up — and the open deck re-reads them at once (glossaryChanged).
+async function glossariesForChain(baseDir, chain) {
+  try { return await glossaryLib.listGlossaries(chain, readerOf(baseDir), mdplink); } catch { return []; }
+}
+const langKey = (l) => String(l || '').toLowerCase().split(/[-_]/)[0];
+// The language a script is read in, for its glossaries — features/glossary narrationLang.
+const narrationLangOf = (s) => (/[぀-ヿ]/.test(s) ? 'ja' : /[가-힯]/.test(s) ? 'ko' : /[㐀-鿿]/.test(s) ? '' : /[A-Za-z]/.test(s) ? 'en' : '');
+const noSpace = (s) => String(s).replace(/\s+/g, '');
+
+// Where a glossary change goes: an explicit `dir` (the folder whose .mdp; "" = the
+// workspace root), else the glossary's current home in the deck's chain — edited in
+// place, which may be a PARENT folder's .mdp — else, for a new one, the deck's
+// nearest .mdp.
+async function glossaryTarget(baseDir, p) {
+  const name = String(p.name ?? '').trim().replace(/\.md$/i, '');
+  if (!glossaryLib.NAME_RE.test(name)) throw new Error('"name" must be the glossary\'s file name without .md — letters (any script), digits, - _ . (e.g. "machine-learning", "統計").');
+  const deckPath = p.deck ? requireDeckPath(p.deck) : await activeDeckPath(baseDir).catch(() => '');
+  const chain = await mdpChainDirs(baseDir, deckPath);
+  const inChain = await glossariesForChain(baseDir, chain);
+  const found = glossaryLib.findGlossary(inChain, name);
+  let configDir;
+  if (typeof p.dir === 'string') {
+    const d = p.dir.trim().replace(/^[./\\]+$/, '').replace(/\/+$/, '');
+    configDir = d ? `${requireDeckPath(d)}/.mdp` : '.mdp';
+  } else {
+    configDir = found ? found.configDir : chain[chain.length - 1];
+  }
+  // That .mdp's own glossary of the name (a nearer one of the same name hides it from the chain's list).
+  const current = found && found.configDir === configDir ? found : glossaryLib.findGlossary(await glossariesForChain(baseDir, [configDir]), name);
+  const file = current ? current.path.slice(current.path.lastIndexOf('/') + 1) : `${name}.md`;
+  const here = chain.indexOf(configDir);
+  return {
+    name: current ? current.name : name,
+    path: `${configDir}/${glossaryLib.DIR}/${file}`,
+    configDir, chain, deckPath, inChain, current,
+    // The deck does not read it: its .mdp is not in the deck's chain, or a nearer one of the same name replaces it.
+    ...(here < 0 ? { outside: true } : {}),
+    ...(found && here >= 0 && chain.indexOf(found.configDir) > here ? { shadowedBy: found } : {}),
+  };
+}
+const glossaryPlacement = (t) => (t.outside
+  ? { warning: `${t.configDir} is not in the .mdp chain of ${t.deckPath || 'the workspace root'} — that deck does not read this glossary (decks beneath ${t.configDir.replace(/\/?\.mdp$/, '') || 'the workspace root'} do).` }
+  : t.shadowedBy ? { warning: `A nearer glossary of the same name (${t.shadowedBy.path}) replaces this one for ${t.deckPath || 'these decks'}.` } : {});
+
+// Terms given to write_glossary / patch_glossary, checked: every problem at once.
+// `keepNote`: a note left out stays as it is (patch); '' clears it.
+function glossaryTermsArg(list, what, keepNote) {
+  if (!Array.isArray(list)) throw new Error(`"${what}" must be an array of {term, reading, note?}.`);
+  const out = [];
+  const bad = [];
+  list.forEach((x, i) => {
+    const term = String((x && x.term) ?? '').trim();
+    const reading = String((x && x.reading) ?? '').trim();
+    const why = !term ? 'no term' : !reading ? 'no reading' : glossaryLib.termProblem(term) || glossaryLib.readingProblem(reading);
+    if (why) { bad.push(`${what}[${i}]${term ? ` "${term}"` : ''}: ${why}`); return; }
+    const note = x.note === undefined || x.note === null ? undefined : String(x.note).trim();
+    out.push({ term, reading, ...(note !== undefined && (keepNote || note) ? { note } : {}) });
+  });
+  if (bad.length) throw new Error(`${bad.join('; ')}. Nothing was written.`);
+  return out;
+}
+
+async function confirmGlossaryChange(baseDir, action, name, rel, content) {
+  const ok = await rly(baseDir, 'confirmAssetWrite', { kind: 'glossary', action, name, rel, hasScript: false, content }, 300000);
+  if (!ok || !ok.approved) throw new Error(`The user declined to ${action} this glossary. Nothing was changed.`);
+  return ok.note || '';
+}
+// The open deck re-reads its glossaries (and the tree shows the file).
+const glossaryChanged = (baseDir) => {
+  rly(baseDir, 'glossaryChanged', {}, 5000).catch(() => rly(baseDir, 'refreshTree', {}, 5000).catch(() => {}));
+};
+
+// check_deck: the glossaries this deck reads — rows that are not read, one term read
+// two ways — and the rubies of its scripts that only repeat a glossary reading.
+async function glossaryReview(baseDir, deckPath, text) {
+  const all = await glossariesForChain(baseDir, await mdpChainDirs(baseDir, deckPath));
+  if (!all.length) return null;
+  const merged = glossaryLib.mergeTerms(all);
+  const redundant = [];
+  splitBlocks(String(text || '')).forEach((block, bi) => {
+    if (!bi) return;
+    const script = [...block.matchAll(/<!--\s*@script:\s*([\s\S]*?)-->/g)].map((m) => m[1]).join('\n');
+    if (!script) return;
+    const lang = narrationLangOf(script);
+    for (const m of script.matchAll(RUBY_RE)) {
+      const g = merged.find((e) => noSpace(e.term) === noSpace(m[1]) && (!e.lang || !lang || langKey(e.lang) === lang));
+      if (g && noSpace(g.reading) === noSpace(m[2])) redundant.push({ slide: bi, ruby: m[0], glossary: g.from });
+    }
+  });
+  const problems = all.flatMap((g) => g.problems.map((x) => `${g.path}: ${x}`));
+  const conflicts = glossaryLib.conflicts(all).map((c) => `"${c.term}": ${c.readings.map((r) => `${r.reading} (${r.glossary})`).join(' vs ')} — ${c.used} is used`);
+  if (!redundant.length && !problems.length && !conflicts.length) return null;
+  return {
+    glossaries: all.map((g) => `${g.name} (${g.terms.length} terms${g.lang ? `, ${g.lang}` : ''})`),
+    ...(redundant.length ? { redundantRubies: redundant.slice(0, 40), ...(redundant.length > 40 ? { moreRedundant: redundant.length - 40 } : {}) } : {}),
+    ...(problems.length ? { problems: problems.slice(0, 30) } : {}),
+    ...(conflicts.length ? { conflicts } : {}),
+    note: 'redundantRubies only repeat what the folder\'s glossary already reads — they can go (patch_deck), or stay (a ruby always wins). problems = glossary rows that are not read (fix with patch_glossary); conflicts = one term read two ways by two glossaries.',
+  };
+}
+
 // List the assets of one kind that already exist in the workspace-root `.mdp`
 // (name + a short description) so the AI can see what's there before creating more.
 async function listWorkspaceAssets(baseDir, kind) {
@@ -307,6 +425,9 @@ async function listWorkspaceAssets(baseDir, kind) {
   if (!spec || !baseDir) return [];
   if (kind === 'skill') {
     return (await skillsForChain(baseDir, ['.mdp'])).map((s) => ({ name: s.name, description: s.description, ...(s.always ? { always: true } : {}) }));
+  }
+  if (kind === 'glossary') {
+    return (await glossariesForChain(baseDir, ['.mdp'])).map((g) => ({ name: g.name, ...(g.description ? { description: g.description } : {}), terms: g.terms.length }));
   }
   const out = [];
   let entries;
@@ -1052,19 +1173,21 @@ async function verifyDeck(baseDir, deckPath) {
   // Focus cues ([[look: …]] / [[mark: …]] / [[clear]]): their targets checked on the
   // rendered slides — only when the deck has any.
   const hasCues = /\[\[\s*(?:look|mark|clear)\s*(?::|\]\])/i.test(text);
-  const [validate, lint, measure, skills, focus, imageWarn] = await Promise.all([
+  const [validate, lint, measure, skills, focus, imageWarn, glossary] = await Promise.all([
     rly(baseDir, 'validateDeck', { path: deckPath }, 30000).catch((e) => ({ error: String((e && e.message) || e) })),
     Promise.resolve(lintDeck(text)),
     rly(baseDir, 'measureSlides', { path: deckPath }, 120000).catch((e) => ({ error: String((e && e.message) || e) })),
     skillReview(baseDir, deckPath).catch(() => null),
     hasCues ? rly(baseDir, 'focusCheck', { path: deckPath }, 120000).catch((e) => ({ error: String((e && e.message) || e) })) : null,
     imageFindings(baseDir, deckPath, text).catch(() => []),
+    glossaryReview(baseDir, deckPath, text).catch(() => null),
   ]);
   return {
     path: deckPath, validate: withWarnings(validate, imageWarn), lint, measure,
     ...(focus ? { focus } : {}),
+    ...(glossary ? { glossary } : {}),
     ...(skills ? { skills } : {}),
-    note: `validate = syntax/unknown modules/params/structure (errors block rendering); lint = design advisories (use judgment); measure = overflow/empty issues only (all clear when \`issues\` is empty); ${focus ? 'focus = each focus cue\'s targets on the slide as it is when the cue acts (error = nothing drawn; warn = drawn somewhere unintended or not visible then) — the cues\' text-level notes are in validate; ' : ''}skills = the checklists of this folder\'s slide skills — review the deck against them. severity: warn = likely issue, info = style nudge.`,
+    note: `validate = syntax/unknown modules/params/structure (errors block rendering); lint = design advisories (use judgment); measure = overflow/empty issues only (all clear when \`issues\` is empty); ${focus ? 'focus = each focus cue\'s targets on the slide as it is when the cue acts (error = nothing drawn; warn = drawn somewhere unintended or not visible then) — the cues\' text-level notes are in validate; ' : ''}${glossary ? 'glossary = the folder\'s glossaries as this deck reads them (needless rubies, unread rows, conflicting readings); ' : ''}skills = the checklists of this folder\'s slide skills — review the deck against them. severity: warn = likely issue, info = style nudge.`,
   };
 }
 
@@ -1567,13 +1690,17 @@ async function callToolInner(method, p, baseDir) {
         : k === 'effect' ? read('default-effect.mdpfx.xml')
         : k === 'theme' ? read('themes/default.css')
         : k === 'snippet' ? SNIPPET_TEMPLATE
-        : k === 'skill' ? read('default-skill.md') : '';
+        : k === 'skill' ? read('default-skill.md')
+        : k === 'glossary' ? glossaryLib.renderGlossary({
+          title: 'machine-learning', description: '機械学習の用語の読み', lang: 'ja',
+          terms: [{ term: 'SHAP', reading: 'シャップ', note: '説明手法' }, { term: 'Shapley値', reading: 'シャプレーち' }, { term: 'ROC曲線', reading: 'アールオーシーきょくせん' }],
+        }) : '';
       const kind = p.kind ? String(p.kind) : null;
       // One kind → its template + authoring guide + what already exists (to imitate /
       // avoid duplicating). No kind → all of them, guides only (call again with a
       // kind for a template + the existing list).
       if (kind) {
-        if (!ASSET_GUIDES[kind]) throw new Error('"kind" must be module | effect | theme | snippet | skill.');
+        if (!ASSET_GUIDES[kind]) throw new Error('"kind" must be module | effect | theme | snippet | skill | glossary.');
         return {
           kind,
           template: templateFor(kind),
@@ -1581,7 +1708,9 @@ async function callToolInner(method, p, baseDir) {
           existing: await listWorkspaceAssets(baseDir, kind),
           note: kind === 'skill'
             ? 'Write with write_skill (name, description, content = the Markdown body; dir = which folder\'s .mdp). The `existing` list is the workspace-root .mdp only — get_skill() lists what a deck\'s folder actually sees.'
-            : 'Write with write_asset (kind, name, content). The `existing` list is this workspace\'s .mdp only — for the full merged set (incl. built-ins) use the FIND tool named at the end of the guide.',
+            : kind === 'glossary'
+              ? 'Write with write_glossary (name, terms or content, description, lang; dir = which folder\'s .mdp) and add terms later with patch_glossary. The `existing` list is the workspace-root .mdp only — get_glossary() lists what a deck\'s folder actually reads.'
+              : 'Write with write_asset (kind, name, content). The `existing` list is this workspace\'s .mdp only — for the full merged set (incl. built-ins) use the FIND tool named at the end of the guide.',
         };
       }
       return {
@@ -1604,6 +1733,7 @@ async function callToolInner(method, p, baseDir) {
         snippet: { sub: 'snippets', ext: '.json', check: null },
       }[kind];
       if (kind === 'skill') throw new Error('Skills have their own tools: write_skill / patch_skill / delete_skill.');
+      if (kind === 'glossary') throw new Error('Glossaries have their own tools: write_glossary / patch_glossary / delete_glossary.');
       if (!spec) throw new Error('"kind" must be module | effect | theme | snippet.');
       if (kind === 'snippet') {
         let parsed;
@@ -1688,12 +1818,13 @@ async function callToolInner(method, p, baseDir) {
       // aliases. Replaces ~6 opening calls.
       const deckPath = p.deck ? requireDeckPath(p.deck) : await activeDeckPath(baseDir).catch(() => null);
       const chain = await mdpChainDirs(baseDir, deckPath || '');
-      const [spec, decksR, templatesR, imagesR, skills] = await Promise.all([
+      const [spec, decksR, templatesR, imagesR, skills, glossaries] = await Promise.all([
         rly(baseDir, 'spec', { skillDirs: chain }, 30000),
         callToolInner('list_decks', {}, baseDir),
         callToolInner('list_templates', deckPath ? { deck: deckPath } : {}, baseDir).catch(() => ({ templates: [] })),
         callToolInner('list_images', deckPath ? { deck: deckPath } : {}, baseDir).catch(() => ({ images: [] })),
         skillsForChain(baseDir, chain),
+        glossariesForChain(baseDir, chain),
       ]);
       markSkillsRead(baseDir, skills.filter((s) => s.always));   // their text is in the spec
       const toRead = skills.filter((s) => !s.always).map((s) => s.name);
@@ -1704,7 +1835,8 @@ async function callToolInner(method, p, baseDir) {
         images: imagesR.images || [],
         activeDeck: deckPath || null,
         ...(skills.length ? { skills: skills.map((s) => ({ name: s.name, description: s.description, ...(s.always ? { always: true } : {}) })) } : {}),
-        note: `One-shot environment: spec (authoring format + module/effect indexes + themes + style profile + slide skills) + decks + templates + image aliases. Next: ${toRead.length ? `get_skill for the skills that fit (${toRead.join(', ')}); ` : ''}get_module_spec for the modules you pick; check_deck / verify:true after writing.`,
+        ...(glossaries.length ? { glossaries: glossaries.map((g) => ({ name: g.name, ...(g.description ? { description: g.description } : {}), lang: g.lang || 'any', terms: g.terms.length })) } : {}),
+        note: `One-shot environment: spec (authoring format + module/effect indexes + themes + style profile + slide skills${glossaries.length ? ' + the glossaries\' terms (no ruby needed for them)' : ''}) + decks + templates + image aliases. Next: ${toRead.length ? `get_skill for the skills that fit (${toRead.join(', ')}); ` : ''}get_module_spec for the modules you pick; check_deck / verify:true after writing.`,
       };
     }
     case 'get_slide_spec': {
@@ -1883,6 +2015,185 @@ async function callToolInner(method, p, baseDir) {
         };
       });
     }
+    case 'get_glossary': {
+      // The glossaries a deck's folder reads: no name → the index (+ every term as the
+      // narrator reads it, while short); a name → that glossary; `terms` → how each is
+      // read here.
+      const { chain } = await deckScope(baseDir, p.deck);
+      const all = await glossariesForChain(baseDir, chain);
+      const merged = glossaryLib.mergeTerms(all);
+      if (Array.isArray(p.terms) && p.terms.length) {
+        return {
+          scope: chain,
+          terms: p.terms.slice(0, 200).map((x) => {
+            const want = String(x ?? '').trim();
+            const hits = merged.filter((e) => e.term === want || noSpace(e.term) === noSpace(want));
+            if (hits.length) return { term: want, readings: hits.map((e) => ({ reading: e.reading, glossary: e.from, lang: e.lang || 'any', ...(e.note ? { note: e.note } : {}) })) };
+            const otherCase = merged.filter((e) => e.term.toLowerCase() === want.toLowerCase()).map((e) => e.term);
+            return { term: want, reading: null, ...(otherCase.length ? { otherCase } : {}) };
+          }),
+          note: 'reading null = no glossary of this folder has the term: the TTS reads it on its own — give it a ruby, or add it with patch_glossary when it recurs in the field. Terms match case-sensitively (otherCase = the same term in another case).',
+        };
+      }
+      if (p.name) {
+        const g = glossaryLib.findGlossary(all, p.name);
+        if (!g) throw new Error(`No glossary "${p.name}" for this deck's folder. Available: ${all.map((x) => x.name).join(', ') || '(none)'}.`);
+        const nearer = all.slice(all.indexOf(g) + 1);
+        const overridden = g.terms.flatMap((t) => nearer.flatMap((o) => (langKey(o.lang) === langKey(g.lang) ? o.terms : [])
+          .filter((x) => x.term === t.term && x.reading !== t.reading).map((x) => `${t.term}: ${o.name} reads ${x.reading}`)));
+        return {
+          name: g.name, ...(g.description ? { description: g.description } : {}),
+          lang: g.lang || 'any', ...(g.langInferred && g.lang ? { langInferred: true } : {}),
+          path: g.path, from: g.configDir,
+          terms: g.terms,
+          ...(g.problems.length ? { problems: g.problems } : {}),
+          ...(overridden.length ? { overridden } : {}),
+          ...(g.truncated ? { truncated: true } : {}),
+          note: `Every deck of this folder reads these terms so, with no ruby in its script. Change them with patch_glossary (set / remove).${overridden.length ? ' overridden = terms a nearer glossary reads otherwise (that reading is heard).' : ''}`,
+        };
+      }
+      const MAX_TERMS = 300;
+      const byLang = {};
+      for (const e of merged.slice(0, MAX_TERMS)) (byLang[e.lang || 'any'] ||= []).push(`${e.term}→${e.reading}`);
+      const conflicts = glossaryLib.conflicts(all);
+      return {
+        scope: chain,
+        glossaries: all.map((g) => ({
+          name: g.name, ...(g.description ? { description: g.description } : {}),
+          lang: g.lang || 'any', terms: g.terms.length, path: g.path, from: g.configDir,
+          ...(g.problems.length ? { problems: g.problems.slice(0, 10) } : {}),
+        })),
+        ...(merged.length ? { terms: byLang } : {}),
+        ...(merged.length > MAX_TERMS ? { moreTerms: merged.length - MAX_TERMS } : {}),
+        ...(conflicts.length ? { conflicts: conflicts.map((c) => `"${c.term}": ${c.readings.map((r) => `${r.reading} (${r.glossary})`).join(' vs ')} — ${c.used} is used`) } : {}),
+        note: all.length
+          ? 'terms = every term as this folder\'s narration reads it (a nearer glossary wins) — write no ruby for them in a script. Add a term the TTS misreads with patch_glossary; get_glossary(name) shows one glossary with its notes.'
+          : 'This folder has no glossary — readings come from the TTS engine or from rubies in the scripts. write_glossary starts one (one per field, in the .mdp of the folder whose decks share the field).',
+      };
+    }
+    case 'write_glossary': {
+      // A new glossary, or a full rewrite: `terms` (written as a table) or `content`
+      // (the whole Markdown file).
+      const t = await glossaryTarget(baseDir, p);
+      const hasContent = typeof p.content === 'string' && !!p.content.trim();
+      if (Array.isArray(p.terms) === hasContent) throw new Error('Give either "terms" ([{term, reading, note?}]) or "content" (the whole Markdown file) — one of the two.');
+      let text;
+      if (hasContent) {
+        text = String(p.content).replace(/\r\n?/g, '\n');
+        if (text.startsWith(BOM)) text = text.slice(1);
+        if (p.description != null) text = glossaryLib.setField(text, 'description', String(p.description));
+        if (p.lang != null) text = glossaryLib.setField(text, 'lang', String(p.lang).trim());
+      } else {
+        text = glossaryLib.renderGlossary({
+          title: p.title ? String(p.title) : '', description: p.description ? String(p.description) : '',
+          lang: p.lang ? String(p.lang).trim() : '', terms: glossaryTermsArg(p.terms, 'terms', false),
+        });
+      }
+      const parsed = glossaryLib.parseGlossary(text, t.name);
+      if (!parsed.terms.length) {
+        throw new Error(`No term found${parsed.problems.length ? ` (${parsed.problems.slice(0, 5).join('; ')})` : ''} — a glossary is a Markdown table "| 用語 | 読み | メモ |" with one row per term. Nothing was written.`);
+      }
+      return await withDeckLock(`${wsKeyOf(baseDir)}\u0000glossary:${t.path}`, async () => {
+        const exists = await mdplink.vfsExists(vres(baseDir, t.path)).catch(() => false);
+        const fmt = exists ? await readTextKeepingFormat(baseDir, t.path).catch(() => null) : null;
+        const note = await confirmGlossaryChange(baseDir, exists ? 'update' : 'create', t.name, t.path, text);
+        const backups = exists ? await backupFiles(baseDir, [t.path]) : [];
+        await mdplink.vfsWrite(vres(baseDir, t.path, 'w'), Buffer.from(fmt ? withFormat(text, fmt) : text, 'utf-8'));
+        glossaryChanged(baseDir);
+        return {
+          saved: t.path, action: exists ? 'replaced' : 'created',
+          terms: parsed.terms.length, lang: parsed.lang || 'any',
+          ...(backups[0] ? { backup: backups[0] } : {}),
+          ...(parsed.problems.length ? { problems: parsed.problems.slice(0, 20) } : {}),
+          ...glossaryPlacement(t),
+          note: ['Decks beneath this folder now read these terms so (the open deck at once).', note].filter(Boolean).join(' '),
+        };
+      });
+    }
+    case 'patch_glossary': {
+      // Small changes, everything else in the file kept: `set` terms (added at the end
+      // of its table, or changed in place), `remove` terms, the frontmatter
+      // `description` / `lang`, and exact-text `edits`.
+      const t = await glossaryTarget(baseDir, p);
+      if (!t.current) {
+        const other = glossaryLib.findGlossary(t.inChain, t.name);
+        throw new Error(`No glossary "${t.name}" in ${t.configDir}${other && other.configDir !== t.configDir ? ` (there is one in ${other.configDir} — omit "dir" to edit that one)` : ''}. Create it with write_glossary.`);
+      }
+      const set = p.set != null ? glossaryTermsArg(p.set, 'set', true) : [];
+      const remove = (Array.isArray(p.remove) ? p.remove : p.remove != null ? [p.remove] : []).map((x) => String(x ?? '').trim()).filter(Boolean);
+      const edits = (Array.isArray(p.edits) ? p.edits : [])
+        .map((ed) => ({ ...ed, old_str: String(ed.old_str ?? '').replace(/\r\n?/g, '\n'), new_str: String(ed.new_str ?? '').replace(/\r\n?/g, '\n') }));
+      if (!set.length && !remove.length && !edits.length && p.description == null && p.lang == null) {
+        throw new Error('Nothing to change — pass `set`, `remove`, `description`, `lang` or `edits`.');
+      }
+      return await withDeckLock(`${wsKeyOf(baseDir)}\u0000glossary:${t.path}`, async () => {
+        const fmt = await readTextKeepingFormat(baseDir, t.path);
+        let text = fmt.text;
+        let replaced = 0;
+        if (edits.length) ({ text, replaced } = applyExactEdits(text, edits, t.path));
+        const r = glossaryLib.setTerms(text, set, remove);
+        text = r.text;
+        if (p.description != null) text = glossaryLib.setField(text, 'description', String(p.description));
+        if (p.lang != null) text = glossaryLib.setField(text, 'lang', String(p.lang).trim());
+        if (text.replace(/\n+$/, '') === fmt.text.replace(/\n+$/, '')) {
+          return { saved: null, ...(r.missing.length ? { notFound: r.missing } : {}), note: 'No change — the glossary already says that.' };
+        }
+        const parsed = glossaryLib.parseGlossary(text, t.name);
+        const preview = [
+          ...(set.length ? [`SET:\n${set.map((s) => `${s.term} → ${s.reading}${s.note ? ` (${s.note})` : ''}`).join('\n')}`] : []),
+          ...(remove.length ? [`REMOVE: ${remove.join(', ')}`] : []),
+          ...(p.description != null ? [`DESCRIPTION: ${p.description}`] : []),
+          ...(p.lang != null ? [`LANG: ${p.lang || '(inferred from the readings)'}`] : []),
+          ...edits.map((ed) => `REPLACE:\n${ed.old_str}\nWITH:\n${ed.new_str}`),
+        ].join('\n\n');
+        const note = await confirmGlossaryChange(baseDir, 'update', t.name, t.path, preview);
+        const backups = await backupFiles(baseDir, [t.path]);
+        await mdplink.vfsWrite(vres(baseDir, t.path, 'w'), Buffer.from(withFormat(text, fmt), 'utf-8'));
+        glossaryChanged(baseDir);
+        // Terms a nearer glossary reads otherwise: this change is not what the deck hears.
+        const at = t.inChain.findIndex((g) => g.path === t.path);
+        const nearer = at >= 0 ? t.inChain.slice(at + 1) : [];
+        const overridden = set.flatMap((s) => nearer.flatMap((g) => (langKey(g.lang) === langKey(parsed.lang) ? g.terms : [])
+          .filter((x) => x.term === s.term && x.reading !== s.reading).map((x) => `${s.term}: ${g.name} reads ${x.reading}`)));
+        return {
+          saved: t.path,
+          ...(r.added ? { added: r.added } : {}),
+          ...(r.updated ? { updated: r.updated } : {}),
+          ...(r.removed ? { removed: r.removed } : {}),
+          ...(r.missing.length ? { notFound: r.missing } : {}),
+          ...(edits.length ? { replaced } : {}),
+          terms: parsed.terms.length,
+          ...(backups[0] ? { backup: backups[0] } : {}),
+          ...(parsed.problems.length ? { problems: parsed.problems.slice(0, 20) } : {}),
+          ...(overridden.length ? { overridden, overriddenNote: 'A nearer glossary reads these terms otherwise — that reading is what the deck hears.' } : {}),
+          ...glossaryPlacement(t),
+          ...(note ? { note } : {}),
+        };
+      });
+    }
+    case 'delete_glossary': {
+      // Remove a glossary file. Always confirmed in the desktop app; backed up first.
+      const t = await glossaryTarget(baseDir, p);
+      if (!t.current) {
+        const other = glossaryLib.findGlossary(t.inChain, t.name);
+        throw new Error(`No glossary "${t.name}" in ${t.configDir}${other && other.configDir !== t.configDir ? ` (there is one in ${other.configDir} — omit "dir" to delete that one)` : ''}.`);
+      }
+      return await withDeckLock(`${wsKeyOf(baseDir)}\u0000glossary:${t.path}`, async () => {
+        const note = await confirmGlossaryChange(baseDir, 'delete', t.name, t.path,
+          `Delete the glossary "${t.name}" (${t.path}) — ${t.current.terms.length} term(s)${t.current.description ? `: ${t.current.description}` : ''}. The decks beneath read those terms on their own again.`);
+        const backups = await backupFiles(baseDir, [t.path]);
+        await mdplink.vfsRemove(vres(baseDir, t.path, 'w'));
+        glossaryChanged(baseDir);
+        // A parent's glossary of the same name takes over again for these decks.
+        const fallback = glossaryLib.findGlossary(await glossariesForChain(baseDir, t.chain), t.name);
+        return {
+          deleted: t.path, terms: t.current.terms.length,
+          ...(backups[0] ? { backup: backups[0] } : {}),
+          ...(fallback ? { nowUsing: `${fallback.path} (a parent folder's glossary of the same name now applies)` } : {}),
+          ...(note ? { note } : {}),
+        };
+      });
+    }
     case 'get_module_spec': {
       const names = Array.isArray(p.names) ? p.names.map((n) => String(n)) : (p.name ? [String(p.name)] : []);
       if (!names.length) throw new Error('Provide "names": an array of module names (from the get_slide_spec index).');
@@ -1931,6 +2242,13 @@ async function callToolInner(method, p, baseDir) {
     case 'render_slide_image': return await rly(baseDir, 'renderSlideImage', { path: p.path ? requireDeckPath(p.path) : undefined, slide: Number(p.slide), width: p.width ? Number(p.width) : undefined, focus: p.focus !== undefined && p.focus !== null ? String(p.focus) : undefined }, 120000);
     // Focus cues: what a slide can point at, and where its cues act and land.
     case 'get_focus_targets': return await rly(baseDir, 'focusTargets', { path: p.path ? requireDeckPath(p.path) : undefined, slide: Number(p.slide) }, 60000);
+    // The narration as the auto-play runs it: each line captioned and spoken, the
+    // glossary's readings, and the → presses of a talk given by hand.
+    case 'get_narration': return await rly(baseDir, 'narration', {
+      path: p.path ? requireDeckPath(p.path) : undefined,
+      slide: p.slide !== undefined && p.slide !== null ? Number(p.slide) : undefined,
+      slides: Array.isArray(p.slides) ? p.slides.map(Number).filter((n) => Number.isInteger(n)) : undefined,
+    }, 60000);
     // Narrated video export: the renderer queues a job on the open (or given) deck;
     // it runs in the background and is followed with get_video_jobs.
     case 'export_video': return await rly(baseDir, 'exportVideo', {
@@ -1940,6 +2258,33 @@ async function callToolInner(method, p, baseDir) {
       subtitles: p.subtitles, vtt: p.vtt, includeHidden: p.includeHidden, fade: p.fade, updateTimes: p.updateTimes,
     }, 60000);
     case 'get_video_jobs': return await rly(baseDir, 'videoJobs', {}, 8000);
+    // The Export menu's PDF / PowerPoint of a deck, written BESIDE it (no dialog): a
+    // handout is the PDF with the answers hidden. A file replaced is backed up first.
+    case 'export_pdf':
+    case 'export_pptx': {
+      const pdf = method === 'export_pdf';
+      const ext = pdf ? '.pdf' : '.pptx';
+      const deckPath = p.path ? requireDeckPath(p.path) : await activeDeckPath(baseDir);
+      const slash = deckPath.lastIndexOf('/');
+      const dir = slash >= 0 ? deckPath.slice(0, slash + 1) : '';
+      const base = deckPath.slice(slash + 1).replace(/\.slide\.md$/i, '').replace(/\.md$/i, '');
+      let name = p.name != null ? String(p.name).trim() : '';
+      if (name) {
+        if (/[\\/]/.test(name) || name.startsWith('.') || !name.toLowerCase().endsWith(ext) || name.length <= ext.length) {
+          throw new Error(`"name" must be a file name ending in ${ext} — it is saved beside the deck.`);
+        }
+      } else {
+        name = `${base}${pdf && p.answers === 'hide' ? '-handout' : ''}${ext}`;
+      }
+      const output = `${dir}${name}`;
+      const existed = await mdplink.vfsExists(vres(baseDir, output)).catch(() => false);
+      const backups = existed ? await backupFiles(baseDir, [output]) : [];
+      const r = pdf
+        ? await rly(baseDir, 'exportPdf', { path: deckPath, output, answers: p.answers === 'hide' || p.answers === 'show' ? p.answers : undefined }, 180000)
+        : await rly(baseDir, 'exportPptx', { path: deckPath, output }, 600000);
+      rly(baseDir, 'refreshTree', {}, 5000).catch(() => {});
+      return { ...r, ...(existed ? { replaced: true, ...(backups[0] ? { backup: backups[0] } : {}) } : {}) };
+    }
     case 'cancel_video': return await rly(baseDir, 'cancelVideo', { jobId: p.jobId ? String(p.jobId) : undefined, all: !!p.all }, 8000);
 
     default:

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { SlideView } from '../../slide/components/SlideView';
 import { isElectron } from '../../../api/apiClient';
 import { loadedModules } from '../../modules/moduleManager';
-import { waitForRenderReady, dataUrlToWebp } from './captureReady';
+import { afterFrames, waitForRenderReady, dataUrlToWebp } from './captureReady';
 import type { RasterizeOptions, RasterizeResult, SlideLinkRect } from './captureTypes';
 import { getFontState } from '../../fonts/fontRuntime';
 import { settleFocusLayers } from '../../focus/focusSettle';
@@ -38,7 +38,7 @@ export function useSlideRasterizer() {
       const settleFocus = async () => {
         if (!withFocus || !node) return;
         settleFocusLayers(node);
-        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+        await afterFrames(2);
       };
       const node = nodeRef.current;
       let src: string;
