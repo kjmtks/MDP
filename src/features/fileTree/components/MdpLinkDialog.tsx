@@ -12,6 +12,9 @@ interface Props {
   editPath?: string;
   onClose: () => void;
   onCreated: () => void;   // refresh the tree
+  // Edit mode, the name changed: the link is saved under the new name and the old
+  // file dropped — the open tabs and the bookmarks inside it follow.
+  onRenamed?: (oldPath: string, newPath: string) => void;
 }
 
 const fieldSx = {
@@ -51,7 +54,7 @@ const parseLinkLenient = (text: string): any => {
 // Create or edit a `.mdplink` file — a symbolic-link-like pointer to another
 // directory, LOCAL or a REMOTE dir over SSH/SFTP (with key-file auth). The link's
 // <name> is the virtual directory name shown in the tree.
-export const MdpLinkDialog: React.FC<Props> = ({ open, parentPath = '', editPath, onClose, onCreated }) => {
+export const MdpLinkDialog: React.FC<Props> = ({ open, parentPath = '', editPath, onClose, onCreated, onRenamed }) => {
   const isEdit = !!editPath;
   const [name, setName] = useState('link');
   const [kind, setKind] = useState<'local' | 'ssh'>('local');
@@ -146,7 +149,11 @@ export const MdpLinkDialog: React.FC<Props> = ({ open, parentPath = '', editPath
     try {
       await apiClient.setLinkConfig(newPath, JSON.stringify(cfg, null, 2));
       // A name change in edit mode means the file was renamed — drop the old one.
-      if (isEdit && newPath !== editPath) await apiClient.deleteFiles([editPath!]);
+      if (isEdit && newPath !== editPath) {
+        await apiClient.deleteFiles([editPath!]);
+        // …a rename for whatever was open or bookmarked inside the link.
+        onRenamed?.(editPath!, newPath);
+      }
       onCreated();
       onClose();
     } catch (e) {

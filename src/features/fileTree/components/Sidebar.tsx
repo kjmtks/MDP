@@ -66,7 +66,7 @@ interface SidebarProps {
   handleOpenFolder?: () => void;
   bookmarks: Bookmark[];
   isBookmarked: (path: string) => boolean;
-  onToggleBookmark: (path: string) => void;
+  onToggleBookmark: (path: string, kind?: 'file' | 'folder') => void;
   onReorderBookmark?: (from: number, to: number) => void;
   onUpdateBookmark?: (path: string, changes: { icon?: string; color?: string }) => void;
   onRenameFile?: (oldPath: string, newPath: string) => void;
@@ -237,6 +237,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
     return map;
   }, [fileTree]);
 
+  // Whether a path is in the workspace as far as the tree has been read (the
+  // Bookmarks panel dims a bookmark whose place is gone): true / false — or null
+  // where it cannot tell: a folder on the way not read yet (behind an SSH link, not
+  // opened), left out (.mdpignore, sealed), a link it could not reach, a virtual one.
+  const presence = React.useCallback((path: string): boolean | null => {
+    if (!fileTree.length) return null;
+    if (nodeByPath.has(path)) return true;
+    for (let dir = path; dir.includes('/');) {
+      dir = dir.slice(0, dir.lastIndexOf('/'));
+      const node = nodeByPath.get(dir);
+      if (node) return node.type === 'directory' && !node.lazy && !node.sealed && !node.linkError && !node.isVirtual ? false : null;
+    }
+    return false;
+  }, [fileTree, nodeByPath]);
+
   // Deferred (SSH / remote) nodes load their children only once expanded, so the
   // tree renders without blocking on the SSH connection. This watches expanded
   // nodes and fetches any that are still `lazy`. The ref de-dups in-flight loads;
@@ -284,16 +299,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
   };
 
   // "Reveal in file tree" (from the Bookmarks panel etc.): expand the ancestors of
-  // the path, select it, and scroll it into view in the Explorer instance.
+  // the path — a folder itself too —, select it, and scroll it into view in the
+  // Explorer instance. A place behind an SSH link shows up only once its folders
+  // have loaded (each level loads as it is expanded), so it is looked for a while.
   useEffect(() => {
+    let timer = 0;
     const reveal = (path: string) => {
       expandParentDir(path);
       setSelectedPaths(new Set([path]));
       if (section === 'files') {
-        window.setTimeout(() => {
-          document.querySelector(`[data-tree-path="${CSS.escape(path)}"]`)
-            ?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-        }, 150);
+        const until = Date.now() + 10000;
+        const scroll = () => {
+          const el = document.querySelector(`[data-tree-path="${CSS.escape(path)}"]`);
+          if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          else if (Date.now() < until) timer = window.setTimeout(scroll, 200);
+        };
+        window.clearTimeout(timer);
+        timer = window.setTimeout(scroll, 150);
       }
     };
     const onReveal = (e: Event) => {
@@ -313,7 +335,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       (window as any).__mdpPendingReveal = null;
       reveal(pending.path);
     }
-    return () => window.removeEventListener('mdp-reveal-in-tree', onReveal);
+    return () => { window.removeEventListener('mdp-reveal-in-tree', onReveal); window.clearTimeout(timer); };
     // expandParentDir/setSelectedPaths only call stable state setters (functional
     // updates), so a stale identity is harmless.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -614,7 +636,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
         const payload = JSON.parse(data);
         if (payload.type === 'internal_move') {
            if (payload.paths.some((p: string) => targetDir === p || targetDir.startsWith(p + '/'))) return;
-           await withProcessing(() => apiClient.moveFile(payload.paths, targetDir));
+           await withProcessing(async () => {
+             await apiClient.moveFile(payload.paths, targetDir);
+             // Moved = renamed: the open tabs and the bookmarks follow (each item
+             // keeps its name in the folder it is dropped on).
+             for (const p of payload.paths as string[]) {
+               const to = targetDir ? `${targetDir}/${p.slice(p.lastIndexOf('/') + 1)}` : p.slice(p.lastIndexOf('/') + 1);
+               if (to !== p) onRenameFile?.(p, to);
+             }
+           });
            return;
         }
       }
@@ -763,6 +793,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               onRemove={onToggleBookmark}
               onReorder={(from, to) => onReorderBookmark?.(from, to)}
               onUpdate={(path, changes) => onUpdateBookmark?.(path, changes)}
+              presence={presence}
             />
           </Box>
         </CustomTabPanel>
@@ -859,8 +890,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <ListItemIcon><DriveFileRenameOutlineIcon fontSize="small" /></ListItemIcon> Rename
           </MenuItem>
         )}
-        {contextMenu?.node && contextMenu.node.type === 'file' && (
-          <MenuItem onClick={() => { onToggleBookmark(contextMenu.path); setContextMenu(null); }}>
+        {/* A file or a folder (a link too): a folder's bookmark opens it in this tree. */}
+        {contextMenu?.node && (
+          <MenuItem onClick={() => { onToggleBookmark(contextMenu.path, contextMenu.isFolder ? 'folder' : 'file'); setContextMenu(null); }}>
             <ListItemIcon>
               {isBookmarked(contextMenu.path) ? <BookmarkIcon fontSize="small" color="primary" /> : <BookmarkBorderIcon fontSize="small" />}
             </ListItemIcon>
@@ -983,6 +1015,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         editPath={linkDialog.editPath}
         onClose={() => setLinkDialog({ open: false, parentPath: '' })}
         onCreated={onManualRefresh}
+        onRenamed={(from, to) => onRenameFile?.(from, to)}
       />
       <OfflineCacheDialog open={cacheDialogOpen} onClose={() => setCacheDialogOpen(false)} />
       <ConfigureMdpDialog open={configureMdp.open} configDir={configureMdp.configDir} fileTree={fileTree}

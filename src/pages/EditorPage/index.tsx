@@ -994,7 +994,7 @@ export default function EditorPage() {
     currentFileName, markdown, setMarkdown, markdownRef, editorRef, drawings, insertPage, syncDrawings
   });
 
-  const { bookmarks, toggleBookmark, isBookmarked, reorderBookmarks, updateBookmark } = useBookmarks();
+  const { bookmarks, toggleBookmark, isBookmarked, reorderBookmarks, updateBookmark, renameBookmarks, forgetBookmarks } = useBookmarks();
   const isInitialMount = useRef(true);
   const autoSaveTimerRef = useRef<number | null>(null);
 
@@ -2011,17 +2011,28 @@ export default function EditorPage() {
     },
   }), [editLayout, canEditLayout, snapOn, snapStep, editorRef, flushManipPreview]);
 
+  // A file or a folder renamed / moved (its new path) or deleted in the file tree:
+  // the open tabs and the bookmarks follow (also those inside a folder).
+  const onPathRenamed = useCallback((oldPath: string, newPath: string) => {
+    renameTab(oldPath, newPath);
+    renameBookmarks(oldPath, newPath);
+  }, [renameTab, renameBookmarks]);
+  const onPathsDeleted = useCallback((paths: string[]) => {
+    closeTabsByPaths(paths);
+    forgetBookmarks(paths);
+  }, [closeTabsByPaths, forgetBookmarks]);
+
   const sidebarSlice = useMemo<SidebarSharedProps>(() => ({
     currentFileName, currentFileType: previewFileType, slides, currentSlideIndex, slideSize,
     drawings, fileTree, lastUpdated, onSlideSelect: setCurrentSlideIndex, onFileSelect: handleFileSelect,
     onManualRefresh: handleManualRefresh, onLoadLinkChildren: loadLinkChildren, onNav: moveSlide, handleOpenFolder,
     bookmarks, isBookmarked, onToggleBookmark: toggleBookmark,
     onReorderBookmark: reorderBookmarks, onUpdateBookmark: updateBookmark,
-    onRenameFile: renameTab, onDeleteFiles: closeTabsByPaths,
+    onRenameFile: onPathRenamed, onDeleteFiles: onPathsDeleted,
     onOpenDeck: handleOpenDeck,
   }), [currentFileName, previewFileType, slides, currentSlideIndex, slideSize, drawings, fileTree, lastUpdated,
     setCurrentSlideIndex, handleFileSelect, handleManualRefresh, loadLinkChildren, moveSlide, handleOpenFolder,
-    bookmarks, isBookmarked, toggleBookmark, reorderBookmarks, updateBookmark, renameTab, closeTabsByPaths,
+    bookmarks, isBookmarked, toggleBookmark, reorderBookmarks, updateBookmark, onPathRenamed, onPathsDeleted,
     handleOpenDeck]);
 
   // Chips in the editor's script (ScriptChipsPlugin), as in the presenter's script

@@ -8,6 +8,7 @@ import type { Bookmark } from '../../../pages/EditorPage/hooks/useBookmarks';
 import { BOOKMARK_ICON_KEYS, BOOKMARK_COLORS, bookmarkIconFor } from '../bookmarkConfig';
 import { extractBookmarkTitle, extractBookmarkSubtitle, type BookmarkTitle } from '../bookmarkTitle';
 import { apiClient } from '../../../api/apiClient';
+import { notify } from '../../../components/error/errorReporter';
 
 // title + subtitle resolved from a bookmarked file's meta.
 interface BookmarkMeta { title: BookmarkTitle; subtitle: string | null; }
@@ -25,26 +26,35 @@ interface BookmarkListProps {
   onRemove: (path: string) => void;
   onReorder: (from: number, to: number) => void;
   onUpdate: (path: string, changes: { icon?: string; color?: string }) => void;
+  /** Whether a path is in the workspace as far as the file tree has been read: true /
+   *  false — or null where it cannot tell (a folder not read yet). */
+  presence?: (path: string) => boolean | null;
 }
 
-export const BookmarkList: React.FC<BookmarkListProps> = ({ bookmarks, onFileSelect, onRemove, onReorder, onUpdate }) => {
+// Changed outside MDP (renamed, moved or deleted in the OS or on another computer):
+// the bookmark is dimmed and struck through — after a moment, so the tree being
+// re-read just after a rename in MDP (the bookmark already follows) never shows it.
+const MISSING_TIP = 'Not found here — renamed, moved or deleted outside MDP? Remove this bookmark, or bookmark it again where it is now.';
+const goneAfter = (missing: boolean, prop: string) => (missing ? `${prop} .3s ease .8s` : `${prop} .15s ease`);
+
+// Show a file or a folder in the Explorer: open/focus the panel, then ask the file
+// tree to expand the ancestors (and a folder itself), select it and scroll it into
+// view. When the Explorer panel was CLOSED, its Sidebar mounts on a later commit —
+// after this synchronous dispatch — so the request is also parked on a global the
+// Explorer instance consumes on mount.
+const revealInTree = (path: string) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (window as any).__mdpPendingReveal = { path, ts: Date.now() };
+  window.dispatchEvent(new CustomEvent(SHOW_PANEL_EVENT, { detail: { id: 'explorer' } }));
+  window.dispatchEvent(new CustomEvent('mdp-reveal-in-tree', { detail: { path } }));
+};
+
+export const BookmarkList: React.FC<BookmarkListProps> = ({ bookmarks, onFileSelect, onRemove, onReorder, onUpdate, presence }) => {
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [overIndex, setOverIndex] = useState<number | null>(null);
   const [picker, setPicker] = useState<{ anchor: HTMLElement; path: string } | null>(null);
   const [titles, setTitles] = useState<TitleState>({});
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; path: string } | null>(null);
-
-  // Show the file in the Explorer: open/focus the panel, then ask the file tree to
-  // expand the ancestors, select the file and scroll it into view. When the
-  // Explorer panel was CLOSED, its Sidebar mounts on a later commit — after this
-  // synchronous dispatch — so the request is also parked on a global the Explorer
-  // instance consumes on mount.
-  const revealInTree = (path: string) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (window as any).__mdpPendingReveal = { path, ts: Date.now() };
-    window.dispatchEvent(new CustomEvent(SHOW_PANEL_EVENT, { detail: { id: 'explorer' } }));
-    window.dispatchEvent(new CustomEvent('mdp-reveal-in-tree', { detail: { path } }));
-  };
 
   const bookmarksRef = useRef(bookmarks);
   useEffect(() => { bookmarksRef.current = bookmarks; }, [bookmarks]);
@@ -61,10 +71,11 @@ export const BookmarkList: React.FC<BookmarkListProps> = ({ bookmarks, onFileSel
     return () => window.removeEventListener('mdp-file-saved', handler);
   }, []);
 
-  // Load slide titles (from each file's @title meta) for bookmarks not yet cached.
+  // Load slide titles (from each file's @title meta) for bookmarks not yet cached
+  // (a folder has none: it is shown by its name).
   useEffect(() => {
     let cancelled = false;
-    const missing = bookmarks.map((b) => b.path).filter((p) => !(p in titles));
+    const missing = bookmarks.filter((b) => b.kind !== 'folder').map((b) => b.path).filter((p) => !(p in titles));
     if (missing.length === 0) return;
     (async () => {
       const entries = await Promise.all(
@@ -97,23 +108,28 @@ export const BookmarkList: React.FC<BookmarkListProps> = ({ bookmarks, onFileSel
     <List dense sx={{ p: 0 }}>
       {bookmarks.map((bm, index) => {
         const fileName = bm.path.split('/').pop() || bm.path;
-        const meta = titles[bm.path];
+        const folder = bm.kind === 'folder';
+        const missing = presence?.(bm.path) === false;
+        const meta = folder ? undefined : titles[bm.path];
         const title = meta?.title;
-        // Show the file name while loading or when the file has no @title
-        // (e.g. a non-slide file); (No Title) when @title is blank;
-        // otherwise the rendered slide title.
-        const primary =
-          title === undefined || title.kind === 'none' ? (
-            fileName
-          ) : title.kind === 'empty' ? (
-            '(No Title)'
-          ) : (
-            <span dangerouslySetInnerHTML={{ __html: title.html }} />
-          );
-        // Secondary line: the slide's @subtitle when set, otherwise the path.
-        const secondary = meta?.subtitle
-          ? <span dangerouslySetInnerHTML={{ __html: meta.subtitle }} />
-          : bm.path;
+        // A folder: its name (a link's without ".mdplink") over the folder holding it.
+        // A file: its name while loading or when it has no @title (e.g. a non-slide
+        // file); (No Title) when @title is blank; otherwise the rendered slide title.
+        const primary = folder ? (
+          fileName.replace(/\.mdplink$/i, '')
+        ) : title === undefined || title.kind === 'none' ? (
+          fileName
+        ) : title.kind === 'empty' ? (
+          '(No Title)'
+        ) : (
+          <span dangerouslySetInnerHTML={{ __html: title.html }} />
+        );
+        // Secondary line: a folder's place; a slide's @subtitle when set, otherwise the path.
+        const secondary = folder
+          ? (bm.path.includes('/') ? bm.path.slice(0, bm.path.lastIndexOf('/')) : '(workspace)')
+          : meta?.subtitle
+            ? <span dangerouslySetInnerHTML={{ __html: meta.subtitle }} />
+            : bm.path;
         const Icon = bookmarkIconFor(bm.icon);
         return (
           <ListItem
@@ -142,9 +158,14 @@ export const BookmarkList: React.FC<BookmarkListProps> = ({ bookmarks, onFileSel
             }}
           >
             <ListItemButton
-              onClick={() => onFileSelect(bm.path)}
+              // A folder opens in the file tree; a file opens in the editor — unless
+              // it is gone from where the bookmark says.
+              onClick={() => (missing
+                ? notify(`Not found: ${bm.path} — renamed, moved or deleted outside MDP? Remove the bookmark, or bookmark it again where it is now.`, { severity: 'info', title: 'Bookmark not found' })
+                : folder ? revealInTree(bm.path) : onFileSelect(bm.path))}
+              title={missing ? MISSING_TIP : folder ? `Show ${bm.path} in the file tree` : undefined}
               onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, path: bm.path }); }}
-              sx={{ py: 0.5, borderRadius: 1, '&:hover': { bgcolor: 'var(--app-bg-hover)' } }}>
+              sx={{ py: 0.5, borderRadius: 1, '&:hover': { bgcolor: 'var(--app-bg-hover)' }, opacity: missing ? 0.45 : 1, transition: goneAfter(missing, 'opacity') }}>
               <ListItemIcon
                 sx={{ minWidth: 32 }}
                 onClick={(e) => { e.stopPropagation(); setPicker({ anchor: e.currentTarget, path: bm.path }); }}
@@ -153,7 +174,11 @@ export const BookmarkList: React.FC<BookmarkListProps> = ({ bookmarks, onFileSel
                 <Icon fontSize="small" sx={{ color: bm.color }} />
               </ListItemIcon>
               <ListItemText
-                primary={primary}
+                primary={(
+                  <span style={{ textDecoration: 'line-through', textDecorationColor: missing ? 'currentColor' : 'transparent', transition: goneAfter(missing, 'text-decoration-color') }}>
+                    {primary}
+                  </span>
+                )}
                 secondary={secondary}
                 slotProps={{ primary: { fontSize: '0.85rem', color: 'var(--app-text-secondary)' }, secondary: { fontSize: '0.7rem', color: 'var(--app-text-disabled)', sx: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } } }}
               />
@@ -189,7 +214,7 @@ export const BookmarkList: React.FC<BookmarkListProps> = ({ bookmarks, onFileSel
         {pickerBookmark && (
           <Box sx={{ width: 180 }}>
             <Typography variant="caption" sx={{ color: 'var(--app-text-disabled)' }}>Icon</Typography>
-            <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 0.5, mb: 1, mt: 0.5 }}>
+            <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 0.5, mb: 1, mt: 0.5 }}>
               {BOOKMARK_ICON_KEYS.map((key) => {
                 const Icon = bookmarkIconFor(key);
                 const selected = key === pickerBookmark.icon;

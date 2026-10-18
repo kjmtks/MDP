@@ -30,7 +30,7 @@ export interface SidebarSharedProps {
   handleOpenFolder?: () => void;
   bookmarks: Bookmark[];
   isBookmarked: (path: string) => boolean;
-  onToggleBookmark: (path: string) => void;
+  onToggleBookmark: (path: string, kind?: 'file' | 'folder') => void;
   onReorderBookmark?: (from: number, to: number) => void;
   onUpdateBookmark?: (path: string, changes: { icon?: string; color?: string }) => void;
   onRenameFile?: (oldPath: string, newPath: string) => void;
@@ -140,7 +140,7 @@ export interface EditorSharedProps {
   onSave: () => void;
   moveSlide: (dir: number) => void;
   isBookmarked: (path: string) => boolean;
-  toggleBookmark: (path: string) => void;
+  toggleBookmark: (path: string, kind?: 'file' | 'folder') => void;
   bookmarks: Bookmark[];
   updateBookmark: (path: string, changes: { icon?: string; color?: string }) => void;
   handleEditDirectDrawio: () => void;

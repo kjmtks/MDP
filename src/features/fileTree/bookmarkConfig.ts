@@ -1,5 +1,6 @@
 import type { SvgIconComponent } from '@mui/icons-material';
 import BookmarkIcon from '@mui/icons-material/Bookmark';
+import FolderIcon from '@mui/icons-material/Folder';
 import StarIcon from '@mui/icons-material/Star';
 import FlagIcon from '@mui/icons-material/Flag';
 import FavoriteIcon from '@mui/icons-material/Favorite';
@@ -10,6 +11,7 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 
 export const BOOKMARK_ICONS: Record<string, SvgIconComponent> = {
   bookmark: BookmarkIcon,
+  folder: FolderIcon,
   star: StarIcon,
   flag: FlagIcon,
   favorite: FavoriteIcon,
