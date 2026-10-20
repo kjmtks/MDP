@@ -448,7 +448,10 @@ export default function PresenterPage() {
     } else {
       if (!recRunRef.current) {
         // A fresh run starts with the stopwatch: from now on every slide change
-        // books time to the slide being left.
+        // books time to the slide being left. The talk starts here, so every module
+        // does too — at its initial state, on every surface (the main window's
+        // owners set theirs again).
+        moduleSyncBus.resetAll();
         recRunRef.current = { id: newRunId(), startedAt: new Date().toISOString() };
         recMsRef.current = [];
         recVisitsRef.current = [];

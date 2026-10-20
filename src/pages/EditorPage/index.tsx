@@ -74,6 +74,7 @@ import type { ModuleParam } from '../../utils/moduleParser';
 const FX_EASINGS = ['ease', 'linear', 'ease-in', 'ease-out', 'ease-in-out', 'cubic-bezier(0.4, 0, 0.2, 1)'];
 import { clearAllEffects, registerEffect, getAllEffectSnippets } from '../../features/effects/effectManager';
 import { applyModulesToMarkdown, parseArguments } from '../../features/modules/moduleProcessor';
+import { moduleSyncBus } from '../../features/modules/moduleSyncBus';
 import { resolveImages, setLibraryImages, parseInFileImageDefs, type ImageEntry } from '../../features/images/imageRegistry';
 import { addFileImageDef, editFileImageDef, deleteFileImageDef } from '../../features/images/imageDocEdits';
 import { updateModuleTransforms, removeModuleDirectives, parseModuleDirectives, moveModuleDirective, getModuleDirectiveText, pasteModuleDirective, pasteModuleAt } from '../../features/modules/moduleDocEdits';
@@ -1497,6 +1498,9 @@ export default function EditorPage() {
     // string fails to load on Windows (ERR_FILE_NOT_FOUND) — so the popup must
     // open the bare index.html.
     const baseUrl = window.location.href.split('#')[0].split('?')[0];
+    // A talk given from the presenter view starts here: every module at its
+    // initial state (as when the slideshow starts).
+    moduleSyncBus.resetAll();
     window.open(`${baseUrl}#/presenter?channel=${channelId}&token=${encodeURIComponent(token)}`, '_blank', 'width=1000,height=800');
   }, [channelId, token]);
 
@@ -1508,6 +1512,7 @@ export default function EditorPage() {
     const baseUrl = window.location.href.split('#')[0].split('?')[0];
     const w = Math.max(480, Math.round((slideSize.width || 1280) / 2));
     const h = Math.round(w * (slideSize.height || 720) / (slideSize.width || 1280));
+    moduleSyncBus.resetAll();   // a show starts: every module at its initial state
     window.open(
       `${baseUrl}#/output?channel=${channelId}&token=${encodeURIComponent(token)}`,
       'mdp-output',

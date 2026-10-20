@@ -265,6 +265,9 @@ content that appears on step 2
 Common args: \`step\`/\`enter\` (step it appears), \`effect\` (an effect NAME — see
 "Animation effects" below), \`duration\`, \`easing\`, \`emphasis\`/\`exit\` (+
 \`emphasisEffect\`/\`exitEffect\`), \`stagger\`, \`auto\` (auto-advance ms).
+A build without \`step\` appears at step 1, so several unnumbered builds on one slide
+show TOGETHER: number the later ones (\`step: 2\`, \`step: 3\`…), one \`[[step]]\` in the
+script per step; blocks may share a step.
 
 ## Answers — one deck for the instructor's copy and the handout
 

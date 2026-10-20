@@ -25,6 +25,7 @@ import { buildPlaylist, scriptSegments, type PlayItem, type ScriptAction } from 
 import { applyCues, NO_FOCUS, type FocusState } from '../focus/focusState';
 import { CAPTION_TEXT, captionLang, fitCaptionBox } from './captionFit';
 import { mdpBus } from '../bus/mdpBus';
+import { moduleSyncBus } from '../modules/moduleSyncBus';
 import { SpeechServerControls } from '../tts/SpeechServerControls';
 import { scriptKey } from '../slide/talkTime';
 import { firstHeading, newRunId, type NarrationMeasure } from '../rehearsal/rehearsalStore';
@@ -570,7 +571,7 @@ export const AutoPlayView: React.FC<{
   };
   const cancelPregen = () => { prepTokenRef.current++; pregenAbortRef.current?.abort(); };
 
-  const play = () => { if (finished) { itemIdxRef.current = 0; setSlideIdx(0); resetFocus(); run(0); } else run(itemIdxRef.current); };
+  const play = () => { if (finished) { moduleSyncBus.resetAll(); itemIdxRef.current = 0; setSlideIdx(0); resetFocus(); run(0); } else run(itemIdxRef.current); };
   // Leave the setup screen: go TRUE fullscreen (ignored if the browser refuses) and
   // start the narrated show from the chosen slide. Fullscreen is requested FIRST —
   // it needs the click's user activation, which a long pre-generation would consume.
@@ -581,6 +582,9 @@ export const AutoPlayView: React.FC<{
       const ok = await pregenAll(from);
       if (!ok) return;   // cancelled / engine failure → stay on the setup screen
     }
+    // Every module from its initial state: a timer run down in the preview would
+    // stay at 0:00, and its `[[emit-wait: cmd:x start]]` would go on at once.
+    moduleSyncBus.resetAll();
     setSlideIdx(startFrom); setBuildStep(0);
     itemIdxRef.current = from;
     resetFocus();
@@ -590,7 +594,7 @@ export const AutoPlayView: React.FC<{
     run(from);
   };
   const pause = () => { stopAll(); setPlaying(false); };
-  const restart = () => { stopAll(); setFinished(false); setSlideIdx(0); setBuildStep(0); itemIdxRef.current = 0; resetFocus(); run(0); };
+  const restart = () => { stopAll(); moduleSyncBus.resetAll(); setFinished(false); setSlideIdx(0); setBuildStep(0); itemIdxRef.current = 0; resetFocus(); run(0); };
   const jump = (delta: number) => {
     const ni = Math.max(0, Math.min(slides.length - 1, slideIdx + delta));
     const wasPlaying = playing;

@@ -10,6 +10,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type StateCb = (state: any) => void;
 type ActionCb = (type: string, payload: any) => void;
+type ResetCb = (phase: 'down' | 'up') => void;
 
 interface BusMsg { type: 'MODULE_STATE' | 'MODULE_ACTION'; syncId: string; state?: any; actionType?: string; payload?: any; }
 
@@ -17,9 +18,26 @@ let sender: ((msg: BusMsg) => void) | null = null;
 const states: Record<string, any> = {};
 const stateListeners: Record<string, Set<StateCb>> = {};
 const actionListeners: Record<string, Set<ActionCb>> = {};
+const resetListeners = new Set<ResetCb>();
+// The syncId of the MODULE_STATE that drops EVERY state (a show starts). An older
+// page just keeps a state nobody reads under it.
+const ALL = '*';
 
 const notifyState = (syncId: string) => {
   stateListeners[syncId]?.forEach((l) => { try { l(states[syncId]); } catch (e) { console.error('[MDP] module onState error', e); } });
+};
+
+// Every module starts again from its initial state: the surfaces stop their module
+// scripts first (a teardown may still write a state), the states go, then the
+// scripts run again — an owner finds no state and sets its initial one (a timer its
+// full time), a mirror shows its default until the owner's arrives.
+const dropAll = (broadcast: boolean) => {
+  const phase = (p: 'down' | 'up') => resetListeners.forEach((l) => { try { l(p); } catch (e) { console.error('[MDP] module reset error', e); } });
+  phase('down');
+  Object.keys(states).forEach((id) => { delete states[id]; });
+  // Before the owners' new states, which arrive after it in order.
+  if (broadcast) sender?.({ type: 'MODULE_STATE', syncId: ALL, state: null });
+  phase('up');
 };
 
 export const moduleSyncBus = {
@@ -51,8 +69,23 @@ export const moduleSyncBus = {
     return () => { actionListeners[syncId]?.delete(cb); };
   },
 
+  /** A show starts — the slideshow, the narrated auto-play (Start / Restart / Play
+   *  again), the presenter view or the output window opened, the presenter's
+   *  stopwatch starting a new run: every module back to its initial state, in this
+   *  window and every other one. (A rehearsal in the preview left a timer at 0:00,
+   *  and `[[emit-wait: cmd:x start]]` then went on at once.) Within a show the
+   *  states are kept. */
+  resetAll() { dropAll(true); },
+
+  /** A surface running module scripts: `down` = stop them, `up` = run them again. */
+  onReset(cb: ResetCb): () => void {
+    resetListeners.add(cb);
+    return () => { resetListeners.delete(cb); };
+  },
+
   // --- inbound from the sync channel (called by the page) ---
   receiveState(syncId: string, state: any) {
+    if (syncId === ALL) { dropAll(false); return; }
     states[syncId] = state;
     notifyState(syncId);
   },

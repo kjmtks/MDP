@@ -6,6 +6,7 @@ import { DrawingOverlay, type Stroke } from '../../drawing/components/DrawingOve
 import { ManipulationLayer, type ManipRuntime } from './ManipulationLayer';
 import { getCachedSvg, getFallback, getSvgNode, loadSvg, registerDataUri, svgPlaceholderAttrs, SVG_INVALIDATED_EVENT } from '../inlineSvg';
 import { executeModuleScripts } from '../../modules/moduleManager';
+import { moduleSyncBus } from '../../modules/moduleSyncBus';
 import { applyBuildStep, applyBuildStepInstant } from '../../effects/buildRuntime';
 import { FocusLayer } from '../../focus/FocusLayer';
 import { InkEditLayer } from '../../focus/InkEditLayer';
@@ -581,6 +582,16 @@ export const SlideView: React.FC<SlideViewProps> = memo(({
     headerTeardownRef.current?.();
     footerTeardownRef.current?.();
   }, []);
+
+  // A show starts (moduleSyncBus.resetAll): the scripts stop BEFORE the shared
+  // states are dropped and run again after, so each module starts from its
+  // initial state — a timer its full time, not the 0:00 a rehearsal left behind.
+  useEffect(() => moduleSyncBus.onReset((phase) => {
+    if (phase === 'up') { runModuleScripts(); return; }
+    headerTeardownRef.current?.(); headerTeardownRef.current = undefined;
+    footerTeardownRef.current?.(); footerTeardownRef.current = undefined;
+    moduleTeardownRef.current?.(); moduleTeardownRef.current = undefined;
+  }), [runModuleScripts]);
 
   // In-slide builds (slideshow only). Single before-paint effect: on content
   // (re)mount snap builds to the current step; on a step change animate. If the

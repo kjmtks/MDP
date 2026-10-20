@@ -4,6 +4,7 @@ import { choiceDialog } from '../../../components/error/errorReporter';
 import { focusStepsAt, lineCues, posAfterChip, presentMarkers, pressEnd, pressStart, slideScript, stepsAt } from '../../autoplay/autoplay';
 import { sendFocus } from '../../focus/focusBus';
 import { mdpBus } from '../../bus/mdpBus';
+import { moduleSyncBus } from '../../modules/moduleSyncBus';
 
 interface DisplayInfo {
   id: number; label: string; width: number; height: number;
@@ -191,6 +192,9 @@ export const usePresentation = (
       if (placement === null) return;   // cancelled from the display picker
       movedForShowRef.current = placement === 'moved';
 
+      // The show starts with every module at its initial state (a timer run down
+      // in the preview would otherwise stay at 0:00).
+      moduleSyncBus.resetAll();
       setIsSlideshow(true);
       setMode('view');
       setShowControls(isTouchDevice);

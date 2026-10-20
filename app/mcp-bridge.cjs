@@ -72,6 +72,7 @@ const ASSET_GUIDES = {
     '• <style> — CDATA CSS; scope every rule under a module class (e.g. .mdp-mod-x). Injected ONCE per module name (CSS-only edits need an app restart to re-show in a running app).',
     '• <script> — CDATA JS: `{ init(el, ctx) { … }, destroy() {} }`. ctx = {id, root, presenting, role (owner|mirror), syncId, getShared(), setShared(patch), onShared(cb), sendAction(a), onAction(cb), onCleanup(cb), tag, emit(topic,payload), onBus(topic,cb), onCommand(cb)}. Add class `mdp-interactive` to an element to suppress slide nav. If you inject raw $…$ / \\(…\\) HTML, call window.renderMathInElement(el) — the Markdown KaTeX pass skips injected HTML.',
     '    · CLEANUP RULE: init() re-runs on the SAME DOM (teardown removes bus subscriptions but NOT DOM listeners) — every addEventListener MUST be paired with removeEventListener inside ctx.onCleanup(), or one click will fire stale duplicate handlers.',
+    '    · SHARED STATE STARTS EMPTY with each show (the slideshow, the narrated auto-play, the presenter view / output window opened): every state is dropped and init() runs again — the owner sets its initial state when ctx.getShared() is empty, a mirror shows a default until it arrives. Within a show the state is kept.',
     '    · App event bus (window.mdpBus / ctx.emit / ctx.onBus): free-form topics reach every surface (preview / slideshow / presenter / remote). Every directive accepts a `tag: NAME` argument; ctx.onCommand((action, args, done) => …) then receives `cmd:NAME` commands — from other modules, from @script markers ([[emit-wait: cmd:NAME play | label]] pauses the narration until you call done()), and from the presenter script pane where markers render as clickable chips. Run side effects (audio etc.) only when ctx.role === "owner". `narration:pause|resume|skip` topics control the narrated auto-play.',
     '    · TTS: window.mdpTts.speak(text, {lang, voice, speaker, serverVoice, instructions, rate, onProgress}) speaks with the user-configured narrator (Web Speech / VOICEVOX / an OpenAI-compatible TTS server such as Irodori-TTS, falling back to Web Speech when that engine is down; `voice` = Web Speech narrator, `speaker` = VOICEVOX style id, `serverVoice` = the TTS server\'s voice id, `instructions` = how to speak, e.g. "明るく弾んだ若い女性の声" — Irodori\'s Voice Design, Japanese only); mdpTts.stop() stops. See @speakcard / @speak for the reference implementation of cross-surface audio.',
     'FIND existing: get_slide_spec (module index) then get_module_spec(names) for full specs; read_module(path) for raw source.',
@@ -956,6 +957,13 @@ function findRunSlide(records, slideNo, heading) {
   return null;
 }
 
+// A numeric argument of a @build directive (`step: 2`, `enter: 3`, `emphasis: 2`,
+// `exit: 4`) \u2014 `key: value` only, as parseArguments reads it; undefined if absent.
+function buildStepArg(args, key) {
+  const m = String(args || '').match(new RegExp(`(?:^|[\\s,])${key}\\s*:\\s*(\\d+)`, 'i'));
+  return m ? Number(m[1]) : undefined;
+}
+
 // Design / consistency LINT over a deck \u2014 advisory, complements validate_deck
 // (syntax) and measure_slides (overflow). Pure text analysis: per-slide density &
 // structure checks plus a few deck-level consistency checks. severity: 'warn' =
@@ -966,6 +974,10 @@ function lintDeck(text) {
   const slideRaws = blocks.slice(1);
   const findings = [];
   const add = (slide, severity, code, message) => findings.push({ slide, severity, code, message });
+  // The meta page's @build holds the deck-wide defaults (a build without its own
+  // `step:` takes the default's, else 1).
+  const metaBuild = meta.match(/<!--\s*@build\b([^>]*?)-->/i);
+  const defaultBuildStep = (metaBuild && (buildStepArg(metaBuild[1], 'enter') ?? buildStepArg(metaBuild[1], 'step'))) || 1;
 
   if (!metaField(meta, 'title')) add(0, 'warn', 'no-title', 'The deck has no @title on the meta page.');
   if (!metaField(meta, 'theme')) add(0, 'info', 'no-theme', 'No @theme is set; the deck uses the default theme.');
@@ -1009,17 +1021,30 @@ function lintDeck(text) {
     }
 
     // @script [[step]] markers vs @build steps: the narrated auto-play advances ONE
-    // build per [[step]], so a mismatch silently desyncs narration from reveals \u2014
+    // step per [[step]], so a mismatch silently desyncs narration from reveals \u2014
     // and today the author has to count both by hand.
     const scriptText = [...raw.matchAll(/<!--\s*@script:\s*([\s\S]*?)-->/g)].map((m) => m[1]).join('\n');
     if (scriptText) {
       const stepMarks = (scriptText.match(/\[\[\s*step\s*\]\]/gi) || []).length;
-      // Top-level @build openers on the slide (the meta page's @build is a deck-wide
-      // default, but this loop only covers content slides). Nested/parameterized
-      // steps make this an approximation \u2014 report as warn, not error.
-      const buildSteps = (raw.match(/<!--\s*@build[\s>]/gi) || []).length;
+      // The slide's steps as the build processor counts them: a @build without
+      // `step:` / `enter:` appears at step 1 (or the meta page's @build default), so
+      // two such blocks show TOGETHER; the count is the highest step any block uses
+      // (enter / emphasis / exit). Counting the openers instead missed exactly that
+      // (two unnumbered builds + two [[step]] looked fine) and flagged a slide with
+      // two blocks sharing `step: 2`.
+      const raws = [...raw.replace(/<!--\s*@script:[\s\S]*?-->/g, ' ').matchAll(/<!--\s*@build\b([^>]*?)-->/gi)].map((m) => m[1]);
+      let buildSteps = 0;
+      let unnumbered = 0;
+      for (const a of raws) {
+        const enter = buildStepArg(a, 'enter') ?? buildStepArg(a, 'step');
+        if (enter === undefined) unnumbered++;
+        buildSteps = Math.max(buildSteps, enter ?? defaultBuildStep, buildStepArg(a, 'emphasis') ?? 0, buildStepArg(a, 'exit') ?? 0);
+      }
       if (stepMarks !== buildSteps && (stepMarks > 0 || buildSteps > 0)) {
-        add(n, 'warn', 'script-step-mismatch', `@script has ${stepMarks} [[step]] marker(s) but the slide has ${buildSteps} @build step(s) \u2014 auto-play narration will desync from the reveals (one [[step]] per @build, in order).`);
+        const hint = unnumbered > 1 && stepMarks > buildSteps
+          ? ` ${unnumbered} @build blocks have no \`step:\` \u2014 they all appear at step ${defaultBuildStep}; number the later ones (\`step: 2\`, \`step: 3\`\u2026).`
+          : '';
+        add(n, 'warn', 'script-step-mismatch', `@script has ${stepMarks} [[step]] marker(s) but the slide's builds use ${buildSteps} step(s) \u2014 auto-play narration will desync from the reveals (one [[step]] per step).${hint}`);
       }
     }
 
