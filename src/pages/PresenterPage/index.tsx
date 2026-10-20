@@ -16,7 +16,7 @@ import { moduleSyncBus } from '../../features/modules/moduleSyncBus';
 import { mdpBus } from '../../features/bus/mdpBus';
 import { sendFocus, useBusFocus } from '../../features/focus/focusBus';
 import { cleanCue, cueInForce } from '../../features/focus/focusState';
-import { lineCues, presentMarkers, pressEnd, pressesLeft, slideScript } from '../../features/autoplay/autoplay';
+import { lineCues, presentMarkers, pressEnd, pressesLeft, pressStart, slideScript } from '../../features/autoplay/autoplay';
 import { registerParsedModule, clearAllModules } from '../../features/modules/moduleManager';
 import { registerParsedEffect, clearAllEffects } from '../../features/effects/effectManager';
 import type { ModuleData } from '../../utils/moduleParser';
@@ -36,6 +36,9 @@ import { Button, TextField } from '@mui/material';
 
 import '../../App.css';
 import './PresenterPage.css';
+
+// The script pane's text already read (CSS.highlights).
+const READ_HIGHLIGHT = 'mdp-script-read';
 
 interface SyncData {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -193,7 +196,7 @@ export default function PresenterPage() {
       try { cue = cleanCue(JSON.parse(chip.dataset.cue || 'null')); } catch { /* not a cue */ }
       chip.classList.toggle('mdp-chip-on', !!(cue && shownFocus && cueInForce(shownFocus, cue)));
     });
-  }, [shownFocus, scriptInner]);
+  }, [shownFocus, scriptInner, isEditingScript]);
   // The presentation is on while this view is open: the screen stays on.
   usePresentingSession(true, 'presenter');
 
@@ -222,7 +225,27 @@ export default function PresenterPage() {
       const c = first.getBoundingClientRect();
       if (c.top < p.top + 8 || c.bottom > p.bottom - 8) pane.scrollTop += c.top - p.top - p.height / 3;
     }
-  }, [plan, cuePos, scriptInner, scriptChips]);
+  }, [plan, cuePos, scriptInner, scriptChips, isEditingScript]);
+  // The script already read — everything before the press → did last (its first
+  // chip) — in grey, so the presenter sees at a glance how far they are. A
+  // highlight over a Range (CSS Custom Highlight API): the pane's HTML is React's
+  // and stays as it is. A browser without the API greys nothing.
+  useEffect(() => {
+    const registry = typeof CSS !== 'undefined' ? CSS.highlights : undefined;
+    if (!registry || typeof Highlight === 'undefined') return undefined;
+    const root = scriptPaneRef.current;
+    const { markers } = plan;
+    // Past the markers (the builds the script never reveals) the last press stays.
+    const chip = root && cuePos > 0 && markers.length
+      ? scriptChips()[markers[pressStart(markers, Math.min(cuePos, markers.length))].chip]
+      : undefined;
+    if (!root || !chip) { registry.delete(READ_HIGHLIGHT); return undefined; }
+    const range = document.createRange();
+    range.setStart(root, 0);
+    range.setEndBefore(chip);
+    registry.set(READ_HIGHLIGHT, new Highlight(range));
+    return () => { registry.delete(READ_HIGHLIGHT); };
+  }, [plan, cuePos, scriptInner, scriptChips, isEditingScript]);
   const movesLeft = pressesLeft(plan.markers, plan.extra, cuePos);
   const hasPlan = plan.markers.length > 0 || plan.extra > 0;
   const [nextKey, slideKey] = useMemo(() => ['presenter.next', 'presenter.nextSlide'].map((id) => {
@@ -865,6 +888,7 @@ export default function PresenterPage() {
                           .presenter-script .mdp-script-chip.mdp-chip-focus.mdp-chip-on { background:#d97706; color:#fff; }
                           .presenter-script .mdp-script-chip.mdp-chip-next { outline:2px dashed #fde68a; outline-offset:2px; }
                           .presenter-script .mdp-script-chip.mdp-chip-done:not(.mdp-chip-on):not(.mdp-chip-next) { opacity:0.5; }
+                          ::highlight(${READ_HIGHLIGHT}) { color:#7d8590; }
                           .presenter-kbd { display:inline-block; padding:0 5px; border:1px solid #57534e; border-radius:4px; background:#292524; color:#e7e5e4; font:inherit; font-size:0.95em; line-height:1.35; }
                         .presenter-script .mdp-script-chip.mdp-chip-used::after { content:' ✓'; }
                           .presenter-script .mdp-script-ruby { text-decoration:underline dashed rgba(138,180,248,0.85); text-decoration-thickness:1px; text-underline-offset:0.28em; cursor:help; }
