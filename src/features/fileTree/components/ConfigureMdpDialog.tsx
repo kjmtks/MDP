@@ -9,6 +9,7 @@ import { type MdpContent, parseContent, contentPath, effectiveDisabledModules, e
 import { FontsSection } from '../../fonts/FontsSection';
 import { SkillsSection } from '../../skills/SkillsSection';
 import { GlossarySection } from '../../glossary/GlossarySection';
+import { AudienceSection } from '../../audience/AudienceSection';
 import { mergeRequirements, requirementStatuses } from '../../fonts/fontRequirements';
 import { isFontInstalledLocally } from '../../fonts/fontRuntime';
 import { resolveMdpConfigDirs, collectScopedAssetPaths } from '../../workspace/mdpScope';
@@ -66,12 +67,13 @@ export const ConfigureMdpDialog: React.FC<Props> = ({ open, configDir, fileTree,
     if (!configDir || promptBusy) return;
     setPromptBusy(true);
     try {
-      const [allMods, allFx, themes, fonts, reqFiles, skills, glossaries] = await Promise.all([
+      const [allMods, allFx, themes, fonts, reqFiles, skills, glossaries, audience] = await Promise.all([
         apiClient.getModules(), apiClient.getEffects(), apiClient.getThemes(chain),
         apiClient.getFonts(chain).catch(() => []),
         apiClient.getFontRequirements(chain).catch(() => []),
         apiClient.getSkills(chain).catch(() => []),
         apiClient.getGlossaries(chain).catch(() => []),
+        apiClient.getAudience(chain).catch(() => []),
       ]);
       const fontRequirements = requirementStatuses(mergeRequirements(reqFiles).fonts, fonts, (f) => isFontInstalledLocally(f));
       const modByName = new Map<string, ModuleConfig>();
@@ -106,6 +108,7 @@ export const ConfigureMdpDialog: React.FC<Props> = ({ open, configDir, fileTree,
           // glossaries' terms, as many as fit).
           skills, skillsInline: true,
           glossaries, glossariesInline: true,
+          audience, audienceInline: true,
           aiNotes: effectiveAiNotes([...contents.slice(0, -1), content]),
           styleProfile: effectiveStyleProfile([...contents.slice(0, -1), content]).text,
         },
@@ -251,6 +254,14 @@ export const ConfigureMdpDialog: React.FC<Props> = ({ open, configDir, fileTree,
 
         {configDir && !loading && (
           <GlossarySection
+            configDir={configDir}
+            chain={chain.length ? chain : [configDir]}
+            onOpenFile={onOpenFile}
+          />
+        )}
+
+        {configDir && !loading && (
+          <AudienceSection
             configDir={configDir}
             chain={chain.length ? chain : [configDir]}
             onOpenFile={onOpenFile}

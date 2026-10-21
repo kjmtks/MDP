@@ -7,6 +7,7 @@ import type { Stroke } from '../../drawing/components/DrawingOverlay';
 import { applyModulesToMarkdown, parseArguments } from '../../modules/moduleProcessor';
 import { applyBuildsToMarkdown } from './buildProcessor';
 import { markScriptReadings, renderScriptChips } from '../../autoplay/autoplay';
+import { breathLines } from '../../autoplay/breathLines';
 import markedKatex from "marked-katex-extension";
 import { mdpKatexOptions, registerMdpKatex } from "./katexExtensions";
 
@@ -33,6 +34,8 @@ export interface SlideData {
   // (distinct from @note, which is a supplementary reminder). Drives the talk-time
   // estimate (reading speed) and is shown in the presenter view.
   scriptHtml: string;
+  // The same script one breath per line (the presenter's "Breath lines").
+  scriptBreathHtml?: string;
   raw: string;
   className: string;
   id?: string;                 // `<!-- @id name -->` — hyperlink anchor target
@@ -288,6 +291,13 @@ export const renderSlideHTML = (block: RawBlock, globalContext: SlideContext, pa
     gfm: true,
     async: false
   }) as string : "";
+  // …and one breath per line, for a person reading it aloud (cut before the code
+  // spans come back: their placeholders stay whole).
+  const scriptBreathHtml = scriptMarkdown ? marked.parse(renderScriptChips(restore(extractedScripts.map((s) => breathLines(s)).join('\n\n'))), {
+    breaks: true,
+    gfm: true,
+    async: false
+  }) as string : "";
 
   // Header/footer are now full block regions: run modules then markdown so a
   // module (e.g. @stamp, @qr) placed inside renders. Idempotent if the document
@@ -306,6 +316,7 @@ export const renderSlideHTML = (block: RawBlock, globalContext: SlideContext, pa
     html: slideHtml,
     noteHtml: noteHtml,
     scriptHtml: scriptHtml,
+    scriptBreathHtml,
     raw: block.rawContent,
     range: { startLine: block.startLine, endLine: block.endLine },
     className: pageClassName,

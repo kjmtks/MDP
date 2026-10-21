@@ -67,6 +67,16 @@ import { compressImageToBase64 } from '../../../utils/imageUtils';
 
 
 import { isElectron } from '../../../api/apiClient';
+import { useSlideCopyMenu } from '../../../features/review/useSlideCopyMenu';
+import type { SlidePick } from '../../../features/review/slideReference';
+import { ReviewPins } from '../../../features/review/ReviewPins';
+import { ReviewCommentDialog } from '../../../features/review/ReviewCommentDialog';
+import { REVIEW_FOCUS_EVENT, REVIEW_SHOW_EVENT } from '../../../features/review/useDeckReview';
+import { slideLabel } from '../../../features/review/reviewPlace';
+import RateReviewOutlinedIcon from '@mui/icons-material/RateReviewOutlined';
+import PushPinIcon from '@mui/icons-material/PushPin';
+import PushPinOutlinedIcon from '@mui/icons-material/PushPinOutlined';
+import { SHOW_PANEL_EVENT } from './dockShared';
 
 const toolbarSx = {
   display: 'flex', alignItems: 'center', gap: 0.5, px: 0.5, py: 0.25,
@@ -560,6 +570,10 @@ export const ImagesPanel: React.FC = () => {
 // the slide outlined and numbered in script order, and what is not found listed.
 // The preview only — never the slideshow or an export.
 const FOCUS_MARKS_KEY = 'mdp.preview.focusTargets';
+// The review's pins on the previewed slide, shown or not (per computer; shown by
+// default). A card clicked in the Review panel still flashes its place.
+const REVIEW_PINS_KEY = 'mdp.preview.reviewPins';
+const REVIEW_FLASH_MS = 2600;
 // The edit-layout mode's "add ink" menu: the shape the next drawing on the slide makes.
 const INK_TOOLS: [string, string, string][] = [
   ['arrow', '→', 'Arrow — press where it starts, release on what it points at'],
@@ -579,6 +593,52 @@ export const PreviewPanel: React.FC = () => {
   const [exportAnchor, setExportAnchor] = useState<null | HTMLElement>(null);
   const [inkMenu, setInkMenu] = useState<null | HTMLElement>(null);
   const inkTool = useInkTool();
+  // Right-click on the slide (view mode): a comment kept beside the deck, or a
+  // reference / a picture for the AI's chat.
+  const [commentFor, setCommentFor] = useState<SlidePick | null>(null);
+  const copyMenu = useSlideCopyMenu(p.copySlide, p.mode === 'view' && !p.manipulate.enabled, p.review ? setCommentFor : undefined);
+  const [slideBox, setSlideBox] = useState<HTMLDivElement | null>(null);
+  const commentDraft = useMemo(() => {
+    if (!commentFor || !p.review) return null;
+    const f = p.review.facts[commentFor.index];
+    return {
+      slideLabel: `${slideLabel(commentFor.index + 1, f)}${f?.heading ? ` — ${f.heading}` : ''}`,
+      what: [commentFor.place?.target, commentFor.quote ? `「${commentFor.quote}」` : ''].filter(Boolean).join(' '),
+    };
+  }, [commentFor, p.review]);
+  const showReview = (id?: string) => {
+    window.dispatchEvent(new CustomEvent(SHOW_PANEL_EVENT, { detail: { id: 'review' } }));
+    // after the panel has mounted
+    if (id) window.setTimeout(() => window.dispatchEvent(new CustomEvent(REVIEW_FOCUS_EVENT, { detail: { id } })), 80);
+  };
+  const openReview = p.review ? p.review.items.filter((x) => x.status === 'open') : [];
+  const [reviewPins, setReviewPins] = useState(() => { try { return localStorage.getItem(REVIEW_PINS_KEY) !== '0'; } catch { return true; } });
+  const toggleReviewPins = () => setReviewPins((on) => {
+    try { localStorage.setItem(REVIEW_PINS_KEY, on ? '0' : '1'); } catch { /* not remembered */ }
+    return !on;
+  });
+  // a card clicked in the Review panel: its place flashes for a moment (the panel has
+  // moved the preview to its slide)
+  const [reviewFlash, setReviewFlash] = useState<string | null>(null);
+  useEffect(() => {
+    let timer = 0;
+    const onShow = (e: Event) => {
+      const id = (e as CustomEvent<{ id?: string }>).detail?.id;
+      if (!id) return;
+      window.clearTimeout(timer);
+      setReviewFlash(id);
+      timer = window.setTimeout(() => setReviewFlash(null), REVIEW_FLASH_MS);
+    };
+    window.addEventListener(REVIEW_SHOW_EVENT, onShow);
+    return () => { window.removeEventListener(REVIEW_SHOW_EVENT, onShow); window.clearTimeout(timer); };
+  }, []);
+  /** The items whose pins go on slide `index`: its open ones (when the pins are on)
+   *  and the one whose card was just clicked (whatever its status). */
+  const pinsOf = (index: number) => {
+    const here = reviewPins ? openReview.filter((x) => x.slide === index + 1) : [];
+    const flashed = reviewFlash && p.review ? p.review.items.find((x) => x.id === reviewFlash && x.slide === index + 1) : undefined;
+    return flashed && !here.some((x) => x.id === flashed.id) ? [...here, flashed] : here;
+  };
   const [focusMarks, setFocusMarks] = useState(() => { try { return localStorage.getItem(FOCUS_MARKS_KEY) === '1'; } catch { return false; } });
   const toggleFocusMarks = () => setFocusMarks((on) => {
     try { localStorage.setItem(FOCUS_MARKS_KEY, on ? '0' : '1'); } catch { /* not remembered */ }
@@ -659,6 +719,25 @@ export const PreviewPanel: React.FC = () => {
         <Tooltip title="Auto-play with narration (read @script aloud, auto-advance; [[step]] drives builds)"><span><IconButton size="small" sx={toolBtnSx} disabled={!h.canPresent} onClick={h.onAutoPlay}><SmartDisplayIcon fontSize="small" /></IconButton></span></Tooltip>
         <Tooltip title="Start Slideshow (F5)"><span><IconButton size="small" sx={toolBtnSx} disabled={!h.canPresent} onClick={h.onToggleSlideshow}><PlayArrowIcon fontSize="small" /></IconButton></span></Tooltip>
         <Tooltip title="Slide Overview"><span><IconButton size="small" sx={{ ...toolBtnSx, color: h.isSlideOverview ? 'var(--app-text-strong)' : 'var(--app-text-muted)' }} disabled={!h.canPresent} onClick={h.onToggleOverview}><GridViewIcon fontSize="small" /></IconButton></span></Tooltip>
+        {p.review && (
+          <Tooltip title={`Review — findings, changes, the flow${openReview.length ? ` (${openReview.length} open)` : ''}`}>
+            <IconButton size="small" sx={{ ...toolBtnSx, position: 'relative' }} onClick={() => showReview()} className="mdp-review-button">
+              <RateReviewOutlinedIcon fontSize="small" />
+              {openReview.length > 0 && (
+                <span style={{ position: 'absolute', top: 0, right: 0, minWidth: 14, height: 14, borderRadius: 7, background: openReview.some((x) => x.severity === 'major' || x.by === 'human') ? '#e53935' : '#fb8c00', color: '#fff', fontSize: 9.5, lineHeight: '14px', padding: '0 3px', boxSizing: 'border-box' }}>{openReview.length}</span>
+              )}
+            </IconButton>
+          </Tooltip>
+        )}
+        {p.review && (
+          <Tooltip title={reviewPins
+            ? 'Review pins shown on the slide — where each open finding / comment points (preview only). Click to hide'
+            : 'Review pins hidden. Click to show where each open finding / comment points on the slide (preview only)'}>
+            <IconButton size="small" sx={{ ...toolBtnSx, color: reviewPins ? 'var(--app-accent)' : 'var(--app-text-muted)' }} onClick={toggleReviewPins} className="mdp-review-pins-toggle" aria-pressed={reviewPins}>
+              {reviewPins ? <PushPinIcon fontSize="small" /> : <PushPinOutlinedIcon fontSize="small" />}
+            </IconButton>
+          </Tooltip>
+        )}
         <Tooltip title="Export (PDF / PowerPoint / images / narrated video)">
           <span><IconButton size="small" sx={toolBtnSx} disabled={!h.canPresent || h.pptxBusy} onClick={(e) => setExportAnchor(e.currentTarget)}>
             {h.pptxBusy ? <CircularProgress size={16} sx={{ color: 'var(--app-accent)' }} /> : <FileDownloadIcon fontSize="small" />}
@@ -747,10 +826,22 @@ export const PreviewPanel: React.FC = () => {
             stylusOnly={p.stylusOnly} setStylusOnly={p.setStylusOnly}
             onHistoryBack={p.onHistoryBack} onHistoryForward={p.onHistoryForward} canHistoryBack={p.canHistoryBack} canHistoryForward={p.canHistoryForward}
           />
+          {copyMenu.menu}
+          <ReviewCommentDialog
+            draft={commentDraft}
+            onCancel={() => setCommentFor(null)}
+            onAdd={(c) => {
+              const pick = commentFor;
+              setCommentFor(null);
+              if (!pick || !p.review) return;
+              const box = pick.quoteBoxes.length ? pick.quoteBoxes[0] : pick.place?.box;
+              void p.review.addComment(pick.index, { ...c, target: pick.place?.target, quote: pick.quote || undefined, box }).then(() => showReview());
+            }}
+          />
           <SlideScaler width={p.slideSize.width} height={p.slideSize.height}>
             {p.slides.map((slide, index) => (
               index === p.currentSlideIndex && (
-                <div key={index} style={{ position: 'relative', width: '100%', height: '100%' }}>
+                <div key={index} ref={setSlideBox} style={{ position: 'relative', width: '100%', height: '100%' }} onContextMenu={(e) => copyMenu.onContextMenu(e, index)}>
                   {/* Isolate the live slide render: a bad directive/markup throws here,
                       not up through the whole editor. Recovers as soon as the slide's
                       html/raw changes (i.e. the user edits the offending markup). */}
@@ -769,6 +860,10 @@ export const PreviewPanel: React.FC = () => {
                       onUpdateStrokes={(indices, dx, dy) => p.handleUpdateStrokes(index, indices, dx, dy)}
                     />
                   </ErrorBoundary>
+                  {/* the open findings of this slide, and the one whose card was clicked (not while editing the layout) */}
+                  {!p.manipulate.enabled && pinsOf(index).length > 0 && (
+                    <ReviewPins items={pinsOf(index)} container={slideBox} onPick={showReview} flashId={reviewFlash} />
+                  )}
                 </div>
               )
             ))}

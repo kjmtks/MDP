@@ -36,6 +36,12 @@ const INSTRUCTIONS = [
   'The folder\'s glossaries (in the spec) give the narrator\'s readings of its terms — no ruby for',
   'those; add a recurring term the TTS misreads with patch_glossary.',
   'There is no editor window here: always pass an explicit `path` / `deck`.',
+  'A deck can have a REVIEW beside it — findings anchored to its slides (get_review; add_review for a',
+  'reviewer, resolve_review for the author; the person\'s own comments come first) —, snapshots to compare',
+  'a revision with (snapshot_deck, get_changes), and a lecture FLOW file, its understanding design',
+  '(get_flow / write_flow — write it before the slides; a step whose student\'s question you cannot write is a flat one).',
+  'The folder\'s AUDIENCE (get_audience: personas of who its decks are for) is what to write for — and what a reviewer reads a deck as.',
+  'Asked to REVIEW a deck with AI: call review_readiness first — it says what is in place and what is left; in Claude Code the /mdp-review-loop skill runs the reviewer and reviser subagents.',
 ].join(' ');
 
 function mount(app, deps) {

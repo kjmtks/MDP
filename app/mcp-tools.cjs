@@ -352,6 +352,95 @@ const TOOLS = [
     description: 'Cancel a queued or running narrated-video export (jobId from export_video / get_video_jobs), or every queued and running one with all:true. A cancelled job leaves no half-written file; an earlier finished video of the same deck stays.',
     inputSchema: S({ jobId: str('The job to cancel'), all: { type: 'boolean', description: 'Cancel every queued and running job' } }),
   },
+  // ---- the review: findings beside a deck, snapshots, the lecture's flow (app/reviewTools.cjs)
+  {
+    name: 'get_review',
+    description: 'The REVIEW of a deck — findings kept beside it (`<deck>.review.json`): the person\'s own comments (made on MDP\'s preview; `by: "human"` — they come first), an AI reviewer\'s findings, the author\'s questions; each anchored to a slide (found again by its @id / heading after slides are added) and a place on it. Default: the open ones. In a review loop the AUTHOR reads them, fixes the slides and answers each with resolve_review; a REVIEWER reads them so as not to repeat itself and to check that earlier findings were really fixed. Also lists the deck\'s snapshots (snapshot_deck).',
+    inputSchema: S({ path: str('Deck path (default: the active deck)'), status: str('open (default) | all | resolved | declined | answered'), slide: num('Only this slide (1-based)') }),
+  },
+  {
+    name: 'add_review',
+    description: 'Add FINDINGS to a deck\'s review — what a reader would stumble on, each where it shows. Made for a REVIEWER reading the deck as its students would (it does not change the deck). Name the slide (1-based) and, when the point is narrower, `target` (a place as get_focus_targets names it: #name, item:"…", cell:"…", "words") and/or `quote` (the exact words). `aspect`: clarity (will THESE students understand it: a definition with no reason for it, an abstraction before any example, a calculation step left out, a symbol never defined, a slide that only states facts — no question, nothing to hold on to), uptake (read IN ORDER as a student who neither takes everything in at once nor keeps it: a word or symbol used here that they met once, slides or minutes ago, with no reminder; a surprising or hard-to-picture point stated once and built on at once — no prediction first, no example they can see whole, no time to think, no second meeting), accuracy, effect (does it serve the lesson\'s goal and the question it should answer), flow (the link from the slide before), style. `severity`: major (a student would lose the thread) / minor / nit. `text`: what is wrong FOR THE STUDENTS; `suggestion`: a concrete fix (a rewrite, an example, a figure, a question to the room). `kind: "question"` = something only the person can answer. One finding per problem, no praise. The person sees them on the slides (MDP\'s Review panel). Write formulas in TeX — \\(…\\), \\[…\\] — never as Unicode (σ², x̄), and use Markdown freely: the panel draws both as a slide does.',
+    inputSchema: S({
+      path: str('Deck path'),
+      items: {
+        type: 'array',
+        description: 'The findings',
+        items: {
+          type: 'object',
+          properties: {
+            slide: num('Slide (1-based, as the tools number them)'),
+            text: str('What is wrong, for the students'),
+            suggestion: str('How to fix it'),
+            aspect: str('clarity | uptake | accuracy | effect | flow | style | other'),
+            severity: str('major | minor | nit'),
+            kind: str('finding (default) | question | comment'),
+            target: str('A place on the slide, as get_focus_targets names it'),
+            quote: str('The exact words concerned'),
+          },
+          required: ['slide', 'text'],
+        },
+      },
+      by: str('Who: "reviewer" (default), or a role such as "reviewer:struggling-student"'),
+      round: num('The review round (1, 2, …)'),
+    }, ['path', 'items']),
+  },
+  {
+    name: 'resolve_review',
+    description: 'Answer review items (ids from get_review): `status` resolved (fixed — say how in `reply`), declined (not changed — say why: misread, or the fix would hurt something else), answered (a question answered in `reply`), open (again). A `reply` alone adds to the item\'s thread. The person reads the replies in MDP; the reviewer\'s next round checks the resolved ones.',
+    inputSchema: S({
+      path: str('Deck path'),
+      updates: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            id: str('Item id (get_review)'),
+            status: str('resolved | declined | answered | open'),
+            reply: str('What was done, or why not'),
+            rule: { type: 'boolean', description: 'Mark (or unmark) it as a rule to keep' },
+          },
+          required: ['id'],
+        },
+      },
+      by: str('Who answers: "author" (default)'),
+    }, ['path', 'updates']),
+  },
+  {
+    name: 'snapshot_deck',
+    description: 'Keep the deck as it is NOW (the editor\'s text when open) as a snapshot — take one BEFORE revising a deck, so get_changes can show what the revision changed: a reviewer then reads only those slides, and the person sees them in MDP and can put a slide back. Kept under the workspace\'s .mdp/review-snapshots (the newest 20 per deck).',
+    inputSchema: S({ path: str('Deck path'), label: str('A short label, e.g. "before round 1"'), by: str('Who takes it') }, ['path']),
+  },
+  {
+    name: 'get_changes',
+    description: 'What changed in a deck since a snapshot (default: the newest; "first" = the oldest), slide by slide: changed (with a line diff), added, removed — slides matched by @id, then by their text, heading and order. Use it to review ONLY the slides a revision touched, and to tell the person what a loop of revisions did.',
+    inputSchema: S({ path: str('Deck path (default: the active deck)'), since: str('A snapshot id (get_review lists them), or "first"; default the newest'), diff: { type: 'boolean', description: 'Include each change\'s line diff (default true)' } }),
+  },
+  {
+    name: 'get_flow',
+    description: 'The lecture\'s FLOW — its understanding design, a Markdown file beside the deck (`<deck>.flow.md`): the goal, the students\' starting point, then each STEP: the slides it covers (#id), the student\'s question at that point, the device that answers it (an example, a picture, a contrast, time to think), the sentence that should land, the link to the next step, its time. Write it BEFORE the slides (the person checks 1–2 pages instead of 40 slides), keep it in step with them, and review the slides against it. No flow yet → the template to fill in. `check`: ids no slide has, slides no step names, content slides without an @id, steps naming no slide, steps with no student\'s question (a flat step).',
+    inputSchema: S({ path: str('Deck path (default: the active deck); the deck need not exist yet') }),
+  },
+  {
+    name: 'write_flow',
+    description: 'Write (create or replace) the lecture\'s flow file beside the deck (`<deck>.flow.md`; the previous version backed up to .mdp/mcp-backups). Follow get_flow\'s template: a `### N. claim` per step with the lines "- スライド: #id …", "- 学生の問い: …", "- 仕掛け: …", "- 腹落ち: …", "- つなぎ: …", "- 時間: …". Give the slides a step covers `<!-- @id … -->` so it can name them. Formulas in TeX — \\(…\\) — never as Unicode (μ, σ²), Markdown welcome: the presenter\'s flow step and the Review panel draw both as a slide does. Returns the check against the deck.',
+    inputSchema: S({ path: str('Deck path (the flow goes beside it)'), content: str('The whole flow file (Markdown)') }, ['path', 'content']),
+  },
+  {
+    name: 'get_audience',
+    description: 'WHO a folder\'s decks are for — the personas the author keeps in a folder\'s `.mdp` (`audience/<name>.md`): who they are, what they already know, where they stumble, how much they can hold in mind, how they reacted before, what reaches them. The audience is that of the NEAREST .mdp that has personas (not added up over the folders above). Read it BEFORE writing a lecture or a talk and write every slide and script for them; a REVIEWER reads the deck as each persona would (primary first) and names it in add_review\'s `by` ("reviewer:<name>"). No persona → the template (ask the person, or draft one from the course\'s skill and show it to them). `name` → one persona.',
+    inputSchema: S({ deck: str('Deck whose folder\'s audience to read (default: the active deck)'), name: str('One persona') }),
+  },
+  {
+    name: 'write_audience',
+    description: 'Write (create or replace) a persona: `.mdp/audience/<name>.md`, Markdown with a frontmatter `description` (who, in one line) and optional `primary: true`, then the sections of get_audience\'s template — who, what they already know, where they stumble, how much they can hold, interests, past reactions (add to them after each class), what reaches them. Default place: where the folder\'s audience already lives, else the deck\'s nearest .mdp; `dir` = the folder whose .mdp gets it ("" = workspace root). NOTE: personas in a folder\'s .mdp make that folder\'s audience its own — the ones above stop applying beneath it. The user may be asked to confirm; a replaced file is backed up to .mdp/mcp-backups.',
+    inputSchema: S({ name: str('Persona name (the file name): letters, digits, - _ .'), content: str('The whole file (Markdown with frontmatter)'), deck: str('Deck whose folder it is for (default: the active deck)'), dir: str('The folder whose .mdp gets it ("" = workspace root)') }, ['name', 'content']),
+  },
+  {
+    name: 'review_readiness',
+    description: 'CALL FIRST when asked to review a deck with AI (or to run the review loop): what a review needs and what is in place — the folder\'s personas (get_audience), slide skills, the flow file and its check, invisible <!-- @id --> on every content slide (the flow names slides by them), a snapshot, and (desktop) the Claude Code kit — the mdp-lecture-reviewer / mdp-lecture-reviser subagents and the /mdp-review-loop skill in ~/.claude. Each check has `ok` and, when not, `fix`: "loop" = the loop does it itself (flow, ids, snapshot), "loop + you" = the loop drafts it and the person confirms (a persona), "you" = only the person (install the kit from MDP\'s Review panel), "optional". `canStart` = nothing waits for the person; `command` = what the person types in Claude Code.',
+    inputSchema: S({ path: str('Deck path (default: the active deck)') }),
+  },
 ];
 
 // Tools that only make sense in the desktop app: they act on the editor window the

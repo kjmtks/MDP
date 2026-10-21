@@ -5,7 +5,7 @@ import { MANIP_DESELECT_EVENT, type ManipRuntime } from '../slide/components/Man
 import { inkAnchor, inkMarkers, inkText, isRoute } from './ink';
 import { placeInk, type PlacedInk } from './inkLayout';
 import { setInkTool, useInkTool } from './inkTool';
-import { isHit, listTargets, textLines, unionBox, type FocusBox } from './focusTargets';
+import { isHit, placeAt, placesOf, textLines, unionBox, type FocusBox } from './focusTargets';
 import './InkEditLayer.css';
 
 // The edit-layout mode's ink editing (the preview only): every [[ink: …]] of the slide
@@ -60,7 +60,6 @@ const COLOR_RE = /^(#[0-9a-f]{3,8}|[a-z]{3,20}|(?:rgb|rgba|hsl|hsla)\([\d\s.,%/]
 const PEN = 'var(--mdp-ink-color, var(--mdp-focus-pen, #ef6c00))';
 const SELECT = '#3b82f6';
 
-const within = (p: Pt, b: FocusBox, pad: number) => p.x >= b.x - pad && p.x <= b.x + b.w + pad && p.y >= b.y - pad && p.y <= b.y + b.h + pad;
 const centerOf = (b: FocusBox): Pt => ({ x: b.x + b.w / 2, y: b.y + b.h / 2 });
 const round2 = (v: number) => Math.round(v * 100) / 100;
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
@@ -89,20 +88,10 @@ const along = (pts: Pt[], f: number): Pt => {
 
 /** The places on the slide an end can go to (named places first, as get_focus_targets
  *  lists them); not the hints ("#…" for an unnamed module, "area:…" for an image). */
-const spotsOf = (root: HTMLElement): Spot[] =>
-  listTargets(root).filter((t) => !t.target.includes('…') && !t.target.startsWith('area:')).map((t) => ({ target: t.target, box: t.box }));
+const spotsOf = (root: HTMLElement): Spot[] => placesOf(root).map((t) => ({ target: t.target, box: t.box }));
 
 /** The smallest place under the point (a named one wins a tie). */
-const spotAt = (spots: Spot[], p: Pt, pad: number): Spot | null => {
-  let best: Spot | null = null;
-  for (const s of spots) {
-    if (!within(p, s.box, pad)) continue;
-    const a = s.box.w * s.box.h;
-    const b = best ? best.box.w * best.box.h : Infinity;
-    if (a < b - 1e-6 || (Math.abs(a - b) <= 1e-6 && s.target.startsWith('#') && !best?.target.startsWith('#'))) best = s;
-  }
-  return best;
-};
+const spotAt = (spots: Spot[], p: Pt, pad: number): Spot | null => placeAt(spots, p, pad);
 
 /** An end's anchor at a place under the pointer: the place itself — or, on a picture
  *  (the place 1 % of the slide or more), or where the end already pointed inside this

@@ -9,6 +9,7 @@
   "files": [
     "dist/**/*",
     "app/*.cjs",
+    "app/claude-review/**/*",
     "node_modules/ws/**/*",
     "node_modules/ssh2/**/*",
     "node_modules/asn1/**/*",

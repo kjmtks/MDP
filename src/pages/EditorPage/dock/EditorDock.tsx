@@ -23,6 +23,7 @@ import {
   FileTab,
 } from './DockPanels';
 import { EmptyState } from '../../../features/editor/components/EmptyState';
+import { ReviewPanel } from './ReviewPanel';
 import { useEditor, type EditorSharedProps } from './DockContext';
 import {
   LAYOUT_KEY, RESET_LAYOUT_EVENT, TOGGLE_PANEL_EVENT, SHOW_PANEL_EVENT, VISIBLE_PANELS_EVENT, REQUEST_VISIBLE_EVENT, STATIC_PANELS,
@@ -41,6 +42,7 @@ const components: Record<string, React.FunctionComponent<IDockviewPanelProps>> =
   bookmarks: () => <BookmarksPanel />,
   snippets: () => <SnippetsPanel />,
   images: () => <ImagesPanel />,
+  review: () => <ReviewPanel />,
   preview: () => <PreviewPanel />,
   fileEditor: (props) => <FileEditorPanel {...(props as IDockviewPanelProps<{ tabId: string }>)} />,
 };
@@ -64,6 +66,9 @@ function buildDefaultLayout(api: DockviewApi) {
   api.addPanel({ id: 'bookmarks', component: 'bookmarks', title: 'Bookmarks', position: { referencePanel: 'preview', direction: 'right' }, initialWidth: 300 });
   api.addPanel({ id: 'images', component: 'images', title: 'Images', position: { referencePanel: 'bookmarks', direction: 'below' } });
   api.addPanel({ id: 'snippets', component: 'snippets', title: 'Snippets', position: { referencePanel: 'images', direction: 'below' } });
+  // Review: a tab beside Bookmarks (findings, changes, the flow of the previewed deck).
+  api.addPanel({ id: 'review', component: 'review', title: 'Review', position: { referencePanel: 'bookmarks', direction: 'within' } });
+  api.getPanel('bookmarks')?.api.setActive();
   api.getPanel('explorer')?.api.setActive();
 }
 

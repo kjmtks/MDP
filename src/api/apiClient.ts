@@ -2,6 +2,8 @@ import { WEB_BASE } from './base';
 import type { WorkspaceFont, FontInspection, RequirementsFile, FontInstallResult } from '../features/fonts/fontTypes';
 import type { SlideSkill } from '../features/skills/skillTypes';
 import type { GlossaryFile } from '../features/glossary/glossary';
+import type { AudiencePersona } from '../features/audience/audience';
+import type { ClaudeReviewKit } from '../features/review/reviewModel';
 declare const __APP_VERSION__: string;
 // Baked in at build time (Vite `define`). Falls back gracefully if undefined.
 const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.0.0';
@@ -419,6 +421,25 @@ export const apiClient = {
     const res = await fetch(`${WEB_BASE}/api/glossaries${qs}`);
     if (!res.ok) throw new Error(`glossaries: HTTP ${res.status}`);
     return await res.json();
+  },
+
+  // The audience of the chain (`.mdp/audience/*.md` of its nearest `.mdp` that has any).
+  getAudience: async (dirs?: string[]): Promise<AudiencePersona[]> => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (isElectron()) return await (window as any).electronAPI.getAudience(dirs);
+    const qs = dirs && dirs.length ? `?dirs=${encodeURIComponent(dirs.join(','))}` : '';
+    const res = await fetch(`${WEB_BASE}/api/audience${qs}`);
+    if (!res.ok) throw new Error(`audience: HTTP ${res.status}`);
+    return await res.json();
+  },
+
+  // The Claude Code kit of the AI review (desktop only; null on the web): its status
+  // in ~/.claude, or install it.
+  claudeReviewKit: async (action: 'status' | 'install' = 'status'): Promise<ClaudeReviewKit | null> => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (!isElectron() || !(window as any).electronAPI?.claudeReviewKit) return null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return await (window as any).electronAPI.claudeReviewKit(action);
   },
 
   // The fonts the chain's `.mdp`s declare (raw requirements.json per `.mdp`).

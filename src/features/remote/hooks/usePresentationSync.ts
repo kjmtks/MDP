@@ -8,6 +8,7 @@ import { loadedModules } from '../../modules/moduleManager';
 import { loadedEffects } from '../../effects/effectManager';
 import type { RasterizeResult } from '../capture/captureTypes';
 import type { RehearsalRun } from '../../rehearsal/rehearsalStore';
+import type { FlowStep } from '../../review/reviewModel';
 import { forDevice, grantRemoteFiles, remoteAssetPaths, remoteSlide, type RemoteDeck, type RemoteView } from '../liveRemote';
 import type { LayoutReport } from '../layoutCheck';
 
@@ -58,6 +59,8 @@ export const usePresentationSync = (
   cuePos = 0,
   // A chip clicked in the presenter's script: → goes on right after it.
   onCueAt?: (slide: number, chip: number) => void,
+  // The lecture's flow (features/review): the presenter shows the step of the slide.
+  flowSteps: FlowStep[] | null = null,
 ) => {
   const [channelId] = useState<string>(() => {
     const query = window.location.hash.split('?')[1] || window.location.search;
@@ -91,10 +94,10 @@ export const usePresentationSync = (
       type: 'SYNC_STATE',
       // `basePath` travels too: a mirror needs it to resolve a slide's drawio/SVG
       // and image paths (SlideView builds those from `raw` + basePath).
-      payload: { slides, index: currentSlideIndex, step: step ?? 0, cuePos, slideSize, globalContext, baseUrl, basePath, themeCssUrl, fontCss, lastUpdated, allDrawings: drawings, isOverview: isSlideOverview, modules: Object.values(loadedModules), effects: Object.values(loadedEffects), lastRehearsal: lastRehearsal ?? null },
+      payload: { slides, index: currentSlideIndex, step: step ?? 0, cuePos, slideSize, globalContext, baseUrl, basePath, themeCssUrl, fontCss, lastUpdated, allDrawings: drawings, isOverview: isSlideOverview, modules: Object.values(loadedModules), effects: Object.values(loadedEffects), lastRehearsal: lastRehearsal ?? null, flow: flowSteps },
       channelId,
     }, 'local');
-  }, [slides, currentSlideIndex, step, cuePos, slideSize, globalContext, baseUrl, basePath, themeCssUrl, fontCss, lastUpdated, drawings, channelId, isSlideOverview, lastRehearsal]);
+  }, [slides, currentSlideIndex, step, cuePos, slideSize, globalContext, baseUrl, basePath, themeCssUrl, fontCss, lastUpdated, drawings, channelId, isSlideOverview, lastRehearsal, flowSteps]);
 
   const nextVisibleIndex = useCallback((from: number) => {
     let n = from + 1;

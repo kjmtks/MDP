@@ -15,5 +15,6 @@ export const STATIC_PANELS: { id: string; title: string }[] = [
   { id: 'bookmarks', title: 'Bookmarks' },
   { id: 'snippets', title: 'Snippets' },
   { id: 'images', title: 'Images' },
+  { id: 'review', title: 'Review' },
   { id: 'preview', title: 'Preview' },
 ];

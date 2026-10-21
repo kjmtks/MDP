@@ -75,6 +75,10 @@ const FX_EASINGS = ['ease', 'linear', 'ease-in', 'ease-out', 'ease-in-out', 'cub
 import { clearAllEffects, registerEffect, getAllEffectSnippets } from '../../features/effects/effectManager';
 import { applyModulesToMarkdown, parseArguments } from '../../features/modules/moduleProcessor';
 import { moduleSyncBus } from '../../features/modules/moduleSyncBus';
+import { markedPng } from '../../features/review/slideReference';
+import type { SlideCopySource } from '../../features/review/useSlideCopyMenu';
+import { useDeckReview, type ReviewEdit } from '../../features/review/useDeckReview';
+import type { FocusBox } from '../../features/focus/focusTargets';
 import { resolveImages, setLibraryImages, parseInFileImageDefs, type ImageEntry } from '../../features/images/imageRegistry';
 import { addFileImageDef, editFileImageDef, deleteFileImageDef } from '../../features/images/imageDocEdits';
 import { updateModuleTransforms, removeModuleDirectives, parseModuleDirectives, moveModuleDirective, getModuleDirectiveText, pasteModuleDirective, pasteModuleAt } from '../../features/modules/moduleDocEdits';
@@ -1386,12 +1390,21 @@ export default function EditorPage() {
     if (!isSlideshow && recState.status === 'recording' && recState.source === 'main') void stopRecording();
   }, [isSlideshow, recState.status, recState.source]);
 
+  // The previewed deck's review: its findings, snapshots and flow, read again when
+  // an MCP tool writes them. The flow's steps go to the presenter view too.
+  // the previewed deck's .mdp chain (its personas and skills: the Review panel's "AI
+  // review" box) — the open file's when it is the one previewed; a string key keeps
+  // the array the same while the chain is
+  const previewScopeKey = useMemo(() => (previewFileName && previewFileName !== currentFileName ? scopeConfigDirs(fileTree, previewFileName).join('\n') : ''), [fileTree, previewFileName, currentFileName]);
+  const reviewScope = useMemo(() => (previewScopeKey ? previewScopeKey.split('\n') : scopeDirs), [previewScopeKey, scopeDirs]);
+  const review = useDeckReview(previewFileType === 'markdown' ? previewFileName : null, slides, reviewScope);
+  const flowSteps = review?.flow?.parsed.steps ?? null;
   const { channelId, token, send, imagePrep } = usePresentationSync(
     syncSlides, currentSlideIndex, slideSize, globalContext, baseUrl, themeCssUrl, lastUpdated, drawings,
     moveSlide, addStroke, clear, undo, redo, handleAddBlankSlide, updateStrokes, handleUpdateNote,
     remotePort, rasterize, remoteActive, basePath, isSlideOverview, toggleSlideOverview, selectSlideFromOverview,
     step, navLink, navBack, navForward, handleUpdateScript, handleRehearsalRun, lastRehearsal, recordCommand,
-    remoteView, setLayoutJob, cuePos, cueAt,
+    remoteView, setLayoutJob, cuePos, cueAt, flowSteps,
   );
   // The presenter view shows the recorder's state (REC / elapsed time).
   useEffect(() => { send({ type: 'REC_STATE', state: recState, channelId }); }, [recState, send, channelId]);
@@ -1670,29 +1683,13 @@ export default function EditorPage() {
 
     await new Promise(resolve => setTimeout(resolve, 800));
 
-    const currentText = markdown || '';
-    const aspectRegex = new RegExp("<" + "!--\\s*@aspect\\s+([0-9.]+:[0-9.]+)\\s*--" + ">");
-    const aspectMatch = currentText.match(aspectRegex);
-    const ratioStr = aspectMatch ? aspectMatch[1] : '16:9';
-
-    const pageWidth = 1920;
-    let pageHeight = 1080;
-
-    const ratioParts = ratioStr.split(':');
-    if (ratioParts.length === 2) {
-      const rw = parseFloat(ratioParts[0]);
-      const rh = parseFloat(ratioParts[1]);
-      if (!isNaN(rw) && !isNaN(rh) && rw > 0) {
-        pageHeight = Math.round((pageWidth / rw) * rh);
-      }
-    }
-
+    // The paper size is PrintContainer's @page alone (the slide's box). A `size`
+    // here would win with !important, and the slides would run across the pages.
     const dynamicPrintStyle = document.createElement('style');
     dynamicPrintStyle.id = 'dynamic-print-size';
     dynamicPrintStyle.innerHTML = `
       @media print {
         @page {
-          size: ${pageWidth}px ${pageHeight}px !important;
           margin: 0 !important;
         }
         * {
@@ -1730,7 +1727,7 @@ export default function EditorPage() {
       // Hard safety net in case the timer is ever lost.
       setTimeout(cleanup, 8000);
     }
-  }, [currentFileName, markdown, appSettings.pdfNameSource, globalContext]);
+  }, [currentFileName, appSettings.pdfNameSource, globalContext, slides, basePath]);
 
   const handleFileSelect = useCallback((path: string, isBinary?: boolean) => {
     const url = new URL(window.location.href);
@@ -2083,6 +2080,51 @@ export default function EditorPage() {
     view.dispatch({ effects: setChipFocus.of(lit) });
   }, [showFocus, currentSlideIndex, currentFileName, previewFileName, editorRef]);
 
+  // The preview's "Copy image": the slide as the MCP renders it (every build shown),
+  // the long side up to 1280 px, the places pointed at framed in red.
+  const slideCopyImage = useCallback(async (index: number, boxes: FocusBox[]) => {
+    const slide = slides[index];
+    if (!slide) throw new Error('No such slide.');
+    const scale = Math.min(1.5, 1280 / Math.max(slideSize.width, slideSize.height));
+    const { dataUrl } = await rasterize(slide, { width: slideSize.width, height: slideSize.height, scale, basePath, themeCssUrl });
+    return markedPng(dataUrl, slideSize.width, boxes);
+  }, [slides, slideSize, basePath, themeCssUrl, rasterize]);
+  const copySlide = useMemo<SlideCopySource | undefined>(() => (previewFileType === 'markdown' && previewFileName
+    ? { deckPath: previewFileName, slides, image: slideCopyImage } : undefined), [previewFileType, previewFileName, slides, slideCopyImage]);
+  // The Review panel's edits — through the editor (one undoable change), only when
+  // the previewed deck is the open tab.
+  const reviewEdit = useMemo<ReviewEdit>(() => ({
+    deckText: () => {
+      if (!previewFileName || previewFileName !== currentFileName) return null;
+      const view = editorRef.current?.view;
+      return view ? view.state.doc.toString() : null;
+    },
+    putBack: (c) => {
+      const view = editorRef.current?.view;
+      if (!view || !previewFileName || previewFileName !== currentFileName) return;
+      const doc = view.state.doc;
+      const blocks = splitMarkdownToBlocks(doc.toString());
+      const line = (n: number) => doc.line(Math.min(Math.max(1, n), doc.lines));
+      let change: { from: number; to: number; insert: string } | null = null;
+      if (c.status === 'changed' && c.slide && blocks[c.slide]) {
+        const b = blocks[c.slide];
+        const from = b.startLine <= doc.lines ? line(b.startLine).from : doc.length;
+        change = { from, to: b.startLine <= b.endLine ? line(b.endLine).to : from, insert: c.before };
+      } else if (c.status === 'added' && c.slide && blocks[c.slide]) {
+        // its `---` line and its lines (from the end of the line before the `---`)
+        const b = blocks[c.slide];
+        const sep = b.startLine - 1;
+        change = { from: sep >= 2 ? line(sep - 1).to : 0, to: b.startLine <= b.endLine ? line(b.endLine).to : line(sep).to, insert: '' };
+      } else if (c.status === 'removed' && c.oldSlide) {
+        const b = blocks[c.oldSlide];
+        change = b && b.startLine <= doc.lines
+          ? { from: line(b.startLine).from, to: line(b.startLine).from, insert: `${c.before}\n---\n` }
+          : { from: doc.length, to: doc.length, insert: `\n---\n${c.before}` };
+      }
+      if (change) view.dispatch({ changes: change });
+    },
+    openFile: (path) => handleFileSelect(path),
+  }), [previewFileName, currentFileName, editorRef, handleFileSelect]);
   const previewSlice = useMemo<PreviewSharedProps>(() => ({
     effectiveFileType: previewFileType, slides, currentSlideIndex, slideSize, basePath, drawings,
     focus: showFocus,
@@ -2110,6 +2152,8 @@ export default function EditorPage() {
     // Render the current editor content once, even while live preview is off.
     onApplyPreview: () => setPreviewSource({ fileName: currentFileName, fileType: effectiveFileType, md: markdownRef.current }),
     onReloadSlides: reloadSlides,
+    copySlide,
+    review, reviewEdit, gotoSlide: setCurrentSlideIndex,
   }), [previewFileType, slides, currentSlideIndex, slideSize, basePath, drawings, mode, setMode,
     showControls, moveSlide, handleAddBlankSlide, clear, send, channelId, toolType, setToolType,
     penColor, setPenColor, penWidth, setPenWidth, canUndo, canRedo, undo, redo, stylusOnly,
@@ -2117,7 +2161,7 @@ export default function EditorPage() {
     manipulate, editLayout, canEditLayout, snapOn, livePreview, previewStale,
     currentFileName, effectiveFileType, markdownRef, reloadSlides,
     docHtml, previewFileName, lastUpdated, showFocus,
-    navLink, navBack, navForward, navCanBack, navCanForward]);
+    navLink, navBack, navForward, navCanBack, navCanForward, copySlide, review, reviewEdit, setCurrentSlideIndex]);
 
   const snippetsSlice = useMemo<SnippetsShared>(() => ({
     snippets: snipets, onInsertText: handleInsertText,

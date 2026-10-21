@@ -81,6 +81,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getFontRequirements: (dirs) => ipcRenderer.invoke('getFontRequirements', dirs),
   getSkills: (dirs) => ipcRenderer.invoke('getSkills', dirs),
   getGlossaries: (dirs) => ipcRenderer.invoke('getGlossaries', dirs),
+  getAudience: (dirs) => ipcRenderer.invoke('getAudience', dirs),
+  claudeReviewKit: (action) => ipcRenderer.invoke('claudeReviewKit', action),
   installFont: (args) => ipcRenderer.invoke('installFont', args),
   inspectFont: (base64) => ipcRenderer.invoke('inspectFont', base64),
   statFiles: (paths) => ipcRenderer.invoke('statFiles', paths),

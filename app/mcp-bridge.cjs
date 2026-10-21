@@ -13,6 +13,7 @@ const os = require('os');
 const mdplink = require('./mdplink.cjs');
 const skillsLib = require('./skills.cjs');
 const glossaryLib = require('./glossary.cjs');
+const { createReviewTools } = require('./reviewTools.cjs');
 
 let ctx = null;         // { getBaseDir, getWindow, getAssetPath }
 
@@ -1198,7 +1199,7 @@ async function verifyDeck(baseDir, deckPath) {
   // Focus cues ([[look: …]] / [[mark: …]] / [[clear]]): their targets checked on the
   // rendered slides — only when the deck has any.
   const hasCues = /\[\[\s*(?:look|mark|clear|ink)\s*(?::|\]\])/i.test(text);
-  const [validate, lint, measure, skills, focus, imageWarn, glossary] = await Promise.all([
+  const [validate, lint, measure, skills, focus, imageWarn, glossary, reviewed] = await Promise.all([
     rly(baseDir, 'validateDeck', { path: deckPath }, 30000).catch((e) => ({ error: String((e && e.message) || e) })),
     Promise.resolve(lintDeck(text)),
     rly(baseDir, 'measureSlides', { path: deckPath }, 120000).catch((e) => ({ error: String((e && e.message) || e) })),
@@ -1206,17 +1207,26 @@ async function verifyDeck(baseDir, deckPath) {
     hasCues ? rly(baseDir, 'focusCheck', { path: deckPath }, 120000).catch((e) => ({ error: String((e && e.message) || e) })) : null,
     imageFindings(baseDir, deckPath, text).catch(() => []),
     glossaryReview(baseDir, deckPath, text).catch(() => null),
+    reviewTools.summary(baseDir, deckPath, text).catch(() => null),
   ]);
   return {
     path: deckPath, validate: withWarnings(validate, imageWarn), lint, measure,
     ...(focus ? { focus } : {}),
     ...(glossary ? { glossary } : {}),
     ...(skills ? { skills } : {}),
-    note: `validate = syntax/unknown modules/params/structure (errors block rendering); lint = design advisories (use judgment); measure = overflow/empty issues only (all clear when \`issues\` is empty); ${focus ? 'focus = each focus cue\'s targets on the slide as it is when the cue acts (error = nothing drawn; warn = drawn somewhere unintended or not visible then) — the cues\' text-level notes are in validate; ' : ''}${glossary ? 'glossary = the folder\'s glossaries as this deck reads them (needless rubies, unread rows, conflicting readings); ' : ''}skills = the checklists of this folder\'s slide skills — review the deck against them. severity: warn = likely issue, info = style nudge.`,
+    ...(reviewed || {}),
+    note: `validate = syntax/unknown modules/params/structure (errors block rendering); lint = design advisories (use judgment); measure = overflow/empty issues only (all clear when \`issues\` is empty); ${focus ? 'focus = each focus cue\'s targets on the slide as it is when the cue acts (error = nothing drawn; warn = drawn somewhere unintended or not visible then) — the cues\' text-level notes are in validate; ' : ''}${glossary ? 'glossary = the folder\'s glossaries as this deck reads them (needless rubies, unread rows, conflicting readings); ' : ''}skills = the checklists of this folder\'s slide skills — review the deck against them. ${reviewed && reviewed.review ? 'review = the findings beside the deck (get_review lists them: the person\'s own comments first); ' : ''}${reviewed && reviewed.flow ? 'flow = the lecture\'s flow file against the slides (get_flow); ' : ''}severity: warn = likely issue, info = style nudge.`,
   };
 }
 
+// The review's tools — a deck's findings, its snapshots, its flow (app/reviewTools.cjs).
+// review_readiness also says whether the Claude Code kit (the review subagents and
+// the loop skill) is installed — on the desktop, where Claude Code runs too.
+const kitStatus = process.versions.electron ? () => require('./claudeReviewKit.cjs').kitStatus() : null;
+const reviewTools = createReviewTools({ mdplink, vres, rly, withDeckLock, wsKeyOf, currentDeckText, splitBlocks, backupFiles, activeDeckPath, requireDeckPath, BOM, mdpChainDirs, kitStatus });
+
 async function callToolInner(method, p, baseDir) {
+  if (reviewTools.handles(method)) return reviewTools.handle(method, p, baseDir);
 
   switch (method) {
     case 'list_decks': {
@@ -1843,13 +1853,14 @@ async function callToolInner(method, p, baseDir) {
       // aliases. Replaces ~6 opening calls.
       const deckPath = p.deck ? requireDeckPath(p.deck) : await activeDeckPath(baseDir).catch(() => null);
       const chain = await mdpChainDirs(baseDir, deckPath || '');
-      const [spec, decksR, templatesR, imagesR, skills, glossaries] = await Promise.all([
+      const [spec, decksR, templatesR, imagesR, skills, glossaries, audience] = await Promise.all([
         rly(baseDir, 'spec', { skillDirs: chain }, 30000),
         callToolInner('list_decks', {}, baseDir),
         callToolInner('list_templates', deckPath ? { deck: deckPath } : {}, baseDir).catch(() => ({ templates: [] })),
         callToolInner('list_images', deckPath ? { deck: deckPath } : {}, baseDir).catch(() => ({ images: [] })),
         skillsForChain(baseDir, chain),
         glossariesForChain(baseDir, chain),
+        reviewTools.audienceIndex(baseDir, chain),
       ]);
       markSkillsRead(baseDir, skills.filter((s) => s.always));   // their text is in the spec
       const toRead = skills.filter((s) => !s.always).map((s) => s.name);
@@ -1861,6 +1872,7 @@ async function callToolInner(method, p, baseDir) {
         activeDeck: deckPath || null,
         ...(skills.length ? { skills: skills.map((s) => ({ name: s.name, description: s.description, ...(s.always ? { always: true } : {}) })) } : {}),
         ...(glossaries.length ? { glossaries: glossaries.map((g) => ({ name: g.name, ...(g.description ? { description: g.description } : {}), lang: g.lang || 'any', terms: g.terms.length })) } : {}),
+        ...(audience.length ? { audience } : {}),
         note: `One-shot environment: spec (authoring format + module/effect indexes + themes + style profile + slide skills${glossaries.length ? ' + the glossaries\' terms (no ruby needed for them)' : ''}) + decks + templates + image aliases. Next: ${toRead.length ? `get_skill for the skills that fit (${toRead.join(', ')}); ` : ''}get_module_spec for the modules you pick; check_deck / verify:true after writing.`,
       };
     }

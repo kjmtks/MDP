@@ -29,6 +29,15 @@ const INSTRUCTIONS = [
   'in the skill (patch_skill with `append`) so later decks get it right. The folder\'s GLOSSARIES',
   '(listed in the spec) give the narrator\'s readings of the field\'s terms: write no ruby for those',
   'terms, and add a term the TTS misreads that recurs in the field with patch_glossary.',
+  'A reference the user pastes from MDP (the preview\'s "Copy reference") reads',
+  '`deck p.N (slide M, @id X) 「heading」 › TARGET 「its words」 › 「words selected」`: M is the',
+  '`slide` the tools take (N is the page printed on it), TARGET is a place as get_focus_targets names it.',
+  'A deck can have a REVIEW beside it — findings anchored to its slides (get_review; add_review for a',
+  'reviewer, resolve_review for the author; the person\'s own comments come first) —, snapshots to compare',
+  'a revision with (snapshot_deck, get_changes), and a lecture FLOW file, its understanding design',
+  '(get_flow / write_flow — write it before the slides; a step whose student\'s question you cannot write is a flat one).',
+  'The folder\'s AUDIENCE (get_audience: personas of who its decks are for) is what to write for — and what a reviewer reads a deck as.',
+  'Asked to REVIEW a deck with AI: call review_readiness first — it says what is in place and what is left; in Claude Code the /mdp-review-loop skill runs the reviewer and reviser subagents.',
 ].join(' ');
 
 // ---- bridge ----------------------------------------------------------------

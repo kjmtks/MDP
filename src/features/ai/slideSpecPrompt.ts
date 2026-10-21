@@ -1105,6 +1105,35 @@ function describeGlossariesForAI(glossaries: GlossaryForAI[], inlineAll = false)
   ].join('\n\n');
 }
 
+/** One persona of the folder's audience (`.mdp/audience/<name>.md`; features/audience). */
+export interface AudienceForAI { name: string; description: string; primary?: boolean; body: string; configDir: string }
+
+/** Who the folder's decks are for: every persona of its audience in full (they are
+ *  short, and they are what to write for), the primary ones first; a long set is cut.
+ *  `inlineAll`: a prompt pasted into a chat (no tools). */
+function describeAudienceForAI(audience: AudienceForAI[], inlineAll = false): string {
+  if (!audience.length) return '';
+  let left = inlineAll ? 30000 : 12000;
+  const blocks: string[] = [];
+  for (const [i, p] of audience.entries()) {
+    if (left <= 0) { blocks.push(`…and ${audience.length - i} more${inlineAll ? '' : ' — get_audience has them'}.`); break; }
+    // its own `# name` is the block's heading already
+    const body = p.body.replace(/^#[ \t]+.*\n?/, '').trim();
+    const text = body.length > left ? `${body.slice(0, left)}…` : body;
+    left -= text.length;
+    blocks.push(`### Persona \`${p.name}\`${p.primary ? ' (primary)' : ''}${p.description ? ` — ${p.description}` : ''}\n\n${demoteHeadings(text)}`);
+  }
+  return [
+    '## Audience for this folder (who the decks are for)',
+    'The author keeps PERSONAS of the people this folder\'s decks are for (`.mdp/audience/<name>.md` — the students of a ' +
+    'course, the listeners of a talk). Write every slide and script FOR THEM: start from what they already know, define what ' +
+    'they do not, keep to what they can hold in mind, use what has reached them before.' +
+    (inlineAll ? '' : ' A reviewer reads the deck as each of them would (add_review `by: "reviewer:<name>"`); what a class ' +
+    'teaches about them goes back into their file (write_audience).'),
+    ...blocks,
+  ].join('\n\n');
+}
+
 export interface SlideSpecExtras {
   effects?: EffectConfig[];
   themes?: ThemeOption[];
@@ -1116,6 +1145,10 @@ export interface SlideSpecExtras {
   // = a copied prompt (no tools: more terms, no tool advice).
   glossaries?: GlossaryForAI[];
   glossariesInline?: boolean;
+  // Who the folder's decks are for (its audience's personas); `audienceInline` = a
+  // copied prompt (no tools).
+  audience?: AudienceForAI[];
+  audienceInline?: boolean;
   // Workspace fonts stored in the folder's `.mdp/fonts` chain, and the folder's
   // default-font choices (content.json `fonts`).
   fonts?: { family: string; category: string }[];
@@ -1184,6 +1217,8 @@ export function buildSlideSpecPrompt(modules: ModuleConfig[], extras: SlideSpecE
   if (skillsPart) parts.push(skillsPart);
   const glossaryPart = describeGlossariesForAI(extras.glossaries || [], !!extras.glossariesInline);
   if (glossaryPart) parts.push(glossaryPart);
+  const audiencePart = describeAudienceForAI(extras.audience || [], !!extras.audienceInline);
+  if (audiencePart) parts.push(audiencePart);
   if (extras.styleProfile && extras.styleProfile.trim()) {
     parts.push(`## The author's writing style\n\nA style profile distilled from this author's existing decks — WRITE IN THIS VOICE (wording, density, structure). It is current; you do not need to re-read their decks:\n\n${extras.styleProfile.trim()}`);
   }

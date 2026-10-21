@@ -533,3 +533,36 @@ export function listTargets(root: HTMLElement): FocusTargetInfo[] {
   content.querySelectorAll('img').forEach((img, i) => add(`area:…`, `image ${i + 1}`, img, 'point into it with area:x,y,w,h (% of the slide); its box is given — or name the image: \\focus{name}{![…](…)}'));
   return out;
 }
+
+/** The places of a slide a pointer can name — listTargets without its hints ("#…"
+ *  an unnamed module, "area:…" a picture): an ink's end, a reviewer's reference. */
+export function placesOf(root: HTMLElement): FocusTargetInfo[] {
+  return listTargets(root).filter((t) => !t.target.includes('…') && !t.target.startsWith('area:'));
+}
+
+/** The smallest place under the point (slide px, `pad` around each) — a named one
+ *  wins a tie. */
+export function placeAt<T extends { target: string; box: FocusBox }>(places: readonly T[], p: { x: number; y: number }, pad: number): T | null {
+  let best: T | null = null;
+  for (const s of places) {
+    const b = s.box;
+    if (p.x < b.x - pad || p.x > b.x + b.w + pad || p.y < b.y - pad || p.y > b.y + b.h + pad) continue;
+    const a = b.w * b.h;
+    const was = best ? best.box.w * best.box.h : Infinity;
+    if (a < was - 1e-6 || (Math.abs(a - was) <= 1e-6 && s.target.startsWith('#') && !best?.target.startsWith('#'))) best = s;
+  }
+  return best;
+}
+
+/** A point on the screen in `root`'s slide px — and `k`, screen px per slide px (the
+ *  preview is zoomed). */
+export function slidePoint(root: HTMLElement, clientX: number, clientY: number): { x: number; y: number; k: number } {
+  const base = root.getBoundingClientRect();
+  const k = (root.offsetWidth ? base.width / root.offsetWidth : 1) || 1;
+  return { x: (clientX - base.left) / k, y: (clientY - base.top) / k, k };
+}
+
+/** Rects on the screen (a selection's) as boxes in `root`'s slide px, one per line. */
+export function screenLines(root: HTMLElement, rects: Iterable<DOMRect | DOMRectReadOnly>): FocusBox[] {
+  return lineBoxes(Array.from(rects, toSlide(root)));
+}

@@ -31,6 +31,7 @@ import {
 } from '../autoplay/autoplay';
 import { glossaryEntryOf, mergeGlossaries, narrationLang, readWithGlossary, type GlossaryEntry } from '../glossary/glossary';
 import type { RasterizeOptions } from '../remote/capture/captureTypes';
+import { REVIEW_CHANGED_EVENT } from '../review/useDeckReview';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Slide = any;
@@ -580,11 +581,12 @@ export const McpBridge: React.FC<{ ctx: McpCtx }> = ({ ctx }) => {
           // The bridge names the deck's `.mdp` chain (bootstrap may target a deck
           // other than the active one; the shared server has no active deck).
           const skillDirs: string[] = Array.isArray(params?.skillDirs) && params.skillDirs.length ? params.skillDirs.map(String) : c.scopeDirs;
-          const [skills, glossaries] = await Promise.all([
+          const [skills, glossaries, audience] = await Promise.all([
             apiClient.getSkills(skillDirs).catch(() => []),
             apiClient.getGlossaries(skillDirs).catch(() => []),
+            apiClient.getAudience(skillDirs).catch(() => []),
           ]);
-          return buildSlideSpecPrompt(modules, { effects, themes, fonts: c.fonts, fontDefaults: c.fontDefaults, fontRequirements: c.fontRequirements, aiNotes: c.aiNotes, styleProfile: c.styleProfile, taxonomy, skills, glossaries }) + `
+          return buildSlideSpecPrompt(modules, { effects, themes, fonts: c.fonts, fontDefaults: c.fontDefaults, fontRequirements: c.fontRequirements, aiNotes: c.aiNotes, styleProfile: c.styleProfile, taxonomy, skills, glossaries, audience }) + `
 
 ## MCP workflow tips
 
@@ -943,6 +945,14 @@ Match the user's style throughout (cached profile if present, else get_style_sam
           c.onRefreshTree();
           return { ok: true };
         }
+        case 'reviewChanged': {
+          // A deck's review or flow was written (add_review, resolve_review,
+          // snapshot_deck, write_flow) → its Review panel and the preview's pins
+          // read it again.
+          window.dispatchEvent(new CustomEvent(REVIEW_CHANGED_EVENT, { detail: { path: params.path } }));
+          c.onRefreshTree();
+          return { ok: true };
+        }
         case 'contentChanged': {
           // A `.mdp/content.json` was written (e.g. save_style_profile) → re-read the
           // cascade so the new profile/notes inject into the spec immediately.
@@ -960,7 +970,7 @@ Match the user's style throughout (cached profile if present, else get_style_sam
           const kind = String(params.kind || 'asset');
           const preview = String(params.content || '').slice(0, 1200);
           const approved = await confirmDialog(
-            `An MCP client wants to ${action} ${kind === 'skill' || kind === 'glossary' ? `the ${kind} "${params.name}"` : `a ${kind}`} at:\n${params.rel}${scriptWarn}\n\n— ${action === 'delete' ? 'details' : action === 'update' ? 'change' : 'preview'} —\n${preview}${String(params.content || '').length > 1200 ? '\n…(truncated)' : ''}${action !== 'create' ? '\n\n(The previous version is kept in .mdp/mcp-backups.)' : ''}`,
+            `An MCP client wants to ${action} ${kind === 'skill' || kind === 'glossary' || kind === 'persona' ? `the ${kind} "${params.name}"` : `a ${kind}`} at:\n${params.rel}${scriptWarn}\n\n— ${action === 'delete' ? 'details' : action === 'update' ? 'change' : 'preview'} —\n${preview}${String(params.content || '').length > 1200 ? '\n…(truncated)' : ''}${action !== 'create' ? '\n\n(The previous version is kept in .mdp/mcp-backups.)' : ''}`,
             {
               title: action === 'delete' ? `Allow AI to delete this ${kind}?` : action === 'update' ? `Allow AI to update this ${kind}?` : 'Allow AI to create this asset?',
               confirmText: action === 'delete' ? 'Delete' : 'Save',

@@ -8,6 +8,8 @@ import type { OpenTab } from '../../../features/fileTree/hooks/useFileManager';
 import type { Bookmark } from '../hooks/useBookmarks';
 import type { ImageEntry } from '../../../features/images/imageRegistry';
 import type { FocusState } from '../../../features/focus/focusState';
+import type { SlideCopySource } from '../../../features/review/useSlideCopyMenu';
+import type { DeckReview, ReviewEdit } from '../../../features/review/useDeckReview';
 
 export interface SidebarSharedProps {
   currentFileName: string | null;
@@ -119,6 +121,15 @@ export interface PreviewSharedProps {
   onApplyPreview: () => void;
   // Force a slide re-render with fresh asset URLs (cache-bust replaced images).
   onReloadSlides: () => void;
+
+  // The right-click's "Copy reference" / "Copy image" (for the AI's chat): the
+  // previewed deck; undefined for anything else.
+  copySlide?: SlideCopySource;
+  // The previewed deck's review — findings, snapshots, flow (features/review) — and
+  // what the Review panel does to the deck; `gotoSlide` shows a slide (0-based).
+  review?: DeckReview;
+  reviewEdit?: ReviewEdit;
+  gotoSlide?: (index: number) => void;
 }
 
 export interface EditorSharedProps {

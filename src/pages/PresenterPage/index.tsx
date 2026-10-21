@@ -17,6 +17,8 @@ import { mdpBus } from '../../features/bus/mdpBus';
 import { sendFocus, useBusFocus } from '../../features/focus/focusBus';
 import { cleanCue, cueInForce } from '../../features/focus/focusState';
 import { lineCues, presentMarkers, pressEnd, pressesLeft, pressStart, slideScript } from '../../features/autoplay/autoplay';
+import { questionOf, slideFacts, stepOfSlides, type FlowStep } from '../../features/review/reviewModel';
+import { RichText } from '../../features/review/RichText';
 import { registerParsedModule, clearAllModules } from '../../features/modules/moduleManager';
 import { registerParsedEffect, clearAllEffects } from '../../features/effects/effectManager';
 import type { ModuleData } from '../../utils/moduleParser';
@@ -39,6 +41,8 @@ import './PresenterPage.css';
 
 // The script pane's text already read (CSS.highlights).
 const READ_HIGHLIGHT = 'mdp-script-read';
+// The script one breath per line (per computer).
+const BREATH_KEY = 'mdp.presenter.breathLines';
 
 interface SyncData {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -47,6 +51,8 @@ interface SyncData {
   step?: number;
   // How far → has gone through the current slide's script (presentMarkers).
   cuePos?: number;
+  // The lecture's flow (its understanding design): the steps, for the slide's step.
+  flow?: FlowStep[] | null;
   slideSize: { width: number; height: number };
   themeCssUrl?: string;
   // Workspace-font CSS (@font-face + folder font variables) from the main window.
@@ -185,7 +191,19 @@ export default function PresenterPage() {
   // second, and a fresh `{ __html }` makes React replace the pane's nodes each time —
   // which dropped a used chip's ✓ and left a reading popup behind (the mouse "left"
   // nodes that no longer existed).
-  const scriptInner = useMemo(() => ({ __html: currentSlide?.scriptHtml || '' }), [currentSlide?.scriptHtml]);
+  // The script one breath per line (where a reader pauses) — a toggle, on by default.
+  const [breath, setBreath] = useState(() => { try { return localStorage.getItem(BREATH_KEY) !== '0'; } catch { return true; } });
+  const toggleBreath = () => setBreath((v) => { try { localStorage.setItem(BREATH_KEY, v ? '0' : '1'); } catch { /* ignore */ } return !v; });
+  const scriptInner = useMemo(() => ({ __html: (breath && currentSlide?.scriptBreathHtml) || currentSlide?.scriptHtml || '' }), [breath, currentSlide?.scriptHtml, currentSlide?.scriptBreathHtml]);
+  // The lecture's flow: the step of the slide on screen (a step runs from the first
+  // slide it names to the next step's).
+  const [flowSteps, setFlowSteps] = useState<FlowStep[] | null>(null);
+  const flowStep = useMemo(() => {
+    if (!flowSteps?.length) return null;
+    const facts = slideFacts(['', ...slides.map((s) => String(s?.raw || ''))]);
+    const n = stepOfSlides({ title: '', steps: flowSteps }, facts)[currentIndex] || 0;
+    return flowSteps.find((s) => s.n === n) || null;
+  }, [flowSteps, slides, currentIndex]);
   // What the focus chips have pointed at on this slide (shown here as on the
   // slideshow), and which chips are on — a chip clicked again takes its cue away.
   const shownFocus = useBusFocus(currentIndex);
@@ -295,6 +313,7 @@ export default function PresenterPage() {
         if (typeof data.index === 'number') setCurrentIndex(data.index);
         if (typeof data.step === 'number') setStep(data.step);
         setCuePos(typeof data.cuePos === 'number' ? data.cuePos : 0);
+        setFlowSteps(Array.isArray(data.flow) ? data.flow : null);
         if (data.slideSize) setSlideSize(data.slideSize);
         if ('basePath' in data) setBasePath(data.basePath);
         if (data.allDrawings) syncDrawings(data.allDrawings);
@@ -782,6 +801,17 @@ export default function PresenterPage() {
                         Script markers ([[step]], [[emit…]]) render as inline CHIPS:
                         clicking one fires the same event the narrated auto-play
                         would fire at that point (step-advance / mdpBus emit). */}
+                    {/* The step of the lecture's flow this slide is in (the flow file
+                        beside the deck): its claim, the students' question, the
+                        sentence that should land, the link to the next step. */}
+                    {flowStep && (
+                      <div className="presenter-flow-step" style={{ margin: '0 0 10px', padding: '6px 10px', borderRadius: 6, background: '#262b33', borderLeft: '3px solid #a78bfa', fontSize: '0.85rem', lineHeight: 1.5 }}>
+                        <div style={{ color: '#c4b5fd', fontWeight: 700 }}>{flowStep.n}. <RichText text={flowStep.title} /></div>
+                        {questionOf(flowStep) && <div><span style={{ color: '#a8a29e' }}>問い:</span> <RichText text={questionOf(flowStep)} /></div>}
+                        {flowStep.fields['腹落ち'] && <div><span style={{ color: '#a8a29e' }}>腹落ち:</span> <RichText text={flowStep.fields['腹落ち']} /></div>}
+                        {flowStep.fields['つなぎ'] && <div><span style={{ color: '#a8a29e' }}>つなぎ:</span> <RichText text={flowStep.fields['つなぎ']} /></div>}
+                      </div>
+                    )}
                     <div style={{ flexShrink: 0, marginBottom: 12 }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span className="presenter-label" style={{ color: '#8ab4f8' }}>SCRIPT — read aloud</span>
@@ -790,6 +820,15 @@ export default function PresenterPage() {
                             {nextKey && <><kbd className="presenter-kbd">{nextKey}</kbd> {movesLeft > 0 ? <>台本の順に · あと {movesLeft}</> : <>次のスライドへ</>}</>}
                             {slideKey && movesLeft > 0 && <>{nextKey ? '　' : ''}<kbd className="presenter-kbd">{slideKey}</kbd> 次のスライドへ</>}
                           </span>
+                        )}
+                        {!isEditingScript && currentSlide?.scriptHtml && (
+                          <Button
+                            size="small" onClick={toggleBreath} className="presenter-breath-toggle"
+                            title="台本を一息で読む長さごとに改行する（読点や節の切れ目で切る）"
+                            sx={{ color: breath ? '#8ab4f8' : '#7f93ad', textTransform: 'none', minWidth: 0, mr: 0.5 }}
+                          >
+                            {breath ? '息継ぎで改行 ✓' : '息継ぎで改行'}
+                          </Button>
                         )}
                         <Button
                           size="small"

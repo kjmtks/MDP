@@ -9,6 +9,7 @@ const fontsLib = require('./fonts.cjs');
 const fontInstall = require('./fontInstall.cjs');
 const skillsLib = require('./skills.cjs');
 const glossaryLib = require('./glossary.cjs');
+const audienceLib = require('./audience.cjs');
 const sshTunnel = require('./sshTunnel.cjs');
 const { openPartFile } = require('./partFile.cjs');
 // Resolve a workspace-relative path through any `.mdplink` it crosses.
@@ -1314,6 +1315,21 @@ ipcMain.handle('getGlossaries', async (event, dirs) => {
   if (!currentBaseDir) return [];
   const chain = Array.isArray(dirs) && dirs.length ? dirs : ['.mdp'];
   return await glossaryLib.listGlossaries(chain, vresolve, mdplink);
+});
+
+// The audience of a chain: the personas of its nearest `.mdp` that has any (app/audience.cjs).
+ipcMain.handle('getAudience', async (event, dirs) => {
+  if (!currentBaseDir) return [];
+  const chain = Array.isArray(dirs) && dirs.length ? dirs : ['.mdp'];
+  return await audienceLib.listAudience(chain, vresolve, mdplink);
+});
+
+// The Claude Code side of the AI review (the reviewer / reviser subagents and the
+// loop skill, app/claude-review): is it installed in ~/.claude, and install it (a
+// click in the Review panel — the only way this writes outside the workspace).
+ipcMain.handle('claudeReviewKit', (event, action) => {
+  const kit = require('./claudeReviewKit.cjs');
+  return action === 'install' ? kit.installKit() : kit.kitStatus();
 });
 
 // The fonts the chain's `.mdp`s DECLARE (`<cdir>/fonts/requirements.json`, raw

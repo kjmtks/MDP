@@ -180,6 +180,10 @@ export const protectTableMath = (markdown: string): string => {
   return lines.join('\n');
 };
 
+/** The `\(…\)` / `\[…\]` extensions alone — for a marked instance of its own (the
+ *  review's and the flow's texts: features/review/richHtml.ts). */
+export const mdpMathExtensions = (): TokenizerAndRendererExtension[] => [displayMath, inlineMath];
+
 let registered = false;
 /** Register the MDP `\(…\)` / `\[…\]` KaTeX extensions — and the text's
  *  `\focus{name}{…}` — on the shared marked singleton (idempotent). Call wherever

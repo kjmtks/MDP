@@ -11,6 +11,7 @@ const fontsLib = require('./app/fonts.cjs');
 const fontInstall = require('./app/fontInstall.cjs');
 const skillsLib = require('./app/skills.cjs');
 const glossaryLib = require('./app/glossary.cjs');
+const audienceLib = require('./app/audience.cjs');
 // Machine-local SSH state (jump-host bypass toggle, cache config) + offline cache
 // dir, kept next to the server.
 mdplink.initLocalState(path.join(__dirname, '.mdp-local.json'), path.join(__dirname, '.mdp-cache'));
@@ -786,6 +787,12 @@ app.get('/api/skills', async (req, res) => {
 // then root→nearest). See app/glossary.cjs.
 app.get('/api/glossaries', async (req, res) => {
   try { res.json(await glossaryLib.listGlossaries(assetChain(req.query.dirs), (rel) => vres(req, rel), mdplink)); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// The audience: the personas of the chain's nearest `.mdp` that has any.
+app.get('/api/audience', async (req, res) => {
+  try { res.json(await audienceLib.listAudience(assetChain(req.query.dirs), (rel) => vres(req, rel), mdplink)); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
