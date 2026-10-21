@@ -8,9 +8,13 @@ tools: mcp__MDP__bootstrap, mcp__MDP__get_slide_spec, mcp__MDP__get_skill, mcp__
 
 ## 手順
 1. **前提を読む**：`get_slide_spec` でスキルの一覧を見て、授業の共通スキル、その授業のスキル、author-style を `get_skill` で読みます。`get_audience`（このフォルダの聴衆。直すときはこの人たちに向けて書きます）、`get_flow`（理解の設計）、`get_review`（status: "open"）を読みます。
-2. **直す順番**：
+2. **直す順番**（作者の判断 `decision` に従います）：
    - `by: "human"`（作者自身のコメント）がいちばん先です。必ず対応します。
-   - 次に severity が major のもの、そのあと minor、nit の順です。
+   - 次に、作者が「直す」と判断した AI の指摘（`decision: "fix"`）です。
+   - そのあと、まだ判断のない AI の指摘を、severity が major、minor、nit の順に直します。
+   - 作者が「あとで」とした指摘（`decision: "later"`）には手を付けません。resolve もせず、open のまま残します。
+   - 作者が「直さない」とした指摘（`decision: "skip"`。status は declined）は閉じています。同じ趣旨の変更をしません。
+   - 指摘に作者の返事（thread の `by: "human"`）があれば、その言葉に従います（直し方の指定、直さない理由など）。
    - `kind: "question"` は推測で答えません。デッキや出典で確かめられるときだけ `answered` にします。それ以外は `reply` に「作者の確認が要る」と書き、open のまま残します。
    - `rule: true` の指摘は、作者が「今後も守る規則」にしたものです。`patch_skill`（`append`）で、その授業のスキル（無ければ授業の共通スキル）に規則を書き足し、デッキ全体から同じ種類の箇所を探して直します。
 3. **直し方**：

@@ -612,6 +612,8 @@ export const PreviewPanel: React.FC = () => {
     if (id) window.setTimeout(() => window.dispatchEvent(new CustomEvent(REVIEW_FOCUS_EVENT, { detail: { id } })), 80);
   };
   const openReview = p.review ? p.review.items.filter((x) => x.status === 'open') : [];
+  // what waits for the person (a finding put off for later does not)
+  const attention = openReview.filter((x) => x.decision !== 'later');
   const [reviewPins, setReviewPins] = useState(() => { try { return localStorage.getItem(REVIEW_PINS_KEY) !== '0'; } catch { return true; } });
   const toggleReviewPins = () => setReviewPins((on) => {
     try { localStorage.setItem(REVIEW_PINS_KEY, on ? '0' : '1'); } catch { /* not remembered */ }
@@ -720,11 +722,11 @@ export const PreviewPanel: React.FC = () => {
         <Tooltip title="Start Slideshow (F5)"><span><IconButton size="small" sx={toolBtnSx} disabled={!h.canPresent} onClick={h.onToggleSlideshow}><PlayArrowIcon fontSize="small" /></IconButton></span></Tooltip>
         <Tooltip title="Slide Overview"><span><IconButton size="small" sx={{ ...toolBtnSx, color: h.isSlideOverview ? 'var(--app-text-strong)' : 'var(--app-text-muted)' }} disabled={!h.canPresent} onClick={h.onToggleOverview}><GridViewIcon fontSize="small" /></IconButton></span></Tooltip>
         {p.review && (
-          <Tooltip title={`Review — findings, changes, the flow${openReview.length ? ` (${openReview.length} open)` : ''}`}>
+          <Tooltip title={`Review — findings, changes, the flow${attention.length ? ` (${attention.length} open)` : ''}${openReview.length > attention.length ? ` · ${openReview.length - attention.length} put off for later` : ''}`}>
             <IconButton size="small" sx={{ ...toolBtnSx, position: 'relative' }} onClick={() => showReview()} className="mdp-review-button">
               <RateReviewOutlinedIcon fontSize="small" />
-              {openReview.length > 0 && (
-                <span style={{ position: 'absolute', top: 0, right: 0, minWidth: 14, height: 14, borderRadius: 7, background: openReview.some((x) => x.severity === 'major' || x.by === 'human') ? '#e53935' : '#fb8c00', color: '#fff', fontSize: 9.5, lineHeight: '14px', padding: '0 3px', boxSizing: 'border-box' }}>{openReview.length}</span>
+              {attention.length > 0 && (
+                <span style={{ position: 'absolute', top: 0, right: 0, minWidth: 14, height: 14, borderRadius: 7, background: attention.some((x) => x.severity === 'major' || x.by === 'human') ? '#e53935' : '#fb8c00', color: '#fff', fontSize: 9.5, lineHeight: '14px', padding: '0 3px', boxSizing: 'border-box' }}>{attention.length}</span>
               )}
             </IconButton>
           </Tooltip>

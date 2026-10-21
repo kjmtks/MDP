@@ -15,8 +15,9 @@ export const itemColor = (it: Pick<LocatedItem, 'by' | 'kind' | 'severity'>) =>
   REVIEW_COLORS[it.by === 'human' ? 'human' : it.kind === 'question' ? 'question' : it.severity === 'major' ? 'major' : it.severity === 'minor' ? 'minor' : 'nit'].color;
 
 /** A pin's tooltip: what kind of item it is, then its words. */
-export const itemTooltip = (it: Pick<LocatedItem, 'by' | 'kind' | 'severity' | 'aspect' | 'status' | 'text'>) =>
-  `${it.by === 'human' ? 'your comment' : it.kind === 'question' ? 'question' : it.severity} · ${it.aspect}${it.status !== 'open' ? ` · ${it.status}` : ''} — ${plainText(it.text)}`;
+export const itemTooltip = (it: Pick<LocatedItem, 'by' | 'kind' | 'severity' | 'aspect' | 'status' | 'text' | 'decision'>) =>
+  `${it.by === 'human' ? 'your comment' : it.kind === 'question' ? 'question' : it.severity} · ${it.aspect}`
+  + `${it.decision ? ` · ${it.decision === 'skip' ? 'won\'t fix' : it.decision === 'fix' ? 'you: fix' : 'later'}` : ''}${it.status !== 'open' && it.decision !== 'skip' ? ` · ${it.status}` : ''} — ${plainText(it.text)}`;
 
 /** Where on the rendered slide an item points (slide px): its target, else the words
  *  it quotes, else the box kept with it; null = the slide as a whole. */

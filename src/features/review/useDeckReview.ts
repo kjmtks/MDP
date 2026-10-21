@@ -2,9 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiClient } from '../../api/apiClient';
 import type { FocusBox } from '../focus/focusTargets';
 import {
-  checkFlow, emptyReview, flowPathFor, listItems, newComment, newId, parseFlow, parseReview, reviewPathFor,
+  applyDecision, checkFlow, emptyReview, flowPathFor, listItems, newComment, newId, parseFlow, parseReview, reviewPathFor,
   serializeReview, slideFacts, snapshotDirFor,
-  type Flow, type FlowCheck, type LocatedItem, type ReviewAspect, type ReviewFile, type ReviewKind, type ReviewSeverity,
+  type Flow, type FlowCheck, type LocatedItem, type ReviewAspect, type ReviewDecision, type ReviewFile, type ReviewKind, type ReviewSeverity,
   type ReviewStatus, type SlideChange, type SlideFact,
 } from './reviewModel';
 
@@ -25,6 +25,9 @@ export interface ReviewEdit {
   openFile: (path: string) => void;
 }
 
+/** A change the person makes to an item in the Review panel. */
+export interface ReviewPatch { status?: ReviewStatus; reply?: string; rule?: boolean; decision?: ReviewDecision | null }
+
 export interface CommentInput {
   text: string; target?: string; quote?: string; box?: FocusBox;
   aspect?: ReviewAspect; severity?: ReviewSeverity; kind?: ReviewKind; rule?: boolean;
@@ -42,7 +45,7 @@ export interface DeckReview {
   audience: { name: string; primary?: boolean; configDir: string }[];
   skills: string[];
   addComment: (index: number, c: CommentInput) => Promise<void>;
-  update: (id: string, patch: { status?: ReviewStatus; reply?: string; rule?: boolean }) => Promise<void>;
+  update: (id: string, patch: ReviewPatch) => Promise<void>;
   remove: (id: string) => Promise<void>;
   takeSnapshot: (label: string, text: string) => Promise<void>;
   readSnapshot: (id: string) => Promise<string>;
@@ -122,7 +125,7 @@ export function useDeckReview(deckPath: string | null, slides: Slide[], scopeDir
     await mutate((f) => { f.items.push(item); });
   }, [facts, mutate]);
 
-  const update = useCallback(async (id: string, patch: { status?: ReviewStatus; reply?: string; rule?: boolean }) => {
+  const update = useCallback(async (id: string, patch: ReviewPatch) => {
     await mutate((f) => {
       const it = f.items.find((x) => x.id === id);
       if (!it) return;
@@ -130,6 +133,7 @@ export function useDeckReview(deckPath: string | null, slides: Slide[], scopeDir
       if (patch.status) it.status = patch.status;
       if (patch.reply && patch.reply.trim()) it.thread.push({ by: 'human', text: patch.reply.trim(), at: now });
       if (patch.rule !== undefined) { if (patch.rule) it.rule = true; else delete it.rule; }
+      if (patch.decision !== undefined) applyDecision(it, patch.decision, now);
       it.updatedAt = now;
     });
   }, [mutate]);

@@ -20,14 +20,15 @@ The person wants lecture decks that students will surely understand, without rea
 
 ## Each round r = 1 … N
 1. **Review.** Start the **mdp-lecture-reviewer** subagent (Agent tool). Give it the deck path and round r. In round 1 it reads the whole deck. From round 2 on, tell it to read the slides changed since the previous snapshot (`get_changes`) and their neighbours — for its ledger of what the students hold (the `uptake` aspect), from where what a changed slide uses first appeared to where what it introduces is used — and to check that the resolved findings were really fixed.
-2. **Stop?** `get_review` (open). If no open finding by a reviewer is major or minor (nits and questions only), stop the loop.
+2. **Stop?** `get_review` (open). If no open finding by a reviewer is major or minor (nits and questions only) — leaving out the ones the person put off (`decision: "later"`) — stop the loop.
 3. `snapshot_deck` with the label "before revision r".
-4. **Revise.** Start the **mdp-lecture-reviser** subagent with the deck path. It fixes the open findings (the person's own first), answers each with resolve_review, and keeps the flow in step.
+4. **Revise.** Start the **mdp-lecture-reviser** subagent with the deck path. It fixes the open findings — the person's own comments first, then the findings the person marked Fix (`decision: "fix"`), then the rest; never the ones put off for later — answers each with resolve_review, and keeps the flow in step.
 
 ## Report to the person (in Japanese)
 - How many rounds ran, and why the loop stopped (clean, or the round limit).
 - Findings: how many were found, resolved and declined (with the reasons for the declined ones). Name the `uptake` ones apart (where the students would not yet hold, or would have forgotten, what a slide builds on — the reviewer's ledger), and the lesson-structure questions (a missing bridge-in, prediction before a surprising core, or check of the goals).
-- **What only the person can decide**: the open questions and the declined findings worth a look.
+- **What only the person can decide**: the open questions, the declined findings worth a look, and the findings still without the person's judgment (`counts.toDecide` — in MDP's Review panel each card has **Fix / Later / Won't fix**; the next loop follows them). Say how many are put off for later.
+- If the person has marked the same kind of finding **Won't fix** several times (the reviewer reports it), propose recording it in the course's skill (patch_skill) so the reviewer stops raising it — ask first.
 - What changed since "before the review loop" (`get_changes`): the slides by printed page (p.N), one line each, and the estimated time before and after (`get_deck_outline`).
 - Where to look: MDP's **Review** panel (Findings / Changes / Flow). There, "Put back" returns a slide to the snapshot.
 - Saving: when the deck is open in MDP, the changes are unsaved edits in the editor; the person saves them.
@@ -35,4 +36,6 @@ The person wants lecture decks that students will surely understand, without rea
 ## Rules
 - Never let the reviewer edit the deck (its tools cannot), and never let the reviser make big rewrites nobody asked for.
 - Keep the person's own comments (`by: "human"`) first in every round.
+- Follow the person's judgments (`decision`): Fix first after their comments; never touch Later; never undo a Won't fix. The person's replies on a finding (`thread`, `by: "human"`) are instructions.
+- A decision is the person's: record one with resolve_review only when they told you (`by: "human"`).
 - Keep the time budget of the course (lecture-pace skill). If the reviewer only asks for additions, the reviser also looks for what to cut.

@@ -23,6 +23,7 @@ const KINDS = ['comment', 'finding', 'question'];
 const ASPECTS = ['clarity', 'uptake', 'accuracy', 'effect', 'flow', 'style', 'other'];
 const SEVERITIES = ['major', 'minor', 'nit'];
 const STATUSES = ['open', 'resolved', 'declined', 'answered'];
+const DECISIONS = ['fix', 'later', 'skip'];
 const MAX_SNAPSHOTS = 20;
 
 const str = (v, max = 4000) => String(v == null ? '' : v).trim().slice(0, max);
@@ -92,6 +93,7 @@ function normalizeItem(it) {
     by: str(it.by, 60) || 'reviewer',
     ...(Number.isInteger(it.round) ? { round: it.round } : {}),
     ...(it.rule ? { rule: true } : {}),
+    ...(DECISIONS.includes(it.decision) ? { decision: it.decision, ...(str(it.decidedAt, 40) ? { decidedAt: str(it.decidedAt, 40) } : {}) } : {}),
     text: str(it.text),
     ...(str(it.suggestion) ? { suggestion: str(it.suggestion) } : {}),
     at: {
@@ -161,6 +163,26 @@ function addItems(file, items, facts, defaults = {}) {
   return added;
 }
 
+/** The person's judgment of an item (an AI's finding): fix = do it (the reviser does
+ *  it first, after the person's own comments), later = leave it open but untouched
+ *  (the reviser skips it), skip = will not fix: the item is declined (a reviewer does
+ *  not raise its kind again); null = no judgment (an item declined by a skip opens
+ *  again). */
+function applyDecision(item, decision, now) {
+  const was = item.decision;
+  if (decision === null || decision === '' || decision === undefined) {
+    delete item.decision;
+    delete item.decidedAt;
+    if (was === 'skip' && item.status === 'declined') item.status = 'open';
+    return;
+  }
+  if (!DECISIONS.includes(decision)) throw new Error(`"decision" must be one of ${DECISIONS.join(' / ')} (or null).`);
+  item.decision = decision;
+  item.decidedAt = now;
+  if (decision === 'skip') item.status = 'declined';
+  else if (was === 'skip' && item.status === 'declined') item.status = 'open';
+}
+
 /** Change items: a status (resolved — fixed; declined — not changed, say why;
  *  answered — a question answered; open — again), a reply in the thread, the
  *  "keep as a rule" mark. Unknown ids are reported, the rest applied. */
@@ -176,6 +198,7 @@ function updateItems(file, updates, by) {
       if (!STATUSES.includes(u.status)) throw new Error(`"status" must be one of ${STATUSES.join(' / ')}.`);
       item.status = u.status;
     }
+    if (u.decision !== undefined) applyDecision(item, u.decision, now);
     if (str(u.reply)) item.thread.push({ by: str(u.by, 60) || by || 'author', text: str(u.reply), at: now });
     if (u.rule !== undefined) { if (u.rule) item.rule = true; else delete item.rule; }
     item.updatedAt = now;
@@ -206,6 +229,8 @@ const countItems = (file) => {
     open: open.length,
     major: open.filter((x) => x.severity === 'major').length,
     questions: open.filter((x) => x.kind === 'question').length,
+    later: open.filter((x) => x.decision === 'later').length,
+    toDecide: open.filter((x) => x.kind === 'finding' && x.by !== 'human' && !x.decision).length,
     byPerson: open.filter((x) => x.by === 'human').length,
     total: file.items.length,
   };
@@ -459,7 +484,7 @@ function readinessChecks({ personas = [], skills = [], flow = null, facts = [], 
 
 module.exports = {
   REVIEW_SUFFIX, reviewPathFor, flowPathFor, snapshotDirFor,
-  KINDS, ASPECTS, SEVERITIES, STATUSES, MAX_SNAPSHOTS,
+  KINDS, ASPECTS, SEVERITIES, STATUSES, DECISIONS, MAX_SNAPSHOTS, applyDecision,
   slideFacts, locate, emptyReview, parseReview, serializeReview, addItems, updateItems, listItems, countItems, addSnapshot,
   lineDiff, diffText, matchSlides, deckChanges,
   parseFlow, checkFlow, stepOfSlides, flowTemplate, newId, readinessChecks,

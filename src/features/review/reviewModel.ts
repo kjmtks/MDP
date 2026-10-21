@@ -25,6 +25,9 @@ export interface ReviewItem {
   by: string;
   round?: number;
   rule?: boolean;
+  /** The person's judgment of an AI's finding (applyDecision). */
+  decision?: ReviewDecision;
+  decidedAt?: string;
   text: string;
   suggestion?: string;
   at: ReviewAnchor;
@@ -39,6 +42,8 @@ export const KINDS: ReviewKind[] = ['comment', 'finding', 'question'];
 export const ASPECTS: ReviewAspect[] = ['clarity', 'uptake', 'accuracy', 'effect', 'flow', 'style', 'other'];
 export const SEVERITIES: ReviewSeverity[] = ['major', 'minor', 'nit'];
 export const STATUSES: ReviewStatus[] = ['open', 'resolved', 'declined', 'answered'];
+export type ReviewDecision = 'fix' | 'later' | 'skip';
+export const DECISIONS: ReviewDecision[] = ['fix', 'later', 'skip'];
 
 /** The Claude Code side of the AI review in ~/.claude (app/claudeReviewKit.cjs). */
 export interface ClaudeReviewKit {
@@ -117,6 +122,7 @@ function normalizeItem(it: any): ReviewItem | null {
     by: str(it.by, 60) || 'reviewer',
     ...(Number.isInteger(it.round) ? { round: it.round } : {}),
     ...(it.rule ? { rule: true } : {}),
+    ...(DECISIONS.includes(it.decision) ? { decision: it.decision, ...(str(it.decidedAt, 40) ? { decidedAt: str(it.decidedAt, 40) } : {}) } : {}),
     text: str(it.text),
     ...(str(it.suggestion) ? { suggestion: str(it.suggestion) } : {}),
     at: {
@@ -151,6 +157,40 @@ export function parseReview(text: string, deck: string): ReviewFile {
 export const serializeReview = (file: ReviewFile) => `${JSON.stringify(file, null, 2)}\n`;
 
 /** A person's comment, anchored to a slide and what they pointed at. */
+/** The person's judgment of an item (an AI's finding): fix = do it (the reviser does
+ *  it first, after the person's own comments), later = leave it open but untouched
+ *  (the reviser skips it), skip = will not fix: the item is declined (a reviewer does
+ *  not raise its kind again); null = no judgment (an item declined by a skip opens
+ *  again). */
+export function applyDecision(item: ReviewItem, decision: ReviewDecision | null | '' | undefined, now: string): void {
+  const was = item.decision;
+  if (decision === null || decision === '' || decision === undefined) {
+    delete item.decision;
+    delete item.decidedAt;
+    if (was === 'skip' && item.status === 'declined') item.status = 'open';
+    return;
+  }
+  if (!DECISIONS.includes(decision)) throw new Error(`"decision" must be one of ${DECISIONS.join(' / ')} (or null).`);
+  item.decision = decision;
+  item.decidedAt = now;
+  if (decision === 'skip') item.status = 'declined';
+  else if (was === 'skip' && item.status === 'declined') item.status = 'open';
+}
+
+/** The open items counted (≡ app/review.cjs countItems). */
+export const countItems = (file: ReviewFile) => {
+  const open = file.items.filter((x) => x.status === 'open');
+  return {
+    open: open.length,
+    major: open.filter((x) => x.severity === 'major').length,
+    questions: open.filter((x) => x.kind === 'question').length,
+    later: open.filter((x) => x.decision === 'later').length,
+    toDecide: open.filter((x) => x.kind === 'finding' && x.by !== 'human' && !x.decision).length,
+    byPerson: open.filter((x) => x.by === 'human').length,
+    total: file.items.length,
+  };
+};
+
 export function newComment(fact: SlideFact, o: { text: string; target?: string; quote?: string; box?: FocusBox; aspect?: ReviewAspect; severity?: ReviewSeverity; kind?: ReviewKind; rule?: boolean }): ReviewItem {
   const now = nowIso();
   const item = normalizeItem({

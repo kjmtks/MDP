@@ -3,7 +3,7 @@ import type { FocusBox } from '../focus/focusTargets';
 import type { LocatedItem } from './reviewModel';
 import { anchorBox, itemColor, itemTooltip } from './reviewPlace';
 
-interface Pin { id: string; label: string; x: number; y: number; box: FocusBox | null; color: string; tip: string }
+interface Pin { id: string; label: string; x: number; y: number; box: FocusBox | null; color: string; tip: string; dim: boolean }
 
 /** The review items of the slide on the preview, as pins beside what they point at
  *  (in the slide's own px: this sits in the scaled slide box) — an open one numbered
@@ -22,7 +22,7 @@ export const ReviewPins: React.FC<{ items: LocatedItem[]; container: HTMLElement
       setPins(items.map((it) => {
         const box = anchorBox(root, it);
         const at = box ? { x: Math.min(root.offsetWidth - 18, box.x + box.w + 4), y: Math.max(4, box.y - 14) } : { x: 8 + 34 * loose++, y: 8 };
-        return { id: it.id, label: it.status === 'open' ? String(++open) : '✓', ...at, box, color: itemColor(it), tip: itemTooltip(it) };
+        return { id: it.id, label: it.status === 'open' ? String(++open) : '✓', ...at, box, color: itemColor(it), tip: itemTooltip(it), dim: it.decision === 'later' };
       }));
     };
     // in the next frame, and again once the slide has settled (fonts, pictures, modules)
@@ -49,7 +49,7 @@ export const ReviewPins: React.FC<{ items: LocatedItem[]; container: HTMLElement
           style={{
             position: 'absolute', left: p.x, top: p.y, width: 28, height: 28, borderRadius: '50%', border: '2px solid #fff',
             background: p.color, color: '#fff', font: '700 15px/24px system-ui, sans-serif', padding: 0, cursor: 'pointer',
-            pointerEvents: 'auto', boxShadow: '0 1px 4px rgba(0,0,0,.35)',
+            pointerEvents: 'auto', boxShadow: '0 1px 4px rgba(0,0,0,.35)', opacity: p.dim ? 0.5 : 1,
           }}
         >{p.label}</button>
       ))}

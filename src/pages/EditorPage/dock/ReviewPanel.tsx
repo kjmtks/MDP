@@ -10,7 +10,7 @@ import CameraAltOutlinedIcon from '@mui/icons-material/CameraAltOutlined';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import { usePreview } from './DockContext';
 import { splitMarkdownToBlocks } from '../../../features/slide/parser/slideParser';
-import { deckChanges, flowPathFor, lineDiff, loopCommand, questionOf, readinessChecks, stepOfSlides, type ClaudeReviewKit, type LocatedItem, type ReadinessFix, type SlideChange, type SlideFact } from '../../../features/review/reviewModel';
+import { countItems, deckChanges, flowPathFor, lineDiff, loopCommand, questionOf, readinessChecks, stepOfSlides, type ClaudeReviewKit, type LocatedItem, type ReadinessFix, type ReviewDecision, type SlideChange, type SlideFact } from '../../../features/review/reviewModel';
 import { apiClient } from '../../../api/apiClient';
 import { REVIEW_FOCUS_EVENT, REVIEW_SHOW_EVENT } from '../../../features/review/useDeckReview';
 import { REVIEW_COLORS, itemColor, slideLabel } from '../../../features/review/reviewPlace';
@@ -19,6 +19,14 @@ import { RichText } from '../../../features/review/RichText';
 const TAB_KEY = 'mdp.review.tab';
 const blocksOf = (text: string) => splitMarkdownToBlocks(text).map((b) => b.rawContent);
 const muted: React.CSSProperties = { color: 'var(--app-text-muted)', fontSize: 12 };
+// The person's judgment of an AI's finding (reviewModel applyDecision): the reviser and
+// the next reviewer follow it.
+const DECISION_BUTTONS: [ReviewDecision, string, string][] = [
+  ['fix', 'Fix', 'Fix it: the reviser does it first, right after your own comments'],
+  ['later', 'Later', 'Not now: it stays open, and the reviser leaves it alone'],
+  ['skip', "Won't fix", 'Will not fix: it is closed, and the reviewer does not raise this kind again — say why'],
+];
+const DECISION_LABEL: Record<ReviewDecision, string> = { fix: 'you: fix', later: 'later', skip: "won't fix" };
 const ASPECT: Record<string, string> = { clarity: 'clarity', uptake: 'uptake', accuracy: 'accuracy', effect: 'effect', flow: 'flow', style: 'style', other: 'other' };
 
 /** The Review panel: the previewed deck's findings (the person's comments, an AI
@@ -161,12 +169,12 @@ const FindingsTab: React.FC<{ focusId: string | null }> = ({ focusId }) => {
     const el = rootRef.current?.querySelector(`[data-review-id="${focusId}"]`);
     el?.scrollIntoView({ block: 'nearest' });
   }, [focusId, shown]);
-  const counts = { open: r.items.filter((x) => x.status === 'open').length, major: r.items.filter((x) => x.status === 'open' && x.severity === 'major').length, questions: r.items.filter((x) => x.status === 'open' && x.kind === 'question').length };
+  const counts = countItems(r.file);
   return (
     <div ref={rootRef} style={{ padding: '8px 10px' }}>
       <AiReviewBox />
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-        <span style={muted}>{counts.open} open{counts.major ? ` · ${counts.major} major` : ''}{counts.questions ? ` · ${counts.questions} question${counts.questions > 1 ? 's' : ''}` : ''}</span>
+        <span style={muted}>{counts.open} open{counts.major ? ` · ${counts.major} major` : ''}{counts.questions ? ` · ${counts.questions} question${counts.questions > 1 ? 's' : ''}` : ''}{counts.toDecide ? ` · ${counts.toDecide} to decide` : ''}{counts.later ? ` · ${counts.later} later` : ''}</span>
         <div style={{ flex: 1 }} />
         <Button size="small" onClick={() => setAll((v) => !v)} sx={{ textTransform: 'none', minWidth: 0 }}>{all ? 'Open only' : 'Show all'}</Button>
       </div>
@@ -203,8 +211,16 @@ const FindingCard: React.FC<{ it: LocatedItem; n: number; focused: boolean }> = 
   const r = p.review!;
   const [replying, setReplying] = useState(false);
   const [reply, setReply] = useState('');
+  const [hint, setHint] = useState('Reply…');
   const color = itemColor(it);
   const done = it.status !== 'open';
+  // an AI's finding: the person judges it (fix / later / won't fix)
+  const judged = it.kind === 'finding' && it.by !== 'human';
+  const decide = (d: ReviewDecision) => {
+    const next = it.decision === d ? null : d;
+    void r.update(it.id, { decision: next });
+    if (next === 'later' || next === 'skip') { setHint(next === 'skip' ? 'Why not? (the reviewer will not raise this kind again)' : 'Why not now? (optional)'); setReplying(true); }
+  };
   const sendReply = () => { if (reply.trim()) { void r.update(it.id, { reply }); setReply(''); setReplying(false); } };
   // a click on the card (not on its buttons, a link or the reply box, nor the end of a
   // text selection): the preview goes to its slide and flashes what it points at
@@ -221,7 +237,7 @@ const FindingCard: React.FC<{ it: LocatedItem; n: number; focused: boolean }> = 
       onClick={showOnSlide}
       style={{
         border: `1px solid ${focused ? color : 'var(--app-border)'}`, borderLeft: `4px solid ${color}`, borderRadius: 6, padding: '6px 8px', marginBottom: 6,
-        background: focused ? 'var(--app-accent-soft)' : 'var(--app-bg-elevated)', opacity: done ? 0.6 : 1, cursor: it.slide ? 'pointer' : 'default',
+        background: focused ? 'var(--app-accent-soft)' : 'var(--app-bg-elevated)', opacity: done ? 0.6 : it.decision === 'later' ? 0.75 : 1, cursor: it.slide ? 'pointer' : 'default',
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--app-text-muted)' }}>
@@ -231,7 +247,8 @@ const FindingCard: React.FC<{ it: LocatedItem; n: number; focused: boolean }> = 
         {it.severity !== 'minor' && <span>· {it.severity}</span>}
         {it.round ? <span>· round {it.round}</span> : null}
         {it.moved && <span title="Its slide was found again by a guess (the slide changed)">· ?</span>}
-        {done && <span style={{ fontWeight: 700 }}>· {it.status}</span>}
+        {it.decision && <span className="mdp-review-decision-label" style={{ fontWeight: 700 }}>· {DECISION_LABEL[it.decision]}</span>}
+        {done && it.decision !== 'skip' && <span style={{ fontWeight: 700 }}>· {it.status}</span>}
         <div style={{ flex: 1 }} />
         <Tooltip title={it.rule ? 'A rule to keep (the AI records it in the skill)' : 'Keep as a rule'}>
           <IconButton size="small" onClick={() => void r.update(it.id, { rule: !it.rule })} sx={{ p: 0.25, color: it.rule ? '#f9a825' : 'inherit' }}>
@@ -255,6 +272,20 @@ const FindingCard: React.FC<{ it: LocatedItem; n: number; focused: boolean }> = 
           <span>→</span><RichText block text={it.suggestion} />
         </div>
       )}
+      {judged && (!done || it.decision === 'skip') && (
+        <div className="mdp-review-decision" style={{ display: 'flex', gap: 4, marginTop: 5, alignItems: 'center' }}>
+          <span style={{ ...muted, fontSize: 11 }}>Your call:</span>
+          {DECISION_BUTTONS.map(([d, label, tip]) => (
+            <Tooltip key={d} title={tip}>
+              <Button
+                size="small" variant={it.decision === d ? 'contained' : 'outlined'} onClick={() => decide(d)}
+                className={`mdp-review-decide mdp-review-decide-${d}`} aria-pressed={it.decision === d}
+                sx={{ textTransform: 'none', minWidth: 0, py: 0, px: 0.75, fontSize: 11.5, lineHeight: 1.6 }}
+              >{label}</Button>
+            </Tooltip>
+          ))}
+        </div>
+      )}
       {it.thread.map((t, i) => (
         <div key={i} style={{ display: 'flex', gap: 4, fontSize: 12.5, marginTop: 4, paddingLeft: 8, borderLeft: '2px solid var(--app-border-strong)' }}>
           <span style={{ fontWeight: 700, flexShrink: 0 }}>{t.by === 'human' ? 'you' : t.by}:</span><RichText block text={t.text} />
@@ -263,7 +294,7 @@ const FindingCard: React.FC<{ it: LocatedItem; n: number; focused: boolean }> = 
       {replying && (
         <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
           <TextField
-            size="small" fullWidth multiline autoFocus placeholder="Reply…" value={reply} onChange={(e) => setReply(e.target.value)}
+            size="small" fullWidth multiline autoFocus placeholder={hint} value={reply} onChange={(e) => setReply(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); sendReply(); } }}
           />
           <Button size="small" variant="contained" onClick={sendReply} disabled={!reply.trim()}>Send</Button>

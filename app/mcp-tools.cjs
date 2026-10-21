@@ -399,11 +399,12 @@ const TOOLS = [
             status: str('resolved | declined | answered | open'),
             reply: str('What was done, or why not'),
             rule: { type: 'boolean', description: 'Mark (or unmark) it as a rule to keep' },
+            decision: str('ONLY as the person decided (with by: "human"): fix | later | skip | "" (none). skip declines the item; clearing a skip opens it again'),
           },
           required: ['id'],
         },
       },
-      by: str('Who answers: "author" (default)'),
+      by: str('Who answers: "author" (default); "human" when you record what the person said'),
     }, ['path', 'updates']),
   },
   {

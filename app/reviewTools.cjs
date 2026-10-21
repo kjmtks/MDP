@@ -58,7 +58,7 @@ function createReviewTools(h) {
         return {
           path: deckPath, file: review.reviewPathFor(deckPath), counts: review.countItems(file), status, items,
           snapshots: snapshotList(file),
-          note: 'Each item: `slide` = where it is NOW (found again by the slide\'s @id / heading; `moved: true` = a guess), `page` = the number printed on it, `at` = what it points at (`target` as get_focus_targets names it, `quote` = words selected), `by` (human = the author of the deck, the person you work for — their comments come first), `kind` (comment / finding / question), `aspect` (clarity = will the students understand it, accuracy, effect = does it serve the lesson\'s goal, flow, style), `severity`, `rule: true` = the person wants this kept as a rule (record it in the folder\'s skill with patch_skill, then fix every slide of the same kind), `thread` = replies. After fixing, call resolve_review (resolved / declined with the reason / answered).',
+          note: 'Each item: `slide` = where it is NOW (found again by the slide\'s @id / heading; `moved: true` = a guess), `page` = the number printed on it, `at` = what it points at (`target` as get_focus_targets names it, `quote` = words selected), `by` (human = the author of the deck, the person you work for — their comments come first), `kind` (comment / finding / question), `aspect` (clarity = will the students understand it, accuracy, effect = does it serve the lesson\'s goal, flow, style), `severity`, `rule: true` = the person wants this kept as a rule (record it in the folder\'s skill with patch_skill, then fix every slide of the same kind), `thread` = replies (the person\'s are `by: "human"` — follow them), `decision` = the PERSON\'s judgment of an AI\'s finding: "fix" = do it (right after their own comments), "later" = leave it open and untouched (not now), "skip" = will not fix — declined by the person (its reason in the thread; do not raise that kind again); no decision = not judged yet (`counts.toDecide`). After fixing, call resolve_review (resolved / declined with the reason / answered).',
         };
       }
 
@@ -77,6 +77,11 @@ function createReviewTools(h) {
       case 'resolve_review': {
         const deckPath = requireDeckPath(p.path);
         return withDeckLock(lockKey(baseDir, 'review', deckPath), async () => {
+          // a judgment (fix / later / skip) is the person's: an AI records one only as
+          // told by them (by: "human")
+          if (Array.isArray(p.updates) && p.updates.some((u) => u && u.decision !== undefined) && p.by !== 'human') {
+            throw new Error('A "decision" (fix / later / skip) is the person\'s judgment: pass it only when the person decided it, with by: "human". The reviser answers with status and reply.');
+          }
           const file = await readReview(baseDir, deckPath);
           const r = review.updateItems(file, p.updates, p.by || 'author');
           if (r.done.length) { await writeReview(baseDir, deckPath, file); changed(baseDir, deckPath); }
