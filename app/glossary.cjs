@@ -290,8 +290,47 @@ function setField(text, key, value) {
   return head + src.slice(m[0].length).replace(/^\n(?=\n)/, '');
 }
 
+// --- writing (the app: the Configure dialog's term table, the editor's "Add to glossary…")
+/** A path a glossary may be written at: `<a folder's .mdp>/glossary/<name>.md`
+ *  (workspace-relative). → { cdir, name } or null. */
+function glossaryPathParts(rel) {
+  const m = /^((?:[^/]+\/)*\.mdp)\/glossary\/([^/]+)\.md$/.exec(String(rel || '').replace(/\\/g, '/'));
+  if (!m || !NAME_RE.test(m[2]) || m[1].split('/').some((s) => s === '..' || s === '.' || s === '')) return null;
+  return { cdir: m[1], name: m[2] };
+}
+
+/** One edit of a glossary file, everything else in it kept: terms set (a new term is
+ *  a new row) and removed, the description and lang (undefined = unchanged, '' =
+ *  dropped). `text` null = no such file: made when `create` (with the name as its
+ *  title). Terms are checked as parseGlossary would read them. → { text, updated,
+ *  added, removed, missing, created } */
+function editGlossaryText(text, { set = [], remove = [], description, lang, create = false, name = '' } = {}) {
+  const terms = (Array.isArray(set) ? set : []).map((t) => ({
+    term: clean(t && t.term, 200), reading: clean(t && t.reading, 400),
+    ...(t && t.note !== undefined ? { note: clean(t.note, 400) } : {}),
+  }));
+  for (const t of terms) {
+    if (!t.term || !t.reading) throw new Error(`Each term needs a reading${t.term ? ` ("${t.term}")` : ''}.`);
+    const bad = termProblem(t.term) || readingProblem(t.reading);
+    if (bad) throw new Error(`"${t.term}": ${bad}.`);
+  }
+  let src = text;
+  let created = false;
+  if (src == null) {
+    if (!create) throw new Error('There is no such glossary.');
+    src = renderGlossary({ title: name, description: description || '', lang: lang || '' });
+    created = true;
+  }
+  const r = setTerms(src, terms, (Array.isArray(remove) ? remove : []).map((x) => clean(x, 200)).filter(Boolean));
+  let out = r.text;
+  if (description !== undefined) out = setField(out, 'description', clean(description, 1024));
+  if (lang !== undefined) out = setField(out, 'lang', clean(lang, 20).toLowerCase());
+  return { text: out, updated: r.updated, added: r.added, removed: r.removed, missing: r.missing, created };
+}
+
 module.exports = {
   DIR, NAME_RE, MAX_TERMS,
   parseGlossary, listGlossaries, findGlossary, mergeTerms, conflicts,
   renderGlossary, setTerms, setField, termProblem, readingProblem,
+  glossaryPathParts, editGlossaryText,
 };

@@ -19,6 +19,7 @@ import { moduleRegionPlugin } from '../extensions/ModuleRegionPlugin';
 import { useAppSettings } from '../../settings/AppSettingsContext';
 import { resolveKeys } from '../../settings/shortcuts/matcher';
 import { actionById } from '../../settings/shortcuts/registry';
+import { glossaryPick, ADD_TO_GLOSSARY_EVENT } from '../../glossary/glossaryPick';
 
 interface UseEditorIntegrationProps {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -220,6 +221,23 @@ export const useEditorIntegration = ({
     })),
   ), [settings]);
 
+  // "Add to glossary…": the selected term — or the ruby at the caret, or the word there —
+  // to a glossary of the folder (features/glossary: the dialog EditorPage mounts).
+  const glossaryKeymap = useMemo(() => keymap.of(
+    resolveKeys(actionById('editor.addToGlossary')!, settings).map((key) => ({
+      key,
+      preventDefault: true,
+      run: (v: EditorView) => {
+        const sel = v.state.selection.main;
+        const line = v.state.doc.lineAt(sel.head);
+        const word = v.state.wordAt(sel.head);
+        const pick = glossaryPick(line.text, line.from, { from: sel.from, to: sel.to, text: v.state.sliceDoc(sel.from, sel.to) }, word ? { from: word.from, to: word.to } : null);
+        window.dispatchEvent(new CustomEvent(ADD_TO_GLOSSARY_EVENT, { detail: pick || { term: '', reading: '', ruby: null, formula: false } }));
+        return true;
+      },
+    })),
+  ), [settings]);
+
   const slideNavKeymap = useMemo(() => {
     const isSlide = !!currentFileName?.endsWith('.slide.md');
     const prevKeys = resolveKeys(actionById('editor.slidePrev')!, settings);
@@ -235,6 +253,7 @@ export const useEditorIntegration = ({
       EditorView.lineWrapping,
       saveKeymap,
       readingKeymap,
+      glossaryKeymap,
       slideNavKeymap,
       drawioCollapsePlugin,
       drawingCollapsePlugin,
@@ -265,7 +284,7 @@ export const useEditorIntegration = ({
     }
 
     return baseExts;
-  }, [saveKeymap, readingKeymap, slideNavKeymap, currentFileName]);
+  }, [saveKeymap, readingKeymap, glossaryKeymap, slideNavKeymap, currentFileName]);
 
   useEffect(() => {
     const view = editorRef.current?.view;

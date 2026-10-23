@@ -33,6 +33,7 @@ import type { DeckTimingInfo } from '../../features/rehearsal/TimeEstimatesPanel
 import { estimateDeckSeconds, formatClock, scriptKey, slideSeconds, slideTimeBasis } from '../../features/slide/talkTime';
 import { setOpenDeck } from '../../features/slide/openDeckRuntime';
 import { SuggestModuleDialog } from '../../features/modules/components/SuggestModuleDialog';
+import { AddToGlossaryDialog } from '../../features/glossary/AddToGlossaryDialog';
 import { AutoPlayView } from '../../features/autoplay/AutoPlayView';
 import { usePresentingSession } from '../../features/slide/hooks/usePresentingSession';
 import { getDeckGlossary, mergeGlossaries, setDeckGlossary, type GlossaryFile } from '../../features/glossary/glossary';
@@ -1571,6 +1572,15 @@ export default function EditorPage() {
       ...(last ? { lastAt: last.endedAt, lastNarrator: last.narrator } : {}),
     };
   }, [autoPlayOpen, videoDialogOpen, mdSlides, readingCpm, timingFile]);
+  // A piece of the open document replaced (the glossary's dialog removes a ruby it
+  // took the term from) — only while it still reads `expect` there; one undoable edit.
+  const replaceInEditor = useCallback((from: number, to: number, expect: string, text: string): boolean => {
+    const view = editorRef.current?.view;
+    if (!view || to > view.state.doc.length || view.state.sliceDoc(from, to) !== expect) return false;
+    view.dispatch({ changes: { from, to, insert: text }, userEvent: 'input' });
+    return true;
+  }, [editorRef]);
+
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [suggestText, setSuggestText] = useState('');
   const openSuggestModule = useCallback(() => {
@@ -2474,6 +2484,9 @@ export default function EditorPage() {
         slides={mdSlides.map((s) => ({ raw: (s as { raw?: string }).raw || '', measuredSec: (s as { measuredSec?: number }).measuredSec }))} />
 
       <SuggestModuleDialog open={suggestOpen} onClose={() => setSuggestOpen(false)} text={suggestText} onInsert={handleInsertText} />
+
+      {/* the editor's "Add to glossary…" (Ctrl+Alt+Y): a term of the script into a glossary of the deck's folders */}
+      <AddToGlossaryDialog chain={scopeDirs} onReplace={replaceInEditor} />
 
       {videoDialogOpen && currentFileName && (
         <VideoExportDialog open onClose={() => setVideoDialogOpen(false)} deckPath={currentFileName}

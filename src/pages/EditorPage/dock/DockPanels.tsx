@@ -812,7 +812,11 @@ export const PreviewPanel: React.FC = () => {
           className="preview-pane"
           tabIndex={0}
           onKeyDown={(e) => {
-            if ((e.target as HTMLElement).closest?.('.mdp-interactive')) return;
+            // Only keys pressed ON the pane turn its slides: React passes a portal's
+            // keys up too — the comment dialog, the right-click menus (rendered
+            // outside this DOM) — and a field's arrows move its caret, not the slide.
+            const t = e.target as HTMLElement;
+            if (!e.currentTarget.contains(t) || t.closest?.('.mdp-interactive, input, textarea, select, [contenteditable="true"], [role="dialog"], [role="menu"], [role="listbox"]')) return;
             if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); p.moveSlide(1); }
             else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); p.moveSlide(-1); }
           }}

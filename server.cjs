@@ -790,6 +790,21 @@ app.get('/api/glossaries', async (req, res) => {
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// A glossary's terms edited from the app (≡ app/main.cjs 'glossaryEdit').
+app.post('/api/glossary/edit', async (req, res) => {
+  try {
+    const a = req.body || {};
+    const parts = glossaryLib.glossaryPathParts(a.path);
+    if (!parts) return res.status(400).json({ error: 'Not a glossary: <folder>/.mdp/glossary/<name>.md' });
+    assertWritable(req, a.path);
+    let text = null;
+    try { text = String(await mdplink.vfsReadText(vres(req, a.path))); } catch { text = null; }
+    const r = glossaryLib.editGlossaryText(text, { ...a, name: parts.name });
+    await mdplink.vfsWrite(vres(req, a.path), Buffer.from(r.text, 'utf-8'));
+    res.json({ path: a.path, updated: r.updated, added: r.added, removed: r.removed, missing: r.missing, created: r.created, glossary: { ...glossaryLib.parseGlossary(r.text, parts.name), path: a.path, configDir: parts.cdir } });
+  } catch (e) { res.status(e.status || 400).json({ error: e.message }); }
+});
+
 // The audience: the personas of the chain's nearest `.mdp` that has any.
 app.get('/api/audience', async (req, res) => {
   try { res.json(await audienceLib.listAudience(assetChain(req.query.dirs), (rel) => vres(req, rel), mdplink)); }

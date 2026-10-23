@@ -4,12 +4,14 @@ import AddIcon from '@mui/icons-material/Add';
 import { apiClient } from '../../api/apiClient';
 import { notify, reportError } from '../../components/error/errorReporter';
 import type { GlossaryFile } from './glossary';
+import { GlossaryTermsEditor } from './GlossaryTermsEditor';
 
 // "Glossaries (this folder)" in the Configure (.mdp) dialog: how the narrator reads a
 // field's terms (`glossary/<name>.md`, a table of 用語 | 読み) — every deck beneath
 // this folder reads them so, without a ruby in its script. Lists the cascade,
-// creates one from a template, opens one in the editor, removes one. Everything
-// writes immediately (glossaries are files, not dialog content).
+// creates one from a template, edits its terms in a table (GlossaryTermsEditor; a
+// parent's read-only), opens one in the editor, removes one. Everything writes
+// immediately (glossaries are files, not dialog content).
 
 interface Props {
   configDir: string;                 // the `.mdp` being configured
@@ -56,6 +58,7 @@ export const GlossarySection: React.FC<Props> = ({ configDir, chain, onOpenFile 
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [draft, setDraft] = useState<string | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
   const [epoch, setEpoch] = useState(0);
   const chainKey = chain.join('\n');
 
@@ -98,11 +101,11 @@ export const GlossarySection: React.FC<Props> = ({ configDir, chain, onOpenFile 
     setBusy(true);
     try {
       await apiClient.saveFile(path, glossaryTemplate(name));
-      notify(`Created the glossary "${name}" — add its terms in the editor.`);
+      notify(`Created the glossary "${name}" — add its terms below.`);
       setDraft(null);
       reload();
       changed();
-      onOpenFile?.(path);
+      setEditing(path);
     } catch (e) {
       reportError('Could not create the glossary — this .mdp may be read-only.', { detail: e });
     } finally { setBusy(false); }
@@ -129,7 +132,8 @@ export const GlossarySection: React.FC<Props> = ({ configDir, chain, onOpenFile 
         <code> glossary/&lt;name&gt;.md</code>, a table of <code>用語 | 読み</code>. Every deck beneath this folder reads them so in
         the auto-play, the videos and the rehearsal, with no ruby in its script (a ruby written there still wins). Glossaries
         cascade like the other <code>.mdp</code> assets: a nearer folder&apos;s glossary of the same name replaces a parent&apos;s,
-        and on a term the nearer one wins. An AI can add terms through MCP (<code>patch_glossary</code>).
+        and on a term the nearer one wins. Edit the terms here (<em>Edit terms</em>), or while writing a script: select a word
+        and use the editor&apos;s <em>Add to glossary…</em> (Ctrl+Alt+Y). An AI can add terms through MCP (<code>patch_glossary</code>).
       </Typography>
 
       <Box sx={{ border: '1px solid var(--app-border)', borderRadius: 1.5, overflow: 'hidden', bgcolor: 'var(--app-bg-elevated)' }}>
@@ -149,6 +153,9 @@ export const GlossarySection: React.FC<Props> = ({ configDir, chain, onOpenFile 
                   {mine ? 'this folder' : `from ${f.configDir}`} — {f.terms.length} term{f.terms.length === 1 ? '' : 's'}
                   {f.lang ? ` · for ${f.lang} lines${f.langInferred ? ' (from its readings)' : ''}` : ' · every language'}
                 </span>
+                <Button size="small" onClick={() => setEditing((x) => (x === f.path ? null : f.path))} sx={linkBtnSx} className="mdp-glossary-edit">
+                  {editing === f.path ? 'Close' : mine ? 'Edit terms' : 'View terms'}
+                </Button>
                 {onOpenFile && <Button size="small" onClick={() => onOpenFile(f.path)} sx={linkBtnSx}>Open</Button>}
                 {mine && <Button size="small" onClick={() => remove(f)} disabled={busy} sx={linkBtnSx}>Remove</Button>}
               </Box>
@@ -160,6 +167,7 @@ export const GlossarySection: React.FC<Props> = ({ configDir, chain, onOpenFile 
                   )}
                 </Typography>
               )}
+              {editing === f.path && <GlossaryTermsEditor key={`${f.path}:${epoch}`} file={f} editable={mine} onSaved={() => reload()} />}
             </Box>
           );
         })}
@@ -181,7 +189,7 @@ export const GlossarySection: React.FC<Props> = ({ configDir, chain, onOpenFile 
           <Stack direction="row" spacing={1}>
             <Button size="small" variant="contained" onClick={create} disabled={busy || !slug(draft)}
               sx={{ textTransform: 'none', bgcolor: 'var(--app-accent)' }}>
-              Create &amp; open
+              Create
             </Button>
             <Button size="small" onClick={() => setDraft(null)} sx={{ textTransform: 'none', color: 'var(--app-text-muted)' }}>Cancel</Button>
           </Stack>

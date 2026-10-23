@@ -1,7 +1,7 @@
 import { WEB_BASE } from './base';
 import type { WorkspaceFont, FontInspection, RequirementsFile, FontInstallResult } from '../features/fonts/fontTypes';
 import type { SlideSkill } from '../features/skills/skillTypes';
-import type { GlossaryFile } from '../features/glossary/glossary';
+import type { GlossaryFile, GlossaryEditArgs, GlossaryEditResult } from '../features/glossary/glossary';
 import type { AudiencePersona } from '../features/audience/audience';
 import type { ClaudeReviewKit } from '../features/review/reviewModel';
 declare const __APP_VERSION__: string;
@@ -421,6 +421,17 @@ export const apiClient = {
     const res = await fetch(`${WEB_BASE}/api/glossaries${qs}`);
     if (!res.ok) throw new Error(`glossaries: HTTP ${res.status}`);
     return await res.json();
+  },
+
+  // A glossary's terms edited (set / remove, description, lang; `create` makes the file),
+  // the rest of the file kept — app/glossary.cjs editGlossaryText.
+  glossaryEdit: async (args: GlossaryEditArgs): Promise<GlossaryEditResult> => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (isElectron()) return await (window as any).electronAPI.glossaryEdit(args);
+    const res = await fetch(`${WEB_BASE}/api/glossary/edit`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(args) });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(j.error || `glossary: HTTP ${res.status}`);
+    return j;
   },
 
   // The audience of the chain (`.mdp/audience/*.md` of its nearest `.mdp` that has any).

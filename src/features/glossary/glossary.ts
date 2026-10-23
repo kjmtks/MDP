@@ -21,6 +21,19 @@ export interface GlossaryFile {
   problems: string[];
   truncated?: boolean;
 }
+/** An edit of a glossary file from the app (apiClient.glossaryEdit ≡ app/glossary.cjs editGlossaryText). */
+export interface GlossaryEditArgs {
+  path: string;                                  // <folder>/.mdp/glossary/<name>.md
+  set?: { term: string; reading: string; note?: string }[];
+  remove?: string[];
+  description?: string;
+  lang?: string;
+  create?: boolean;                              // make the file when it is not there
+}
+export interface GlossaryEditResult {
+  path: string; updated: number; added: number; removed: number; missing: string[]; created: boolean;
+  glossary: GlossaryFile;
+}
 export interface GlossaryEntry { term: string; reading: string; lang: string; from: string }
 /** The terms in effect for a deck (plain data: it travels to the video windows). */
 export interface DeckGlossary { entries: GlossaryEntry[] }

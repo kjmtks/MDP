@@ -1317,6 +1317,22 @@ ipcMain.handle('getGlossaries', async (event, dirs) => {
   return await glossaryLib.listGlossaries(chain, vresolve, mdplink);
 });
 
+// A glossary's terms edited from the app (the Configure dialog's term table, the
+// editor's "Add to glossary…"): one read-modify-write of `<cdir>/glossary/<name>.md`,
+// the rest of the file kept (app/glossary.cjs editGlossaryText); a new file when
+// `create`. → the counts and the glossary as it is now.
+ipcMain.handle('glossaryEdit', async (event, args) => {
+  if (!currentBaseDir) throw new Error('No workspace is open.');
+  const a = args || {};
+  const parts = glossaryLib.glossaryPathParts(a.path);
+  if (!parts) throw new Error('Not a glossary: <folder>/.mdp/glossary/<name>.md');
+  let text = null;
+  try { text = String(await mdplink.vfsReadText(vresolve(a.path))); } catch { text = null; }
+  const r = glossaryLib.editGlossaryText(text, { ...a, name: parts.name });
+  await mdplink.vfsWrite(vresolve(a.path), Buffer.from(r.text, 'utf-8'));
+  return { path: a.path, updated: r.updated, added: r.added, removed: r.removed, missing: r.missing, created: r.created, glossary: { ...glossaryLib.parseGlossary(r.text, parts.name), path: a.path, configDir: parts.cdir } };
+});
+
 // The audience of a chain: the personas of its nearest `.mdp` that has any (app/audience.cjs).
 ipcMain.handle('getAudience', async (event, dirs) => {
   if (!currentBaseDir) return [];
