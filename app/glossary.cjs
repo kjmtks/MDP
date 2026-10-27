@@ -23,7 +23,7 @@
 // and, when the renderer merges them, on a term. Shared by app/main.cjs, server.cjs
 // and app/mcp-bridge.cjs.
 
-const { parseFrontmatter } = require('./skills.cjs');
+const { parseFrontmatter, setFrontmatterLine, strayProblem, yamlScalar } = require('./skills.cjs');
 
 const DIR = 'glossary';
 const MAX_FILE = 512 * 1024;
@@ -64,11 +64,11 @@ const readingProblem = (r) => (/[[\]|\n]/.test(r) ? 'a reading cannot hold [ ] o
  *  noted), description, lang (given, or inferred from the readings) and problems. */
 function parseGlossary(text, name = '') {
   const src = String(text ?? '').replace(/\r\n?/g, '\n');
-  const { data, body } = parseFrontmatter(src);
+  const { data, body, stray } = parseFrontmatter(src);
   const lines = body.split('\n');
   const offset = src.split('\n').length - lines.length;     // the frontmatter's lines
   const terms = new Map();
-  const problems = [];
+  const problems = stray ? [`frontmatter: ${strayProblem(stray)}`] : [];
   let inFence = false;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -191,7 +191,7 @@ const yamlLine = (key, value) => `${key}: ${JSON.stringify(String(value))}`;
 
 /** A whole glossary file. */
 function renderGlossary({ title = '', description = '', lang = '', terms = [] } = {}) {
-  const fm = ['---', ...(description ? [yamlLine('description', description)] : []), ...(lang ? [`lang: ${lang}`] : []), '---'];
+  const fm = ['---', ...(description ? [yamlLine('description', description)] : []), ...(lang ? [`lang: ${yamlScalar(lang)}`] : []), '---'];
   return [
     ...(fm.length > 2 ? fm : []),
     ...(fm.length > 2 ? [''] : []),
@@ -278,16 +278,22 @@ function setTerms(text, set = [], remove = []) {
   return { text: result, updated, added: fresh.length, removed, missing: [...drop] };
 }
 
-/** Set (or add / drop) a frontmatter field of a glossary's Markdown. */
+/** Set (or add / drop: '') a frontmatter field of a glossary's Markdown. The
+ *  frontmatter is found as parseGlossary finds it and the result read back before
+ *  anything is written (skills.cjs setFrontmatterLine — a setter that wanted `---` on
+ *  the first line put a SECOND frontmatter above one under an empty line). → LF text
+ *  without a BOM. */
 function setField(text, key, value) {
-  const src = String(text ?? '').replace(/\r\n?/g, '\n');
-  const m = /^---\n([\s\S]*?)\n---(\n|$)/.exec(src);
-  const lineOf = value === '' || value == null ? null : (key === 'lang' ? `lang: ${value}` : yamlLine(key, value));
-  if (!m) return lineOf ? `---\n${lineOf}\n---\n\n${src}` : src;
-  const lines = m[1].split('\n').filter((l) => !new RegExp(`^${key}\\s*:`).test(l));
-  if (lineOf) lines.push(lineOf);
-  const head = lines.length ? `---\n${lines.join('\n')}\n---${m[2]}` : '';
-  return head + src.slice(m[0].length).replace(/^\n(?=\n)/, '');
+  const drop = value === '' || value == null;
+  const line = drop ? null : key === 'lang' ? `lang: ${yamlScalar(value)}` : yamlLine(key, value);
+  return setFrontmatterLine(text, key, line, drop ? undefined : key === 'lang' ? String(value).replace(/\s+/g, ' ').trim() : String(value));
+}
+
+/** Refuse to write a glossary whose frontmatter would not read back whole: a second
+ *  block under the first (ignored — its fields lost). */
+function checkGlossaryText(text) {
+  const { stray } = parseFrontmatter(text);
+  if (stray) throw new Error(`The glossary's ${strayProblem(stray)} (in the Markdown file). Nothing was written.`);
 }
 
 // --- writing (the app: the Configure dialog's term table, the editor's "Add to glossary…")
@@ -314,23 +320,29 @@ function editGlossaryText(text, { set = [], remove = [], description, lang, crea
     const bad = termProblem(t.term) || readingProblem(t.reading);
     if (bad) throw new Error(`"${t.term}": ${bad}.`);
   }
-  let src = text;
+  let src = text == null ? null : String(text);
+  // The file's own form is kept: a BOM, CRLF line ends.
+  const bom = src != null && src.charCodeAt(0) === 0xfeff;
+  const crlf = src != null && /\r\n/.test(src);
   let created = false;
   if (src == null) {
     if (!create) throw new Error('There is no such glossary.');
     src = renderGlossary({ title: name, description: description || '', lang: lang || '' });
     created = true;
   }
+  if (bom) src = src.slice(1);
   const r = setTerms(src, terms, (Array.isArray(remove) ? remove : []).map((x) => clean(x, 200)).filter(Boolean));
   let out = r.text;
   if (description !== undefined) out = setField(out, 'description', clean(description, 1024));
   if (lang !== undefined) out = setField(out, 'lang', clean(lang, 20).toLowerCase());
+  checkGlossaryText(out);
+  out = (bom ? '\uFEFF' : '') + (crlf ? out.replace(/\n/g, '\r\n') : out);
   return { text: out, updated: r.updated, added: r.added, removed: r.removed, missing: r.missing, created };
 }
 
 module.exports = {
   DIR, NAME_RE, MAX_TERMS,
   parseGlossary, listGlossaries, findGlossary, mergeTerms, conflicts,
-  renderGlossary, setTerms, setField, termProblem, readingProblem,
+  renderGlossary, setTerms, setField, checkGlossaryText, termProblem, readingProblem,
   glossaryPathParts, editGlossaryText,
 };

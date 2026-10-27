@@ -172,7 +172,7 @@ function createReviewTools(h) {
         if (p.name) {
           const one = audience.findAudience(list, p.name);
           if (!one) throw new Error(`No persona "${p.name}" for this folder${list.length ? ` (there are: ${list.map((x) => x.name).join(', ')})` : ''}.`);
-          return { deck: deckPath || null, name: one.name, description: one.description, ...(one.primary ? { primary: true } : {}), from: one.configDir, path: one.path, text: one.body };
+          return { deck: deckPath || null, name: one.name, description: one.description, ...(one.primary ? { primary: true } : {}), from: one.configDir, path: one.path, ...(one.problem ? { problem: one.problem } : {}), text: one.body };
         }
         if (!list.length) {
           return {
@@ -190,6 +190,9 @@ function createReviewTools(h) {
         const name = String(p.name || '').trim().replace(/\.md$/i, '');
         if (!audience.NAME_RE.test(name)) throw new Error('"name": letters, digits, - _ . (e.g. "学部2年", "struggling-student").');
         if (typeof p.content !== 'string' || !p.content.trim()) throw new Error('"content" is required (the persona file, Markdown with a frontmatter `description`; get_audience gives the template).');
+        // Read as the readers will: a second frontmatter block would hide its fields.
+        const fm = skills.parseFrontmatter(p.content);
+        if (fm.stray) throw new Error(`The persona's ${skills.strayProblem(fm.stray)}. Nothing was written.`);
         const deckPath = p.deck ? requireDeckPath(p.deck) : await activeDeckPath(baseDir).catch(() => '');
         let cdir;
         if (typeof p.dir === 'string') {
@@ -212,6 +215,7 @@ function createReviewTools(h) {
           rly(baseDir, 'refreshTree', {}, 5000).catch(() => {});
           return {
             path: rel, [exists ? 'updated' : 'created']: true, ...(backups.length ? { backup: backups[0] } : {}),
+            ...(fm.data.description ? {} : { warning: 'No frontmatter `description` (one line: who this is) — get_audience lists the personas by it.' }),
             note: 'A persona in a folder\'s .mdp makes the audience there that folder\'s own: personas of the folders above no longer apply beneath it.',
           };
         });

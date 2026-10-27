@@ -17,6 +17,8 @@ export interface AudiencePersona {
   path: string;
   configDir: string;
   truncated?: boolean;
+  /** A second frontmatter block under the first: its fields are ignored. */
+  problem?: string;
 }
 
 export const AUDIENCE_NAME_RE = /^[\p{L}\p{N}][\p{L}\p{N}_.-]{0,63}$/u;

@@ -20,7 +20,7 @@
 // (how the author teaches) belongs in a skill. Shared by app/main.cjs, server.cjs and
 // app/mcp-bridge.cjs.
 
-const { parseFrontmatter } = require('./skills.cjs');
+const { parseFrontmatter, strayProblem } = require('./skills.cjs');
 
 const DIR = 'audience';
 const MAX_FILE = 64 * 1024;
@@ -30,9 +30,10 @@ const clean = (s, max = 2000) => String(s == null ? '' : s).replace(/[\x00-\x08\
 const truthy = (v) => v === true || /^(true|yes|1)$/i.test(String(v || '').trim());
 
 /** One persona file: its name, one-line description, whether it is the primary
- *  audience, and its text (the body without the frontmatter). */
+ *  audience, and its text (the body without the frontmatter); `problem` when a second
+ *  frontmatter block hides fields. */
 function parseAudience(text, name) {
-  const { data, body } = parseFrontmatter(String(text || ''));
+  const { data, body, stray } = parseFrontmatter(String(text || ''));
   const title = (/^#\s+(.+)$/m.exec(body) || [])[1] || '';
   return {
     name,
@@ -40,6 +41,7 @@ function parseAudience(text, name) {
     ...(truthy(data.primary) ? { primary: true } : {}),
     ...(title.trim() ? { title: clean(title, 120) } : {}),
     body: String(body || '').trim(),
+    ...(stray ? { problem: strayProblem(stray) } : {}),
   };
 }
 
@@ -122,7 +124,7 @@ function describeAudience(list, cap = 20000) {
     if (left <= 0) break;
     const text = p.body.length > left ? `${p.body.slice(0, left)}…` : p.body;
     left -= text.length;
-    out.push({ name: p.name, description: p.description, ...(p.primary ? { primary: true } : {}), from: p.configDir, path: p.path, text });
+    out.push({ name: p.name, description: p.description, ...(p.primary ? { primary: true } : {}), from: p.configDir, path: p.path, ...(p.problem ? { problem: p.problem } : {}), text });
   }
   return out;
 }

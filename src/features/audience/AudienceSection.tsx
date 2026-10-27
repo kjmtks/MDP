@@ -119,6 +119,7 @@ export const AudienceSection: React.FC<Props> = ({ configDir, chain, onOpenFile 
                 {mine && <Button size="small" onClick={() => remove(p)} disabled={busy} sx={linkBtnSx}>Remove</Button>}
               </Box>
               {p.description && <Typography sx={{ ...hintSx, mt: 0.25 }}>{p.description}</Typography>}
+              {p.problem && <Typography sx={{ ...hintSx, mt: 0.25, color: 'var(--app-danger, #e57373)' }}>{p.problem}</Typography>}
             </Box>
           );
         })}

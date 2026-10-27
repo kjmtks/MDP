@@ -205,38 +205,26 @@ async function skillTarget(baseDir, p) {
 }
 
 // A YAML scalar for frontmatter: plain when that is unambiguous, else quoted.
-function yamlScalar(value) {
-  const s = String(value).replace(/\s+/g, ' ').trim();
-  return s && !/^[-?:,[\]{}#&*!|>'"%@`\s]/.test(s) && !/:\s|\s#|:$/.test(s) && !/^(true|false|yes|no|on|off|null|~|[\d.+-]+)$/i.test(s)
-    ? s : JSON.stringify(s);
-}
+const { yamlScalar } = skillsLib;
 
-// Set (or add) one scalar field in the frontmatter of LF-normalized SKILL.md text.
+// Set (or add) one scalar field in a SKILL.md's frontmatter. The frontmatter is found
+// exactly as the reader finds it, and the result is read back before anything is
+// written (skills.cjs setFrontmatterLine): a setter that wanted `---` on the very
+// first line, while the reader skipped empty lines above it, PREPENDED a second
+// frontmatter (2026-10-27) — the skill lost its `name` and `always`.
 function setFrontmatterField(text, key, value) {
-  const v = typeof value === 'boolean' ? String(value) : yamlScalar(value);
-  const m = /^---\n([\s\S]*?)\n---(\n|$)/.exec(text);
-  if (!m) return `---\n${key}: ${v}\n---\n\n${text}`;
-  const lines = m[1].split('\n');
-  const i = lines.findIndex((l) => new RegExp(`^${key}\\s*:`).test(l));
-  if (i >= 0) {
-    let j = i + 1;
-    while (j < lines.length && /^\s+\S/.test(lines[j])) j++;      // a block scalar's lines
-    lines.splice(i, j - i, `${key}: ${v}`);
-  } else if (key === 'name') {
-    lines.unshift(`${key}: ${v}`);                                 // name leads, as in Agent Skills
-  } else {
-    lines.push(`${key}: ${v}`);
-  }
-  return `---\n${lines.join('\n')}\n---${m[2]}${text.slice(m[0].length)}`;
+  const line = `${key}: ${typeof value === 'boolean' ? String(value) : yamlScalar(value)}`;
+  return skillsLib.setFrontmatterLine(text, key, line, typeof value === 'boolean' ? value : String(value).replace(/\s+/g, ' ').trim());
 }
 
 // Append lines at the end of the section whose heading is `section` (any level,
 // case-insensitive); a missing section is created — before the Checklist, so the
 // checklist stays last. This is how a new rule gets recorded.
 function appendToSection(text, section, addition) {
+  const fm = skillsLib.splitFrontmatter(text);        // the frontmatter as the reader finds it
+  text = fm.src;
   const lines = text.split('\n');
-  const fm = /^---\n[\s\S]*?\n---(\n|$)/.exec(text);
-  const start = fm ? fm[0].split('\n').length - (fm[1] ? 1 : 0) : 0;
+  const start = fm.head ? fm.head.split('\n').length - (fm.head.endsWith('\n') ? 1 : 0) : 0;
   const title = String(section).trim().replace(/^#+\s*/, '');
   const want = title.toLowerCase();
   const heading = (l) => /^(#{1,6})\s+(.*?)\s*#*\s*$/.exec(l);
@@ -277,6 +265,7 @@ function appendToSection(text, section, addition) {
 
 function checkSkillText(text, name) {
   const s = skillsLib.parseSkill(text, name);
+  if (s.stray) throw new Error(`SKILL.md: ${s.problem} (with edits). Nothing was written.`);
   if (s.problem || !s.description) {
     throw new Error(`SKILL.md must start with frontmatter that gives at least a description:\n---\nname: ${name}\ndescription: what it covers and when to read it\n---\n(see get_asset_templates kind "skill"). Nothing was written.`);
   }
@@ -1892,7 +1881,7 @@ async function callToolInner(method, p, baseDir) {
       if (!p.name) {
         return {
           scope: chain,
-          skills: skills.map((s) => ({ name: s.name, ...(s.title ? { title: s.title } : {}), description: s.description, ...(s.always ? { always: true } : {}), path: s.path })),
+          skills: skills.map((s) => ({ name: s.name, ...(s.title ? { title: s.title } : {}), description: s.description, ...(s.always ? { always: true } : {}), path: s.path, ...(s.problem ? { problem: s.problem } : {}) })),
           note: skills.length
             ? 'Read the skills that fit the task with get_skill(name) before writing; `always` ones are already in get_slide_spec.'
             : 'This folder has no slide skills (.mdp/skills/<name>/SKILL.md). The generic rules of get_slide_spec apply.',
@@ -1907,6 +1896,7 @@ async function callToolInner(method, p, baseDir) {
         name: s.name, ...(s.title ? { title: s.title } : {}),
         description: s.description, ...(s.always ? { always: true } : {}),
         path: s.path, from: s.configDir,
+        ...(s.problem ? { problem: s.problem } : {}),
         content: s.body,
         ...(s.checklist.length ? { checklist: s.checklist } : {}),
         ...(files.length ? { files } : {}),
@@ -1933,8 +1923,10 @@ async function callToolInner(method, p, baseDir) {
           rly(baseDir, 'refreshTree', {}, 5000).catch(() => {});
           return { saved: path, action: exists ? 'replaced' : 'created', ...(backups[0] ? { backup: backups[0] } : {}), note: [`Mention it in SKILL.md so readers know when to open it (get_skill(name, file) reads it).`, note].filter(Boolean).join(' ') };
         }
-        let text = content.startsWith(BOM) ? content.slice(1) : content;
-        if (!/^---\n/.test(text)) {
+        const fm = skillsLib.splitFrontmatter(content);   // as the reader finds it (BOM, empty lines above)
+        let text = fm.src;
+        if (fm.inner == null) {
+          if (/^---[ \t]*\n/.test(text)) throw new Error('The frontmatter is not closed — end it with a line "---". Nothing was written.');
           if (!p.description) throw new Error('Give "description" (one line: what the skill covers and when to read it) — or pass a whole SKILL.md with frontmatter as "content".');
           text = `---\nname: ${t.name}\ndescription: ${yamlScalar(p.description)}\n${p.always ? 'always: true\n' : ''}---\n\n${text.trim()}\n`;
         } else {
@@ -2126,6 +2118,7 @@ async function callToolInner(method, p, baseDir) {
           lang: p.lang ? String(p.lang).trim() : '', terms: glossaryTermsArg(p.terms, 'terms', false),
         });
       }
+      glossaryLib.checkGlossaryText(text);
       const parsed = glossaryLib.parseGlossary(text, t.name);
       if (!parsed.terms.length) {
         throw new Error(`No term found${parsed.problems.length ? ` (${parsed.problems.slice(0, 5).join('; ')})` : ''} — a glossary is a Markdown table "| 用語 | 読み | メモ |" with one row per term. Nothing was written.`);
@@ -2175,6 +2168,7 @@ async function callToolInner(method, p, baseDir) {
         if (text.replace(/\n+$/, '') === fmt.text.replace(/\n+$/, '')) {
           return { saved: null, ...(r.missing.length ? { notFound: r.missing } : {}), note: 'No change — the glossary already says that.' };
         }
+        glossaryLib.checkGlossaryText(text);
         const parsed = glossaryLib.parseGlossary(text, t.name);
         const preview = [
           ...(set.length ? [`SET:\n${set.map((s) => `${s.term} → ${s.reading}${s.note ? ` (${s.note})` : ''}`).join('\n')}`] : []),
