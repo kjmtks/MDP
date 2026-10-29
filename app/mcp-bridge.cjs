@@ -14,6 +14,7 @@ const mdplink = require('./mdplink.cjs');
 const skillsLib = require('./skills.cjs');
 const glossaryLib = require('./glossary.cjs');
 const { createReviewTools } = require('./reviewTools.cjs');
+const { createFileTools } = require('./fileTools.cjs');
 
 let ctx = null;         // { getBaseDir, getWindow, getAssetPath }
 
@@ -287,14 +288,6 @@ async function backupFiles(baseDir, paths) {
   return saved;
 }
 
-// The user reviews skill changes like other AI-authored assets (per the Settings →
-// MCP policy); a deletion always asks. Returns the renderer's note, if any.
-async function confirmSkillChange(baseDir, action, name, rel, content) {
-  const ok = await rly(baseDir, 'confirmAssetWrite', { kind: 'skill', action, name, rel, hasScript: false, content }, 300000);
-  if (!ok || !ok.approved) throw new Error(`The user declined to ${action} this skill. Nothing was changed.`);
-  return ok.note || '';
-}
-
 // Read a text file as LF text, remembering its BOM / CRLF so a write keeps them.
 async function readTextKeepingFormat(baseDir, rel) {
   const raw = String(await mdplink.vfsReadText(vres(baseDir, rel)));
@@ -370,11 +363,6 @@ function glossaryTermsArg(list, what, keepNote) {
   return out;
 }
 
-async function confirmGlossaryChange(baseDir, action, name, rel, content) {
-  const ok = await rly(baseDir, 'confirmAssetWrite', { kind: 'glossary', action, name, rel, hasScript: false, content }, 300000);
-  if (!ok || !ok.approved) throw new Error(`The user declined to ${action} this glossary. Nothing was changed.`);
-  return ok.note || '';
-}
 // The open deck re-reads its glossaries (and the tree shows the file).
 const glossaryChanged = (baseDir) => {
   rly(baseDir, 'glossaryChanged', {}, 5000).catch(() => rly(baseDir, 'refreshTree', {}, 5000).catch(() => {}));
@@ -1073,10 +1061,19 @@ const BOM = '\uFEFF';
 // U+FFFD replacement chars — i.e. it is NOT valid UTF-8 (e.g. Shift_JIS/CP932).
 async function currentDeckText(baseDir, deckPath) {
   try {
-    const r = await rly(baseDir, 'getDeckText', { path: deckPath }, 8000);
+    // The editor first compares an open tab with the file on disk: a tab without
+    // unsaved edits is reloaded when the file changed (the author fixed a footer on
+    // another computer — the tab kept showing, and every tool kept reading, the old
+    // deck); one with edits is kept, and `diskChanged` says so.
+    const r = await rly(baseDir, 'getDeckText', { path: deckPath }, 15000);
     if (r && r.open) {
       const text = String(r.text || '').replace(/^\uFEFF/, '');
-      return { text, open: true, bom: false, crlf: /\r\n/.test(text), nonUtf8: false };
+      return { text, open: true, bom: false, crlf: /\r\n/.test(text), nonUtf8: false,
+        ...(r.modified ? { modified: true } : {}),
+        ...(r.diskChanged ? { diskChanged: true } : {}),
+        ...(r.reloaded ? { reloaded: true } : {}),
+        ...(r.answers ? { answers: r.answers } : {}),
+      };
     }
   } catch { /* editor unavailable → fall back to disk */ }
   let buf;
@@ -1087,6 +1084,16 @@ async function currentDeckText(baseDir, deckPath) {
   if (bom) text = text.slice(1);
   return { text, open: false, bom, crlf: /\r\n/.test(text), nonUtf8: text.includes('�') };
 }
+
+// What a tool reading or writing an OPEN deck reports about the editor: the file
+// changed on disk while the editor holds unsaved edits (the tool worked on the
+// editor's text; save_deck reports the difference and offers merge / overwrite), the
+// tab was reloaded from disk first, and the @answer blocks' state.
+const editorState = (cur, withAnswers = true) => ({
+  ...(cur.diskChanged ? { diskChanged: 'The file on disk changed since the editor loaded it, and the editor has unsaved edits — this is the EDITOR\'s text. save_deck shows what changed on disk and offers merge: true / overwrite: true; reload_deck {discardUnsaved: true} takes the disk\'s version instead.' } : {}),
+  ...(cur.reloaded ? { reloadedFromDisk: 'The file had changed on disk and the editor had no unsaved edits, so the editor reloaded it first — this is the file as it is now.' } : {}),
+  ...(withAnswers && cur.answers ? { answers: cur.answers } : {}),
+});
 
 // Refuse to rewrite a file that is not valid UTF-8 — decoding it as UTF-8 and
 // writing it back would replace every non-ASCII byte with U+FFFD, destroying the
@@ -1124,7 +1131,7 @@ async function writeDeckBack(baseDir, deckPath, newText, open, enc) {
   }
   if (open) {
     const r = await rly(baseDir, 'setOpenDeckText', { path: deckPath, text: newText }, 10000);
-    if (r && r.applied) return { appliedTo: 'editor (unsaved — ask the user to save)' };
+    if (r && r.applied) return { appliedTo: 'editor (unsaved — save_deck writes it to the file)', ...editorState(enc || {}, false) };
   }
   await backupDeck(baseDir, deckPath);
   let out = enc && enc.crlf ? newText.split('\n').join('\r\n') : newText;
@@ -1184,23 +1191,44 @@ async function callToolFor(baseDir, method, params) {
 // design lint (local) + overflow measurement (renderer, issues only) in parallel.
 // Used by check_deck and by the write tools' `verify: true`.
 async function verifyDeck(baseDir, deckPath) {
-  const { text } = await currentDeckText(baseDir, deckPath);
+  const cur = await currentDeckText(baseDir, deckPath);
+  const { text } = cur;
   // Focus cues ([[look: …]] / [[mark: …]] / [[clear]]): their targets checked on the
   // rendered slides — only when the deck has any.
   const hasCues = /\[\[\s*(?:look|mark|clear|ink)\s*(?::|\]\])/i.test(text);
+  // The slides are measured and their cues checked with the @answer blocks as the DECK
+  // says — what the class sees —, never as the editor's toggle happens to show them:
+  // a toggle left on "hide" turned every cue inside an answer into a "not visible"
+  // warning (19 of them on 2026-10-28) and the measure into the handout's.
+  const asDeck = 'deck';
   const [validate, lint, measure, skills, focus, imageWarn, glossary, reviewed] = await Promise.all([
     rly(baseDir, 'validateDeck', { path: deckPath }, 30000).catch((e) => ({ error: String((e && e.message) || e) })),
     Promise.resolve(lintDeck(text)),
-    rly(baseDir, 'measureSlides', { path: deckPath }, 120000).catch((e) => ({ error: String((e && e.message) || e) })),
+    rly(baseDir, 'measureSlides', { path: deckPath, answers: asDeck }, 120000).catch((e) => ({ error: String((e && e.message) || e) })),
     skillReview(baseDir, deckPath).catch(() => null),
-    hasCues ? rly(baseDir, 'focusCheck', { path: deckPath }, 120000).catch((e) => ({ error: String((e && e.message) || e) })) : null,
+    hasCues ? rly(baseDir, 'focusCheck', { path: deckPath, answers: asDeck }, 120000).catch((e) => ({ error: String((e && e.message) || e) })) : null,
     imageFindings(baseDir, deckPath, text).catch(() => []),
     glossaryReview(baseDir, deckPath, text).catch(() => null),
     reviewTools.summary(baseDir, deckPath, text).catch(() => null),
   ]);
+  // One line about the answers when the editor shows them otherwise than the deck says
+  // (the checks above did not follow the editor).
+  // (The measure opened the deck, so its answer knows the editor's state even when
+  // the deck was not open before.)
+  const state = (measure && measure.answersState) || cur.answers || null;
+  if (measure && measure.answersState) delete measure.answersState;
+  const ans = state && state.has ? state : null;
+  const answers = ans ? {
+    answers: `${ans.deck === 'hide' ? 'hidden' : 'shown'} — as the deck says, which the class sees (the checks used that)`,
+    ...(ans.source === 'editor' && ans.hidden !== (ans.deck === 'hide')
+      ? { answersNote: `The editor's preview shows the @answer blocks ${ans.hidden ? 'HIDDEN' : 'shown'} (its toggle), unlike the deck. set_answers {mode: "default"} makes the editor follow the deck again; render tools take answers: "show" | "hide" for one call.` }
+      : {}),
+  } : {};
   return {
     path: deckPath, validate: withWarnings(validate, imageWarn), lint, measure,
+    ...answers,
     ...(focus ? { focus } : {}),
+    ...editorState(cur, false),
     ...(glossary ? { glossary } : {}),
     ...(skills ? { skills } : {}),
     ...(reviewed || {}),
@@ -1212,10 +1240,14 @@ async function verifyDeck(baseDir, deckPath) {
 // review_readiness also says whether the Claude Code kit (the review subagents and
 // the loop skill) is installed — on the desktop, where Claude Code runs too.
 const kitStatus = process.versions.electron ? () => require('./claudeReviewKit.cjs').kitStatus() : null;
-const reviewTools = createReviewTools({ mdplink, vres, rly, withDeckLock, wsKeyOf, currentDeckText, splitBlocks, backupFiles, activeDeckPath, requireDeckPath, BOM, mdpChainDirs, kitStatus });
+const reviewTools = createReviewTools({ mdplink, vres, rly, withDeckLock, wsKeyOf, currentDeckText, splitBlocks, backupFiles, activeDeckPath, requireDeckPath, BOM, mdpChainDirs, kitStatus, applyExactEdits, readTextKeepingFormat, withFormat });
+// The general file tools — a lesson plan, a figure, a folder listing, a PDF's pages
+// (app/fileTools.cjs).
+const fileTools = createFileTools({ mdplink, vres, rly, withDeckLock, wsKeyOf, backupFiles, applyExactEdits, BOM, skillsLib, glossaryLib, markSkillsRead });
 
 async function callToolInner(method, p, baseDir) {
   if (reviewTools.handles(method)) return reviewTools.handle(method, p, baseDir);
+  if (fileTools.handles(method)) return fileTools.handle(method, p, baseDir);
 
   switch (method) {
     case 'list_decks': {
@@ -1286,7 +1318,10 @@ async function callToolInner(method, p, baseDir) {
       const cur = await currentDeckText(baseDir, deckPath);
       const blocks = splitBlocks(cur.text);
       const slideCount = Math.max(0, blocks.length - 1);
-      const encWarn = cur.nonUtf8 ? { encodingWarning: 'This file did NOT decode as valid UTF-8 (it shows replacement characters). It is likely Shift_JIS/CP932 or similar. Do NOT rewrite it with write_deck/patch_deck/etc. — that would corrupt the text; ask the user to convert it to UTF-8 first.' } : {};
+      const encWarn = {
+        ...(cur.nonUtf8 ? { encodingWarning: 'This file did NOT decode as valid UTF-8 (it shows replacement characters). It is likely Shift_JIS/CP932 or similar. Do NOT rewrite it with write_deck/patch_deck/etc. — that would corrupt the text; ask the user to convert it to UTF-8 first.' } : {}),
+        ...editorState(cur),
+      };
 
       // TOKEN-SAVER: `slides` (1-based; 0 = meta page) returns ONLY those blocks,
       // not the whole deck — for editing one slide of a long deck. Use
@@ -1771,20 +1806,27 @@ async function callToolInner(method, p, baseDir) {
       }
       const dir = p.dir ? requireDeckPath(p.dir) : '';
       const rel = `${dir ? dir + '/' : ''}.mdp/${spec.sub}/${name}${spec.ext}`;
-      const hasScript = /<script[\s>]/i.test(content);
-      // The renderer decides per the user's "Creating modules/themes/effects"
-      // setting: 'auto' approves silently; 'confirm' shows a review dialog (a module
-      // <script> RUNS in the app). If the user declines, do not write.
-      const ok = await rly(baseDir, 'confirmAssetWrite', { kind, name, rel, hasScript, content }, 300000);
-      if (!ok || !ok.approved) throw new Error('The user declined to save this asset.');
+      const hasScript = (kind === 'module' || kind === 'effect') && /<script[\s>]/i.test(content);
+      // A module's or an effect's <script> RUNS inside MDP: that one stays the person's
+      // to approve (Settings → MCP: 'confirm', the default, shows a review dialog;
+      // 'auto' approves silently) — whoever got an AI to write it should not also get
+      // code run in the app unseen. Everything else is written at once (2026-10-29: an
+      // MCP tool never waits for the person), the replaced file backed up.
+      let ok = { approved: true };
+      const replaced = await mdplink.vfsExists(vres(baseDir, rel)).catch(() => false);
+      if (hasScript) {
+        ok = await rly(baseDir, 'confirmAssetWrite', { kind, name, rel, hasScript, content, action: replaced ? 'update' : 'create' }, 300000);
+        if (!ok || !ok.approved) throw new Error(`The user declined to save this ${kind} (its <script> would run inside MDP). Nothing was written.`);
+      }
+      const backups = replaced ? await backupFiles(baseDir, [rel]) : [];
       await mdplink.vfsWrite(vres(baseDir, rel, 'w'), Buffer.from(content, 'utf-8'));
       // Tree refresh re-registers modules/effects and refreshes the theme list live.
       rly(baseDir, 'refreshTree', {}, 5000).catch(() => {});
       const note = [
-        kind === 'module' && hasScript ? 'Registered live — its <script> will run in MDP.' : 'Registered live.',
+        hasScript ? `Registered live — its <script> will run in MDP.` : 'Registered live.',
         ok.note,   // e.g. "nobody reviewed this" where there is no user at the screen
       ].filter(Boolean).join(' ');
-      return { saved: rel, note };
+      return { saved: rel, ...(replaced ? { action: 'replaced', ...(backups[0] ? { backup: backups[0] } : {}) } : { action: 'created' }), note };
     }
 
     // Live tools → renderer.
@@ -1816,7 +1858,7 @@ async function callToolInner(method, p, baseDir) {
     case 'render_slides': {
       const slides = Array.isArray(p.slides) ? p.slides.map(Number).filter((n) => Number.isInteger(n)) : [];
       if (!slides.length) throw new Error('Provide "slides": an array of 1-based slide numbers (max 12).');
-      return await rly(baseDir, 'renderSlides', { path: p.path ? requireDeckPath(p.path) : undefined, slides, width: p.width ? Number(p.width) : undefined }, 170000);
+      return await rly(baseDir, 'renderSlides', { path: p.path ? requireDeckPath(p.path) : undefined, slides, width: p.width ? Number(p.width) : undefined, answers: p.answers === 'show' || p.answers === 'hide' ? p.answers : undefined }, 170000);
     }
     case 'check_deck': {
       // One-shot inspection: validate (syntax/params/structure) + lint (design
@@ -1917,11 +1959,10 @@ async function callToolInner(method, p, baseDir) {
           if (!t.current) throw new Error(`Skill "${t.name}" does not exist in ${t.configDir} — write its SKILL.md first.`);
           const path = `${t.dir}/${rel}`;
           const exists = await mdplink.vfsExists(vres(baseDir, path)).catch(() => false);
-          const note = await confirmSkillChange(baseDir, exists ? 'update' : 'create', t.name, path, content);
           const backups = exists ? await backupFiles(baseDir, [path]) : [];
           await mdplink.vfsWrite(vres(baseDir, path, 'w'), Buffer.from(content, 'utf-8'));
           rly(baseDir, 'refreshTree', {}, 5000).catch(() => {});
-          return { saved: path, action: exists ? 'replaced' : 'created', ...(backups[0] ? { backup: backups[0] } : {}), note: [`Mention it in SKILL.md so readers know when to open it (get_skill(name, file) reads it).`, note].filter(Boolean).join(' ') };
+          return { saved: path, action: exists ? 'replaced' : 'created', ...(backups[0] ? { backup: backups[0] } : {}), note: 'Mention it in SKILL.md so readers know when to open it (get_skill(name, file) reads it).' };
         }
         const fm = skillsLib.splitFrontmatter(content);   // as the reader finds it (BOM, empty lines above)
         let text = fm.src;
@@ -1939,7 +1980,6 @@ async function callToolInner(method, p, baseDir) {
         if (fmName !== t.name) text = setFrontmatterField(text, 'name', t.name);
         const parsed = checkSkillText(text, t.name);
         const path = `${t.dir}/${skillsLib.SKILL_FILE}`;
-        const note = await confirmSkillChange(baseDir, t.current ? 'update' : 'create', t.name, path, text);
         const backups = t.current ? await backupFiles(baseDir, [path]) : [];
         await mdplink.vfsWrite(vres(baseDir, path, 'w'), Buffer.from(text, 'utf-8'));
         markSkillsRead(baseDir, [{ path }]);
@@ -1951,7 +1991,7 @@ async function callToolInner(method, p, baseDir) {
           ...(renamed ? { renamed: `frontmatter name set to the folder name "${t.name}"` } : {}),
           ...(parsed.checklist.length ? {} : { hint: 'Add a "## Checklist" section of yes/no items — check_deck / verify:true hand it back for review.' }),
           ...(t.other ? { alsoIn: `A skill "${t.other.name}" also exists in ${t.other.configDir}; for each deck the nearer .mdp's copy wins.` } : {}),
-          note: ['Decks beneath this folder now get it in their slide spec.', note].filter(Boolean).join(' '),
+          note: 'Decks beneath this folder now get it in their slide spec.',
         };
       });
     }
@@ -1988,13 +2028,6 @@ async function callToolInner(method, p, baseDir) {
           checkSkillText(text, t.name);
         }
         if (text === fmt.text) return { saved: null, note: 'No change — the skill already says that.' };
-        const preview = [
-          ...edits.map((ed) => `REPLACE:\n${ed.old_str}\nWITH:\n${ed.new_str}`),
-          ...appends.map((a) => `ADD under “${String(a.section).trim()}”:\n${String(a.text).trim()}`),
-          ...(p.description != null ? [`DESCRIPTION: ${p.description}`] : []),
-          ...(typeof p.always === 'boolean' ? [`ALWAYS: ${p.always}`] : []),
-        ].join('\n\n');
-        const note = await confirmSkillChange(baseDir, 'update', t.name, path, preview);
         const backups = await backupFiles(baseDir, [path]);
         await mdplink.vfsWrite(vres(baseDir, path, 'w'), Buffer.from(withFormat(text, fmt), 'utf-8'));
         markSkillsRead(baseDir, [{ path: `${t.dir}/${skillsLib.SKILL_FILE}` }]);
@@ -2004,13 +2037,12 @@ async function callToolInner(method, p, baseDir) {
           ...(edits.length ? { replaced } : {}),
           ...(appends.length ? { appended: appends.length } : {}),
           ...(backups[0] ? { backup: backups[0] } : {}),
-          ...(note ? { note } : {}),
         };
       });
     }
     case 'delete_skill': {
-      // Remove a whole skill (its folder) or one reference file. Always confirmed in
-      // the desktop app; everything removed is backed up first.
+      // Remove a whole skill (its folder) or one reference file — at once (an MCP
+      // tool never waits for the person); everything removed is backed up first.
       const t = await skillTarget(baseDir, p);
       if (!t.current) {
         throw new Error(`No skill "${String(p.name)}" in ${t.configDir}${t.other ? ` (there is one in ${t.other.configDir} — omit "dir" to delete that one)` : ''}.`);
@@ -2020,16 +2052,15 @@ async function callToolInner(method, p, baseDir) {
           const rel = skillsLib.checkSkillFilePath(p.file);
           const path = `${t.dir}/${rel}`;
           if (!(await mdplink.vfsExists(vres(baseDir, path)).catch(() => false))) throw new Error(`"${rel}" does not exist in skill "${t.name}".`);
-          const note = await confirmSkillChange(baseDir, 'delete', t.name, path, `Delete the reference file ${rel} of the skill "${t.name}".`);
           const backups = await backupFiles(baseDir, [path]);
+          if (!backups.length) throw new Error(`Could not keep a copy of ${path} in .mdp/mcp-backups — nothing was deleted.`);
           await mdplink.vfsRemove(vres(baseDir, path, 'w'));
           rly(baseDir, 'refreshTree', {}, 5000).catch(() => {});
-          return { deleted: path, ...(backups[0] ? { backup: backups[0] } : {}), ...(note ? { note } : {}) };
+          return { deleted: path, backup: backups[0] };
         }
         const files = [skillsLib.SKILL_FILE, ...(await skillsLib.listSkillFiles(t.current, readerOf(baseDir), mdplink))];
-        const note = await confirmSkillChange(baseDir, 'delete', t.name, t.dir,
-          `Delete the skill "${t.name}" (${t.dir}) — ${files.length} file(s):\n${files.join('\n')}\n\n${t.current.description}`);
         const backups = await backupFiles(baseDir, files.map((f) => `${t.dir}/${f}`));
+        if (backups.length < files.length) throw new Error(`Could not keep a copy of every file of the skill in .mdp/mcp-backups (${backups.length} of ${files.length}) — nothing was deleted.`);
         await mdplink.vfsRemove(vres(baseDir, t.dir, 'w'));
         skillReads.delete(`${wsKeyOf(baseDir)}\u0000${t.dir}/${skillsLib.SKILL_FILE}`);
         rly(baseDir, 'refreshTree', {}, 5000).catch(() => {});
@@ -2040,7 +2071,6 @@ async function callToolInner(method, p, baseDir) {
           files: files.length,
           ...(backups.length ? { backups } : {}),
           ...(fallback ? { nowUsing: `${fallback.path} (a parent folder's skill of the same name now applies)` } : {}),
-          ...(note ? { note } : {}),
         };
       });
     }
@@ -2126,7 +2156,6 @@ async function callToolInner(method, p, baseDir) {
       return await withDeckLock(`${wsKeyOf(baseDir)}\u0000glossary:${t.path}`, async () => {
         const exists = await mdplink.vfsExists(vres(baseDir, t.path)).catch(() => false);
         const fmt = exists ? await readTextKeepingFormat(baseDir, t.path).catch(() => null) : null;
-        const note = await confirmGlossaryChange(baseDir, exists ? 'update' : 'create', t.name, t.path, text);
         const backups = exists ? await backupFiles(baseDir, [t.path]) : [];
         await mdplink.vfsWrite(vres(baseDir, t.path, 'w'), Buffer.from(fmt ? withFormat(text, fmt) : text, 'utf-8'));
         glossaryChanged(baseDir);
@@ -2136,7 +2165,7 @@ async function callToolInner(method, p, baseDir) {
           ...(backups[0] ? { backup: backups[0] } : {}),
           ...(parsed.problems.length ? { problems: parsed.problems.slice(0, 20) } : {}),
           ...glossaryPlacement(t),
-          note: ['Decks beneath this folder now read these terms so (the open deck at once).', note].filter(Boolean).join(' '),
+          note: 'Decks beneath this folder now read these terms so (the open deck at once).',
         };
       });
     }
@@ -2170,14 +2199,6 @@ async function callToolInner(method, p, baseDir) {
         }
         glossaryLib.checkGlossaryText(text);
         const parsed = glossaryLib.parseGlossary(text, t.name);
-        const preview = [
-          ...(set.length ? [`SET:\n${set.map((s) => `${s.term} → ${s.reading}${s.note ? ` (${s.note})` : ''}`).join('\n')}`] : []),
-          ...(remove.length ? [`REMOVE: ${remove.join(', ')}`] : []),
-          ...(p.description != null ? [`DESCRIPTION: ${p.description}`] : []),
-          ...(p.lang != null ? [`LANG: ${p.lang || '(inferred from the readings)'}`] : []),
-          ...edits.map((ed) => `REPLACE:\n${ed.old_str}\nWITH:\n${ed.new_str}`),
-        ].join('\n\n');
-        const note = await confirmGlossaryChange(baseDir, 'update', t.name, t.path, preview);
         const backups = await backupFiles(baseDir, [t.path]);
         await mdplink.vfsWrite(vres(baseDir, t.path, 'w'), Buffer.from(withFormat(text, fmt), 'utf-8'));
         glossaryChanged(baseDir);
@@ -2198,21 +2219,19 @@ async function callToolInner(method, p, baseDir) {
           ...(parsed.problems.length ? { problems: parsed.problems.slice(0, 20) } : {}),
           ...(overridden.length ? { overridden, overriddenNote: 'A nearer glossary reads these terms otherwise — that reading is what the deck hears.' } : {}),
           ...glossaryPlacement(t),
-          ...(note ? { note } : {}),
         };
       });
     }
     case 'delete_glossary': {
-      // Remove a glossary file. Always confirmed in the desktop app; backed up first.
+      // Remove a glossary file — at once; backed up first.
       const t = await glossaryTarget(baseDir, p);
       if (!t.current) {
         const other = glossaryLib.findGlossary(t.inChain, t.name);
         throw new Error(`No glossary "${t.name}" in ${t.configDir}${other && other.configDir !== t.configDir ? ` (there is one in ${other.configDir} — omit "dir" to delete that one)` : ''}.`);
       }
       return await withDeckLock(`${wsKeyOf(baseDir)}\u0000glossary:${t.path}`, async () => {
-        const note = await confirmGlossaryChange(baseDir, 'delete', t.name, t.path,
-          `Delete the glossary "${t.name}" (${t.path}) — ${t.current.terms.length} term(s)${t.current.description ? `: ${t.current.description}` : ''}. The decks beneath read those terms on their own again.`);
         const backups = await backupFiles(baseDir, [t.path]);
+        if (!backups.length) throw new Error(`Could not keep a copy of ${t.path} in .mdp/mcp-backups — nothing was deleted.`);
         await mdplink.vfsRemove(vres(baseDir, t.path, 'w'));
         glossaryChanged(baseDir);
         // A parent's glossary of the same name takes over again for these decks.
@@ -2221,7 +2240,6 @@ async function callToolInner(method, p, baseDir) {
           deleted: t.path, terms: t.current.terms.length,
           ...(backups[0] ? { backup: backups[0] } : {}),
           ...(fallback ? { nowUsing: `${fallback.path} (a parent folder's glossary of the same name now applies)` } : {}),
-          ...(note ? { note } : {}),
         };
       });
     }
@@ -2252,7 +2270,8 @@ async function callToolInner(method, p, baseDir) {
       return await rly(baseDir, 'suggestEffects', { text, limit: p.limit != null ? Number(p.limit) : undefined }, 20000);
     }
     case 'get_active_deck': {
-      const r = await rly(baseDir, 'activeDeck', { includeContent: !!p.includeContent }, 10000);
+      // withState: the answers' state, and the tab compared with the file on disk.
+      const r = await rly(baseDir, 'activeDeck', { includeContent: !!p.includeContent, withState: true }, 15000);
       // Even on request, embedded base64 goes out elided (like read_deck) — a
       // "which deck is open?" probe must never cost a deck of image tokens.
       if (r && typeof r.content === 'string') {
@@ -2263,16 +2282,27 @@ async function callToolInner(method, p, baseDir) {
       return r;
     }
     case 'open_deck': return await rly(baseDir, 'openDeck', { path: requireDeckPath(p.path) }, 20000);
-    // Long timeout: handleSave's external-change guard may put a dialog in front of
-    // the user (the file changed on disk since MDP loaded it) and we wait for them.
-    case 'save_deck': return await rly(baseDir, 'saveDeck', { path: p.path ? requireDeckPath(p.path) : undefined }, 300000);
+    // Never a dialog: when the file changed on disk since MDP loaded it, the editor
+    // answers `diskChanged` (what changed there, and the ways out) instead of asking
+    // the person to overwrite or reload; `merge` / `overwrite` are those ways. The
+    // file's previous bytes are kept in .mdp/mcp-backups first, whatever happens.
+    case 'save_deck': {
+      const deckPath = p.path ? requireDeckPath(p.path) : await activeDeckPath(baseDir);
+      await backupDeck(baseDir, deckPath);
+      return await rly(baseDir, 'saveDeck', { path: deckPath, merge: !!p.merge, overwrite: !!p.overwrite }, 60000);
+    }
+    case 'set_answers': {
+      const mode = String(p.mode || '');
+      if (!['show', 'hide', 'default'].includes(mode)) throw new Error('"mode" must be "show", "hide" or "default" (follow the deck\'s <!-- @answers -->).');
+      return await rly(baseDir, 'setAnswers', { path: p.path ? requireDeckPath(p.path) : undefined, mode }, 30000);
+    }
     case 'reload_deck': return await rly(baseDir, 'reloadDeck', { path: p.path ? requireDeckPath(p.path) : undefined, discardUnsaved: !!p.discardUnsaved }, 30000);
     case 'goto_slide': return await rly(baseDir, 'gotoSlide', { slide: Number(p.slide) }, 10000);
     case 'insert_at_cursor': return await rly(baseDir, 'insertAtCursor', { text: String(p.text ?? '') }, 10000);
-    case 'measure_slides': return await rly(baseDir, 'measureSlides', { path: p.path ? requireDeckPath(p.path) : undefined, slides: Array.isArray(p.slides) ? p.slides.map(Number).filter((n) => Number.isInteger(n)) : undefined, all: !!p.all }, 120000);
-    case 'render_slide_image': return await rly(baseDir, 'renderSlideImage', { path: p.path ? requireDeckPath(p.path) : undefined, slide: Number(p.slide), width: p.width ? Number(p.width) : undefined, focus: p.focus !== undefined && p.focus !== null ? String(p.focus) : undefined }, 120000);
+    case 'measure_slides': return await rly(baseDir, 'measureSlides', { path: p.path ? requireDeckPath(p.path) : undefined, slides: Array.isArray(p.slides) ? p.slides.map(Number).filter((n) => Number.isInteger(n)) : undefined, all: !!p.all, answers: p.answers === 'show' || p.answers === 'hide' ? p.answers : undefined }, 120000);
+    case 'render_slide_image': return await rly(baseDir, 'renderSlideImage', { path: p.path ? requireDeckPath(p.path) : undefined, slide: Number(p.slide), width: p.width ? Number(p.width) : undefined, focus: p.focus !== undefined && p.focus !== null ? String(p.focus) : undefined, answers: p.answers === 'show' || p.answers === 'hide' ? p.answers : undefined }, 120000);
     // Focus cues: what a slide can point at, and where its cues act and land.
-    case 'get_focus_targets': return await rly(baseDir, 'focusTargets', { path: p.path ? requireDeckPath(p.path) : undefined, slide: Number(p.slide) }, 60000);
+    case 'get_focus_targets': return await rly(baseDir, 'focusTargets', { path: p.path ? requireDeckPath(p.path) : undefined, slide: Number(p.slide), answers: p.answers === 'show' || p.answers === 'hide' ? p.answers : undefined }, 60000);
     // The narration as the auto-play runs it: each line captioned and spoken, the
     // glossary's readings, and the → presses of a talk given by hand.
     case 'get_narration': return await rly(baseDir, 'narration', {

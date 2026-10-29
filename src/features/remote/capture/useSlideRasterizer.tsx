@@ -6,6 +6,7 @@ import { afterFrames, waitForRenderReady, dataUrlToWebp } from './captureReady';
 import type { RasterizeOptions, RasterizeResult, SlideLinkRect } from './captureTypes';
 import { getFontState } from '../../fonts/fontRuntime';
 import { settleFocusLayers } from '../../focus/focusSettle';
+import { takeStaleSvgKeys } from '../../slide/inlineSvg';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Slide = any;
@@ -67,6 +68,7 @@ export function useSlideRasterizer() {
           ...(buildStep !== undefined ? { buildStep } : {}),
           ...(focus ? { focus } : {}),
           ...(focusOutline ? { focusOutline } : {}),
+          svgStale: takeStaleSvgKeys(),
         });
         // The image comes from the offscreen window, but link rects are measured
         // from the (always-mounted) web node below — settle it first.

@@ -498,6 +498,8 @@ async function ensureCaptureWin() {
       preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
       contextIsolation: true,
+      // Keep laying out and painting while hidden (see captureSlideNow).
+      backgroundThrottling: false,
     },
   });
   await captureWin.loadFile(path.join(app.getAppPath(), 'dist', 'index.html'), { hash: '/capture' });
@@ -571,6 +573,7 @@ ipcMain.handle('closeShowExport', (_event, jobId) => {
 // captures run one at a time, or two callers would resize and re-render the window
 // under each other.
 let captureChain = Promise.resolve();
+let lastCaptureAt = 0;
 ipcMain.handle('captureSlide', (event, data) => {
   const run = captureChain.then(() => captureSlideNow(data));
   captureChain = run.catch(() => {});
@@ -602,7 +605,18 @@ async function captureSlideNow(data) {
   });
   // A frame baked into a video must not be a half-rendered slide.
   if (!ready && out) throw new Error('The slide did not finish rendering within 20 s.');
+  // The window is hidden: after a while without a capture it stops producing frames,
+  // and capturePage handed back the LAST one — the slide captured before (a deck
+  // opened 10 s later came back as the previous deck's slide), or the new slide
+  // without the glyphs of a font that arrived a moment after it was laid out
+  // (2026-10-29). A first capture wakes it; the one taken a little later is current.
+  // Captures in quick succession (a video's frames) need no waking.
+  if (Date.now() - lastCaptureAt > 1000) {
+    await win.webContents.capturePage();
+    await new Promise((r) => setTimeout(r, 120));
+  }
   const img = await win.webContents.capturePage();
+  lastCaptureAt = Date.now();
   if (img.isEmpty()) throw new Error(`captureSlide produced an empty image (requested ${wantW}x${wantH}, window ${win.getContentSize().join('x')})`);
   if (out) {
     // capturePage returns device pixels (×1.5 on a 150 % display): resample to the frame size.

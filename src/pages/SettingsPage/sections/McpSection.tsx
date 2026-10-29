@@ -235,12 +235,13 @@ export const McpSection: React.FC = () => {
       </div>
 
       <div className="settings-field">
-        <div className="settings-field-label">Creating modules / themes / effects / skills</div>
+        <div className="settings-field-label">Modules and effects with a script</div>
         <div className="settings-field-hint">
-          An AI can author new workspace assets (write_asset) and create or update your slide skills
-          (write_skill / patch_skill). A module can carry a <code>&lt;script&gt;</code> that runs inside MDP, so by
-          default MDP asks you to review each one before saving. Deleting a skill (delete_skill) always asks;
-          an overwritten or deleted skill file is kept in <code>.mdp/mcp-backups</code>.
+          An AI works without waiting for you: decks, skills, glossaries, personas, flows, themes, snippets and the
+          workspace&apos;s other files are written at once, and every file it overwrites or deletes is kept in{' '}
+          <code>.mdp/mcp-backups</code> (the tool&apos;s answer says where). The one exception is a module or an
+          effect carrying a <code>&lt;script&gt;</code> — code that runs inside MDP: by default MDP asks you to review
+          it before it is saved.
         </div>
         <ToggleButtonGroup
           exclusive size="small" sx={{ mt: 0.5 }}
@@ -259,7 +260,9 @@ export const McpSection: React.FC = () => {
           write_deck / append_slide / replace_slide (edits open decks live, unsaved) · list_modules / read_module ·
           list_themes · get_active_deck / open_deck / save_deck (commit editor changes to disk) / reload_deck (re-read from disk) / goto_slide / insert_at_cursor ·
           measure_slides (overflow &amp; fill check, low token) · lint_deck (design/consistency advisories) · render_slide_image (visual check, higher token) ·
-          get_skill / write_skill / patch_skill / delete_skill (the folder&apos;s slide skills — your guides the AI follows; Configure (.mdp) → Slide skills).
+          get_skill / write_skill / patch_skill / delete_skill (the folder&apos;s slide skills — your guides the AI follows; Configure (.mdp) → Slide skills) ·
+          read_file / write_file / patch_file / patch_files / put_file / list_files / delete_file / inspect_pdf (the files around a deck — a lesson
+          plan, figures, a PDF — so the AI never touches your folders itself) · set_answers (show / hide the answers in the editor).
         </div>
       </div>
     </div>

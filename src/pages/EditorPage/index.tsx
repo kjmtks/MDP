@@ -164,7 +164,7 @@ export default function EditorPage() {
     fileTree, fetchFileTree, handleManualRefresh, loadLinkChildren, reloadSlides,
     lastUpdated, currentFileName, currentFileType,
     setTemplateContent, markdownRef, isLoadingFile,
-    loadFile, handleSave, reloadFileFromDisk, handleOpenFolder, isModified,
+    loadFile, handleSave, reloadFileFromDisk, syncTabsWithDisk, rebaseTab, handleOpenFolder, isModified,
     tabs, activeTabIndex, closeTab, switchTab, updateTabContent,
     renameTab, closeTabsByPaths, reorderTabs, closeOtherTabs, closeAllTabs,
     persistDrafts, clearDrafts
@@ -366,6 +366,9 @@ export default function EditorPage() {
     () => collectScopedAssetPaths(fileTree, scopeDirs, 'modules', '.mdpmod.xml').sort().join(','),
     [fileTree, scopeDirs],
   );
+  // The scope's `.mdp` folders behind an SSH link that are not listed yet: until they
+  // are, the chain — and the modules it brings — is incomplete.
+  const scopePendingDirs = useMemo(() => lazyScopeDirs(fileTree, currentFileName).length, [fileTree, currentFileName]);
 
   const effectPathsString = useMemo(
     () => collectScopedAssetPaths(fileTree, scopeDirs, 'effects', '.mdpfx.xml').sort().join(','),
@@ -574,12 +577,34 @@ export default function EditorPage() {
   }, [reloadSnippets]);
 
   const assetsLoadedRef = useRef(false);
+  // True from the moment the scope's modules / effects are due to be (re)loaded until
+  // they are registered again: in between, clearAllModules() has removed every
+  // module's <style> — a PDF printed then lost them (a two-column slide came out as
+  // one column, 2026-10-28) — and slides parsed then have raw directives. The MCP
+  // tools wait for it (with the scope's deferred folders) before they render or print.
+  // Loading = the scope's asset list (or the epoch) differs from the one last loaded —
+  // true from the very render it changes — or a load is running.
+  const assetsKey = `${modulePathsString}\n${effectPathsString}\n${hasSelectedFolder}\n${assetsEpoch}`;
+  const [loadedAssetsKey, setLoadedAssetsKey] = useState<string | null>(null);
+  const [assetsLoadRunning, setAssetsLoadRunning] = useState(false);
+  const assetsRunRef = useRef(0);
+  const modulesLoading = assetsLoadRunning || loadedAssetsKey !== assetsKey;
   useEffect(() => {
     let isCancelled = false;
+    const key = assetsKey;
 
     const loadAllModules = async () => {
-      if (isSyncingRef.current) return;
+      if (isSyncingRef.current) { if (!isCancelled) setLoadedAssetsKey(key); return; }
+      const run = ++assetsRunRef.current;
+      setAssetsLoadRunning(true);
+      try {
+        await loadAssetsNow();
+      } finally {
+        if (assetsRunRef.current === run) setAssetsLoadRunning(false);
+      }
+    };
 
+    const loadAssetsNow = async () => {
       clearAllModules();
       clearAllEffects();
 
@@ -645,6 +670,7 @@ export default function EditorPage() {
         // Modules + effects are now registered (markdown transforms + CSS ready):
         // force a slide re-parse so anything rendered raw beforehand is fixed.
         setModuleEpoch((e) => e + 1);
+        setLoadedAssetsKey(key);
         // …and let the editor add the ⚙ buttons it could not place before.
         window.dispatchEvent(new Event('mdp-modules-registered'));
       }
@@ -656,9 +682,10 @@ export default function EditorPage() {
       // before must not stay in use.
       if (modulePathsString !== '' || effectPathsString !== '' || !hasSelectedFolder || assetsLoadedRef.current) {
         assetsLoadedRef.current = true;
-        loadAllModules();
+        loadAllModules().catch(() => { if (!isCancelled) setLoadedAssetsKey(key); });
       } else {
         setAssetsReady(true);   // nothing to load (a folder with no assets)
+        setLoadedAssetsKey(key);
       }
     }, 300);
 
@@ -666,7 +693,41 @@ export default function EditorPage() {
       isCancelled = true;
       clearTimeout(timerId);
     };
+    // assetsKey stands for the paths, the folder and the epoch listed here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modulePathsString, effectPathsString, hasSelectedFolder, refreshModuleSnippets, assetsEpoch]);
+  const assetsPending = modulesLoading || scopePendingDirs > 0;
+
+  // Back to MDP (window focus, the tab visible again): the open text tabs compared with
+  // their files on disk. The author changed a deck on another computer (2026-10-29: a
+  // footer line) and the tab here — unedited — kept showing the old one, the MCP tools
+  // reading it too. A tab without unsaved edits reloads; one with them is kept and the
+  // person told once per change (saving then asks what to do).
+  useEffect(() => {
+    let last = 0;
+    let running = false;
+    const told = new Map<string, string>();
+    const nameOf = (p: string) => p.slice(p.lastIndexOf('/') + 1);
+    const check = async () => {
+      if (running || Date.now() - last < 2000) return;
+      running = true;
+      last = Date.now();
+      try {
+        for (const r of await syncTabsWithDisk()) {
+          if (r.state === 'reloaded') notify(`${nameOf(r.path)} changed on disk — reloaded.`, { severity: 'info' });
+          else if (r.state === 'changedWhileEdited' && told.get(r.path) !== r.disk) {
+            told.set(r.path, r.disk || '');
+            reportError(`${nameOf(r.path)} changed on disk while you have unsaved edits here. Your edits are kept; saving will ask whether to overwrite or reload.`, { severity: 'warning' });
+          }
+        }
+      } catch { /* a check that fails is tried again next time */ } finally { running = false; }
+    };
+    const onVisible = () => { if (!document.hidden) void check(); };
+    const onFocus = () => { void check(); };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { window.removeEventListener('focus', onFocus); document.removeEventListener('visibilitychange', onVisible); };
+  }, [syncTabsWithDisk]);
 
   const handleOpenFolderWithFlag = useCallback(async () => {
     await handleOpenFolder();
@@ -847,7 +908,7 @@ export default function EditorPage() {
     [deckTiming, previewFileName],
   );
 
-  const { baseUrl, globalContext, slides: parsedSlides, docHtml, slideSize: mdSlideSize, slideStyleVariables, themeCssUrl, slidesSource, hasAnswers } = useSlideProcessor(
+  const { baseUrl, globalContext, slides: parsedSlides, docHtml, slideSize: mdSlideSize, slideStyleVariables, themeCssUrl, slidesSource, slidesEpoch, hasAnswers, deckAnswersHidden, renderWithAnswers } = useSlideProcessor(
     previewFileName, previewFileType, processedMarkdown, lastUpdated, themes, moduleEpoch, previewMarkdown, answersOverride
   );
   const mdSlides = useMemo(() => withMeasuredTimes(parsedSlides, measuredTimes), [parsedSlides, measuredTimes]);
@@ -2631,8 +2692,14 @@ export default function EditorPage() {
           // the workspace; a handout = the PDF with the answers hidden for a moment.
           exportPdf: (rel: string) => handlePrint(rel),
           exportPptx: (rel: string) => exportPptx(rel),
-          answers: { has: !!hasAnswers, hidden: answersHidden, toggle: answersToggle },
+          answers: { has: !!hasAnswers, hidden: answersHidden, deckHidden: deckAnswersHidden, toggle: answersToggle },
           setAnswersToggle,
+          slidesWithAnswers: renderWithAnswers,
+          // The module epoch the slides were parsed at, and whether the scope's
+          // modules / effects (or its folders behind an SSH link) are still loading.
+          slidesEpoch, moduleEpoch, assetsPending,
+          // A tab against its file on disk; a merge's result made the tab's text.
+          syncTabsWithDisk, rebaseTab, closeTabsByPaths,
         }} />
       )}
 

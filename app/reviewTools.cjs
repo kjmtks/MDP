@@ -18,7 +18,7 @@ const { loopCommand } = require('./claudeReviewKit.cjs');
 const METHODS = new Set(['get_review', 'add_review', 'resolve_review', 'snapshot_deck', 'get_changes', 'get_flow', 'write_flow', 'get_audience', 'write_audience', 'review_readiness']);
 
 function createReviewTools(h) {
-  const { mdplink, vres, rly, withDeckLock, wsKeyOf, currentDeckText, splitBlocks, backupFiles, activeDeckPath, requireDeckPath, BOM, mdpChainDirs } = h;
+  const { mdplink, vres, rly, withDeckLock, wsKeyOf, currentDeckText, splitBlocks, backupFiles, activeDeckPath, requireDeckPath, BOM, mdpChainDirs, applyExactEdits, readTextKeepingFormat, withFormat } = h;
   const kitStatus = typeof h.kitStatus === 'function' ? h.kitStatus : null;   // desktop only
   const noBom = (s) => { const t = String(s || ''); return t.startsWith(BOM) ? t.slice(1) : t; };
   const lockKey = (baseDir, kind, deckPath) => `${wsKeyOf(baseDir)}::${kind}::${deckPath}`;
@@ -151,17 +151,36 @@ function createReviewTools(h) {
       }
 
       case 'write_flow': {
+        // The whole file (`content`), or exact replacements in it (`edits`) — one step
+        // of a long flow changed without resending the rest. Either way the file keeps
+        // its BOM and line endings.
         const deckPath = requireDeckPath(p.path);
-        if (typeof p.content !== 'string' || !p.content.trim()) throw new Error('"content" is required (the whole flow file, Markdown).');
+        const hasContent = typeof p.content === 'string' && !!p.content.trim();
+        const hasEdits = Array.isArray(p.edits) && p.edits.length > 0;
+        if (hasContent === hasEdits) throw new Error('Give "content" (the whole flow file, Markdown) or "edits" ([{old_str, new_str, all?}] in the existing file) — one of the two.');
         const flowPath = review.flowPathFor(deckPath);
         return withDeckLock(lockKey(baseDir, 'flow', deckPath), async () => {
-          const backups = await backupFiles(baseDir, [flowPath]);
-          const content = p.content.replace(/\r\n?/g, '\n');
-          await mdplink.vfsWrite(vres(baseDir, flowPath, 'w'), Buffer.from(content, 'utf-8'));
+          const fmt = await readTextKeepingFormat(baseDir, flowPath).catch(() => null);
+          let content;
+          let replaced;
+          if (hasEdits) {
+            if (!fmt) throw new Error(`No flow file "${flowPath}" yet — write it whole with "content" (get_flow gives the template).`);
+            const edits = p.edits.map((ed) => ({ ...ed, old_str: String((ed && ed.old_str) ?? '').replace(/\r\n?/g, '\n'), new_str: String((ed && ed.new_str) ?? '').replace(/\r\n?/g, '\n') }));
+            ({ text: content, replaced } = applyExactEdits(fmt.text, edits, flowPath));
+            if (content === fmt.text) return { path: deckPath, flow: flowPath, saved: null, note: 'No change — the flow already says that.' };
+          } else {
+            content = p.content.replace(/\r\n?/g, '\n');
+            if (content.startsWith(BOM)) content = content.slice(1);
+          }
+          const backups = fmt ? await backupFiles(baseDir, [flowPath]) : [];
+          await mdplink.vfsWrite(vres(baseDir, flowPath, 'w'), Buffer.from(fmt ? withFormat(content, fmt) : content, 'utf-8'));
           const { facts } = await deckOf(baseDir, deckPath, false);
           const flow = review.parseFlow(content);
           changed(baseDir, deckPath);
-          return { path: deckPath, flow: flowPath, steps: flow.steps.length, check: review.checkFlow(flow, facts), ...(backups.length ? { backup: backups[0] } : {}) };
+          return {
+            path: deckPath, flow: flowPath, steps: flow.steps.length, check: review.checkFlow(flow, facts),
+            ...(replaced != null ? { replaced } : {}), ...(backups.length ? { backup: backups[0] } : {}),
+          };
         });
       }
 
@@ -208,8 +227,8 @@ function createReviewTools(h) {
         return withDeckLock(lockKey(baseDir, 'audience', rel), async () => {
           let exists = false;
           try { await mdplink.vfsReadText(vres(baseDir, rel)); exists = true; } catch { /* new */ }
-          const ok = await rly(baseDir, 'confirmAssetWrite', { kind: 'persona', action: exists ? 'update' : 'create', name, rel, hasScript: false, content: p.content }, 300000);
-          if (!ok || !ok.approved) throw new Error('The user declined to write this persona. Nothing was changed.');
+          // Written at once (an MCP tool never waits for the person); the previous
+          // version is backed up.
           const backups = exists ? await backupFiles(baseDir, [rel]) : [];
           await mdplink.vfsWrite(vres(baseDir, rel, 'w'), Buffer.from(p.content.replace(/\r\n?/g, '\n'), 'utf-8'));
           rly(baseDir, 'refreshTree', {}, 5000).catch(() => {});

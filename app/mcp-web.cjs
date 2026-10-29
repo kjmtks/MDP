@@ -21,7 +21,7 @@
 const path = require('path');
 const bridge = require('./mcp-bridge.cjs');
 const render = require('./mcp-render.cjs');
-const { TOOLS, DESKTOP_ONLY, NEEDS_RENDERER } = require('./mcp-tools.cjs');
+const { TOOLS, DESKTOP_ONLY, NEEDS_RENDERER, toContent } = require('./mcp-tools.cjs');
 
 const SERVER_INFO = { name: 'mdp-web', version: '1.0.0' };
 const DEFAULT_PROTOCOL = '2024-11-05';
@@ -138,10 +138,7 @@ function mount(app, deps) {
       }
       try {
         const result = await bridge.callToolFor(workspaceFor(req, user), name, (params && params.arguments) || {});
-        const content = result && result.__image
-          ? [{ type: 'image', data: result.__image, mimeType: result.mimeType || 'image/png' }]
-          : [{ type: 'text', text: typeof result === 'string' ? result : JSON.stringify(result, null, 2) }];
-        return ok({ content });
+        return ok({ content: toContent(result) });
       } catch (e) {
         // A failed tool is an ANSWER, not a transport error: the AI should read it
         // and try something else.

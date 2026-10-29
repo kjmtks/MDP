@@ -33,6 +33,9 @@ export interface CaptureSlideData {
   // as a still picture. Or every cue's target outlined and numbered (MCP renders).
   focus?: FocusState;
   focusOutline?: FocusOutlineItem[];
+  // Workspace SVGs rewritten since the last capture: the capture document forgets its
+  // own inline copy of them before drawing (inlineSvg.takeStaleSvgKeys).
+  svgStale?: string[];
 }
 
 /** The web build's capture iframe (CapturePage) ↔ the page that hosts it

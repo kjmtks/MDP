@@ -1,11 +1,56 @@
 import { FILES_PREFIX, WEB_BASE } from '../../../api/base';
-import { useMemo, useEffect } from 'react';
+import { useMemo, useEffect, useCallback, useRef } from 'react';
 import type { FileType } from '../../../types';
 import { BASE_HEIGHT } from '../../../constants';
-import { splitMarkdownToBlocks, parseGlobalContext } from '../parser/slideParser';
+import { splitMarkdownToBlocks, parseGlobalContext, renderSlideHTML } from '../parser/slideParser';
+import type { RawBlock, SlideData } from '../parser/slideParser';
+import { processSlidesPostHtml } from '../parser/slidePostProcessing';
 import { useSlideGenerator } from './useSlideGenerator';
 import { isElectron } from '../../../api/apiClient';
 import type { ThemeOption } from '../../../types';
+
+// Page numbers, hidden / cover flags and page references of generated slides — a
+// whole-deck pass. Shared by the slides the editor shows and by the variants the
+// MCP renders with the answers shown or hidden (`renderWithAnswers`).
+function numberSlides(rawSlides: SlideData[], blocks: RawBlock[]) {
+  const offset = blocks.length - rawSlides.length;
+  let logicalPageCount = 0;
+  const numbered = rawSlides.map((slide, index) => {
+    const rawContent = blocks[index + offset]?.rawContent || "";
+    const isHidden = /<!--\s+@hide\s+-->/.test(rawContent);
+    const isCover = /<!--\s+@cover\s+-->/i.test(rawContent);
+    let pageNumber = null;
+    if (!isHidden && !isCover) { logicalPageCount++; pageNumber = logicalPageCount; }
+
+    let html = slide.html;
+    html = html.replace(/src="(?:\/files\/|mdp-file:\/\/)?(blob:https?:\/\/[^"?]+)(?:\?[^"]*)?"/g, 'src="$1"');
+    html = html.replace(/src="(?:\/files\/|mdp-file:\/\/)([^"]+)"([^>]*)alt="@drawio"/g, 'src="$1"$2alt="@drawio"');
+    html = html.replace(/alt="@drawio"([^>]*)src="(?:\/files\/|mdp-file:\/\/)([^"]+)"/g, 'alt="@drawio"$1src="$2"');
+
+    return { ...slide, html, isHidden, isCover, pageNumber };
+  });
+
+  // Resolve page REFERENCES: `[](#intro)` prints the number shown bottom-right
+  // on the slide tagged `<!-- @id intro -->`. This can only happen here — a page
+  // number depends on how many earlier slides are hidden or covers, so it is a
+  // whole-deck fact the per-slide markdown pass cannot know. Targets that cannot
+  // be resolved (another deck, a hidden/cover slide, an unknown id) keep their
+  // '?' placeholder rather than silently rendering a wrong number.
+  if (!numbered.some((s) => s.html.includes('mdp-pageref'))) return numbered;
+  const pageOfId = new Map<string, number>();
+  for (const s of numbered) if (s.id && s.pageNumber) pageOfId.set(s.id, s.pageNumber);
+  const REF_RE = /(<a\b[^>]*\bmdp-pageref\b[^>]*data-mdp-target="([^"]*)"[^>]*>)([^<]*)(<\/a>)/g;
+  return numbered.map((slide) => ({
+    ...slide,
+    html: slide.html.replace(REF_RE, (whole, open, target, _inner, close) => {
+      const raw = String(target || '').replace(/&amp;/g, '&');
+      if (!raw.startsWith('#')) return whole;   // cross-deck: numbering unknown here
+      const anchor = raw.slice(1);
+      const n = /^\d+$/.test(anchor) ? Number(anchor) : pageOfId.get(anchor);
+      return n ? open + n + close : whole;
+    }),
+  }));
+}
 
 export const useSlideProcessor = (
   currentFileName: string | null,
@@ -74,7 +119,7 @@ export const useSlideProcessor = (
     [blocks],
   );
 
-  const { slides: rawSlides, builtKey: slidesSource } = useSlideGenerator(blocks, globalContext, baseUrl, lastUpdated, moduleEpoch, sourceKey);
+  const { slides: rawSlides, builtKey: slidesSource, builtEpoch: slidesEpoch } = useSlideGenerator(blocks, globalContext, baseUrl, lastUpdated, moduleEpoch, sourceKey);
 
   // Rendered HTML for a plain markdown document (empty unless type === 'doc').
   const docHtml = useMemo(() => (currentFileType === 'doc' ? (rawSlides[0]?.html || '') : ''), [currentFileType, rawSlides]);
@@ -83,44 +128,28 @@ export const useSlideProcessor = (
     // A document is not a slide deck — keep `slides` empty so nothing treats it as
     // presentable (no slideshow / thumbnails / export).
     if (currentFileType === 'doc') return [];
-    const offset = blocks.length - rawSlides.length;
-    let logicalPageCount = 0;
-    const numbered = rawSlides.map((slide, index) => {
-      const rawContent = blocks[index + offset]?.rawContent || "";
-      const isHidden = /<!--\s+@hide\s+-->/.test(rawContent);
-      const isCover = /<!--\s+@cover\s+-->/i.test(rawContent);
-      let pageNumber = null;
-      if (!isHidden && !isCover) { logicalPageCount++; pageNumber = logicalPageCount; }
-
-      let html = slide.html;
-      html = html.replace(/src="(?:\/files\/|mdp-file:\/\/)?(blob:https?:\/\/[^"?]+)(?:\?[^"]*)?"/g, 'src="$1"');
-      html = html.replace(/src="(?:\/files\/|mdp-file:\/\/)([^"]+)"([^>]*)alt="@drawio"/g, 'src="$1"$2alt="@drawio"');
-      html = html.replace(/alt="@drawio"([^>]*)src="(?:\/files\/|mdp-file:\/\/)([^"]+)"/g, 'alt="@drawio"$1src="$2"');
-
-      return { ...slide, html, isHidden, isCover, pageNumber };
-    });
-
-    // Resolve page REFERENCES: `[](#intro)` prints the number shown bottom-right
-    // on the slide tagged `<!-- @id intro -->`. This can only happen here — a page
-    // number depends on how many earlier slides are hidden or covers, so it is a
-    // whole-deck fact the per-slide markdown pass cannot know. Targets that cannot
-    // be resolved (another deck, a hidden/cover slide, an unknown id) keep their
-    // '?' placeholder rather than silently rendering a wrong number.
-    if (!numbered.some((s) => s.html.includes('mdp-pageref'))) return numbered;
-    const pageOfId = new Map<string, number>();
-    for (const s of numbered) if (s.id && s.pageNumber) pageOfId.set(s.id, s.pageNumber);
-    const REF_RE = /(<a\b[^>]*\bmdp-pageref\b[^>]*data-mdp-target="([^"]*)"[^>]*>)([^<]*)(<\/a>)/g;
-    return numbered.map((slide) => ({
-      ...slide,
-      html: slide.html.replace(REF_RE, (whole, open, target, _inner, close) => {
-        const raw = String(target || '').replace(/&amp;/g, '&');
-        if (!raw.startsWith('#')) return whole;   // cross-deck: numbering unknown here
-        const anchor = raw.slice(1);
-        const n = /^\d+$/.test(anchor) ? Number(anchor) : pageOfId.get(anchor);
-        return n ? open + n + close : whole;
-      }),
-    }));
+    return numberSlides(rawSlides, blocks);
   }, [rawSlides, blocks, currentFileType]);
+
+  // The deck rendered with its @answer blocks shown or hidden whatever the toggle
+  // says — for an MCP tool that looks at the handout (or the instructor's copy) for
+  // one call without changing the editor. Kept while the deck and the context are
+  // the same (a render, then a measure, of the same variant).
+  const variantRef = useRef<{ key: unknown[]; hide: boolean; slides: ReturnType<typeof numberSlides> } | null>(null);
+  const renderWithAnswers = useCallback(async (hide: boolean) => {
+    if (currentFileType !== 'markdown') return [];
+    const key = [blocks, deckContext, baseUrl, lastUpdated, moduleEpoch];
+    const v = variantRef.current;
+    if (v && v.hide === hide && v.key.every((k, i) => k === key[i])) return v.slides;
+    const ctx = { ...deckContext, answers: { hide, args: deckContext.answers?.args || {} } };
+    const raw = await Promise.all(blocks.slice(1).map(async (block, index) => {
+      const base = renderSlideHTML(block, ctx, index + 1, baseUrl, lastUpdated);
+      return { ...base, html: await processSlidesPostHtml(base.html) };
+    }));
+    const out = numberSlides(raw, blocks);
+    variantRef.current = { key, hide, slides: out };
+    return out;
+  }, [blocks, deckContext, baseUrl, lastUpdated, moduleEpoch, currentFileType]);
 
   // The canvas is BASE_HEIGHT tall by default — @aspect only sets its shape.
   // @resolution asks for more CSS pixels of the SAME shape.
@@ -194,5 +223,8 @@ export const useSlideProcessor = (
     }
   }, [themeCssUrl, lastUpdated]);
 
-  return { baseUrl, globalContext, slides, docHtml, slideSize, slideStyleVariables, themeCssUrl, slidesSource, hasAnswers };
+  // What the deck itself says about its answers (its `@answers`), whatever the toggle shows.
+  const deckAnswersHidden = !!deckContext.answers?.hide;
+
+  return { baseUrl, globalContext, slides, docHtml, slideSize, slideStyleVariables, themeCssUrl, slidesSource, slidesEpoch, hasAnswers, deckAnswersHidden, renderWithAnswers };
 };

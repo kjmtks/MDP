@@ -7,6 +7,7 @@ import { applyFontCss, loadWorkspaceFonts } from '../../fonts/fontRuntime';
 import { embedFontCss } from '../../fonts/fontEmbed';
 import { CAPTION_TEXT, captionLang, fitCaptionBox } from '../../autoplay/captionFit';
 import { settleFocusLayers } from '../../focus/focusSettle';
+import { invalidateSvg } from '../../slide/inlineSvg';
 
 const KATEX_DELIMS = [
   { left: '\\(', right: '\\)', display: false },
@@ -31,16 +32,60 @@ async function drawFrame(node: HTMLElement, d: CaptureSlideData): Promise<ImageB
   return createImageBitmap(canvas);
 }
 
+// Put the deck's theme in (resolving when its stylesheet has loaded — or failed, or
+// after 5 s), or take a previous deck's out.
+function applyTheme(url: string): Promise<void> {
+  const id = 'mdp-capture-theme';
+  let link = document.getElementById(id) as HTMLLinkElement | null;
+  if (!url) { link?.remove(); return Promise.resolve(); }
+  // The same theme: set again as every capture always did, nothing to wait for.
+  if (link && link.getAttribute('href') === url) { link.href = url; return Promise.resolve(); }
+  if (!link) {
+    link = document.createElement('link');
+    link.id = id;
+    link.rel = 'stylesheet';
+    document.head.appendChild(link);
+  }
+  const el = link;
+  return new Promise<void>((resolve) => {
+    const done = () => { clearTimeout(timer); resolve(); };
+    const timer = setTimeout(done, 5000);
+    el.addEventListener('load', done, { once: true });
+    el.addEventListener('error', done, { once: true });
+    el.href = url;
+  });
+}
+
 export default function CapturePage() {
   const [data, setData] = useState<CaptureSlideData | null>(null);
   const nodeRef = useRef<HTMLDivElement>(null);
   const captionRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    // The workspace fonts go in — and are loaded — BEFORE the slide is laid out: this
+    // window is hidden, and text laid out while its font was still loading was never
+    // laid out again before the capture. The first capture after MDP started (or after
+    // the deck's folder brought other fonts) came out with every text blank, or in
+    // a fallback face (2026-10-29). A figure rewritten since the last capture is
+    // fetched anew (this document keeps its own inline-SVG cache, by path).
+    // The theme likewise: in place (loaded) before the slide, and a deck without one
+    // must not keep the previous deck's — captured after a themed deck, an unthemed
+    // one came out in that theme's fonts. (Captures come one at a time — main waits
+    // for each one's ready.)
+    const take = (d: CaptureSlideData) => {
+      if (!d) return;
+      if (d.svgStale?.length) invalidateSvg(...d.svgStale);
+      applyFontCss(document, d.fontCss || '');
+      const text = `${d.html || ''} ${d.header || ''} ${d.footer || ''} ${d.caption || ''}`.replace(/<[^>]*>/g, ' ');
+      void Promise.all([
+        applyTheme(d.themeCssUrl || ''),
+        loadWorkspaceFonts(document, d.fontCss || '', undefined, text).catch(() => undefined),
+      ]).then(() => setData(d));
+    };
     if (inIframe) {
       const onMessage = (ev: MessageEvent<WebCaptureMessage>) => {
         if (ev.source !== window.parent || ev.origin !== window.location.origin) return;
-        if (ev.data?.type === 'capture') setData(ev.data.data);
+        if (ev.data?.type === 'capture') take(ev.data.data);
       };
       window.addEventListener('message', onMessage);
       toParent({ type: 'hello' });
@@ -48,23 +93,13 @@ export default function CapturePage() {
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const api = (window as any).electronAPI;
-    return api?.onCaptureRender?.((d: CaptureSlideData) => setData(d));
+    return api?.onCaptureRender?.((d: CaptureSlideData) => take(d));
   }, []);
 
   useEffect(() => {
     if (!data) return;
 
-    if (data.themeCssUrl) {
-      const id = 'mdp-capture-theme';
-      let link = document.getElementById(id) as HTMLLinkElement | null;
-      if (!link) {
-        link = document.createElement('link');
-        link.id = id;
-        link.rel = 'stylesheet';
-        document.head.appendChild(link);
-      }
-      link.href = data.themeCssUrl;
-    }
+    // (The theme and the workspace fonts were put in before the slide — `take`.)
 
     // Inject module CSS (this capture window has its own document) so module
     // boxes render styled in the rasterized image.

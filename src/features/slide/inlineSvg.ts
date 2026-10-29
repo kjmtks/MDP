@@ -36,6 +36,17 @@ export function getSvgNode(key: string): DocumentFragment | null {
  *  re-inject that key. `detail.key` = the workspace path used as the cache key. */
 export const SVG_INVALIDATED_EVENT = 'mdp-inline-svg-invalidated';
 
+// The capture window (MCP renders, the fast video) is another document with a cache of
+// its own: the keys dropped here since its last capture go along with the next one
+// (CaptureSlideData.svgStale), or it kept drawing a rewritten figure as it was.
+const staleForCapture = new Set<string>();
+/** The SVG keys invalidated since this was last called (then forgotten). */
+export function takeStaleSvgKeys(): string[] {
+  const keys = [...staleForCapture];
+  staleForCapture.clear();
+  return keys;
+}
+
 /** Forget a workspace SVG and tell every mounted slide to fetch and re-inject it.
  *  `keys` are the cache keys (workspace paths, as SlideView builds them). */
 export function invalidateSvg(...keys: string[]): void {
@@ -43,6 +54,7 @@ export function invalidateSvg(...keys: string[]): void {
     cache.delete(key);
     nodeCache.delete(key);
     inflight.delete(key);
+    staleForCapture.add(key);
     try { window.dispatchEvent(new CustomEvent(SVG_INVALIDATED_EVENT, { detail: { key } })); } catch { /* ignore */ }
   }
 }

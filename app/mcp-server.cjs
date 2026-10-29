@@ -38,6 +38,12 @@ const INSTRUCTIONS = [
   '(get_flow / write_flow — write it before the slides; a step whose student\'s question you cannot write is a flat one).',
   'The folder\'s AUDIENCE (get_audience: personas of who its decks are for) is what to write for — and what a reviewer reads a deck as.',
   'Asked to REVIEW a deck with AI: call review_readiness first — it says what is in place and what is left; in Claude Code the /mdp-review-loop skill runs the reviewer and reviser subagents.',
+  'EVERYTHING AROUND A DECK GOES THROUGH THESE TOOLS — never read or write the workspace\'s files yourself (the decks\' folders may be on a NAS behind a .mdplink; touching them directly makes the user approve each access):',
+  'read_file / write_file / patch_file (a lesson plan, notes, a CSV, an .svg) and patch_files (several at once — skills, a flow and a plan, all or nothing);',
+  'put_file for a figure / PDF / zip your script made (`from` = its path in the temp folder; re-using a figure\'s name is fine, MDP draws the new one); list_files (sizes, times, md5); delete_file (moved to .mdp/mcp-backups);',
+  'inspect_pdf after export_pdf (pages, paper sizes, a picture). For MDP\'s own records use their tools: get_rehearsals, get_review, get_flow.',
+  'No MDP tool waits for the person: writes happen at once (overwritten and deleted files are kept in .mdp/mcp-backups — the answer says where); when only you can judge (the file changed on disk, a file the person is editing), the answer gives the reason and the ways out.',
+  'ANSWERS: get_active_deck says whether the @answer blocks are shown (`answers`); set_answers changes the editor\'s toggle (show / hide / default = as the deck says); the render and check tools take `answers` for one call; check_deck checks the deck as the class sees it.',
 ].join(' ');
 
 // ---- bridge ----------------------------------------------------------------
@@ -85,7 +91,7 @@ function callBridge(name, args) {
 // ---- tool catalogue ----------------------------------------------------------
 // Shared with the web endpoint (app/mcp-tools.cjs); the bridge implements a method
 // of the same name for each tool.
-const { TOOLS } = require('./mcp-tools.cjs');
+const { TOOLS, toContent } = require('./mcp-tools.cjs');
 
 // ---- MCP over stdio ----------------------------------------------------------
 
@@ -111,10 +117,7 @@ async function handle(msg) {
   if (method === 'tools/call') {
     try {
       const result = await callBridge(params.name, params.arguments);
-      const content = result && result.__image
-        ? [{ type: 'image', data: result.__image, mimeType: result.mimeType || 'image/png' }]
-        : [{ type: 'text', text: typeof result === 'string' ? result : JSON.stringify(result, null, 2) }];
-      reply(id, { content });
+      reply(id, { content: toContent(result) });
     } catch (e) {
       reply(id, { content: [{ type: 'text', text: String((e && e.message) || e) }], isError: true });
     }

@@ -37,6 +37,24 @@ interface TabState {
   activeIndex: number;
 }
 
+/** A tab compared with its file on disk (syncTabsWithDisk). `disk` = the file's text
+ *  when it differs from what the tab loaded. */
+export interface DiskSync {
+  path: string;
+  state: 'same' | 'reloaded' | 'changedWhileEdited' | 'missing';
+  disk?: string;
+}
+
+/** What a save did. The editor's Ctrl+S ignores it; the MCP's save_deck reads it.
+ *  `diskChanged`: the file had changed on disk since the tab loaded it and the save
+ *  was told not to ask (`fromMcp`) — nothing was written; `disk` = the file's text. */
+export interface SaveResult {
+  status: 'saved' | 'nothing' | 'diskChanged' | 'cancelled' | 'reloaded' | 'error';
+  path?: string;
+  disk?: string;
+  error?: string;
+}
+
 const getDrawingMap = () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   if (!(window as any).__drawingMap) {
@@ -48,6 +66,59 @@ const getDrawingMap = () => {
 };
 
 const createTabId = () => `tab-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+// A file's text as the editor holds it: each `@draw:` (a slide's drawing, base64)
+// replaced by a short `@drawing:` id kept in the drawing map, and the slides' strokes
+// decoded. Loading, reloading and the MCP's merge of a file changed on disk share it.
+export function editorFormOf(rawText: string, reuseFrom = ''): { editorText: string; drawings: Record<number, Stroke[]> } {
+  const map = getDrawingMap();
+  // `reuseFrom` = the tab's own text: a drawing it already has keeps its id, so a
+  // reload (or a merge) of a file whose drawings did not change gives the same editor
+  // text for them. Only that tab's ids — another tab's must never be shared.
+  const known = new Map<string, string>();
+  for (const m of reuseFrom.matchAll(/<!--\s*@drawing:\s*([a-zA-Z0-9]+)\s*-->/g)) {
+    const b64 = map.get(m[1]);
+    if (b64 && !known.has(b64)) known.set(b64, m[1]);
+  }
+  const drawTagRegex = new RegExp('<' + '!--\\s*@draw:\\s*([\\s\\S]*?)\\s*--' + '>', 'g');
+  const editorText = rawText.replace(drawTagRegex, (_m, base64) => {
+    const b64 = String(base64).trim();
+    let id = known.get(b64);
+    if (!id) {
+      id = Math.random().toString(36).substring(2, 10);
+      map.set(id, b64);
+    }
+    return '<' + '!-- @drawing: ' + id + ' --' + '>';
+  });
+  const drawings: Record<number, Stroke[]> = {};
+  splitMarkdownToBlocks(editorText).slice(1).forEach((block, idx) => {
+    const m = block.rawContent.match(new RegExp('<' + '!--\\s*@drawing:\\s*([a-zA-Z0-9]+)\\s*--' + '>'));
+    if (!m) return;
+    const b64 = map.get(m[1]);
+    if (!b64) return;
+    try {
+      const bin = atob(b64);
+      const by = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) by[i] = bin.charCodeAt(i);
+      drawings[idx] = JSON.parse(new TextDecoder().decode(by));
+    } catch { /* ignore */ }
+  });
+  return { editorText, drawings };
+}
+
+// Replace a CodeMirror document with `next` by changing only the stretch that differs,
+// so the caret and the scroll stay where they were (a reload from disk of a deck the
+// person is looking at).
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function replaceDocMinimal(view: any, next: string) {
+  const cur: string = view.state.doc.toString();
+  if (cur === next) return;
+  let a = 0;
+  while (a < cur.length && a < next.length && cur.charCodeAt(a) === next.charCodeAt(a)) a++;
+  let b = 0;
+  while (b < cur.length - a && b < next.length - a && cur.charCodeAt(cur.length - 1 - b) === next.charCodeAt(next.length - 1 - b)) b++;
+  view.dispatch({ changes: { from: a, to: cur.length - b, insert: next.slice(a, next.length - b) } });
+}
 
 // Unsaved-changes drafts kept in localStorage so the editor can be restored
 // (VSCode-style hot exit) on the next launch.
@@ -277,35 +348,7 @@ export const useFileManager = ({ setCurrentSlideIndex, syncDrawings, onFileLoade
       const estimatedByteLength = new Blob([text]).size;
       if (estimatedByteLength > MAX_FILE_SIZE) throw new Error('FILE_TOO_LARGE');
 
-      const map = getDrawingMap();
-      let editorText = text;
-      const drawTagRegex = new RegExp('<' + '!--\\s*@draw:\\s*([\\s\\S]*?)\\s*--' + '>', 'g');
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      editorText = editorText.replace(drawTagRegex, (_: any, base64: any) => {
-          const id = Math.random().toString(36).substring(2, 10);
-          map.set(id, base64.trim());
-          return '<' + '!-- @drawing: ' + id + ' --' + '>';
-      });
-
-      const loadedBlocks = splitMarkdownToBlocks(editorText);
-      const newDrawings: Record<number, Stroke[]> = {};
-      loadedBlocks.slice(1).forEach((block, idx) => {
-          const anchorRegex = new RegExp('<' + '!--\\s*@drawing:\\s*([a-zA-Z0-9]+)\\s*--' + '>');
-          const anchorMatch = block.rawContent.match(anchorRegex);
-          if (anchorMatch) {
-              const id = anchorMatch[1];
-              const base64 = map.get(id);
-              if (base64) {
-                  try {
-                      const binString = atob(base64);
-                      const bytes = new Uint8Array(binString.length);
-                      for (let i = 0; i < binString.length; i++) bytes[i] = binString.charCodeAt(i);
-                      const json = new TextDecoder().decode(bytes);
-                      newDrawings[idx] = JSON.parse(json);
-                  } catch (e) { console.error("Drawing parse error", e); }
-              }
-          }
-      });
+      const { editorText, drawings: newDrawings } = editorFormOf(text);
 
       const hasDraft = draftContent != null && draftContent !== editorText;
       const contentToUse = hasDraft ? draftContent! : editorText;
@@ -359,53 +402,34 @@ export const useFileManager = ({ setCurrentSlideIndex, syncDrawings, onFileLoade
     }
   }, [switchTab, setCurrentSlideIndex, syncDrawings, onFileLoaded]);
 
-  // Reload a tab's content from raw disk text, discarding in-editor edits. Mirrors
-  // loadFile's @draw → @drawing transform + drawing extraction, then updates the
-  // tab, the editor view and the live drawings.
+  // Reload a tab's content from raw disk text, discarding in-editor edits — the active
+  // tab (its editor view, the live drawings, markdownRef) or a background one (its
+  // state, and its view if mounted). Only the stretch that differs is replaced in the
+  // editor, so the caret and the scroll stay.
   const reloadTabFromDisk = useCallback((rawText: string, tabId: string) => {
-    const map = getDrawingMap();
-    const drawTagRegex = new RegExp('<' + '!--\\s*@draw:\\s*([\\s\\S]*?)\\s*--' + '>', 'g');
-    const editorText = rawText.replace(drawTagRegex, (_m, base64) => {
-      const id = Math.random().toString(36).substring(2, 10);
-      map.set(id, String(base64).trim());
-      return '<' + '!-- @drawing: ' + id + ' --' + '>';
-    });
-    const blocks = splitMarkdownToBlocks(editorText);
-    const newDrawings: Record<number, Stroke[]> = {};
-    blocks.slice(1).forEach((block, idx) => {
-      const m = block.rawContent.match(new RegExp('<' + '!--\\s*@drawing:\\s*([a-zA-Z0-9]+)\\s*--' + '>'));
-      if (!m) return;
-      const b64 = map.get(m[1]);
-      if (!b64) return;
-      try {
-        const bin = atob(b64);
-        const by = new Uint8Array(bin.length);
-        for (let i = 0; i < bin.length; i++) by[i] = bin.charCodeAt(i);
-        newDrawings[idx] = JSON.parse(new TextDecoder().decode(by));
-      } catch { /* ignore */ }
-    });
-    const view = stateRef.current.tabs.find(t => t.id === tabId)?.editorRef.current?.view;
+    const { tabs: openTabs, activeIndex } = stateRef.current;
+    const old = openTabs.find(t => t.id === tabId);
+    const { editorText, drawings: newDrawings } = editorFormOf(rawText, old ? `${old.initialContent}\n${old.content}` : '');
+    const isActive = openTabs[activeIndex]?.id === tabId;
+    const view = openTabs.find(t => t.id === tabId)?.editorRef.current?.view;
     setTabState(prev => {
       const tabs = [...prev.tabs];
       const i = tabs.findIndex(t => t.id === tabId);
       if (i !== -1) tabs[i] = { ...tabs[i], content: editorText, initialContent: editorText.replace(/\r/g, ''), isModified: false, drawings: newDrawings };
       return { tabs, activeIndex: prev.activeIndex };
     });
-    markdownRef.current = editorText;
-    if (view) view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: editorText }, selection: { anchor: 0 } });
-    syncDrawings(newDrawings);
+    if (isActive) markdownRef.current = editorText;
+    if (view) replaceDocMinimal(view, editorText);
+    if (isActive) syncDrawings(newDrawings);
     setLastUpdated(Date.now());
   }, [syncDrawings]);
 
-  // Discard the in-editor edits of the ACTIVE tab and re-read its file from disk.
-  // Used by the MCP reload_deck tool and by any "the file changed outside" flow.
-  // Active-only: reloadTabFromDisk also refreshes markdownRef/drawings, which
-  // describe the active tab — running it on a background tab would corrupt those.
+  // Discard the in-editor edits of a tab and re-read its file from disk. Used by the
+  // MCP reload_deck tool and by any "the file changed outside" flow.
   const reloadFileFromDisk = useCallback(async (filePath: string) => {
-    const { tabs: openTabs, activeIndex } = stateRef.current;
+    const { tabs: openTabs } = stateRef.current;
     const tab = openTabs.find(t => t.path === filePath);
     if (!tab) throw new Error(`"${filePath}" is not open in the editor.`);
-    if (openTabs[activeIndex]?.id !== tab.id) throw new Error(`"${filePath}" is not the active tab — activate it before reloading.`);
     const text = await apiClient.readFileText(filePath);
     reloadTabFromDisk(text, tab.id);
     // Drop any persisted draft too, so hot-exit restore can't resurrect the
@@ -418,21 +442,32 @@ export const useFileManager = ({ setCurrentSlideIndex, syncDrawings, onFileLoade
     return text;
   }, [reloadTabFromDisk]);
 
-  const handleSave = useCallback(async () => {
+  // The text of each file as this editor last wrote it (drawing data stripped): the
+  // tab's baseline catches up a render later, so a disk check in between must not
+  // take the editor's own save for a change made outside.
+  const lastSavedRef = useRef<Map<string, string>>(new Map());
+
+  // `fromMcp`: an AI's save_deck — never a dialog: a file changed on disk since the
+  // tab loaded it is reported back (`diskChanged`, with the disk's text) instead of
+  // asking the person; `overwrite`: write anyway (the bridge has backed the file up).
+  const handleSave = useCallback(async (opts?: { fromMcp?: boolean; overwrite?: boolean }): Promise<SaveResult> => {
+    const fromMcp = !!(opts && typeof opts === 'object' && 'fromMcp' in opts && opts.fromMcp);
+    const overwrite = !!(opts && typeof opts === 'object' && 'overwrite' in opts && opts.overwrite);
     const activeIdx = stateRef.current.activeIndex;
-    if (activeIdx === -1) return;
+    if (activeIdx === -1) return { status: 'nothing' };
     const currentTab = stateRef.current.tabs[activeIdx];
-    if (!currentTab) return;
+    if (!currentTab) return { status: 'nothing' };
 
     const { path: saveFileName, type: saveFileType, content: saveMarkdown } = currentTab;
-    if (saveFileType === 'image' || saveFileType === 'binary' || saveFileType === 'video' || saveFileType === 'limit-exceeded') return;
+    if (saveFileType === 'image' || saveFileType === 'binary' || saveFileType === 'video' || saveFileType === 'limit-exceeded') return { status: 'nothing', path: saveFileName };
 
     // External-change guard: the file may have been edited/replaced on disk by
     // another program since we loaded or last saved it. Compare disk text (ignoring
     // drawing data) to our baseline; if it changed, ask before overwriting.
     let diskNow: string | null = null;
     try { diskNow = await apiClient.readFileText(saveFileName); } catch { /* new/unreadable → just save */ }
-    if (diskNow != null && stripDrawingData(diskNow) !== stripDrawingData(currentTab.initialContent)) {
+    if (diskNow != null && !overwrite && stripDrawingData(diskNow) !== stripDrawingData(currentTab.initialContent)) {
+      if (fromMcp) return { status: 'diskChanged', path: saveFileName, disk: diskNow };
       const choice = await choiceDialog(
         'This file was changed on disk outside the editor since you opened it. Saving now would overwrite those external changes.',
         {
@@ -445,8 +480,8 @@ export const useFileManager = ({ setCurrentSlideIndex, syncDrawings, onFileLoade
           ],
         },
       );
-      if (choice === 'reload') { reloadTabFromDisk(diskNow, currentTab.id); return; }
-      if (choice !== 'overwrite') return; // cancel / dismissed → don't save
+      if (choice === 'reload') { reloadTabFromDisk(diskNow, currentTab.id); return { status: 'reloaded', path: saveFileName }; }
+      if (choice !== 'overwrite') return { status: 'cancelled', path: saveFileName }; // cancel / dismissed → don't save
       // overwrite → fall through
     }
 
@@ -460,6 +495,7 @@ export const useFileManager = ({ setCurrentSlideIndex, syncDrawings, onFileLoade
           return base64 ? '<' + '!-- @draw: ' + base64 + ' --' + '>' : match;
       });
 
+      lastSavedRef.current.set(saveFileName, stripDrawingData(textToSave));
       await apiClient.saveFile(saveFileName, textToSave);
       window.dispatchEvent(new CustomEvent('mdp-file-saved', {
         detail: { path: saveFileName, content: textToSave }
@@ -487,8 +523,56 @@ export const useFileManager = ({ setCurrentSlideIndex, syncDrawings, onFileLoade
       document.title = "✅ Saved!";
       setTimeout(() => document.title = originalTitle, 2000);
       if (saveFileName.endsWith('.css')) setLastUpdated(Date.now());
-    } catch (err) { reportError('Failed to save the file.', { detail: err }); }
+      return { status: 'saved', path: saveFileName };
+    } catch (err) {
+      if (!fromMcp) reportError('Failed to save the file.', { detail: err });
+      return { status: 'error', path: saveFileName, error: String((err as Error)?.message || err) };
+    }
   }, [reloadTabFromDisk]);
+
+  // The open text tabs compared with their files on disk — a file changed outside this
+  // editor (the author fixing a deck on another computer, a program, an MCP file tool).
+  // A tab WITHOUT unsaved edits is reloaded (nothing of the person's is lost); one WITH
+  // them is kept as it is and reported (`changedWhileEdited`, with the disk's text) —
+  // saving it then asks (the person) or answers `diskChanged` (an AI). `paths` = only
+  // those tabs (default: every open text tab).
+  const syncTabsWithDisk = useCallback(async (paths?: string[]): Promise<DiskSync[]> => {
+    const want = paths ? new Set(paths) : null;
+    const out: DiskSync[] = [];
+    for (const tab of stateRef.current.tabs) {
+      if (tab.type !== 'markdown' && tab.type !== 'text') continue;
+      if (want && !want.has(tab.path)) continue;
+      let disk: string;
+      try { disk = await apiClient.readFileText(tab.path); }
+      catch { out.push({ path: tab.path, state: 'missing' }); continue; }
+      const now = stateRef.current.tabs.find(t => t.id === tab.id);   // it may have changed meanwhile
+      if (!now) continue;
+      const d = stripDrawingData(disk);
+      if (d === stripDrawingData(now.initialContent) || d === lastSavedRef.current.get(now.path)) { out.push({ path: now.path, state: 'same' }); continue; }
+      if (now.isModified) { out.push({ path: now.path, state: 'changedWhileEdited', disk }); continue; }
+      reloadTabFromDisk(disk, now.id);
+      out.push({ path: now.path, state: 'reloaded' });
+    }
+    return out;
+  }, [reloadTabFromDisk]);
+
+  // An AI's save_deck merged the file's changes on disk into the editor's: the merged
+  // text goes into the tab (one undoable edit) and the disk's text (`baseline`, in the
+  // editor's form — editorFormOf) becomes its baseline, so the save that follows sees
+  // no outside change.
+  const rebaseTab = useCallback((path: string, baseline: string, mergedEditorText: string) => {
+    const tab = stateRef.current.tabs.find(t => t.path === path);
+    if (!tab) throw new Error(`"${path}" is not open in the editor.`);
+    setTabState(prev => {
+      const tabs = [...prev.tabs];
+      const i = tabs.findIndex(t => t.id === tab.id);
+      if (i !== -1) tabs[i] = { ...tabs[i], initialContent: baseline.replace(/\r/g, ''), content: mergedEditorText, isModified: mergedEditorText !== baseline.replace(/\r/g, '') };
+      return { tabs, activeIndex: prev.activeIndex };
+    });
+    if (stateRef.current.tabs[stateRef.current.activeIndex]?.id === tab.id) markdownRef.current = mergedEditorText;
+    const view = tab.editorRef.current?.view;
+    if (view) replaceDocMinimal(view, mergedEditorText);
+  }, []);
 
   const handleOpenFolder = useCallback(async () => {
     try {
@@ -668,7 +752,7 @@ const updateTabContent = useCallback((path: string, newContent: string) => {
     lastUpdated, currentFileName, currentFileType,
     templateContent, setTemplateContent,
     markdownRef, isLoadingFile,
-    loadFile, handleSave, reloadFileFromDisk,
+    loadFile, handleSave, reloadFileFromDisk, syncTabsWithDisk, rebaseTab,
     handleOpenFolder,
     isModified,
     tabs, setTabs: () => {}, activeTabIndex, switchTab, closeTab, updateTabContent,

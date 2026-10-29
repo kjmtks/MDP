@@ -32,6 +32,9 @@ import {
 import { glossaryEntryOf, mergeGlossaries, narrationLang, readWithGlossary, type GlossaryEntry } from '../glossary/glossary';
 import type { RasterizeOptions } from '../remote/capture/captureTypes';
 import { REVIEW_CHANGED_EVENT } from '../review/useDeckReview';
+import { editorFormOf, type DiskSync, type SaveResult } from '../fileTree/hooks/useFileManager';
+import { invalidateSvg } from '../slide/inlineSvg';
+import { describeChanges, merge3 } from './merge3';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Slide = any;
@@ -71,10 +74,17 @@ export interface McpCtx {
   handleInsertText: (text: string) => void;
   tabs: OpenTab[];
   updateTabContent: (path: string, content: string) => void;
-  // Save the ACTIVE tab to disk (same path as Ctrl+S, incl. its external-change guard).
-  saveActiveFile: () => Promise<void>;
-  // Discard the active tab's edits and re-read the file from disk.
+  // Save the ACTIVE tab to disk (same path as Ctrl+S, incl. its external-change guard
+  // — which, `fromMcp`, answers `diskChanged` instead of asking the person).
+  saveActiveFile: (opts?: { fromMcp?: boolean; overwrite?: boolean }) => Promise<SaveResult>;
+  // Discard a tab's edits and re-read the file from disk.
   reloadFileFromDisk: (path: string) => Promise<string>;
+  // Open tabs against their files on disk: an unedited tab whose file changed is
+  // reloaded; an edited one is reported (useFileManager).
+  syncTabsWithDisk: (paths?: string[]) => Promise<DiskSync[]>;
+  // A merge's result into a tab: its text, and the disk's text as its baseline.
+  rebaseTab: (path: string, baseline: string, merged: string) => void;
+  closeTabsByPaths: (paths: string[]) => void;
   onRefreshTree: () => void;
   // Narrated video export (export_video): queues the ACTIVE deck, as the Export menu does.
   queueVideo: (options: VideoOptions) => string | null;
@@ -85,9 +95,23 @@ export interface McpCtx {
   // whether they are hidden now, and the editor's own show/hide override.
   exportPdf: (rel: string) => Promise<void>;
   exportPptx: (rel: string) => Promise<string | null>;
-  answers: { has: boolean; hidden: boolean; toggle: { deck: string; mode: 'show' | 'hide' } | null };
+  // `deckHidden` = what the deck's own `@answers` says (the toggle aside).
+  answers: { has: boolean; hidden: boolean; deckHidden: boolean; toggle: { deck: string; mode: 'show' | 'hide' } | null };
   setAnswersToggle: (t: { deck: string; mode: 'show' | 'hide' } | null) => void;
+  // The previewed deck's slides with the answers shown (false) or hidden (true),
+  // whatever the toggle says — one MCP call's look, the editor left as it is.
+  slidesWithAnswers: (hide: boolean) => Promise<Slide[]>;
+  // The module epoch the current slides were parsed at vs the current one, and
+  // whether the scope's modules / effects / deferred folders are still loading.
+  slidesEpoch: number;
+  moduleEpoch: number;
+  assetsPending: boolean;
 }
+
+// The answers' state the tools report: whether the deck has any @answer, whether they
+// are hidden now, where that comes from (the deck's own `@answers`, or the editor's
+// toggle), and what the deck itself says.
+export interface AnswersState { has: boolean; hidden: boolean; source: 'deck' | 'editor'; deck: 'show' | 'hide' }
 
 interface MeasureJob {
   // Each carries its ORIGINAL 1-based slide number `n` (so a measured SUBSET still
@@ -443,6 +467,8 @@ export const McpBridge: React.FC<{ ctx: McpCtx }> = ({ ctx }) => {
       .finally(() => { if (!cancelled) setProbeJob(null); });
     return () => { cancelled = true; };
   }, [probeJob]);
+  // export_pdf runs one at a time (each may switch the answers for its print).
+  const exportChainRef = useRef<Promise<unknown>>(Promise.resolve());
   // One probe at a time (each replaces the mount); callers queue.
   const probeRef = useRef(<T,>(items: ProbeJob['items'], run: (roots: Map<string, HTMLElement>) => T): Promise<T> => {
     const next = probeChainRef.current.catch(() => undefined)
@@ -491,8 +517,11 @@ export const McpBridge: React.FC<{ ctx: McpCtx }> = ({ ctx }) => {
     // the slide count) also covers edits that keep the count unchanged. A frozen
     // preview (live preview off, or a layout-edit suppression) never catches up on
     // its own, so it is applied once the debounce window has passed.
+    // Fresh = built from the editor's current text AND after the modules last
+    // (re)registered: a re-parse caused by a module load keeps the same text.
     const waitForFreshSlides = async () => {
-      const fresh = () => ctxRef.current.slidesSource === ctxRef.current.markdownRef.current;
+      const fresh = () => ctxRef.current.slidesSource === ctxRef.current.markdownRef.current
+        && ctxRef.current.slidesEpoch === ctxRef.current.moduleEpoch;
       if (fresh()) return;
       const start = Date.now();
       let applied = false;
@@ -513,12 +542,20 @@ export const McpBridge: React.FC<{ ctx: McpCtx }> = ({ ctx }) => {
     // another deck.
     const ensureDeck = async (path?: string) => {
       if (!path) {
-        activeDeck();                  // throws when no deck is active
+        const d = activeDeck();        // throws when no deck is active
+        await syncDisk(d.path);
+        await waitForAssets();
         await waitForFreshSlides();
         return activeDeck();
       }
       const want = String(path);
       if (ctxRef.current.currentFileName !== want) {
+        // A deck that is not there is an answer for the AI — not loadFile's error
+        // dialog in front of the person.
+        if (!ctxRef.current.tabs.some((t) => t.path === want)) {
+          try { await apiClient.readFileText(want); }
+          catch { throw new Error(`No deck at "${want}" — check the path (list_decks).`); }
+        }
         await ctxRef.current.loadFile(want);
         const deadline = Date.now() + 5000;
         while (Date.now() < deadline) {
@@ -526,19 +563,63 @@ export const McpBridge: React.FC<{ ctx: McpCtx }> = ({ ctx }) => {
           if (cur.currentFileName === want && cur.slides.length > 0) break;
           await new Promise((r) => setTimeout(r, 150));
         }
+      } else {
+        await syncDisk(want);
       }
       if (ctxRef.current.currentFileName !== want) {
         throw new Error(`Could not open "${want}" in the editor — the active deck is "${ctxRef.current.currentFileName || 'none'}". Check the path (list_decks).`);
       }
+      await waitForAssets();
       await waitForFreshSlides();
       return activeDeck();
+    };
+
+    // An open tab against its file on disk (useFileManager.syncTabsWithDisk): an
+    // unedited tab whose file changed — the author fixed the deck on another computer —
+    // is reloaded before any tool reads, renders or prints it. → 'changedWhileEdited'
+    // when the tab has unsaved edits (then the tools say `diskChanged`), 'reloaded',
+    // 'same', or null (not open / not readable).
+    const syncDisk = async (path: string): Promise<DiskSync['state'] | null> => {
+      const r = (await ctxRef.current.syncTabsWithDisk([path]).catch(() => [])).find((x) => x.path === path);
+      if (r && r.state === 'reloaded') await waitForFreshSlides().catch(() => {});
+      return r ? r.state : null;
+    };
+
+    // The scope's modules and effects — and its `.mdp` folders behind an SSH link —
+    // finished loading: until then a module's <style> may be missing (a print lost the
+    // two-column layout) and the slides may have been parsed without it. Bounded: a
+    // scope that never settles fails the export, while a render goes on (and says so).
+    const waitForAssets = async (ms = 30000) => {
+      const t0 = Date.now();
+      while (ctxRef.current.assetsPending && Date.now() - t0 < ms) await new Promise((r) => setTimeout(r, 100));
+      return !ctxRef.current.assetsPending;
+    };
+
+    // The answers' state of the previewed deck (AnswersState).
+    const answersState = (): AnswersState => {
+      const a = ctxRef.current.answers;
+      const t = a.toggle && a.toggle.deck === ctxRef.current.currentFileName ? a.toggle : null;
+      return { has: a.has, hidden: a.hidden, source: t ? 'editor' : 'deck', deck: a.deckHidden ? 'hide' : 'show' };
+    };
+
+    // The slides to draw for one call: `answers` "show" / "hide" (that look, the
+    // editor untouched), "deck" (as the deck's own @answers says — check_deck), or
+    // nothing (as the editor shows them). `answersUsed` = what was drawn.
+    const slidesFor = async (want?: unknown): Promise<{ slides: Slide[]; answersUsed?: 'shown' | 'hidden' }> => {
+      const cc = ctxRef.current;
+      if (!cc.answers.has) return { slides: cc.slides };
+      const hide = want === 'hide' ? true : want === 'show' ? false : want === 'deck' ? cc.answers.deckHidden : cc.answers.hidden;
+      const used = hide ? 'hidden' : 'shown';
+      if (hide === cc.answers.hidden) return { slides: cc.slides, answersUsed: used };
+      return { slides: await cc.slidesWithAnswers(hide), answersUsed: used };
     };
 
     // Rasterize the given 0-based slide indices of the ACTIVE deck and tile them
     // into one numbered grid image (webp base64). Shared by renderDeckOverview
     // (all slides, small thumbs) and renderSlides (chosen slides, readable size).
-    const compositeSlides = async (indices: number[], thumbW: number): Promise<{ base64: string }> => {
+    const compositeSlides = async (indices: number[], thumbW: number, from?: Slide[]): Promise<{ base64: string }> => {
       const cc = ctxRef.current;
+      const deck = from || cc.slides;
       const thumbH = Math.round(thumbW * (cc.slideSize.height / cc.slideSize.width));
       const cols = Math.ceil(Math.sqrt(indices.length));
       const rows = Math.ceil(indices.length / cols);
@@ -552,7 +633,7 @@ export const McpBridge: React.FC<{ ctx: McpCtx }> = ({ ctx }) => {
       g.fillRect(0, 0, canvas.width, canvas.height);
       for (let k = 0; k < indices.length; k++) {
         const i = indices[k];
-        const { dataUrl } = await rasterizeRef.current(cc.slides[i], {
+        const { dataUrl } = await rasterizeRef.current(deck[i], {
           width: cc.slideSize.width, height: cc.slideSize.height,
           scale: thumbW / cc.slideSize.width,
           basePath: cc.basePath, themeCssUrl: cc.themeCssUrl,
@@ -567,6 +648,58 @@ export const McpBridge: React.FC<{ ctx: McpCtx }> = ({ ctx }) => {
       }
       const out = canvas.toDataURL('image/webp', 0.8);
       return { base64: out.slice(out.indexOf(',') + 1) };
+    };
+
+    // export_pdf: the Export menu's PDF of the deck, printed straight into the
+    // workspace — with its answers shown or hidden for the print (a handout), the
+    // editor's own setting put back afterwards and read back (`answersAfter`).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const exportPdfNow = async (params: any) => {
+      const d = await ensureDeck(params?.path ? String(params.path) : undefined);
+      const output = String(params?.output || '');
+      if (!output) throw new Error('No output path.');
+      // Every module's <style> in the page (a print while they reloaded lost the
+      // two-column layout of @multicolumn slides).
+      if (!await waitForAssets(60000)) throw new Error('The deck\'s modules and effects are still loading — nothing was printed. Try again in a moment.');
+      const unstyled = Object.values(loadedModules).filter((m) => m.style && !document.getElementById(`mdp-module-style-${m.config.name}`)).map((m) => m.config.name);
+      if (unstyled.length) throw new Error(`The styles of module(s) ${unstyled.join(', ')} are not in the page — nothing was printed. Try again in a moment.`);
+      const want: 'show' | 'hide' | null = params?.answers === 'hide' || params?.answers === 'show' ? params.answers : null;
+      const start = ctxRef.current;
+      const prev = start.answers.toggle;
+      const before = answersState();
+      let switched = false;
+      let printed: { answers: string } | null = null;
+      try {
+        if (want && start.answers.has && (want === 'hide') !== start.answers.hidden) {
+          const old = start.slides;
+          start.setAnswersToggle({ deck: d.path, mode: want });
+          switched = true;
+          const t0 = Date.now();
+          const done = () => ctxRef.current.slides !== old && ctxRef.current.answers.hidden === (want === 'hide');
+          while (Date.now() - t0 < 15000 && !done()) await new Promise((r) => setTimeout(r, 100));
+          if (!done()) throw new Error(`The answers could not be ${want === 'hide' ? 'hidden' : 'shown'} for the print — try again.`);
+          // The print container renders the new slides.
+          await new Promise((r) => setTimeout(r, 500));
+        }
+        const cc = ctxRef.current;
+        await cc.exportPdf(output);
+        printed = { answers: cc.answers.has ? (cc.answers.hidden ? 'hidden (a handout: each answer a blank of its size)' : 'shown') : 'the deck has no @answer' };
+      } finally {
+        if (switched) ctxRef.current.setAnswersToggle(prev);
+      }
+      // The editor as it was before, read back once the slides are parsed again.
+      let after = answersState();
+      if (switched) {
+        const t0 = Date.now();
+        while (Date.now() - t0 < 15000 && ctxRef.current.answers.hidden !== before.hidden) await new Promise((r) => setTimeout(r, 100));
+        after = answersState();
+      }
+      const restored = after.hidden === before.hidden && after.source === before.source;
+      return {
+        saved: output, deck: d.path, ...printed,
+        ...(before.has ? { answersAfter: { ...after, restored } } : {}),
+        ...(restored ? {} : { warning: `The editor's answers toggle is not as it was before the print (${before.hidden ? 'hidden' : 'shown'}) — set_answers puts it right.` }),
+      };
     };
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -748,14 +881,61 @@ Match the user's style throughout (cached profile if present, else get_style_sam
           // Content only on request — "which deck is open?" must not cost a whole
           // deck of tokens (incl. embedded base64). The bridge elides binaries when
           // includeContent is true.
-          const d = activeDeck();
-          if (!params?.includeContent) return { path: d.path, currentSlide: d.currentSlide, currentPage: d.currentPage, slideCount: d.slideCount };
-          return d;
+          let d = activeDeck();
+          // get_active_deck: the tab compared with the file on disk first (reloaded when
+          // unedited), then its answers and whether it has unsaved edits.
+          let state = {};
+          if (params?.withState) {
+            const disk = await syncDisk(d.path);
+            d = activeDeck();
+            const tab = ctxRef.current.tabs.find((t) => t.path === d.path);
+            state = {
+              modified: !!tab?.isModified,
+              answers: answersState(),
+              ...(disk === 'changedWhileEdited' ? { diskChanged: 'The file on disk changed since the editor loaded it, and the editor has unsaved edits. save_deck shows what changed there and offers merge / overwrite.' } : {}),
+              ...(disk === 'reloaded' ? { reloadedFromDisk: 'The file had changed on disk; the editor (no unsaved edits) reloaded it.' } : {}),
+            };
+          }
+          if (!params?.includeContent) return { path: d.path, currentSlide: d.currentSlide, currentPage: d.currentPage, slideCount: d.slideCount, ...state };
+          return { ...d, ...state };
+        }
+        case 'setAnswers': {
+          // set_answers: the editor's answers toggle — "show" / "hide" for this deck,
+          // "default" = no toggle (the deck's @answers decides). Waits until the slides
+          // are parsed again and reads the state back.
+          const d = await ensureDeck(params?.path ? String(params.path) : undefined);
+          const mode = String(params?.mode || '');
+          const start = ctxRef.current;
+          if (!start.answers.has) {
+            return { deck: d.path, answers: answersState(), note: 'This deck has no @answer block — nothing to show or hide.' };
+          }
+          const toggleHere = start.answers.toggle && start.answers.toggle.deck === d.path;
+          const want = mode === 'default' ? start.answers.deckHidden : mode === 'hide';
+          if (mode === 'default') { if (toggleHere) start.setAnswersToggle(null); }
+          else start.setAnswersToggle({ deck: d.path, mode: mode === 'hide' ? 'hide' : 'show' });
+          if (start.answers.hidden !== want) {
+            const old = start.slides;
+            const t0 = Date.now();
+            const done = () => ctxRef.current.slides !== old && ctxRef.current.answers.hidden === want;
+            while (Date.now() - t0 < 15000 && !done()) await new Promise((r) => setTimeout(r, 100));
+            if (!done()) throw new Error(`The answers could not be ${want ? 'hidden' : 'shown'} — try again.`);
+          }
+          const after = answersState();
+          return {
+            deck: d.path, answers: after,
+            note: after.source === 'deck'
+              ? `The editor follows the deck: its @answer blocks are ${after.hidden ? 'hidden' : 'shown'}.`
+              : `The editor's toggle ${after.hidden ? 'HIDES' : 'shows'} the @answer blocks of this deck (the deck itself says "${after.deck}"); set_answers {mode: "default"} goes back to the deck.`,
+          };
         }
         case 'openDeck': {
           // Non-deck files (themes, images…) still open with a plain loadFile; decks
           // go through ensureDeck (which also waits out the parse pipeline).
           if (!/\.slide\.md$/i.test(params.path)) {
+            if (!c.tabs.some((t) => t.path === params.path) && !/\.(png|jpe?g|gif|webp|bmp|ico|pdf|mp4|m4v|webm|ogv|mov)$/i.test(params.path)) {
+              try { await apiClient.readFileText(params.path); }
+              catch { throw new Error(`No file at "${params.path}".`); }
+            }
             await c.loadFile(params.path);
             return { opened: params.path };
           }
@@ -764,23 +944,65 @@ Match the user's style throughout (cached profile if present, else get_style_sam
         }
         case 'saveDeck': {
           // Persist the editor's UNSAVED edits (what write_deck / patch_deck applied
-          // to an open deck) to disk. Goes through the same path as Ctrl+S, so the
-          // external-change guard still runs: if the file changed on disk meanwhile,
-          // the user gets the overwrite/reload dialog and this call waits for them.
+          // to an open deck) to disk — the same path as Ctrl+S, but its external-change
+          // guard ANSWERS instead of asking the person: when the file changed on disk
+          // since the editor loaded it, nothing is written and the call says what
+          // changed there; `merge` keeps both sides (when they touch different lines),
+          // `overwrite` writes the editor's version (the bridge backed the file up).
           const d = await ensureDeck(params.path);
           const tab = ctxRef.current.tabs.find((t) => t.path === d.path);
           if (!tab) throw new Error(`"${d.path}" is not open in the editor.`);
           if (!tab.isModified) return { path: d.path, saved: false, note: 'Nothing to save — this deck has no unsaved changes.' };
-          await ctxRef.current.saveActiveFile();
-          // handleSave surfaces its own errors and resolves either way, so the tab's
-          // modified flag is the ground truth for "did the bytes reach disk".
-          const deadline = Date.now() + 8000;
-          while (Date.now() < deadline) {
-            const t = ctxRef.current.tabs.find((x) => x.path === d.path);
-            if (t && !t.isModified) return { path: d.path, saved: true };
-            await new Promise((r) => setTimeout(r, 100));
+          const waitSaved = async () => {
+            const deadline = Date.now() + 8000;
+            while (Date.now() < deadline) {
+              const t = ctxRef.current.tabs.find((x) => x.path === d.path);
+              if (t && !t.isModified) return true;
+              await new Promise((r) => setTimeout(r, 100));
+            }
+            return false;
+          };
+          const r = await ctxRef.current.saveActiveFile({ fromMcp: true, overwrite: !!params.overwrite });
+          if (r.status === 'saved') {
+            if (!await waitSaved()) throw new Error(`"${d.path}" was written, but the editor still marks it modified — check it (get_active_deck).`);
+            return { path: d.path, saved: true, ...(params.overwrite ? { overwrote: 'the file\'s version on disk (kept in .mdp/mcp-backups)' } : {}) };
           }
-          throw new Error(`"${d.path}" was NOT saved — the editor reported an error, or the user declined to overwrite a file that had changed on disk.`);
+          if (r.status === 'error') throw new Error(`"${d.path}" was NOT saved: ${r.error || 'the write failed'}.`);
+          if (r.status !== 'diskChanged' || r.disk == null) throw new Error(`"${d.path}" was NOT saved (${r.status}).`);
+          // The file changed on disk. In the editor's form (drawings as ids, those of
+          // this tab kept), so the comparison is line for line.
+          const now = ctxRef.current.tabs.find((x) => x.path === d.path) || tab;
+          const base = now.initialContent;
+          const ours = now.content;
+          const theirs = editorFormOf(r.disk, `${base}\n${ours}`).editorText.replace(/\r/g, '');
+          const diskDiff = describeChanges(base, theirs);
+          if (params.merge) {
+            const m = merge3(base, ours, theirs);
+            if ('tooLarge' in m) {
+              return { path: d.path, saved: false, diskChanged: true, diskDiff, note: 'The editor\'s text and the disk\'s are too far apart to merge line by line. Nothing was written: overwrite: true keeps the editor\'s (the disk\'s backed up), or reload_deck {discardUnsaved: true} takes the disk\'s and you redo your edits.' };
+            }
+            if (m.conflicts.length) {
+              return {
+                path: d.path, saved: false, diskChanged: true, diskDiff,
+                conflicts: m.conflicts.slice(0, 10).map((c) => ({ line: c.line, editor: c.ours.join('\n').slice(0, 600), disk: c.theirs.join('\n').slice(0, 600), before: c.base.join('\n').slice(0, 600) })),
+                note: `Both the editor and the file on disk changed the same lines (${m.conflicts.length} place(s)) — nothing was written. Ways out: overwrite: true (the editor's version; the disk's is kept in .mdp/mcp-backups), or reload_deck {discardUnsaved: true} and redo your edits on the disk's version.`,
+              };
+            }
+            ctxRef.current.rebaseTab(d.path, theirs, m.text);
+            const t0 = Date.now();
+            while (Date.now() - t0 < 5000) {
+              const t = ctxRef.current.tabs.find((x) => x.path === d.path);
+              if (t && t.content === m.text && t.initialContent === theirs) break;
+              await new Promise((res) => setTimeout(res, 50));
+            }
+            const r2 = await ctxRef.current.saveActiveFile({ fromMcp: true });
+            if (r2.status !== 'saved' || !await waitSaved()) throw new Error(`"${d.path}": the merge was put into the editor, but saving it failed (${r2.status}${r2.error ? `: ${r2.error}` : ''}) — the editor holds the merged text unsaved.`);
+            return { path: d.path, saved: true, merged: true, diskDiff, note: 'The file\'s changes on disk and the editor\'s were both kept (they touched different lines).' };
+          }
+          return {
+            path: d.path, saved: false, diskChanged: true, diskDiff,
+            note: 'The file changed on disk since the editor loaded it (diskDiff = what changed there), and the editor holds unsaved edits — nothing was written. Ways out: save_deck {merge: true} keeps both (when they touch different lines); save_deck {overwrite: true} writes the editor\'s version (the disk\'s is kept in .mdp/mcp-backups); reload_deck {discardUnsaved: true} takes the disk\'s and you redo your edits.',
+          };
         }
         case 'reloadDeck': {
           // Re-read the deck from disk into the editor (the file was changed by
@@ -858,34 +1080,11 @@ Match the user's style throughout (cached profile if present, else get_style_sam
         // workspace — with its answers shown or hidden for the print (a handout),
         // the editor's own setting put back afterwards.
         case 'exportPdf': {
-          const d = await ensureDeck(params?.path ? String(params.path) : undefined);
-          const output = String(params?.output || '');
-          if (!output) throw new Error('No output path.');
-          const want: 'show' | 'hide' | null = params?.answers === 'hide' || params?.answers === 'show' ? params.answers : null;
-          const start = ctxRef.current;
-          const prev = start.answers.toggle;
-          let switched = false;
-          try {
-            if (want && start.answers.has && (want === 'hide') !== start.answers.hidden) {
-              const old = start.slides;
-              start.setAnswersToggle({ deck: d.path, mode: want });
-              switched = true;
-              const t0 = Date.now();
-              const done = () => ctxRef.current.slides !== old && ctxRef.current.answers.hidden === (want === 'hide');
-              while (Date.now() - t0 < 15000 && !done()) await new Promise((r) => setTimeout(r, 100));
-              if (!done()) throw new Error(`The answers could not be ${want === 'hide' ? 'hidden' : 'shown'} for the print — try again.`);
-              // The print container renders the new slides.
-              await new Promise((r) => setTimeout(r, 500));
-            }
-            const cc = ctxRef.current;
-            await cc.exportPdf(output);
-            return {
-              saved: output, deck: d.path,
-              answers: cc.answers.has ? (cc.answers.hidden ? 'hidden (a handout: each answer a blank of its size)' : 'shown') : 'the deck has no @answer',
-            };
-          } finally {
-            if (switched) ctxRef.current.setAnswersToggle(prev);
-          }
+          // One print at a time: a second export_pdf while the first had the answers
+          // switched took THAT state as "the editor's own" and put it back afterwards.
+          const run = exportChainRef.current.catch(() => undefined).then(() => exportPdfNow(params));
+          exportChainRef.current = run;
+          return await run;
         }
         // export_pptx: the Export menu's PowerPoint (pictures, the scripts as notes),
         // saved into the workspace.
@@ -893,6 +1092,7 @@ Match the user's style throughout (cached profile if present, else get_style_sam
           const d = await ensureDeck(params?.path ? String(params.path) : undefined);
           const output = String(params?.output || '');
           if (!output) throw new Error('No output path.');
+          if (!await waitForAssets(60000)) throw new Error('The deck\'s modules and effects are still loading — nothing was exported. Try again in a moment.');
           const cc = ctxRef.current;
           const saved = await cc.exportPptx(output);
           if (!saved) throw new Error('The deck could not be exported.');
@@ -919,8 +1119,130 @@ Match the user's style throughout (cached profile if present, else get_style_sam
           return { cancelled: id };
         }
         case 'getDeckText': {
-          const tab = c.tabs.find((t) => t.path === params.path);
-          return tab ? { open: true, modified: tab.isModified, text: tab.content } : { open: false };
+          // An open deck is first compared with its file on disk (an unedited tab is
+          // reloaded when the file changed); the answers' state comes along for the
+          // previewed deck.
+          if (!c.tabs.some((t) => t.path === params.path)) return { open: false };
+          const disk = await syncDisk(String(params.path));
+          const tab = ctxRef.current.tabs.find((t) => t.path === params.path);
+          if (!tab) return { open: false };
+          return {
+            open: true, modified: tab.isModified, text: tab.content,
+            ...(disk === 'changedWhileEdited' ? { diskChanged: true } : {}),
+            ...(disk === 'reloaded' ? { reloaded: true } : {}),
+            ...(ctxRef.current.currentFileName === params.path && ctxRef.current.answers.has ? { answers: answersState() } : {}),
+          };
+        }
+        case 'fileTabs': {
+          // The file tools: which of these paths MDP has open, and with unsaved edits.
+          const want = new Set<string>(Array.isArray(params?.paths) ? params.paths.map(String) : []);
+          return { tabs: c.tabs.filter((t) => want.has(t.path)).map((t) => ({ path: t.path, modified: t.isModified })) };
+        }
+        case 'filesChanged': {
+          // The file tools wrote / deleted these: open tabs reload (an edited one is
+          // left as it is), a deleted file's unedited tab closes, an SVG is drawn anew
+          // (inline SVGs are kept by path — re-using a figure's name showed the old
+          // one), the saved-file listeners react (a glossary, the image library, a
+          // theme…), a flow's Review panel re-reads, the tree and the slides refresh.
+          const paths: string[] = Array.isArray(params?.paths) ? params.paths.map(String) : [];
+          const deleted: string[] = Array.isArray(params?.deleted) ? params.deleted.map(String) : [];
+          const texts: Record<string, string> = params?.texts && typeof params.texts === 'object' ? params.texts : {};
+          const svgs = [...paths, ...deleted].filter((p) => /\.svg$/i.test(p));
+          if (svgs.length) invalidateSvg(...svgs);
+          const synced = paths.length ? await c.syncTabsWithDisk(paths).catch(() => [] as DiskSync[]) : [];
+          const gone = deleted.filter((p) => ctxRef.current.tabs.some((t) => t.path === p && !t.isModified));
+          if (gone.length) ctxRef.current.closeTabsByPaths(gone);
+          for (const p of paths) {
+            window.dispatchEvent(new CustomEvent('mdp-file-saved', { detail: { path: p, ...(typeof texts[p] === 'string' ? { content: texts[p] } : {}), source: 'mcp' } }));
+            const flow = /^(.*)\.flow\.md$/i.exec(p);
+            if (flow) window.dispatchEvent(new CustomEvent(REVIEW_CHANGED_EVENT, { detail: { path: `${flow[1]}.slide.md` } }));
+            if (/(^|\/)\.mdp\/content\.json$/i.test(p)) window.dispatchEvent(new CustomEvent('mdp-content-changed'));
+            if (/(^|\/)\.mdp\/glossary\/[^/]+\.md$/i.test(p)) window.dispatchEvent(new CustomEvent('mdp-glossary-changed'));
+          }
+          ctxRef.current.onRefreshTree();
+          return {
+            reloadedTabs: synced.filter((x) => x.state === 'reloaded').map((x) => x.path),
+            keptEdits: synced.filter((x) => x.state === 'changedWhileEdited').map((x) => x.path),
+            closedTabs: gone,
+          };
+        }
+        case 'inspectPdf': {
+          // inspect_pdf: pages, their sizes in pt (a PDF's user unit), a sheet of the
+          // pages side by side, and their text on request — drawn with MDP's pdf.js.
+          const { openPdfDocument, fetchPdfBytes } = await import('../pdf/pdfSetup');
+          const doc = openPdfDocument(await fetchPdfBytes(String(params.path)));
+          try {
+            const pdf = await doc.promise;
+            const count: number = pdf.numPages;
+            const asked: number[] = Array.isArray(params?.pages) && params.pages.length ? params.pages.map(Number) : [];
+            const wanted = (asked.length ? [...new Set(asked)].filter((n) => Number.isInteger(n) && n >= 1 && n <= count) : Array.from({ length: count }, (_, i) => i + 1)).sort((a, b) => a - b);
+            if (asked.length && !wanted.length) throw new Error(`"pages" must be within 1…${count}.`);
+            const round = (v: number) => Math.round(v * 100) / 100;
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const pages: any[] = [];
+            const sizes = new Map<string, number>();
+            for (const n of wanted) {
+              const page = await pdf.getPage(n);
+              const vp = page.getViewport({ scale: 1 });
+              const size = `${round(vp.width)} × ${round(vp.height)} pt`;
+              sizes.set(size, (sizes.get(size) || 0) + 1);
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const row: any = { page: n, widthPt: round(vp.width), heightPt: round(vp.height), ...(page.rotate ? { rotate: page.rotate } : {}) };
+              if (params?.text) {
+                const tc = await page.getTextContent();
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const text = (tc.items as any[]).map((it) => (it.str || '') + (it.hasEOL ? '\n' : '')).join('').replace(/[ \t]+\n/g, '\n').trim();
+                row.text = text.length > 4000 ? `${text.slice(0, 4000)}…` : text;
+              }
+              pages.push(row);
+            }
+            const summary = {
+              path: params.path, pageCount: count,
+              sizes: [...sizes].map(([size, pagesOf]) => ({ size, pages: pagesOf })),
+              ...(wanted.length < count ? { shown: wanted.length } : {}),
+              pages,
+            };
+            if (params?.sheet === false) return summary;
+            // The sheet: up to 40 pages, each scaled to the same width, numbered with its size.
+            const onSheet = wanted.slice(0, 40);
+            const thumbW = Math.min(Math.max(Number(params?.width) || 220, 120), 600);
+            const cols = Math.min(onSheet.length, Math.ceil(Math.sqrt(onSheet.length * 1.4)));
+            const tiles: { n: number; canvas: HTMLCanvasElement; w: number; h: number }[] = [];
+            for (const n of onSheet) {
+              const page = await pdf.getPage(n);
+              const vp1 = page.getViewport({ scale: 1 });
+              const vp = page.getViewport({ scale: thumbW / vp1.width });
+              const cv = document.createElement('canvas');
+              cv.width = Math.max(1, Math.round(vp.width));
+              cv.height = Math.max(1, Math.round(vp.height));
+              await page.render({ canvasContext: cv.getContext('2d')!, viewport: vp }).promise;
+              tiles.push({ n, canvas: cv, w: round(vp1.width), h: round(vp1.height) });
+            }
+            const pad = 8;
+            const label = 16;
+            const rowH = Math.max(...tiles.map((t) => t.canvas.height)) + label + pad;
+            const rows = Math.ceil(tiles.length / cols);
+            const sheet = document.createElement('canvas');
+            sheet.width = cols * (thumbW + pad) + pad;
+            sheet.height = rows * rowH + pad;
+            const g = sheet.getContext('2d')!;
+            g.fillStyle = '#202225';
+            g.fillRect(0, 0, sheet.width, sheet.height);
+            tiles.forEach((t, k) => {
+              const x = pad + (k % cols) * (thumbW + pad);
+              const y = pad + Math.floor(k / cols) * rowH;
+              g.fillStyle = '#ffffff';
+              g.fillRect(x, y, t.canvas.width, t.canvas.height);
+              g.drawImage(t.canvas, x, y);
+              g.fillStyle = '#9aa0a6';
+              g.font = '11px sans-serif';
+              g.fillText(`p.${t.n}  ${t.w}×${t.h} pt`, x + 2, y + t.canvas.height + 12);
+            });
+            const out = sheet.toDataURL('image/webp', 0.85);
+            return { __image: out.slice(out.indexOf(',') + 1), mimeType: 'image/webp', ...summary, ...(onSheet.length < wanted.length ? { sheetShows: `pages ${onSheet[0]}–${onSheet[onSheet.length - 1]} (at most 40 on one picture — pass "pages" for others)` } : {}) };
+          } finally {
+            doc.destroy();
+          }
         }
         case 'setOpenDeckText': {
           const tab = c.tabs.find((t) => t.path === params.path);
@@ -961,7 +1283,9 @@ Match the user's style throughout (cached profile if present, else get_style_sam
           return { ok: true };
         }
         case 'confirmAssetWrite': {
-          // create / update follow the Settings → MCP policy; a DELETE always asks.
+          // Only a module / effect with a <script> is asked about now (write_asset;
+          // everything else an AI writes goes ahead, backed up — 2026-10-29), per the
+          // Settings → MCP policy.
           const action: 'create' | 'update' | 'delete' = params.action === 'update' || params.action === 'delete' ? params.action : 'create';
           if (c.assetWritePolicy === 'auto' && action !== 'delete') return { approved: true };
           const scriptWarn = params.hasScript
@@ -1033,19 +1357,22 @@ Match the user's style throughout (cached profile if present, else get_style_sam
           if (!wanted.length) throw new Error(`"slides" must be an array of 1…${d.slideCount}.`);
           if (wanted.length > 12) throw new Error('Max 12 slides per call — split the request (or use render_deck_overview for a full contact sheet).');
           const thumbW = Math.min(Math.max(Number(params.width) || 480, 240), 1200);
-          const { base64 } = await compositeSlides(wanted.map((n) => n - 1), thumbW);
-          return { __image: base64, mimeType: 'image/webp', deck: d.path, slides: wanted };
+          const v = await slidesFor(params.answers);
+          const { base64 } = await compositeSlides(wanted.map((n) => n - 1), thumbW, v.slides);
+          return { __image: base64, mimeType: 'image/webp', deck: d.path, slides: wanted, ...(params.answers && v.answersUsed ? { answers: v.answersUsed } : {}) };
         }
         case 'measureSlides': {
           const d = await ensureDeck(params.path);
           if (!d.slideCount) throw new Error('The deck has no slides yet.');
           const cc = ctxRef.current; // ensureDeck may have switched tabs — re-read
+          // `answers` (check_deck: "deck") — measured with the @answer blocks so.
+          const v = await slidesFor(params.answers);
           // Optional 1-based `slides` filter — measure ONLY those (token/DOM saver).
           const asked: unknown[] = Array.isArray(params.slides) ? params.slides : [];
           const wanted: number[] | undefined = asked.length
             ? [...new Set(asked.map(Number))].filter((n) => Number.isInteger(n) && n >= 1 && n <= d.slideCount)
             : undefined;
-          const items = cc.slides
+          const items = v.slides
             .map((slide: Slide, i: number) => ({ n: i + 1, slide }))
             .filter((it: { n: number }) => !wanted || wanted.includes(it.n));
           if (!items.length) throw new Error('No matching slides to measure.');
@@ -1082,6 +1409,9 @@ Match the user's style throughout (cached profile if present, else get_style_sam
             deck: d.path, totalSlides: d.slideCount, measured: rows.length,
             slideSize: measured?.slideSize, note: measured?.note,
             ...(fontNote ? { fonts: fontNote } : {}),
+            ...(params.answers && v.answersUsed ? { answers: v.answersUsed } : {}),
+            // check_deck reads the editor's state from here (the deck is open now).
+            ...(params.answers === 'deck' && cc.answers.has ? { answersState: answersState() } : {}),
           };
           if (params.all) return { ...head, rows };
           return {
@@ -1097,7 +1427,8 @@ Match the user's style throughout (cached profile if present, else get_style_sam
           if (!Number.isInteger(n) || n < 1 || n > d.slideCount) throw new Error(`"slide" must be 1…${d.slideCount}.`);
           const width = Math.min(Math.max(Number(params.width) || 512, 160), 1280);
           const scale = Math.min(1.5, width / cc.slideSize.width);
-          const slide = cc.slides[n - 1];
+          const v = await slidesFor(params.answers);
+          const slide = v.slides[n - 1];
           const focus = focusRender(slide, params.focus, cc.readingCpm);
           const { dataUrl, inspected } = await rasterizeRef.current(slide, {
             width: cc.slideSize.width,
@@ -1108,7 +1439,11 @@ Match the user's style throughout (cached profile if present, else get_style_sam
             ...(focus ? focus.options : {}),
           });
           const base64 = dataUrl.slice(dataUrl.indexOf(',') + 1);
-          return { __image: base64, mimeType: 'image/webp', deck: d.path, slide: n, ...(focus ? { focus: { ...focus.info, ...(inspected as object) } } : {}) };
+          return {
+            __image: base64, mimeType: 'image/webp', deck: d.path, slide: n,
+            ...(params.answers && v.answersUsed ? { answers: v.answersUsed } : {}),
+            ...(focus ? { focus: { ...focus.info, ...(inspected as object) } } : {}),
+          };
         }
         case 'focusTargets': {
           // What one slide can point at, and where its cues act and land.
@@ -1116,7 +1451,8 @@ Match the user's style throughout (cached profile if present, else get_style_sam
           const cc = ctxRef.current;
           const n = Number(params.slide);
           if (!Number.isInteger(n) || n < 1 || n > d.slideCount) throw new Error(`"slide" must be 1…${d.slideCount}.`);
-          const slide = cc.slides[n - 1];
+          const v = await slidesFor(params.answers);
+          const slide = v.slides[n - 1];
           const sites = focusSites(slide, cc.readingCpm);
           const steps = [...new Set(sites.map((x) => x.buildStep))];
           const r = await probeRef.current(
@@ -1136,6 +1472,7 @@ Match the user's style throughout (cached profile if present, else get_style_sam
           const byWords = sites.some((s) => s.cues.some((c: FocusCue) => cueBases(c).some(pointsByWords)));
           return {
             deck: d.path, slide: n, narrationLines: lineCount(slide, cc.readingCpm), stepCount: slide.stepCount || 0,
+            ...(v.answersUsed ? { answers: v.answersUsed } : {}),
             ...(byWords ? { advice: NAME_ADVICE } : {}),
             targets: r.targets,
             cues: r.lines.map(({ site, cues }) => ({
@@ -1236,7 +1573,10 @@ Match the user's style throughout (cached profile if present, else get_style_sam
           // check_deck: every cue of the deck found on its slide, once, visible then.
           const d = await ensureDeck(params.path);
           const cc = ctxRef.current;
-          const withCues = cc.slides.map((slide: Slide, i: number) => ({ n: i + 1, slide, sites: focusSites(slide, cc.readingCpm) }))
+          // check_deck passes "deck": the cues checked with the @answer blocks as the
+          // class sees them, whatever the editor's toggle shows.
+          const v = await slidesFor(params.answers);
+          const withCues = v.slides.map((slide: Slide, i: number) => ({ n: i + 1, slide, sites: focusSites(slide, cc.readingCpm) }))
             .filter((x: { sites: CueSite[] }) => x.sites.length);
           if (!withCues.length) return { deck: d.path, slidesWithCues: 0 };
           const issues: (FocusProblem & { slide: number })[] = [];
@@ -1253,6 +1593,7 @@ Match the user's style throughout (cached profile if present, else get_style_sam
           }
           return {
             deck: d.path, slidesWithCues: withCues.length, issues,
+            ...(v.answersUsed ? { answers: v.answersUsed } : {}),
             ...(issues.length ? {} : { ok: `every focus target was found, once and visible, on the ${withCues.length} slide(s) with cues` }),
           };
         }

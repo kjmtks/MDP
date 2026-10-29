@@ -1090,7 +1090,7 @@ function describeGlossariesForAI(glossaries: GlossaryForAI[], inlineAll = false)
     : '';
   const howTo = inlineAll
     ? 'When a script needs a term the TTS would misread that is not here, give it a ruby — and suggest the author add it to a glossary, so later decks need none.'
-    : 'When a term the TTS would misread will recur in this field, ADD it to a glossary — `patch_glossary(name, set: [{term, reading}])` — instead of writing the same ruby in deck after deck (the user may be asked to confirm); `get_glossary` lists the glossaries and looks terms up, `write_glossary` starts one for a new field. A ruby stays right for a reading that belongs to one sentence only.';
+    : 'When a term the TTS would misread will recur in this field, ADD it to a glossary — `patch_glossary(name, set: [{term, reading}])` — instead of writing the same ruby in deck after deck (written at once; the previous version is kept in .mdp/mcp-backups); `get_glossary` lists the glossaries and looks terms up, `write_glossary` starts one for a new field. A ruby stays right for a reading that belongs to one sentence only.';
   return [
     '## Glossary for this folder (the narrator\'s readings)',
     'The author keeps GLOSSARIES of how the narrator reads this field\'s terms (`.mdp/glossary/<name>.md`). In every deck of ' +

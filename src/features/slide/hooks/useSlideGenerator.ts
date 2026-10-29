@@ -81,8 +81,12 @@ export const useSlideGenerator = (
   // slides it holds reflect the latest text: the parse is debounced and the
   // generation asynchronous, so right after an edit the previous slides linger.
   sourceKey: string | null = null,
-): { slides: SlideData[]; builtKey: string | null } => {
-  const [state, setState] = useState<{ slides: SlideData[]; builtKey: string | null }>({ slides: [], builtKey: null });
+): { slides: SlideData[]; builtKey: string | null; builtEpoch: number } => {
+  // `builtEpoch` = the module epoch the slides were generated at: a re-parse after the
+  // modules (re)load keeps the same text, so `builtKey` alone cannot tell slides made
+  // before the modules registered (directives left raw, no module CSS in a print) from
+  // the ones made after.
+  const [state, setState] = useState<{ slides: SlideData[]; builtKey: string | null; builtEpoch: number }>({ slides: [], builtKey: null, builtEpoch: -1 });
   const managerRef = useRef<SlideCacheManager>(new SlideCacheManager());
 
   useEffect(() => {
@@ -92,7 +96,7 @@ export const useSlideGenerator = (
       try {
         const newSlides = await managerRef.current.process(blocks, globalContext, baseUrl, lastUpdated, moduleEpoch);
         if (isMounted) {
-          setState({ slides: newSlides, builtKey: sourceKey });
+          setState({ slides: newSlides, builtKey: sourceKey, builtEpoch: moduleEpoch });
         }
       } catch (e) {
         console.error("Slide generation error:", e);

@@ -22,6 +22,7 @@ import { slideScript } from '../autoplay/autoplay';
 import { scriptKey } from '../slide/talkTime';
 import { firstHeading, newRunId, type NarrationMeasure } from '../rehearsal/rehearsalStore';
 import { focusSignature } from '../focus/focusState';
+import { takeStaleSvgKeys } from '../slide/inlineSvg';
 
 const bridge = () => (window as unknown as { electronAPI?: { captureSlide?: (d: object) => Promise<Uint8Array> } }).electronAPI;
 
@@ -82,6 +83,7 @@ const frameData = (job: VideoJobInput, seg: VideoSegment, width: number, height:
     caption: job.options.subtitles ? seg.caption : '',
     outWidth: width, outHeight: height,
     ...(seg.focus ? { focus: seg.focus } : {}),
+    svgStale: takeStaleSvgKeys(),
   };
 };
 
