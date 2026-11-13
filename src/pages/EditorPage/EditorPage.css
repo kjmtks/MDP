@@ -189,7 +189,11 @@
 
 .print-container { display: none; }
 @media print {
-  .container > .header, .container > .content, .resize-handle, .MuiTooltip-popper { display: none !important; }
+  /* The page's own parts out of the layout. The slide overview (in the editor's
+   * place) too: printed while it was shown, it made the page wider than the paper,
+   * Chromium shrank everything to fit, and 26 slides came out on 22 pages, each
+   * across a page break. */
+  .container > .header, .container > .content, .container > .slide-overview, .resize-handle, .MuiTooltip-popper { display: none !important; }
   .print-container {
     display: block !important;
     position: absolute; top: 0; left: 0; width: 100%; height: auto;
@@ -202,4 +206,15 @@
    * .print-slide-content fights PrintContainer's `height: 100%` — both resolve
    * only by document order, which is why the exported PDF came out slightly
    * the wrong height. */
+  /* The slides and nothing else. Whatever else is on the screen — the video
+   * export panel, a toast, a dialog or menu (MUI portals in <body>), the lock
+   * banner, the slideshow, the hidden surfaces of an MCP render — is fixed or
+   * floating, and Chromium prints a fixed box on EVERY page: under the slides
+   * it is not seen, but its words are in every page's text (2026-11: "Video
+   * export … Clear finished" in each page of a handout). Hidden by visibility,
+   * never display: a figure on the screen twice shares its ids (inlineSvg's
+   * prefix), and a gradient whose first <linearGradient> is in a display:none
+   * copy paints nothing in the PDF. Set on every element, not only the
+   * outermost: a shown build sets its own `visibility: visible`. */
+  body :not(.print-container, .print-container *, :has(.print-container)) { visibility: hidden !important; }
 }

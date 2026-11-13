@@ -55,7 +55,7 @@ export const SlideOverviewGrid: React.FC<SlideOverviewGridProps> = React.memo(({
   const minCol = boxW > 0 ? Math.round(Math.min(300, Math.max(110, boxW / 4))) : 300;
 
   return (
-    <div ref={boxRef} style={{ flex: 1, minWidth: 0, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', backgroundColor: '#202020', display: 'flex', flexDirection: 'column' }}>
+    <div ref={boxRef} className="slide-overview" style={{ flex: 1, minWidth: 0, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', backgroundColor: '#202020', display: 'flex', flexDirection: 'column' }}>
       <div style={{ position: 'sticky', top: 0, zIndex: 1, backgroundColor: '#202020', padding: compact ? '6px 10px 5px' : '1rem 2rem 0.6rem', display: 'flex', alignItems: 'baseline', gap: compact ? '0.6rem' : '1.25rem', fontSize: compact ? '0.72rem' : '0.85rem', borderBottom: '1px solid var(--app-border)' }}>
         <span style={{ color: 'var(--app-text-secondary)', fontWeight: 600 }}>{visibleCount} slide{visibleCount === 1 ? '' : 's'}</span>
         <span

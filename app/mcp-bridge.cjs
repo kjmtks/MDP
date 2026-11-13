@@ -200,7 +200,14 @@ async function skillTarget(baseDir, p) {
   } else {
     configDir = found ? found.configDir : chain[chain.length - 1];
   }
-  const current = found && found.configDir === configDir ? found : null;
+  let current = found && found.configDir === configDir ? found : null;
+  // `dir` may name a .mdp that is NOT in the active deck's chain: the skill is then looked up
+  // in that .mdp itself (2026-11-13: with a trial deck under @homes active, a reference file
+  // for lectures/.mdp's lecture-exemplar was refused — "does not exist … write its SKILL.md
+  // first" — although its SKILL.md had just been written there with the same `dir`).
+  if (!current && typeof p.dir === 'string' && !chain.includes(configDir)) {
+    current = skillsLib.findSkill(await skillsForChain(baseDir, [configDir]), name) || null;
+  }
   const folder = current ? current.name : name;
   return { name: folder, dir: `${configDir}/skills/${folder}`, configDir, chain, current, other: found && !current ? found : null };
 }
@@ -2373,6 +2380,9 @@ function start() {
       const deny = (code, msg) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify({ ok: false, error: msg })); };
       if (!isLoopback(req.socket.remoteAddress)) return deny(403, 'forbidden');
       if (req.method !== 'POST' || req.url !== '/rpc') return deny(404, 'not found');
+      // Decode across chunks: `body += buffer` decoded each chunk alone, so a character split
+      // at a chunk boundary (64 KB) came out as U+FFFD — a write_deck of a long Japanese deck lost one.
+      req.setEncoding('utf8');
       let body = '';
       req.on('data', (c) => { body += c; if (body.length > 20 * 1024 * 1024) req.destroy(); });
       req.on('end', async () => {

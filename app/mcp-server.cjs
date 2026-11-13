@@ -71,6 +71,7 @@ function callBridge(name, args) {
         timeout: 180000,
       },
       (res) => {
+        res.setEncoding('utf8'); // a character split between chunks must not become U+FFFD
         let data = '';
         res.on('data', (c) => { data += c; });
         res.on('end', () => {

@@ -415,10 +415,24 @@ function stepOfSlides(flow, facts) {
   });
 }
 
-/** A new flow file for a deck — the form to fill in. */
+/** A new flow file for a deck — the form to fill in. It starts with the lecture's STORY
+ *  SHEET (2026-11-13, the author: the generated lectures had no story — the flow used to
+ *  be a list of claims, one per step, and nothing said where a question is born, how long
+ *  it stays open, where the high point is). Only the `###` headings are steps (parseFlow),
+ *  so the sheet's lines above them are free text for people and the AI. */
 function flowTemplate(title) {
   return [
-    `# ${title || 'この回'} — 理解の設計`,
+    `# ${title || 'この回'}（筋書きと流れ）`,
+    '',
+    '## 筋書き',
+    '- 持ち帰る考え: 学生が授業のあとで人に言える 1〜2 文',
+    '- 引っぱる問い: 最初の数分で場面から立ち，最後の場面まで開いている問い',
+    '- 入りの場面: 誰が何に困っているか，何を決めたいか',
+    '- 山場: どの場面で，画面に何が出て，学生が何と思うか（予想が外れる，つながる）',
+    '- 納得の所: 持ち帰る考えのわけを学生が自分の目と手で確かめる 1 か所',
+    '- 予想させる所: 2〜4 個（問い，選択肢か時間，学生の素直な予想，答え）',
+    '- 言わないこと: 5 つ以上（行き先: 自習の案内，@note，課題，次回）',
+    '- 結び: 冒頭の場面への答え，持ち帰る考え，残す問い 1 つ，自習の案内',
     '',
     '## 目標',
     '- この回のあと，学生が何をできるようになるか（確かめる問いと対応させる）',
@@ -426,14 +440,18 @@ function flowTemplate(title) {
     '## 受講生の出発点',
     '- 前回までに分かっていること，つまずきやすいこと',
     '',
+    '## 問いの台帳',
+    '| 問い（学生の言葉で） | 立つ場面 | 答える場面 |',
+    '|---|---|---|',
+    '',
     '## 流れ',
     '',
-    '### 1. 〔この段で学生に言えるようになってほしい主張〕',
+    '### 1. 〔場面の中身（教員用の覚え書き．主張の形でよい）〕',
     '- スライド: #slide-id #slide-id',
-    '- 学生の問い: この時点で学生が抱く疑問（書けなければ，淡々とした段）',
-    '- 仕掛け: その問いに答える例・図・対比・考える時間',
-    '- 腹落ち: この段のあとに学生が自分の言葉で言える一文',
-    '- つなぎ: 次の段の問いをどう生むか',
+    '- 学生の問い: この場面で学生の頭にある問い（書けなければ，淡々とした段）',
+    '- 仕掛け: 見せるもの（表，図，数えた例，予想，考える時間）',
+    '- 腹落ち: この場面のあとに学生が自分の言葉で言える一文',
+    '- つなぎ: しかし … ／ だから …（この場面の結果が，次の場面をどう呼ぶか）',
     '- 時間: 3 分',
     '',
     '## 確かめ',
