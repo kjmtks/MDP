@@ -7,7 +7,7 @@ import { loadedEffects } from '../effects/effectManager';
 import { buildSlideSpecPrompt, describeModulesByName, findModules, suggestModules, describeEffectsByName, suggestEffects } from '../ai/slideSpecPrompt';
 import { loadTaxonomy } from '../ai/loadTaxonomy';
 import { applyModulesToMarkdown, parseArguments } from '../modules/moduleProcessor';
-import { splitMarkdownToBlocks } from '../slide/parser/slideParser';
+import { parseGlobalContext, slideStepCount, splitMarkdownToBlocks } from '../slide/parser/slideParser';
 import { countInFileImageDefs, imageRefAliases } from '../images/imageRegistry';
 import { confirmDialog } from '../../components/error/errorReporter';
 import { apiClient, isMcpRenderer } from '../../api/apiClient';
@@ -1225,7 +1225,14 @@ Match the user's style throughout (cached profile if present, else get_style_sam
               const cv = document.createElement('canvas');
               cv.width = Math.max(1, Math.round(vp.width));
               cv.height = Math.max(1, Math.round(vp.height));
-              await page.render({ canvasContext: cv.getContext('2d')!, viewport: vp }).promise;
+              // `intent: 'print'` — the page as printed, drawn in one go. The default
+              // ('display') draws in slices, each waiting for an animation frame, and
+              // MDP's window behind the AI client gets none: the sheet never came
+              // ("The MDP editor did not respond in time" even for 2 pages, 2026-10-30
+              // and 11-19; a minimized window in the test never answered). Frames made
+              // by a timer (withFrameFallback) would not do either: the main window's
+              // timers are throttled while it is hidden.
+              await page.render({ canvasContext: cv.getContext('2d')!, viewport: vp, intent: 'print' }).promise;
               tiles.push({ n, canvas: cv, w: round(vp1.width), h: round(vp1.height) });
             }
             const pad = 8;
@@ -1327,6 +1334,20 @@ Match the user's style throughout (cached profile if present, else get_style_sam
           const tab = c.tabs.find((t) => t.path === target);
           const text = tab ? tab.content : await apiClient.readFileText(target);
           return { path: target, ...withFonts(validateDeckText(text, themes)) };
+        }
+        case 'slideSteps': {
+          // The build steps of the given slides (the bridge's split of a deck's text)
+          // as the slides count them — modules expanded, the meta page's @build
+          // defaults and @answers applied. The bridge's lint compares them with each
+          // script's [[step]]s; a slide that fails to expand gives null (the lint
+          // then counts its written @build openers).
+          const ctx = parseGlobalContext(String(params.meta || ''));
+          const raws: unknown[] = Array.isArray(params.slides) ? params.slides : [];
+          return {
+            steps: raws.map((raw) => {
+              try { return slideStepCount(String(raw ?? ''), ctx); } catch { return null; }
+            }),
+          };
         }
         case 'readImage': {
           const maxW = Math.min(Math.max(Number(params.maxWidth) || 800, 100), 1400);

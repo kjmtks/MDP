@@ -379,12 +379,20 @@ V(\bar x) &= \frac{\focus{s2}{\sigma^2}}{\focus{n}{n}} && 標本平均の分散
     .mdp-mod-explain.mdp-xpl-left { align-items: flex-start; }
     .mdp-xpl-grid {
       display: grid; grid-template-columns: max-content max-content;
-      max-width: 100%; row-gap: 0.45em; align-items: baseline;
+      max-width: 100%; row-gap: 0.45em; align-items: start;
     }
     .mdp-xpl-has-notes:not(.mdp-xpl-notes-below) > .mdp-xpl-grid { grid-template-columns: max-content max-content minmax(0, auto); }
+    /* A row — and the build wrapping one (steps: rows / all) — is a subgrid of the
+       grid's columns; the row's cells line up by baseline INSIDE it, the row itself
+       sits at the start of its own track. Never baseline-align a row or its build:
+       Chromium 148 (MDP's Electron) puts a baseline-aligned subgrid whose baseline
+       comes from a baseline-aligned subgrid inside it (a build holding a row) at
+       about -3.4e7 px — rows 2… of `steps: rows` were drawn nowhere and their parts
+       pointed off the slide (2026-11-19; Edge 157 lays it out right). */
     .mdp-xpl-row, .mdp-xpl-grid > .mdp-build {
-      display: grid; grid-template-columns: subgrid; grid-column: 1 / -1; align-items: baseline;
+      display: grid; grid-template-columns: subgrid; grid-column: 1 / -1; align-items: start;
     }
+    .mdp-xpl-row { align-items: baseline; }
     .mdp-xpl-row > .mdp-build { display: contents; }
     .mdp-xpl-l { grid-column: 1; justify-self: end; text-align: right; }
     .mdp-xpl-r { grid-column: 2; justify-self: start; }

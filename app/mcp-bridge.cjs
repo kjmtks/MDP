@@ -953,7 +953,10 @@ function buildStepArg(args, key) {
 // (syntax) and measure_slides (overflow). Pure text analysis: per-slide density &
 // structure checks plus a few deck-level consistency checks. severity: 'warn' =
 // likely a real problem, 'info' = a style nudge. slide 0 = a deck-level finding.
-function lintDeck(text) {
+// `counted` = each slide's build steps as the slides count them (slideStepsOf: the
+// renderer, modules expanded), index = slide - 1; without it the [[step]] check
+// counts the written @build openers, which misses the steps a module makes.
+function lintDeck(text, counted) {
   const blocks = splitBlocks(text);
   const meta = blocks[0] || '';
   const slideRaws = blocks.slice(1);
@@ -1025,6 +1028,11 @@ function lintDeck(text) {
         if (enter === undefined) unnumbered++;
         buildSteps = Math.max(buildSteps, enter ?? defaultBuildStep, buildStepArg(a, 'emphasis') ?? 0, buildStepArg(a, 'exit') ?? 0);
       }
+      // The slide's own count when the renderer gave it: a module can make steps of
+      // its own (@exercise's answer, @explain's `steps:`) that no written @build
+      // shows — two @exercise slides were reported as "0 step(s)" (2026-11-19).
+      const own = counted && Number.isInteger(counted[i]) ? counted[i] : null;
+      if (own !== null) buildSteps = own;
       if (stepMarks !== buildSteps && (stepMarks > 0 || buildSteps > 0)) {
         const hint = unnumbered > 1 && stepMarks > buildSteps
           ? ` ${unnumbered} @build blocks have no \`step:\` \u2014 they all appear at step ${defaultBuildStep}; number the later ones (\`step: 2\`, \`step: 3\`\u2026).`
@@ -1055,6 +1063,20 @@ function lintDeck(text) {
   findings.sort((a, b) => (a.slide - b.slide) || a.code.localeCompare(b.code));
   const summary = findings.reduce((acc, f) => (acc[f.severity] = (acc[f.severity] || 0) + 1, acc), {});
   return { slideCount: slideRaws.length, summary, findings };
+}
+
+// Each slide's build steps as the slides count them, for lintDeck: the renderer
+// expands the modules (the bridge cannot run their renders) and runs the build pass
+// on this split of the text, so the numbers line up with lintDeck's slides. null
+// when the renderer cannot be asked — the lint then counts the written openers.
+async function slideStepsOf(baseDir, text) {
+  const blocks = splitBlocks(text);
+  try {
+    const r = await rly(baseDir, 'slideSteps', { meta: blocks[0] || '', slides: blocks.slice(1) }, 15000);
+    return r && Array.isArray(r.steps) && r.steps.length === blocks.length - 1 ? r.steps : null;
+  } catch {
+    return null;
+  }
 }
 
 // MDP decks are UTF-8. We read/write UTF-8 everywhere, but PRESERVE a file's
@@ -1210,7 +1232,7 @@ async function verifyDeck(baseDir, deckPath) {
   const asDeck = 'deck';
   const [validate, lint, measure, skills, focus, imageWarn, glossary, reviewed] = await Promise.all([
     rly(baseDir, 'validateDeck', { path: deckPath }, 30000).catch((e) => ({ error: String((e && e.message) || e) })),
-    Promise.resolve(lintDeck(text)),
+    slideStepsOf(baseDir, text).then((steps) => lintDeck(text, steps)),
     rly(baseDir, 'measureSlides', { path: deckPath, answers: asDeck }, 120000).catch((e) => ({ error: String((e && e.message) || e) })),
     skillReview(baseDir, deckPath).catch(() => null),
     hasCues ? rly(baseDir, 'focusCheck', { path: deckPath, answers: asDeck }, 120000).catch((e) => ({ error: String((e && e.message) || e) })) : null,
@@ -1596,7 +1618,7 @@ async function callToolInner(method, p, baseDir) {
     case 'lint_deck': {
       const deckPath = p.path ? requireDeckPath(p.path) : await activeDeckPath(baseDir);
       const { text } = await currentDeckText(baseDir, deckPath);
-      return { path: deckPath, ...lintDeck(text), note: 'Design & consistency advisories — complements validate_deck (syntax/params) and measure_slides (overflow/fill). severity: warn = likely issue, info = style nudge. slide 0 = deck-level. Use judgment; not every finding needs a change.' };
+      return { path: deckPath, ...lintDeck(text, await slideStepsOf(baseDir, text)), note: 'Design & consistency advisories — complements validate_deck (syntax/params) and measure_slides (overflow/fill). severity: warn = likely issue, info = style nudge. slide 0 = deck-level. Use judgment; not every finding needs a change.' };
     }
 
     case 'search_decks': {
@@ -1876,7 +1898,7 @@ async function callToolInner(method, p, baseDir) {
         const scopeOf = p.path ? requireDeckPath(p.path) : await activeDeckPath(baseDir).catch(() => '');
         const [validate, lint, imageWarn] = await Promise.all([
           rly(baseDir, 'validateDeck', { text: String(p.text) }, 30000),
-          Promise.resolve(lintDeck(String(p.text))),
+          slideStepsOf(baseDir, String(p.text)).then((steps) => lintDeck(String(p.text), steps)),
           imageFindings(baseDir, scopeOf, String(p.text)).catch(() => []),
         ]);
         return { dryRun: true, validate: withWarnings(validate, imageWarn), lint, note: 'Dry run on the given text — nothing was written. measure/overflow needs the deck written + open (call check_deck with `path`, or write with verify: true).' };

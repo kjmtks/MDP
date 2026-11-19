@@ -171,6 +171,26 @@ export const extractDirectiveBlock = (md: string, name: 'header' | 'footer'): { 
   return { content: undefined, rest: md };
 };
 
+// A slide's build steps as renderSlideHTML counts them (its `stepCount`), without
+// rendering it: what renderSlideHTML takes out before the module / build pass and
+// could hold a directive (notes, the script, the slide's own header / footer) set
+// aside, the modules expanded FIRST — a module can make steps of its own
+// (@exercise's answer, @explain's `steps:`) —, then the @build / @answer / @focus
+// pass with the deck's defaults and @answers. The MCP lint compares it with the
+// script's [[step]]s: counting the written `<!-- @build -->` openers missed every
+// step a module makes (2026-11-19: two @exercise slides reported "0 steps").
+// KEEP IN STEP with renderSlideHTML.
+export const slideStepCount = (rawContent: string, globalContext: SlideContext): number => {
+  const { masked, restore } = protectFences(rawContent);
+  let md = masked
+    .replace(/<!--\s*@note:\s*[\s\S]*?-->/g, '')
+    .replace(/<!--\s*@script:\s*[\s\S]*?-->/g, '');
+  md = extractDirectiveBlock(md, 'header').rest;
+  md = extractDirectiveBlock(md, 'footer').rest;
+  const moduleProcessed = applyModulesToMarkdown(restore(md));
+  return applyBuildsToMarkdown(moduleProcessed, globalContext.build?.args || {}, globalContext.answers).stepCount;
+};
+
 export const renderSlideHTML = (block: RawBlock, globalContext: SlideContext, pageIndex: number, baseUrl: string, lastUpdated: number): SlideData => {
   // Mask fenced code blocks while the pre-markdown directive scans run (so a
   // `<!-- @header -->`/`<!-- @note: … -->`/etc. shown as EXAMPLE code is left
