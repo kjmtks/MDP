@@ -1,0 +1,433 @@
+<module>
+  <name>explain</name>
+  <type>block</type>
+  <description>A formula explained line by line and part by part: aligned rows with a note beside each row, labels under or over the parts named with \focus, and a legend of the symbols. Body = LaTeX rows, then the labels and the legend.</description>
+  <tags>equations, proofs</tags>
+  <aiSpec><![CDATA[
+EXPLAIN a formula — a multi-line derivation with a NOTE beside each line (why that
+step holds), LABELS under/over the parts of the formula (what each part is), and a
+LEGEND of the symbols. Use it instead of a table "formula | reason", \underbrace with
+a text label, or a "ここで … は …" line under a formula. Japanese never goes inside the
+math: notes, labels and legend items are Markdown text (math in them as \( … \)).
+
+Body, section 1 = the formula rows, in LaTeX WITHOUT delimiters (as in an `aligned`
+environment): one row per line, or rows ended with `\\`. `&` marks where the rows
+line up (usually before `=`); without any `&` the rows line up at their first
+relation (= ≈ ≤ ≥ < > ≠ ≡ ⇔ ⇒ :=). A row may start with the relation (`&= …`). The
+NOTE of a row comes after `&&` on that row (Markdown).
+Section 2 (after `<!-- @ -->`) = one line per label or legend item:
+  • `#name: text` — a LABEL for the part written `\focus{name}{…}` in the formula
+    (the same name a narration cue points at: [[look: #name]]). Options between the
+    name and the colon, in any order: `above` (default below), `2` / `3` (a farther
+    level, for a label that would touch its neighbour's), `left` / `right` (align the
+    label with the part's left / right end instead of its centre), `line` (a short
+    line instead of a brace) or `plain` (nothing), `step=N` (the label appears at
+    build step N), `color=#D55E00`.
+  • any other line — a LEGEND item, e.g. `\(\bar d\): 差の標本平均` (each item is kept
+    on one line where it fits; items flow side by side).
+A label takes no width in the formula — two labels below neighbouring parts can
+overlap: put one `above` or give it level `2`, and render the slide to check.
+
+Parameters:
+  • steps (select: none | rows | all | notes, default none) — build steps: `rows` =
+    the 1st row is shown at once and each later row appears on the next step; `all` =
+    every row appears on its own step; `notes` = the rows are shown, each NOTE appears
+    on its own step (ask first, then give the reason). The script's [[step]] reveals.
+  • from (number, default 1) — the first build step these use (when the slide has
+    builds before the formula).
+  • rows (text, default '') — a name prefix: rows become places `PREFIX1`, `PREFIX2`…
+    for cues ([[look: #PREFIX2]] points at row 2 with its note).
+  • notes (select: right | below, default right) — the notes beside the rows, or
+    under each row (for a wide formula).
+  • align (select: center | left, default center).
+  • size (number, default 1) — scale of the whole block.
+  • notecolor (color, default var(--muted-color)), labelcolor (color, default the
+    text colour).
+
+Example:
+<!-- @explain rows: t, steps: rows -->
+T &= \frac{\focus{d}{\bar x_1-\bar x_2}}{\focus{se}{\sqrt{\hat\sigma^2\left(\frac{1}{n_1}+\frac{1}{n_2}\right)}}} && 2 群の \(T\)
+  &= \frac{53.0-50.0}{\sqrt{16\times 0.4}} && 値を入れる
+  &\approx 1.19 && 自由度 8 の \(t\) 分布と比べる
+<!-- @ -->
+#d above: 標本平均の差
+#se: 標本平均の差の標準誤差
+\(\hat\sigma^2\): 合わせた不偏分散
+<!-- @end -->
+
+A cue at a labelled part (#d) rings the part with its brace and label; mark such a
+part with the default marker or `circle`, not `underline`. For a frame around the
+whole, put the module in @callout.
+]]></aiSpec>
+  <parameters>
+    <param name="steps" type="select" default="none" label="Build steps" options="none:None,rows:Rows one by one (first shown),all:Every row on its own step,notes:Notes one by one" desc="Reveal the rows or the notes step by step (the script's [[step]])." />
+    <param name="from" type="number" default="1" min="1" max="50" step="1" integer="true" label="First step" desc="The first build step used (when earlier builds come before the formula)." />
+    <param name="rows" type="text" default="" label="Row names" desc="A prefix: rows become places PREFIX1, PREFIX2 … a cue can point at." />
+    <param name="notes" type="select" default="right" label="Notes" options="right:Beside the rows,below:Under each row" desc="Where the notes of the rows go." />
+    <param name="align" type="select" default="center" label="Alignment" options="center:Centre,left:Left" desc="Where the block sits." />
+    <param name="size" type="number" default="1" min="0.5" max="2" step="0.05" label="Size" desc="Scale of the whole block." />
+    <param name="notecolor" type="color" default="var(--muted-color, #5a5a5a)" label="Note colour" desc="Colour of the notes beside the rows." />
+    <param name="labelcolor" type="color" default="" label="Label colour" desc="Colour of the labels of the parts (blank = the text colour)." />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Math</category>
+      <label>Explained formula (rows + notes + labels)</label>
+      <text><![CDATA[<!-- @explain -->
+V(\bar x) &= \frac{\focus{s2}{\sigma^2}}{\focus{n}{n}} && 標本平均の分散
+          &= \frac{4}{3} && \(\sigma^2=4,\ n=3\)
+<!-- @ -->
+#s2: 母分散
+#n: データの数
+<!-- @end -->]]></text>
+      <description>Aligned rows; `&amp;&amp;` starts a row's note; `#name: text` labels the part \focus{name}{…}.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const numArg = (v, d) => { const n = parseFloat(v); return Number.isFinite(n) ? n : d; };
+    const NAME = '[\\p{L}\\p{N}_.-]+';
+    const LABEL_RE = new RegExp('^#(' + NAME + ')((?:\\s+[^\\s:]+)*)\\s*:\\s*([\\s\\S]*)$', 'u');
+
+    // ---- the body: formula text, label lines, legend lines --------------------
+    const labels = [];
+    const legend = [];
+    const formulaLines = [];
+    // Section 1 is the formula (a `#name: …` line there is still a label); the later
+    // sections hold labels and legend items.
+    const takeLine = (line, inFormula) => {
+      const t = line.trim();
+      if (!t) { if (inFormula) formulaLines.push(line); return; }
+      const lm = LABEL_RE.exec(t);
+      if (lm) { labels.push({ name: lm[1], opts: lm[2].trim().split(/\s+/).filter(Boolean), text: lm[3].trim() }); return; }
+      if (inFormula) { formulaLines.push(line); return; }
+      legend.push(t.replace(/^[-*+]\s+/, ''));
+    };
+    String(sections[0] || '').split(/\r?\n/).forEach((l) => takeLine(l, true));
+    sections.slice(1).forEach((sec) => String(sec || '').split(/\r?\n/).forEach((l) => takeLine(l, false)));
+
+    let tex = formulaLines.join('\n').trim();
+    // Forgive delimiters / an environment written around it out of habit.
+    const unwrap = [/^\\\[([\s\S]*)\\\]$/, /^\$\$([\s\S]*)\$\$$/, /^\\\(([\s\S]*)\\\)$/,
+      /^\\begin\{(?:aligned|align\*?|alignat\*?\{\d+\}|gathered|gather\*?|split|equation\*?|eqnarray\*?)\}([\s\S]*)\\end\{(?:aligned|align\*?|alignat\*?|gathered|gather\*?|split|equation\*?|eqnarray\*?)\}$/];
+    for (let k = 0; k < 3; k++) {
+      let changed = false;
+      for (const re of unwrap) { const m = re.exec(tex.trim()); if (m) { tex = m[1].trim(); changed = true; } }
+      if (!changed) break;
+    }
+
+    // ---- a small TeX scanner: tokens with their nesting --------------------------
+    const tokenize = (s) => {
+      const out = [];
+      let i = 0;
+      while (i < s.length) {
+        const c = s[i];
+        if (c === '\\') {
+          const m = /^\\([A-Za-z]+)/.exec(s.slice(i));
+          if (m) { out.push({ t: 'cmd', v: m[1], a: i, b: i + m[0].length }); i += m[0].length; continue; }
+          out.push({ t: 'esc', v: s[i + 1] || '', a: i, b: Math.min(s.length, i + 2) }); i += 2; continue;
+        }
+        if (c === '%') { const e = s.indexOf('\n', i); const end = e < 0 ? s.length : e; out.push({ t: 'cmt', v: '', a: i, b: end }); i = end; continue; }
+        out.push({ t: 'ch', v: c, a: i, b: i + 1 }); i++;
+      }
+      return out;
+    };
+    const OPENS = new Set(['langle', 'lvert', 'lVert', 'lceil', 'lfloor', 'lbrace', 'lbrack']);
+    const CLOSES = new Set(['rangle', 'rvert', 'rVert', 'rceil', 'rfloor', 'rbrace', 'rbrack']);
+    // Each token with the depth it sits at: g = braces + environments + \left…\right
+    // (where & and \\ do not belong to the rows), p = parentheses / brackets as well.
+    const scan = (s) => {
+      const toks = tokenize(s);
+      let brace = 0, env = 0, lr = 0, paren = 0, skipDelim = false;
+      for (const tk of toks) {
+        tk.g = brace + env + lr;
+        tk.p = tk.g + paren;
+        // The delimiter after \left / \right (( [ \{ \langle . |) is no bracket of its own.
+        if (skipDelim) {
+          if (tk.t === 'ch' && /\s/.test(tk.v)) continue;
+          skipDelim = false;
+          if (tk.t !== 'ch' || tk.v !== '{') continue;
+        }
+        if (tk.t === 'ch') {
+          if (tk.v === '{') brace++;
+          else if (tk.v === '}') brace = Math.max(0, brace - 1);
+          else if (tk.v === '(' || tk.v === '[') paren++;
+          else if (tk.v === ')' || tk.v === ']') paren = Math.max(0, paren - 1);
+        } else if (tk.t === 'cmd') {
+          if (tk.v === 'begin') env++;
+          else if (tk.v === 'end') env = Math.max(0, env - 1);
+          else if (tk.v === 'left') { lr++; skipDelim = true; }
+          else if (tk.v === 'right') { lr = Math.max(0, lr - 1); skipDelim = true; }
+          else if (OPENS.has(tk.v)) paren++;
+          else if (CLOSES.has(tk.v)) paren = Math.max(0, paren - 1);
+        } else if (tk.t === 'esc') {
+          if (tk.v === '{') paren++;
+          else if (tk.v === '}') paren = Math.max(0, paren - 1);
+        }
+      }
+      return toks;
+    };
+
+    // ---- rows ------------------------------------------------------------------
+    const splitAt = (s, cuts) => { const out = []; let last = 0; for (const [a, b] of cuts) { out.push(s.slice(last, a)); last = b; } out.push(s.slice(last)); return out; };
+    let rowTexts;
+    {
+      const toks = scan(tex);
+      const breaks = toks.filter((t) => t.g === 0 && t.t === 'esc' && t.v === '\\').map((t) => [t.a, t.b]);
+      // `\\[4pt]`: the spacing after a row break is dropped with it.
+      if (breaks.length) rowTexts = splitAt(tex, breaks).map((r, k) => (k > 0 ? r.replace(/^\s*\[[^\]\n]*\]/, '') : r));
+      else rowTexts = splitAt(tex, toks.filter((t) => t.g === 0 && t.t === 'ch' && t.v === '\n').map((t) => [t.a, t.b]));
+    }
+    rowTexts = rowTexts.map((r) => r.trim()).filter((r) => r !== '');
+
+    const RELS = new Set(['le', 'leq', 'ge', 'geq', 'ne', 'neq', 'approx', 'approxeq', 'simeq', 'sim', 'equiv', 'propto', 'lt', 'gt',
+      'leqq', 'geqq', 'leqslant', 'geqslant', 'lesssim', 'gtrsim', 'll', 'gg', 'iff', 'implies', 'impliedby', 'Rightarrow', 'Leftarrow',
+      'Leftrightarrow', 'Longrightarrow', 'Longleftarrow', 'Longleftrightarrow', 'coloneqq', 'eqqcolon', 'doteq', 'cong', 'prec', 'succ', 'preceq', 'succeq']);
+    const RELCH = '=<>≤≥≠≈≡≃∼∝⇔⇒⇐≪≫≅';
+    const isRel = (t) => (t.t === 'ch' && RELCH.indexOf(t.v) >= 0) || (t.t === 'cmd' && RELS.has(t.v));
+
+    const rows = rowTexts.map((rt) => {
+      const toks = scan(rt);
+      let note = '';
+      let body = rt;
+      for (let k = 0; k + 1 < toks.length; k++) {
+        const t = toks[k];
+        if (t.g === 0 && t.t === 'ch' && t.v === '&' && toks[k + 1].t === 'ch' && toks[k + 1].v === '&' && toks[k + 1].a === t.b) {
+          note = rt.slice(toks[k + 1].b).trim();
+          body = rt.slice(0, t.a);
+          break;
+        }
+      }
+      const btoks = scan(body);
+      const amps = btoks.filter((t) => t.g === 0 && t.t === 'ch' && t.v === '&');
+      let left = null, right = null;
+      if (amps.length) {
+        left = body.slice(0, amps[0].a);
+        right = splitAt(body.slice(amps[0].b), amps.slice(1).map((t) => [t.a - amps[0].b, t.b - amps[0].b])).join(' ');
+      }
+      return { body: body.trim(), left, right, note, hasAmp: amps.length > 0 };
+    });
+    const anyAmp = rows.some((r) => r.hasAmp);
+    rows.forEach((r) => {
+      if (anyAmp) {
+        if (!r.hasAmp) { r.left = ''; r.right = r.body; }
+        return;
+      }
+      // No & anywhere: line the rows up at their first relation.
+      const toks = scan(r.body);
+      let at = toks.find((t) => t.p === 0 && isRel(t));
+      if (!at) at = toks.find((t) => t.g === 0 && isRel(t));
+      if (!at) { r.left = ''; r.right = r.body; return; }
+      let a = at.a;
+      const before = r.body.slice(0, a).replace(/\s+$/, '');
+      if (/:$/.test(before)) a = before.length - 1;
+      r.left = r.body.slice(0, a);
+      r.right = r.body.slice(a);
+    });
+
+    // A row's note may have been written the LaTeX way: \text{…}, \quad\text{…}.
+    const noteText = (n) => {
+      let s = n.trim();
+      for (let k = 0; k < 3; k++) {
+        const m = /^(?:\\(?:quad|qquad|;|,|:)\s*)*\\(?:text|textrm|mbox|textnormal)\{([\s\S]*)\}\s*$/.exec(s);
+        if (!m) break;
+        s = m[1].trim();
+      }
+      return s;
+    };
+
+    // ---- labels: wrap each named part with its brace and room for the label -----
+    const sigSrc = JSON.stringify([tex, labels, legend, args]);
+    let h = 0;
+    for (let i = 0; i < sigSrc.length; i++) h = (h * 31 + sigSrc.charCodeAt(i)) | 0;
+    const scope = 'mdp-xpl-' + Math.abs(h).toString(36);
+    const lsize = 1;
+    const placed = new Set();
+    const anchorOf = new Map();
+    labels.forEach((L, i) => {
+      L.side = L.opts.some((o) => /^(above|over|top)$/i.test(o)) ? 'above' : 'below';
+      const lv = L.opts.find((o) => /^[1-4]$/.test(o));
+      L.level = lv ? Number(lv) : 1;
+      L.align = L.opts.some((o) => /^(left|start)$/i.test(o)) ? 's' : L.opts.some((o) => /^(right|end)$/i.test(o)) ? 'e' : 'c';
+      L.style = L.opts.some((o) => /^plain$/i.test(o)) ? 'plain' : L.opts.some((o) => /^line$/i.test(o)) ? 'line' : 'brace';
+      const st = L.opts.map((o) => /^step=(\d+)$/i.exec(o)).find(Boolean);
+      L.step = st ? Number(st[1]) : 0;
+      const col = L.opts.map((o) => /^colou?r=(.+)$/i.exec(o)).find(Boolean);
+      L.color = col ? col[1].replace(/[;"<>{}]/g, '') : '';
+      L.anchor = '--' + scope + '-' + i;
+      if (!anchorOf.has(L.name)) anchorOf.set(L.name, L);
+    });
+    // `\focus{name}{X}` of a labelled name → `\focus{name}{\underbrace{X}_{<room>}}`:
+    // KaTeX draws the brace and leaves room under it, the label is laid over that room
+    // (it takes no width, so the formula is not pushed apart). `here` collects the
+    // names placed in this piece (a label is drawn in the row its part is in).
+    const FOCUS_OPEN = new RegExp('\\\\focus\\{(' + NAME + ')\\}\\{', 'u');
+    const wrapParts = (s, here) => {
+      let out = '';
+      let rest = s;
+      for (;;) {
+        const m = FOCUS_OPEN.exec(rest);
+        if (!m) return out + rest;
+        let depth = 1;
+        let i = m.index + m[0].length;
+        for (; i < rest.length; i++) {
+          const c = rest[i];
+          if (c === '\\') { i++; continue; }
+          if (c === '{') depth++;
+          else if (c === '}' && --depth === 0) break;
+        }
+        if (depth !== 0) return out + rest;
+        const inner = wrapParts(rest.slice(m.index + m[0].length, i), here);
+        const L = anchorOf.get(m[1]);
+        let wrapped = inner;
+        if (L && !placed.has(m[1])) {
+          // The room under the brace (or the part), in LABEL em: the label's line
+          // (1.25) + 0.2, one more line per level, and for a `line` the line itself.
+          // KaTeX sizes a \rule in the formula's em (1/0.7 label em) and keeps 0.2 of
+          // it between the brace and the room — measured in the browser.
+          const reserve = (L.style === 'line' ? 2.2 : 1.45) + (L.level - 1) * 1.3;
+          const room = ((reserve * 0.7 - 0.2) * lsize).toFixed(3);
+          const strut = '\\rule{0pt}{' + room + 'em}';
+          if (L.style === 'brace') wrapped = L.side === 'above' ? '\\overbrace{' + inner + '}^{' + strut + '}' : '\\underbrace{' + inner + '}_{' + strut + '}';
+          else wrapped = L.side === 'above' ? '\\overset{' + strut + '}{' + inner + '}' : '\\underset{' + strut + '}{' + inner + '}';
+          placed.add(m[1]);
+          here.push(L);
+        }
+        out += rest.slice(0, m.index) + m[0] + wrapped + '}';
+        rest = rest.slice(i + 1);
+      }
+    };
+
+    // ---- output ------------------------------------------------------------------
+    const from = Math.max(1, Math.round(numArg(args.from, 1)));
+    const steps = String(args.steps || 'none').toLowerCase();
+    const notesBelow = String(args.notes || 'right').toLowerCase() === 'below';
+    const hasNotes = rows.some((r) => r.note);
+    const prefix = String(args.rows || '').trim().replace(/[^\p{L}\p{N}_.-]/gu, '');
+    const size = Math.max(0.3, Math.min(3, numArg(args.size, 1)));
+    const align = String(args.align || 'center').toLowerCase() === 'left' ? 'left' : 'center';
+    const noteColor = String(args.notecolor || 'var(--muted-color, #5a5a5a)').replace(/[;"<>{}]/g, '');
+    const labelColor = String(args.labelcolor || '').replace(/[;"<>{}]/g, '');
+    const math = (s) => '\\(\\displaystyle ' + s + '\\)';
+    // A row piece that starts with a relation (= …, := …) gets `{}` before it, as in
+    // `aligned`, so the relation is spaced as one.
+    const relStart = (s) => {
+      const toks = scan(s.trim()).filter((x) => x.t !== 'cmt' && !(x.t === 'ch' && /\s/.test(x.v)));
+      if (!toks.length) return false;
+      return isRel(toks[0]) || (toks[0].t === 'ch' && toks[0].v === ':' && !!toks[1] && isRel(toks[1]));
+    };
+
+    const labelHtml = (L) => {
+      const cls = 'mdp-xpl-lbl mdp-xpl-' + L.side + ' mdp-xpl-' + L.align + ' mdp-xpl-' + L.style + ' mdp-xpl-lv' + L.level;
+      const style = 'position-anchor:' + L.anchor + ';' + (L.color ? 'color:' + L.color + ';' : '');
+      let html = '<div class="' + cls + '" style="' + style + '">\n\n' + L.text + '\n\n</div>\n';
+      if (L.style === 'line' || L.level > 1) html += '<div class="mdp-xpl-stem mdp-xpl-' + L.side + ' mdp-xpl-lv' + L.level + (L.style === 'line' ? ' mdp-xpl-line' : '') + '" style="position-anchor:' + L.anchor + ';' + (L.color ? 'color:' + L.color + ';' : '') + '"></div>\n';
+      if (L.step > 0) html = '\n<!-- @build step: ' + L.step + ' -->\n\n' + html + '\n<!-- @endbuild -->\n';
+      return html;
+    };
+
+    let body = '';
+    rows.forEach((r, k) => {
+      const rowLabels = [];
+      const left = wrapParts(r.left || '', rowLabels);
+      let right = wrapParts(r.right || '', rowLabels);
+      if (right && relStart(right)) right = '{}' + right;
+      const name = prefix ? ' data-mdp-focus="' + esc(prefix + (k + 1)) + '"' : '';
+      let row = '<div class="mdp-xpl-row"' + name + '>\n';
+      row += '<div class="mdp-xpl-l">\n\n' + (left.trim() ? math(left) : '') + '\n\n</div>\n';
+      row += '<div class="mdp-xpl-r">\n\n' + (right.trim() ? math(right) : '') + '\n\n</div>\n';
+      if (hasNotes) {
+        const nt = r.note ? noteText(r.note) : '';
+        let inner = nt;
+        if (nt && steps === 'notes') inner = '<!-- @build step: ' + (from + k) + ' -->\n\n' + nt + '\n\n<!-- @endbuild -->';
+        row += '<div class="mdp-xpl-n">\n\n' + inner + '\n\n</div>\n';
+      }
+      rowLabels.forEach((L) => { row += labelHtml(L); });
+      row += '</div>\n';
+      const st = steps === 'rows' ? (k === 0 ? 0 : from + k - 1) : steps === 'all' ? from + k : 0;
+      body += st > 0 ? '\n<!-- @build step: ' + st + ' -->\n\n' + row + '\n<!-- @endbuild -->\n' : row;
+    });
+
+    const missing = labels.filter((L) => anchorOf.get(L.name) === L && !placed.has(L.name));
+    let css = '';
+    labels.forEach((L) => {
+      if (anchorOf.get(L.name) !== L || !placed.has(L.name)) return;
+      css += '.' + scope + ' [data-mdp-focus="' + L.name + '"] { anchor-name: ' + L.anchor + '; display: inline-block; }\n';
+    });
+
+    const cls = 'mdp-mod-explain ' + scope + ' mdp-xpl-' + align + (hasNotes ? ' mdp-xpl-has-notes' : '') + (notesBelow ? ' mdp-xpl-notes-below' : '');
+    const style = 'font-size:' + size + 'em; --xpl-note:' + noteColor + ';' + (labelColor ? ' --xpl-label:' + labelColor + ';' : '');
+    let html = '\n\n' + (css ? '<style>' + css + '</style>\n\n' : '');
+    html += '<div class="' + cls + '" style="' + style + '">\n';
+    html += '<div class="mdp-xpl-grid">\n' + body + '</div>\n';
+    if (legend.length || missing.length) {
+      html += '<div class="mdp-xpl-legend">\n';
+      legend.forEach((it) => { html += '<div class="mdp-xpl-item">\n\n' + it + '\n\n</div>\n'; });
+      missing.forEach((L) => { html += '<div class="mdp-xpl-item mdp-xpl-missing" title="no \\focus{' + esc(L.name) + '}{…} in the formula">\n\n#' + esc(L.name) + ': ' + L.text + '\n\n</div>\n'; });
+      html += '</div>\n';
+    }
+    html += '</div>\n\n';
+    return html;
+  ]]></render>
+  <style><![CDATA[
+    /* The block is the labels' containing block: a label is centred over its part and
+       only pushed inward where it would leave the block (the slide's width). */
+    .mdp-mod-explain {
+      position: relative; anchor-scope: all; margin: calc(0.6 * var(--mdp-u, 1rem)) 0;
+      display: flex; flex-direction: column; align-items: center;
+    }
+    .mdp-mod-explain.mdp-xpl-left { align-items: flex-start; }
+    .mdp-xpl-grid {
+      display: grid; grid-template-columns: max-content max-content;
+      max-width: 100%; row-gap: 0.45em; align-items: baseline;
+    }
+    .mdp-xpl-has-notes:not(.mdp-xpl-notes-below) > .mdp-xpl-grid { grid-template-columns: max-content max-content minmax(0, auto); }
+    .mdp-xpl-row, .mdp-xpl-grid > .mdp-build {
+      display: grid; grid-template-columns: subgrid; grid-column: 1 / -1; align-items: baseline;
+    }
+    .mdp-xpl-row > .mdp-build { display: contents; }
+    .mdp-xpl-l { grid-column: 1; justify-self: end; text-align: right; }
+    .mdp-xpl-r { grid-column: 2; justify-self: start; }
+    .mdp-xpl-n { grid-column: 3; padding-left: 1.6em; font-size: 0.8em; color: var(--xpl-note); }
+    .mdp-xpl-notes-below .mdp-xpl-n { grid-column: 2; padding-left: 0; margin-top: -0.15em; }
+    .mdp-xpl-l > p, .mdp-xpl-r > p, .mdp-xpl-n > p, .mdp-xpl-n > .mdp-build > p, .mdp-xpl-lbl > p, .mdp-xpl-item > p { margin: 0; }
+    .mdp-xpl-lbl {
+      position: absolute; justify-self: anchor-center;
+      font-size: 0.847em; line-height: 1.25; white-space: nowrap;
+      color: var(--xpl-label, inherit); pointer-events: none;
+    }
+    .mdp-xpl-lbl.mdp-xpl-below { bottom: anchor(bottom); }
+    .mdp-xpl-lbl.mdp-xpl-above { top: anchor(top); }
+    .mdp-xpl-lbl.mdp-xpl-s { justify-self: auto; left: anchor(left); }
+    .mdp-xpl-lbl.mdp-xpl-e { justify-self: auto; right: anchor(right); }
+    .mdp-xpl-stem {
+      position: absolute; left: anchor(center); width: 0; font-size: 0.847em;
+      border-left: calc(1.2 * var(--mdp-px, 1px)) solid var(--xpl-label, currentColor); opacity: 0.55; pointer-events: none;
+    }
+    .mdp-xpl-stem.mdp-xpl-below { bottom: calc(anchor(bottom) + 1.3em); }
+    .mdp-xpl-stem.mdp-xpl-above { top: calc(anchor(top) + 1.3em); }
+    /* The room under a brace is 1.45 + (level − 1) × 1.3 label em (see the render);
+       the stem runs from just past the label to just short of the brace's tip. A
+       line (no brace) has 0.75 em more room and runs to the part. */
+    .mdp-xpl-stem.mdp-xpl-lv2 { height: 1.35em; }
+    .mdp-xpl-stem.mdp-xpl-lv3 { height: 2.65em; }
+    .mdp-xpl-stem.mdp-xpl-lv4 { height: 3.95em; }
+    .mdp-xpl-stem.mdp-xpl-line.mdp-xpl-lv1 { height: 0.75em; }
+    .mdp-xpl-stem.mdp-xpl-line.mdp-xpl-lv2 { height: 2.05em; }
+    .mdp-xpl-stem.mdp-xpl-line.mdp-xpl-lv3 { height: 3.35em; }
+    .mdp-xpl-stem.mdp-xpl-line.mdp-xpl-lv4 { height: 4.65em; }
+    /* Full width (not shrunk to its items): a picture made by copying the page (web
+       build) rounds widths, and a legend exactly as wide as its items wrapped there. */
+    .mdp-xpl-legend {
+      align-self: stretch; display: flex; flex-wrap: wrap; gap: 0.15em 1.4em; margin-top: 0.5em;
+      font-size: 0.8em; color: var(--xpl-note);
+    }
+    .mdp-xpl-center > .mdp-xpl-legend { justify-content: center; }
+    .mdp-xpl-item { max-width: 100%; }
+    .mdp-xpl-missing { color: #c0392b; text-decoration: underline dashed; }
+    @supports not (anchor-name: --a) {
+      .mdp-xpl-lbl { position: static; grid-column: 2; font-size: 0.7em; white-space: normal; }
+      .mdp-xpl-stem { display: none; }
+    }
+  ]]></style>
+</module>

@@ -1,0 +1,138 @@
+<module>
+  <name>exercise</name>
+  <type>block</type>
+  <description>A question to think about with its timer and its answer: the question, a countdown timer beside it (left out of the PDF), and the answer revealed on the next build step and left blank in the handout. Body = the question, then the answer after `<!-- @ -->`.</description>
+  <tags>callout, interactive</tags>
+  <aiSpec><![CDATA[
+An EXERCISE / think-time question in ONE block: the question, a countdown TIMER
+beside it, and the ANSWER that appears on the next build step. It replaces the
+hand-built nest @pdfhide + @timer + @build + @answer (+ @multicolumn for the side
+layout) and its stack of @end lines.
+  • The timer is left out of the PDF (like @pdfhide) and answers `cmd:TAG`
+    (start | pause | toggle | reset | set 90 — `start` replies at 0:00), exactly as
+    a @timer with that tag: the script writes
+    [[emit-wait: cmd:TAG start timeout=70s | 1分 考える時間]] (timeout = the timer's
+    seconds + 10) and then [[step]] to show the answer.
+  • The answer is an @answer block: in the handout (@answers hide / the editor's
+    toggle) it is blank at its own size, so the students have room to write.
+  • Named places for cues: #TAG (the whole block), #TAG-q (the question), #TAG-a
+    (the answer).
+
+Body: the question (Markdown), then `<!-- @ -->`, then the answer (Markdown). No
+answer section = a question only. Frames are not drawn: put a @callout INSIDE a
+section for one (e.g. `<!-- @callout variant: filled, title: 解答 -->…<!-- @end -->`
+as the answer).
+
+Parameters:
+  • tag (text) — the name the script commands (cmd:TAG) and points at (#TAG-q…).
+  • minutes (number, default 1), seconds (number, default 0) — the timer; 0 and 0
+    = no timer (a question answered by a show of hands).
+  • label (text, default '') — the timer's caption, e.g. 考える時間.
+  • size (select: sm | md | lg | xl, default md) — the timer's size.
+  • title (text, default '') — a bold lead before the question, e.g. 考えてみよう.
+  • answertitle (text, default '') — a bold lead before the answer, e.g. 答え.
+  • step (number, default 1) — the build step the answer appears at (0 = shown at
+    once; with builds before it on the slide, the next free step).
+  • layout (select: side | stack, default side) — the timer to the right of the
+    question, or under it.
+  • handout (select: blank | gone | show, default blank) — the answer in the
+    handout: a blank of its size, nothing, or printed.
+
+Example:
+<!-- @exercise tag: t3, minutes: 1, label: 考える時間, title: 考えてみよう, answertitle: 答え -->
+\(n=5\)，\(\hat\sigma=4\) のとき，標本平均の標準誤差はいくつか．
+<!-- @ -->
+\(4/\sqrt5\approx1.79\)．\(\hat\sigma\) を \(\sqrt n\) で割る．
+<!-- @end -->
+with the script: …[[emit-wait: cmd:t3 start timeout=70s | 1分 考える時間]]それでは，答えです．[[step]]…
+]]></aiSpec>
+  <parameters>
+    <param name="tag" type="text" default="" label="Tag" desc="The name the script commands (cmd:TAG start) and points at (#TAG-q, #TAG-a)." />
+    <param name="minutes" type="number" default="1" min="0" max="120" step="1" integer="true" label="Minutes" desc="The timer's minutes (0 and 0 seconds = no timer)." />
+    <param name="seconds" type="number" default="0" min="0" max="59" step="1" integer="true" label="Seconds" desc="Extra seconds of the timer." />
+    <param name="label" type="text" default="" label="Timer caption" desc="Printed before the time, e.g. 考える時間." />
+    <param name="size" type="select" default="md" label="Timer size" options="sm:Small,md:Medium,lg:Large,xl:Extra large" desc="Size of the timer." />
+    <param name="title" type="text" default="" label="Question lead" desc="A bold lead before the question, e.g. 考えてみよう." />
+    <param name="answertitle" type="text" default="" label="Answer lead" desc="A bold lead before the answer, e.g. 答え." />
+    <param name="step" type="number" default="1" min="0" max="50" step="1" integer="true" label="Answer step" desc="The build step the answer appears at (0 = shown at once)." />
+    <param name="layout" type="select" default="side" label="Timer place" options="side:Beside the question,stack:Under the question" desc="Where the timer goes." />
+    <param name="handout" type="select" default="blank" label="Answer in the handout" options="blank:A blank of its size,gone:Nothing,show:Printed" desc="What the handout shows where the answer is." />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Education</category>
+      <label>Exercise (question + timer + answer)</label>
+      <text><![CDATA[<!-- @exercise tag: t1, minutes: 1, label: 考える時間, title: 考えてみよう, answertitle: 答え -->
+問い
+<!-- @ -->
+答え
+<!-- @end -->]]></text>
+      <description>The script: [[emit-wait: cmd:t1 start timeout=70s | 1分 考える時間]] … [[step]] shows the answer.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const int = (v, d) => { const n = parseInt(v, 10); return Number.isFinite(n) ? n : d; };
+    const question = String(sections[0] || '').trim();
+    const answer = String(sections.length > 1 ? sections.slice(1).join('\n\n') : '').trim();
+    const tag = String(args.tag || '').trim().replace(/[^\w-]/g, '');
+    const total = Math.max(0, int(args.minutes, 1)) * 60 + Math.max(0, Math.min(59, int(args.seconds, 0)));
+    const size = { sm: 'sm', md: 'md', lg: 'lg', xl: 'xl' }[String(args.size || 'md').toLowerCase()] || 'md';
+    const step = Math.max(0, int(args.step, 1));
+    const layout = String(args.layout || 'side').toLowerCase() === 'stack' ? 'stack' : 'side';
+    const handout = String(args.handout || 'blank').toLowerCase();
+
+    // A bold lead runs into the first line, unless the text starts with a block.
+    const lead = (title, body) => {
+      const t = String(title || '').trim();
+      if (!t) return body;
+      if (!body) return '**' + t + '**';
+      return /^\s*([-*+]\s|\d+[.)]\s|\\\[|\$\$|\||<|#|>)/.test(body) ? '**' + t + '**\n\n' + body : '**' + t + '**: ' + body;
+    };
+    // A named place a cue can point at (#TAG-q) — the core @focus block, so a text
+    // check of the deck finds the name as well.
+    const named = (name, body) => (tag ? '<!-- @focus ' + tag + '-' + name + ' -->\n\n' + body + '\n\n<!-- @endfocus -->' : body);
+
+    // The timer: the same element @timer renders (its script runs it, finds the tag
+    // on this block's wrapper and answers cmd:TAG), hidden in print.
+    let timer = '';
+    if (total > 0) {
+      const label = String(args.label || '').trim();
+      const mm = String(Math.floor(total / 60)).padStart(2, '0');
+      const ss = String(total % 60).padStart(2, '0');
+      timer = '<span class="mdp-exr-timer"><span class="mdp-mod-timer mdp-interactive mdp-size-' + size + '" style="border-radius:0.5em;justify-content:center" data-seconds="' + total + '" data-autostart="false">'
+        + (label ? '<span class="mdp-timer-label">' + esc(label) + '</span>' : '')
+        + '<button class="mdp-timer-btn mdp-timer-start" type="button" title="Start / Pause">&#9654;</button>'
+        + '<span class="mdp-timer-display" style="width:' + (mm.length + 3) + 'ch">' + mm + ':' + ss + '</span>'
+        + '<button class="mdp-timer-btn mdp-timer-reset" type="button" title="Reset">&#8634;</button>'
+        + '</span></span>';
+    }
+
+    let html = '\n\n<div class="mdp-mod-exercise mdp-exr-' + layout + (timer ? '' : ' mdp-exr-notimer') + '">\n';
+    html += '<div class="mdp-exr-q">\n\n' + named('q', lead(args.title, question)) + '\n\n</div>\n';
+    if (timer) html += '<div class="mdp-exr-t">' + timer + '</div>\n';
+    if (answer) {
+      let a = named('a', lead(args.answertitle, answer));
+      if (handout !== 'show') a = '<!-- @answer' + (handout === 'gone' ? ' space: none' : '') + ' -->\n\n' + a + '\n\n<!-- @endanswer -->';
+      if (step > 0) a = '<!-- @build step: ' + step + ' -->\n\n' + a + '\n\n<!-- @endbuild -->';
+      html += '\n' + a + '\n\n';
+    }
+    html += '</div>\n\n';
+    return html;
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-exercise {
+      display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 1.2em; row-gap: 0.4em;
+      align-items: center; margin: calc(0.6 * var(--mdp-u, 1rem)) 0;
+    }
+    .mdp-mod-exercise.mdp-exr-stack, .mdp-mod-exercise.mdp-exr-notimer { grid-template-columns: minmax(0, 1fr); }
+    .mdp-exr-q { grid-column: 1; min-width: 0; }
+    .mdp-exr-q > :first-child, .mdp-exr-q > .mdp-focus-block > :first-child { margin-top: 0; }
+    .mdp-exr-q > :last-child, .mdp-exr-q > .mdp-focus-block > :last-child { margin-bottom: 0; }
+    .mdp-exr-t { grid-column: 2; justify-self: end; }
+    .mdp-exr-stack .mdp-exr-t { grid-column: 1; justify-self: start; }
+    .mdp-mod-exercise > .mdp-build, .mdp-mod-exercise > .mdp-answer { grid-column: 1 / -1; }
+    .mdp-mod-exercise > .mdp-build > :first-child, .mdp-mod-exercise > .mdp-answer > :first-child { margin-top: 0; }
+    @media print { .mdp-exr-timer { display: none !important; } }
+  ]]></style>
+</module>

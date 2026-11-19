@@ -1,0 +1,207 @@
+<module>
+  <name>table</name>
+  <type>block</type>
+  <description>A Markdown table with its formatting as arguments: text size, row padding, columns kept on one line, a bold key column, column widths, the best value of a column in bold, highlighted rows, and names on the rows for narration cues. Body = the table (a paragraph before or after it is set as a small caption).</description>
+  <tags>table, comparison</tags>
+  <aiSpec><![CDATA[
+A TABLE with its formatting given as arguments — instead of an @addstyle block with
+`th, td { font-size … padding … } td:first-child { white-space: nowrap }` around it.
+Body: a Markdown table as usual (math in cells as \( … \)). A paragraph in the body
+before or after the table is set as a small, muted caption / note (e.g. the setting
+of the data, a unit).
+
+Parameters (all optional):
+  • size (number) — the cells' text size in em, e.g. 0.85 (the theme's is about 0.75).
+  • pad (number) — padding above and below the cell text, in em, e.g. 0.2 (tight).
+  • padx (number) — padding left and right of the cell text, in em.
+  • nowrap (list of column numbers, e.g. [1] or [1, 3]; `all`) — those columns are
+    kept on one line (no 標準誤／差 break).
+  • key (boolean) — the first column is bold and kept on one line (a row label).
+  • widths (list of % per column, e.g. [30, 40, 30]) — column widths; the table then
+    takes the full width. width (text, e.g. 70%) — the table's own width.
+  • best (list of COL:max / COL:min, e.g. [3:max, 4:min]) — the best number of those
+    columns is set in bold (ties too), computed from the cells — no hand-written **.
+  • hl (list of body-row numbers, e.g. [2]) — those rows are tinted (the row being
+    discussed, the row picked in a lookup).
+  • rows (text) — a name prefix: the body rows become places PREFIX1, PREFIX2 … for
+    cues — [[look: row:#PREFIX2]] (the row), [[look: #PREFIX2]] (its first cell). No
+    \focus to write in the first cells.
+  • tag (text) — the whole table as #TAG.
+
+Example:
+<!-- @table size: 0.85, pad: 0.2, key: true, best: [3:max], rows: m -->
+電池 10 本の寿命（時間）
+| 方法 | 自由度 | 棄却した回数 |
+|---|:---:|:---:|
+| 前回の方法 | 4 | 16 |
+| 2 群の \(t\) 検定 | 8 | 6 |
+<!-- @end -->
+]]></aiSpec>
+  <parameters>
+    <param name="size" type="number" default="" min="0.4" max="2" step="0.01" label="Text size (em)" desc="The cells' text size, e.g. 0.85 (blank = the theme's)." />
+    <param name="pad" type="number" default="" min="0" max="2" step="0.05" label="Row padding (em)" desc="Padding above and below the cell text, e.g. 0.2 (blank = the theme's)." />
+    <param name="padx" type="number" default="" min="0" max="3" step="0.05" label="Side padding (em)" desc="Padding left and right of the cell text (blank = the theme's)." />
+    <param name="nowrap" type="text" default="" label="One-line columns" desc="Column numbers kept on one line, e.g. 1 or 1, 3 or all." />
+    <param name="key" type="boolean" default="false" label="Key column" desc="The first column bold and on one line." />
+    <param name="widths" type="[number]" default="" label="Column widths (%)" desc="Width of each column in %, e.g. [30, 40, 30]." />
+    <param name="width" type="text" default="" label="Table width" desc="The table's width, e.g. 70% (blank = the theme's)." />
+    <param name="best" type="[text]" default="" label="Best values" desc="COL:max or COL:min per column, e.g. [3:max, 4:min] — set in bold." />
+    <param name="hl" type="[number]" default="" label="Highlighted rows" desc="Body rows to tint, e.g. [2]." />
+    <param name="rows" type="text" default="" label="Row names" desc="A prefix: body rows become places PREFIX1, PREFIX2 … (row:#PREFIX1)." />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Content</category>
+      <label>Table (size, padding, key column, row names)</label>
+      <text><![CDATA[<!-- @table size: 0.85, pad: 0.2, key: true, rows: r -->
+| 項目 | 値 |
+|---|---|
+| A | 1 |
+| B | 2 |
+<!-- @end -->]]></text>
+      <description>Formatting as arguments instead of @addstyle; rows become #r1, #r2 … for cues.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    const list = (v) => (Array.isArray(v) ? v : String(v == null ? '' : v).replace(/^\[|\]$/g, '').split(/[,\s]+/)).map((s) => String(s).trim()).filter(Boolean);
+    const num = (v) => { const n = parseFloat(v); return Number.isFinite(n) ? n : null; };
+    const prefix = String(args.rows || '').trim().replace(/[^\p{L}\p{N}_.-]/gu, '');
+    let body = sections.join('\n\n').replace(/\r\n/g, '\n');
+
+    // The cell-separating pipes of a table row: not in \( \) / \[ \], a code span, or \|.
+    const pipesOf = (line) => {
+      const out = [];
+      let i = 0, math = '', code = 0;
+      while (i < line.length) {
+        const c = line[i];
+        if (code) { if (line.startsWith('`'.repeat(code), i)) { i += code; code = 0; } else i++; continue; }
+        if (c === '`') { let n = 0; while (line[i + n] === '`') n++; code = n; i += n; continue; }
+        if (c === '\\') {
+          const nx = line[i + 1];
+          if (!math && (nx === '(' || nx === '[')) { math = nx === '(' ? ')' : ']'; i += 2; continue; }
+          if (math && nx === math) { math = ''; i += 2; continue; }
+          i += 2; continue;
+        }
+        if (c === '|' && !math) out.push(i);
+        i++;
+      }
+      return out;
+    };
+    // [start, end) of each cell's text in a row.
+    const cellsOf = (line) => {
+      const p = pipesOf(line);
+      const lead = /^\s*\|/.test(line);
+      const edges = lead ? p : [-1].concat(p);
+      const cells = [];
+      for (let k = 0; k + 1 < edges.length; k++) cells.push([edges[k] + 1, edges[k + 1]]);
+      const tail = line.slice((edges[edges.length - 1] || 0) + 1);
+      if (tail.trim()) cells.push([edges[edges.length - 1] + 1, line.length]);
+      return cells;
+    };
+    const DELIM = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/;
+
+    // Find the tables: a header row, the delimiter row, then the body rows.
+    const lines = body.split('\n');
+    const findTables = () => {
+      const found = [];
+      for (let i = 0; i + 1 < lines.length; i++) {
+        if (lines[i].includes('|') && DELIM.test(lines[i + 1])) {
+          const t = { head: i, rows: [] };
+          let j = i + 2;
+          while (j < lines.length && lines[j].trim() && lines[j].includes('|')) { t.rows.push(j); j++; }
+          found.push(t);
+          i = j - 1;
+        }
+      }
+      return found;
+    };
+    // A line right under a table would be read as one more row: end each table with
+    // a blank line, so a note under it ("単位: 時間") stays a note.
+    findTables().reverse().forEach((t) => {
+      const last = t.rows.length ? t.rows[t.rows.length - 1] : t.head + 1;
+      if (last + 1 < lines.length && lines[last + 1].trim()) lines.splice(last + 1, 0, '');
+    });
+    body = lines.join('\n');
+    const tables = findTables();
+
+    // Numbers of the cells, for best: a value as written (math, bold, % and signs
+    // allowed; the first number of a range like 16.7〜18.3).
+    const numOf = (cell) => {
+      const s = cell
+        .replace(/\\\(|\\\)|\\\[|\\\]|\$|\*\*|__|`/g, '')
+        .replace(/\\(?:text|mathrm|mathbf|textbf|boldsymbol)\{([^}]*)\}/g, '$1')
+        .replace(/\\[,;:! ]/g, '').replace(/[{}]/g, '').replace(/−|\\minus/g, '-').replace(/,(?=\d{3})/g, '');
+      const m = /[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?/.exec(s);
+      return m ? parseFloat(m[0]) : null;
+    };
+    const bestRules = [];
+    list(args.best).forEach((b) => {
+      const m = /^(\d+)\s*(?::\s*(max|min))?$/i.exec(b);
+      if (m) bestRules.push({ col: Number(m[1]), mode: (m[2] || 'max').toLowerCase() });
+    });
+    const bold = [];
+    tables.forEach((t, ti) => {
+      bestRules.forEach((r) => {
+        const vals = t.rows.map((li) => { const c = cellsOf(lines[li])[r.col - 1]; return c ? numOf(lines[li].slice(c[0], c[1])) : null; });
+        const ok = vals.filter((v) => v !== null);
+        if (!ok.length) return;
+        const target = r.mode === 'min' ? Math.min(...ok) : Math.max(...ok);
+        vals.forEach((v, k) => { if (v === target) bold.push({ table: ti + 1, row: k + 1, col: r.col }); });
+      });
+    });
+
+    // Row names: the first cell of each body row becomes \focus{PREFIXn}{…}.
+    if (prefix) {
+      let n = 0;
+      tables.forEach((t) => t.rows.forEach((li) => {
+        n++;
+        const line = lines[li];
+        const c = cellsOf(line)[0];
+        if (!c) return;
+        const raw = line.slice(c[0], c[1]);
+        const text = raw.trim();
+        const lead = raw.slice(0, raw.length - raw.trimStart().length) || ' ';
+        const trail = raw.slice(raw.trimEnd().length) || ' ';
+        lines[li] = line.slice(0, c[0]) + lead + '\\focus{' + prefix + n + '}{' + text + '}' + trail + line.slice(c[1]);
+      }));
+      body = lines.join('\n');
+    }
+
+    // The scoped stylesheet.
+    let h = 0;
+    const sig = JSON.stringify([body, args]);
+    for (let i = 0; i < sig.length; i++) h = (h * 31 + sig.charCodeAt(i)) | 0;
+    const scope = 'mdp-tbl-' + Math.abs(h).toString(36);
+    const S = '.mdp-mod-table.' + scope;
+    const nth = (tableNo) => S + ' table:nth-of-type(' + tableNo + ')';
+    let css = '';
+    const size = num(args.size), pad = num(args.pad), padx = num(args.padx);
+    if (size !== null) css += S + ' th, ' + S + ' td { font-size: ' + size + 'em; }\n';
+    if (pad !== null) css += S + ' th, ' + S + ' td { padding-top: ' + pad + 'em; padding-bottom: ' + pad + 'em; }\n';
+    if (padx !== null) css += S + ' th, ' + S + ' td { padding-left: ' + padx + 'em; padding-right: ' + padx + 'em; }\n';
+    const nw = list(args.nowrap);
+    if (nw.some((c) => /^all$/i.test(c))) css += S + ' th, ' + S + ' td { white-space: nowrap; }\n';
+    else nw.map(Number).filter((c) => c > 0).forEach((c) => { css += S + ' th:nth-child(' + c + '), ' + S + ' td:nth-child(' + c + ') { white-space: nowrap; }\n'; });
+    if (String(args.key) === 'true') css += S + ' td:first-child { font-weight: 700; white-space: nowrap; }\n';
+    const widths = list(args.widths).map(Number).filter((w) => w > 0);
+    if (widths.length) {
+      css += S + ' table { width: 100%; }\n';
+      widths.forEach((w, k) => { css += S + ' th:nth-child(' + (k + 1) + ') { width: ' + w + '%; }\n'; });
+    }
+    const width = String(args.width || '').trim().replace(/[;"<>{}]/g, '');
+    if (width) css += S + ' table { width: ' + width + '; }\n';
+    bold.forEach((b) => {
+      const cell = nth(b.table) + ' tbody tr:nth-child(' + b.row + ') td:nth-child(' + b.col + ')';
+      css += cell + ', ' + cell + ' .katex { font-weight: 700; }\n';
+    });
+    list(args.hl).map(Number).filter((r) => r > 0).forEach((r) => {
+      css += S + ' tbody tr:nth-child(' + r + ') > td { background-color: color-mix(in srgb, var(--accent-color, #3b82f6) 14%, var(--bg-color, #fff)); }\n';
+    });
+
+    return '\n\n' + (css ? '<style>' + css + '</style>\n\n' : '') + '<div class="mdp-mod-table ' + scope + '">\n\n' + body.trim() + '\n\n</div>\n\n';
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-table > p { font-size: 0.8em; color: var(--muted-color, #5a5a5a); margin: 0.2em 0; }
+    .mdp-mod-table > table { margin-top: 0.3em; margin-bottom: 0.5em; }
+  ]]></style>
+</module>

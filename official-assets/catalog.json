@@ -257,8 +257,20 @@
       "hash": "8830ef33"
     },
     {
+      "path": "modules/disttable.mdpmod.xml",
+      "hash": "c3ef1768"
+    },
+    {
       "path": "modules/equation.mdpmod.xml",
       "hash": "1ee7e6a9"
+    },
+    {
+      "path": "modules/exercise.mdpmod.xml",
+      "hash": "1f15902f"
+    },
+    {
+      "path": "modules/explain.mdpmod.xml",
+      "hash": "fc036d7d"
     },
     {
       "path": "modules/faq.mdpmod.xml",
@@ -517,6 +529,10 @@
       "hash": "27d8d45d"
     },
     {
+      "path": "modules/table.mdpmod.xml",
+      "hash": "ced820a8"
+    },
+    {
       "path": "modules/target.mdpmod.xml",
       "hash": "0e721e04"
     },
@@ -526,7 +542,7 @@
     },
     {
       "path": "modules/theorem.mdpmod.xml",
-      "hash": "234cf606"
+      "hash": "b779896b"
     },
     {
       "path": "modules/tierlist.mdpmod.xml",

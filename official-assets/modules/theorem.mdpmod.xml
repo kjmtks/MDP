@@ -8,20 +8,34 @@ A THEOREM-style environment for maths/CS slides — a labelled, numbered, accent
 holding a statement. Block module: the body is the statement (Markdown, and inline
 \(math\) / display \[math\] both render). Params: `kind` — one of theorem, lemma,
 definition, corollary, proposition, example, remark (default theorem; theorem-like
-kinds set the body italic, definition/example/remark stay upright); `number` — free
-text like 1 or 2.3 (default empty = unnumbered); `title` — optional name shown in
-parentheses; `color` — accent colour (default var(--accent-color)). Header reads
-e.g. "Theorem 2 (Pythagoras)."
+kinds set the body italic, definition/example/remark stay upright) — OR the heading
+word itself in another language: 定理, 命題, 補題, 定義, 系, 例, 注意 … (shown as
+written, the body upright, the header "命題 A（名前）" with no period); `number` —
+free text like 1, 2.3 or A (default empty = unnumbered); `title` — optional name
+shown in parentheses; `color` — accent colour (default var(--accent-color));
+`italic` — auto | true | false (auto = italic for the English theorem-like kinds
+only); `head` — auto | inline | block (auto = the header runs into the statement,
+or stands on its own line when the statement starts with a list, a display formula
+or a table); `variant` — bar (accent bar and tint, default) | outline (a thin frame)
+| plain (no box). Header reads e.g. "Theorem 2 (Pythagoras)."
 
 <!-- @theorem kind: theorem, number: 1, title: Pythagoras -->
 For a right triangle, \(a^2 + b^2 = c^2\).
 <!-- @end -->
+
+<!-- @theorem kind: 命題, number: A, title: 解の一意性, variant: outline -->
+- \(f\) はリプシッツ連続
+- このとき，初期値問題の解はただ 1 つ
+<!-- @end -->
 ]]></aiSpec>
   <parameters>
-    <param name="kind" type="select" default="theorem" label="Kind" options="theorem:Theorem,lemma:Lemma,definition:Definition,corollary:Corollary,proposition:Proposition,example:Example,remark:Remark" desc="Environment name shown in the header; theorem-like kinds render the body in italics." />
+    <param name="kind" type="select" default="theorem" label="Kind" options="theorem:Theorem,lemma:Lemma,definition:Definition,corollary:Corollary,proposition:Proposition,example:Example,remark:Remark,定理:定理,命題:命題,補題:補題,定義:定義,系:系,例:例,注意:注意" desc="Environment name shown in the header; English theorem-like kinds render the body in italics, a Japanese kind is shown as written." />
     <param name="number" type="text" default="" label="Number" desc="Free-form number such as 1 or 2.3 (empty = unnumbered)." />
     <param name="title" type="text" default="" label="Title (optional)" desc="Optional name shown in parentheses after the number, e.g. Pythagoras." />
     <param name="color" type="color" default="var(--accent-color)" label="Accent color" desc="Colour of the left border, header text and box tint." />
+    <param name="italic" type="select" default="auto" label="Italic statement" options="auto:Auto (English theorem-like kinds),true:Italic,false:Upright" desc="Whether the statement is set in italics." />
+    <param name="head" type="select" default="auto" label="Header" options="auto:Auto,inline:Runs into the statement,block:On its own line" desc="Where the header goes (auto: its own line when the statement starts with a list, a display formula or a table)." />
+    <param name="variant" type="select" default="bar" label="Box" options="bar:Accent bar and tint,outline:Thin frame,plain:No box" desc="How the box is drawn." />
   </parameters>
   <snippets>
     <snippet>
@@ -36,15 +50,25 @@ For a right triangle with legs \(a, b\) and hypotenuse \(c\),
   </snippets>
   <render><![CDATA[
     const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    const kind = (args.kind || 'theorem').toLowerCase();
-    const name = kind.charAt(0).toUpperCase() + kind.slice(1);
+    const rawKind = String(args.kind || 'theorem').trim() || 'theorem';
+    // A kind written in another script (定理, 命題 …) is the heading word itself.
+    const latin = /^[A-Za-z][\w -]*$/.test(rawKind);
+    const kind = latin ? rawKind.toLowerCase() : rawKind;
+    const name = latin ? kind.charAt(0).toUpperCase() + kind.slice(1) : esc(kind);
     const number = (args.number || '').trim();
     const title = (args.title || '').trim();
     const color = args.color || 'var(--accent-color)';
-    const head = `${name}${number ? ' ' + esc(number) : ''}${title ? ' (' + esc(title) + ')' : ''}.`;
+    const head = latin
+      ? `${name}${number ? ' ' + esc(number) : ''}${title ? ' (' + esc(title) + ')' : ''}.`
+      : `${name}${number ? ' ' + esc(number) : ''}${title ? '（' + esc(title) + '）' : ''}`;
     const body = (content || '').trim();
-    const styleKind = /definition|example|remark/.test(kind) ? 'plain' : 'italic';
-    return `\n\n<div class="mdp-mod-theorem mdp-th-${styleKind}" style="--th-color:${color};"><span class="mdp-th-head">${head}</span> <div class="mdp-th-body">\n\n${body}\n\n</div></div>\n\n`;
+    const italicArg = String(args.italic || 'auto').toLowerCase();
+    const italic = italicArg === 'true' ? true : italicArg === 'false' ? false : (latin && !/definition|example|remark/.test(kind));
+    const headArg = String(args.head || 'auto').toLowerCase();
+    const block = headArg === 'block' || (headArg !== 'inline' && /^\s*([-*+]\s|\d+[.)]\s|\\\[|\$\$|\||<|#|>)/.test(body));
+    const variant = { bar: 'bar', outline: 'outline', plain: 'plain' }[String(args.variant || 'bar').toLowerCase()] || 'bar';
+    const cls = `mdp-mod-theorem mdp-th-${italic ? 'italic' : 'plain'}${block ? ' mdp-th-blockhead' : ''}${variant !== 'bar' ? ' mdp-th-v-' + variant : ''}${latin ? '' : ' mdp-th-cjk'}`;
+    return `\n\n<div class="${cls}" style="--th-color:${color};"><span class="mdp-th-head">${head}</span> <div class="mdp-th-body">\n\n${body}\n\n</div></div>\n\n`;
   ]]></render>
   <style><![CDATA[
     .mdp-mod-theorem {
@@ -57,5 +81,17 @@ For a right triangle with legs \(a, b\) and hypotenuse \(c\),
     .mdp-th-italic .mdp-th-body { font-style: italic; }
     .mdp-th-body > :first-child { margin-top: 0; display: inline; }
     .mdp-th-body > :last-child { margin-bottom: 0; }
+    /* The header on its own line (a statement that starts with a list / display). */
+    .mdp-th-blockhead .mdp-th-head { display: block; margin: 0 0 calc(4 * var(--mdp-px, 1px)); }
+    .mdp-th-blockhead .mdp-th-body { display: block; }
+    .mdp-th-blockhead .mdp-th-body > :first-child { display: block; }
+    /* variant: outline = a thin frame all round, plain = no box at all. */
+    .mdp-mod-theorem.mdp-th-v-outline {
+      border: calc(1.5 * var(--mdp-px, 1px)) solid color-mix(in srgb, var(--th-color) 55%, transparent);
+      background: transparent;
+    }
+    .mdp-mod-theorem.mdp-th-v-plain { border: none; background: transparent; padding-left: 0; padding-right: 0; }
+    /* A Japanese header has no period: a clear gap before the statement instead. */
+    .mdp-th-cjk:not(.mdp-th-blockhead) .mdp-th-head { margin-right: 0.8em; }
   ]]></style>
 </module>

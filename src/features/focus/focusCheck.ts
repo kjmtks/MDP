@@ -33,12 +33,15 @@ const TARGET_KINDS = ['', '#', 'item', 'cell', 'row', 'col', 'math', 'fig', 'are
 export function slideNames(raw: string): Map<string, number> {
   const names = new Map<string, number>();
   const add = (n: string) => names.set(n, (names.get(n) || 0) + 1);
-  const text = String(raw || '').replace(/<!--\s*@(?:script|note):[\s\S]*?-->/g, ' ');
+  // (A module's <style> may name a place in a selector — that is no place of its own.)
+  const text = String(raw || '').replace(/<!--\s*@(?:script|note):[\s\S]*?-->/g, ' ').replace(/<style[\s\S]*?<\/style>/gi, ' ');
   for (const m of text.matchAll(/\\focus\{([\p{L}\p{N}_.-]+)\}\{/gu)) add(m[1]);
   for (const m of text.matchAll(/<!--\s*@focus\s+([^\s>]+?)\s*-->/g)) add(m[1]);
   for (const m of text.matchAll(/<!--\s*@[a-zA-Z][\w-]*\s[^>]*?\btag:\s*([^,\s>]+)/g)) add(m[1]);
   // …or the module already expanded (the editor expands the deck's modules first)
   for (const m of text.matchAll(/\sdata-mdp-tag\s*=\s*"([^"]+)"/g)) add(m[1]);
+  // …and the places a module's output names itself (@explain's rows: PREFIXn)
+  for (const m of text.matchAll(/\sdata-mdp-focus\s*=\s*"([^"]+)"/g)) add(m[1]);
   for (const svg of text.matchAll(/<svg[\s\S]*?<\/svg>/gi)) {
     for (const d of svg[0].matchAll(/\s(?:data-focus|id)\s*=\s*"([^"]+)"/g)) add(d[1]);
   }

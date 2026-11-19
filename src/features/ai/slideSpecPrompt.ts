@@ -169,8 +169,9 @@ block on a single slide OVERRIDES the global one for that slide; an EMPTY block
     reset | set 90; emit-wait on start waits for 0:00), \`@video\` (play | pause |
     toggle | restart | stop | seek 12 | mute | unmute; emit-wait on play waits for a
     video file to end) — e.g. \`<!-- @timer tag: think, minutes: 1 -->\` +
-    \`[[emit-wait: cmd:think start timeout=70s | 1分]]\`. get_module_spec lists each
-    module's commands.
+    \`[[emit-wait: cmd:think start timeout=70s | 1分]]\`; \`@exercise\` (a question, its
+    timer and its answer in one block — its timer takes the @timer commands under
+    the exercise's tag). get_module_spec lists each module's commands.
     The speech modules pick their READER: \`engine: auto | webspeech | server | voicevox\`
     with \`voice\` (a Web Speech narrator name, the TTS server's voice id, or a VOICEVOX
     style id), \`prompt\` (server: how to speak) and \`extra\` (server: its own options as
@@ -291,7 +292,10 @@ as the answer), a length (\`120px\`, \`4em\`; a blank of that height) or \`none\
 builds; it closes with \`<!-- @end -->\`, or \`<!-- @endanswer -->\` when it sits inside
 a module's body (like \`<!-- @endbuild -->\`). Content that should never be in a PDF,
 answers or not (a quiz timer, a video), goes in the \`@pdfhide\` module instead;
-\`@pdfonly\` is its counterpart (printed only).
+\`@pdfonly\` is its counterpart (printed only). A think-time question with its timer
+and its answer is ONE \`@exercise\` block (the timer left out of the PDF, the answer
+an @answer revealed on the next build step) — not a nest of @pdfhide, @timer,
+@build and @answer.
 
 ## Module directives
 
@@ -764,8 +768,11 @@ const SUGGEST_RULES: SuggestRule[] = [
   { test: /(^|\n)\s*[-*+]\s+\S.*(\n\s*[-*+]\s+\S.*){2,}/, tags: ['list', 'process', 'cycle'], boost: ['steps', 'checklist', 'iconlist', 'agenda', 'cycle'], reason: 'a bullet list (3+ items)' },
   { test: /(^|\n)\s*\d+[.)]\s+\S/, tags: ['process', 'flow'], boost: ['steps', 'flow', 'roadmap'], reason: 'a numbered/ordered list' },
   { test: /\b(first|second|then|next|after that|finally|step\s*\d)\b|まず|はじめに|次に|その後|最後に|手順\s*\d|ステップ\s*\d/i, tags: ['process', 'flow'], boost: ['steps', 'flow', 'process'], reason: 'sequential wording (first/then/finally)' },
-  { test: /\$[^$\n]+\$|\\\(|\\\[|\\frac|\\sum|\\int/, tags: ['equations', 'proofs'], boost: ['equation', 'formula', 'theorem', 'cases', 'derivation'], reason: 'inline math' },
-  { test: /(^|\n)\s*\|.*\|.*\|/, tags: ['table', 'comparison'], boost: ['comparetable', 'heatmap', 'matrix'], reason: 'a pipe table' },
+  { test: /\$[^$\n]+\$|\\\(|\\\[|\\frac|\\sum|\\int/, tags: ['equations', 'proofs'], boost: ['explain', 'equation', 'formula', 'theorem', 'cases', 'derivation'], reason: 'inline math' },
+  { test: /\\underbrace|\\overbrace|\\begin\{aligned\}|ここで|where\s+\\\(/, boost: ['explain'], reason: 'a formula explained part by part or line by line' },
+  { test: /(^|\n)\s*\|.*\|.*\|/, tags: ['table', 'comparison'], boost: ['table', 'comparetable', 'heatmap', 'matrix'], reason: 'a pipe table' },
+  { test: /考えてみよう|考える時間|予想しよう|演習|確認問題|\b(exercise|quiz|think about)\b/i, boost: ['exercise'], reason: 'a question for the audience (think, then the answer)' },
+  { test: /[tF]\s*分布|正規分布|χ\s*(\^?2|²)|\\chi\^2|自由度|上側確率|\b(t-table|z-table|degrees of freedom)\b/i, boost: ['disttable'], reason: 'a statistical table (t, z, chi-square, F)' },
   { test: /\b(vs\.?|versus|compared? (to|with)|pros?\b.*\bcons?)\b|と(の)?比較|比較する|長所.*短所|メリット.*デメリット|従来手法/i, tags: ['comparison'], boost: ['compare', 'comparetable', 'spectrum'], reason: 'a comparison' },
   { test: /\b(strengths?|weakness(es)?|opportunit(y|ies)|threats?)\b|強み.*弱み|機会.*脅威/i, boost: ['swot'], reason: 'SWOT vocabulary' },
   { test: /\b(19|20)\d{2}\b|\bQ[1-4]\b|\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b|\d{1,2}\s*月|令和\s*\d|第\s*[1-4]\s*四半期/i, tags: ['timeline'], boost: ['timeline', 'roadmap', 'gantt'], reason: 'dates / a schedule' },

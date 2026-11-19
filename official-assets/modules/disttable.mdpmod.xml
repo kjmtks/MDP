@@ -1,0 +1,282 @@
+<module>
+  <name>disttable</name>
+  <type>block</type>
+  <selfClosing>true</selfClosing>
+  <description>A statistical table computed by the module: the standard normal upper tail (z), the t, chi-square and F points for given upper-tail probabilities — the rows and columns you choose, one cell, row or column highlighted, and the rows and columns named for narration cues. No body.</description>
+  <tags>statistics, distribution, table</tags>
+  <aiSpec><![CDATA[
+A DISTRIBUTION TABLE computed from the distribution itself — never typed by hand
+(no wrong digit, the same values on every slide and in the exam). Self-closing (no
+body, no @end). Values: z = the standard normal's upper tail P(Z ≥ z) (4 decimals);
+t, chi2 = the point whose upper-tail probability is p (3 decimals); f = the point
+F(ν1, ν2) whose upper-tail probability is p (2 decimals).
+
+Parameters:
+  • dist (select: z | t | chi2 | f, default t).
+  • p (list) — the columns' upper-tail probabilities: t default [0.1, 0.05, 0.025,
+    0.01, 0.005]; chi2 default [0.995, 0.975, 0.05, 0.025, 0.01]; f: ONE value (default
+    0.05).
+  • df (list) — the rows' degrees of freedom (t, chi2) or the second (denominator)
+    ν2 (f): numbers and ranges, e.g. [1-10, 15, 20, 30]; `inf` adds the ∞ row of t
+    (= z). df1 (list, f only) — the columns' first (numerator) ν1, e.g. [1-6].
+  • z (text, z only) — the rows, e.g. 1.5-2.4 (first decimal; the columns are the
+    second decimal 0–9). A 16:9 slide holds about 12 rows at the default size and
+    about 20 at `size: 0.6, pad: 0.04` — show the stretch the lesson reads, not the
+    whole 0.0-3.4 table (render the slide to check). tail (select: upper | lower |
+    center, z only) — P(Z ≥ z), P(Z ≤ z) or P(0 ≤ Z ≤ z).
+  • mark (list) — highlight: [ROW, COL] tints the row and the column and sets the cell
+    bold, e.g. t [8, 0.025], z [1.9, 6], f [12, 2] (ν2, ν1); `*` for one of them
+    tints only the row ([8, *]) or the column ([*, 0.025]).
+  • name (text) — places for cues: the row labels NAME-r<row> (row:#tt-r8), the
+    column headers NAME-c<col> (col:#tt-c0.025), the marked cell NAME-hit.
+  • digits (number) — decimals (default as above). nolead (boolean) — write .1841
+    instead of 0.1841.
+  • size (number, default 0.72) — the cells' text size in em; pad (number, default
+    0.12) — padding above and below.
+
+Example (the t-point for 8 degrees of freedom and p = 0.025, highlighted):
+<!-- @disttable dist: t, p: [0.05, 0.025, 0.01], df: [4-10], mark: [8, 0.025], name: tt -->
+script: [[mark: row:#tt-r8]]自由度 8 の行と，[[mark: col:#tt-c0.025]]0.025 の列が交わる所，[[look: #tt-hit]]2.306 です．
+]]></aiSpec>
+  <parameters>
+    <param name="dist" type="select" default="t" label="Distribution" options="z:Standard normal (upper tail),t:t,chi2:Chi-square,f:F" desc="Which table." />
+    <param name="p" type="[number]" default="" label="Upper-tail probabilities" desc="The columns (t, chi2) or the one p of an F table." />
+    <param name="df" type="[text]" default="" label="Degrees of freedom (rows)" desc="Rows: numbers and ranges, e.g. [1-10, 20, 30]; inf = the ∞ row (t). For F: ν2." />
+    <param name="df1" type="[text]" default="" label="F: ν1 (columns)" desc="F only: the numerator degrees of freedom, e.g. [1-6]." />
+    <param name="z" type="text" default="" label="z rows" desc="z only: the rows, e.g. 0.0-1.9 (default 1.5-2.6)." />
+    <param name="tail" type="select" default="upper" label="z: probability" options="upper:P(Z ≥ z),lower:P(Z ≤ z),center:P(0 ≤ Z ≤ z)" desc="z only: which probability." />
+    <param name="mark" type="[text]" default="" label="Highlight" desc="[ROW, COL] — tints the row and the column, the cell bold; * for one of them." />
+    <param name="name" type="text" default="" label="Name" desc="Places for cues: NAME-r&lt;row&gt;, NAME-c&lt;col&gt;, NAME-hit." />
+    <param name="digits" type="number" default="" min="0" max="6" step="1" integer="true" label="Decimals" desc="Decimals of the values (default: z 4, t 3, chi2 3, f 2)." />
+    <param name="nolead" type="boolean" default="false" label="No leading 0" desc="Write .1841 instead of 0.1841." />
+    <param name="size" type="number" default="0.72" min="0.3" max="2" step="0.01" label="Text size (em)" desc="The cells' text size." />
+    <param name="pad" type="number" default="0.12" min="0" max="2" step="0.01" label="Row padding (em)" desc="Padding above and below the cell text." />
+  </parameters>
+  <snippets>
+    <snippet>
+      <category>Math</category>
+      <label>t table (highlighted cell)</label>
+      <text><![CDATA[<!-- @disttable dist: t, p: [0.05, 0.025, 0.01], df: [1-10], mark: [8, 0.025], name: tt -->]]></text>
+      <description>Computed t points; [[mark: row:#tt-r8]] / col:#tt-c0.025 / #tt-hit for cues.</description>
+    </snippet>
+    <snippet>
+      <category>Math</category>
+      <label>Standard normal table</label>
+      <text><![CDATA[<!-- @disttable dist: z, z: 1.5-2.4, mark: [1.9, 6] -->]]></text>
+      <description>P(Z ≥ z): rows to the first decimal, columns the second.</description>
+    </snippet>
+  </snippets>
+  <render><![CDATA[
+    // ---- numerics -----------------------------------------------------------------
+    const lgamma = (x) => {
+      const g = [0.99999999999980993, 676.5203681218851, -1259.1392167224028, 771.32342877765313,
+        -176.61502916214059, 12.507343278686905, -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7];
+      if (x < 0.5) return Math.log(Math.PI / Math.sin(Math.PI * x)) - lgamma(1 - x);
+      x -= 1;
+      let a = g[0];
+      const t = x + 7.5;
+      for (let i = 1; i < 9; i++) a += g[i] / (x + i);
+      return 0.5 * Math.log(2 * Math.PI) + (x + 0.5) * Math.log(t) - t + Math.log(a);
+    };
+    const TINY = 1e-300;
+    // Regularized incomplete beta I_x(a, b) (continued fraction, modified Lentz).
+    const betacf = (a, b, x) => {
+      const qab = a + b, qap = a + 1, qam = a - 1;
+      let c = 1, d = 1 - qab * x / qap;
+      if (Math.abs(d) < TINY) d = TINY;
+      d = 1 / d;
+      let h = d;
+      for (let m = 1; m <= 400; m++) {
+        const m2 = 2 * m;
+        let aa = m * (b - m) * x / ((qam + m2) * (a + m2));
+        d = 1 + aa * d; if (Math.abs(d) < TINY) d = TINY;
+        c = 1 + aa / c; if (Math.abs(c) < TINY) c = TINY;
+        d = 1 / d; h *= d * c;
+        aa = -(a + m) * (qab + m) * x / ((a + m2) * (qap + m2));
+        d = 1 + aa * d; if (Math.abs(d) < TINY) d = TINY;
+        c = 1 + aa / c; if (Math.abs(c) < TINY) c = TINY;
+        d = 1 / d;
+        const del = d * c;
+        h *= del;
+        if (Math.abs(del - 1) < 1e-15) break;
+      }
+      return h;
+    };
+    const ibeta = (x, a, b) => {
+      if (x <= 0) return 0;
+      if (x >= 1) return 1;
+      const bt = Math.exp(lgamma(a + b) - lgamma(a) - lgamma(b) + a * Math.log(x) + b * Math.log(1 - x));
+      return x < (a + 1) / (a + b + 2) ? bt * betacf(a, b, x) / a : 1 - bt * betacf(b, a, 1 - x) / b;
+    };
+    // Regularized upper incomplete gamma Q(a, x).
+    const gammq = (a, x) => {
+      if (x <= 0) return 1;
+      const lead = Math.exp(-x + a * Math.log(x) - lgamma(a));
+      if (x < a + 1) {
+        let ap = a, sum = 1 / a, del = sum;
+        for (let n = 0; n < 2000; n++) { ap += 1; del *= x / ap; sum += del; if (Math.abs(del) < Math.abs(sum) * 1e-16) break; }
+        return 1 - sum * lead;
+      }
+      let b = x + 1 - a, c = 1 / TINY, d = 1 / b, h = d;
+      for (let i = 1; i < 2000; i++) {
+        const an = -i * (i - a);
+        b += 2;
+        d = an * d + b; if (Math.abs(d) < TINY) d = TINY;
+        c = b + an / c; if (Math.abs(c) < TINY) c = TINY;
+        d = 1 / d;
+        const del = d * c;
+        h *= del;
+        if (Math.abs(del - 1) < 1e-16) break;
+      }
+      return lead * h;
+    };
+    const zUpper = (z) => (z >= 0 ? 0.5 * gammq(0.5, z * z / 2) : 1 - 0.5 * gammq(0.5, z * z / 2));
+    const tUpper = (t, v) => (t >= 0 ? 0.5 * ibeta(v / (v + t * t), v / 2, 0.5) : 1 - 0.5 * ibeta(v / (v + t * t), v / 2, 0.5));
+    const chiUpper = (x, v) => gammq(v / 2, x / 2);
+    const fUpper = (f, v1, v2) => (f <= 0 ? 1 : ibeta(v2 / (v2 + v1 * f), v2 / 2, v1 / 2));
+    // Values are kept between renders (a slide is parsed again on every edit).
+    const CACHE = (globalThis.__mdpDistCache = globalThis.__mdpDistCache || new Map());
+    const cached = (key, fn) => {
+      if (CACHE.has(key)) return CACHE.get(key);
+      const v = fn();
+      if (CACHE.size > 20000) CACHE.clear();
+      CACHE.set(key, v);
+      return v;
+    };
+    // The point whose upper-tail probability is p (the tail falls as x grows).
+    const point = (upper, p, lo) => {
+      let a = lo, b = 1;
+      while (upper(b) > p && b < 1e7) b *= 2;
+      for (let i = 0; i < 200 && b - a > 1e-12 * Math.max(1, b); i++) {
+        const m = (a + b) / 2;
+        if (upper(m) > p) a = m; else b = m;
+      }
+      return (a + b) / 2;
+    };
+
+    // ---- arguments ------------------------------------------------------------------
+    const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const list = (v) => (Array.isArray(v) ? v : String(v == null ? '' : v).replace(/^\[|\]$/g, '').split(/,/)).map((s) => String(s).trim()).filter((s) => s !== '');
+    const nums = (items) => {
+      const out = [];
+      items.forEach((it) => {
+        const s = String(it).trim();
+        if (/^(inf|∞|infinity)$/i.test(s)) { out.push(Infinity); return; }
+        const r = /^(\d+)\s*-\s*(\d+)$/.exec(s);
+        if (r) { for (let k = Number(r[1]); k <= Number(r[2]) && out.length < 400; k++) out.push(k); return; }
+        const n = parseFloat(s);
+        if (Number.isFinite(n) && n > 0) out.push(n);
+      });
+      return out;
+    };
+    const dist = { z: 'z', t: 't', chi2: 'chi2', chi: 'chi2', f: 'f' }[String(args.dist || 't').toLowerCase()] || 't';
+    const digArg = parseInt(args.digits, 10);
+    const digits = Number.isFinite(digArg) ? Math.max(0, Math.min(6, digArg)) : { z: 4, t: 3, chi2: 3, f: 2 }[dist];
+    const nolead = String(args.nolead) === 'true';
+    const fmt = (x) => { const s = x.toFixed(digits); return nolead ? s.replace(/^(-?)0\./, '$1.') : s; };
+    const keyOf = (x) => String(x === Infinity ? 'inf' : +(+x).toFixed(6));
+    const name = String(args.name || '').trim().replace(/[^\p{L}\p{N}_.-]/gu, '');
+    const mark = list(args.mark);
+    const markRow = mark.length > 0 && mark[0] !== '*' ? mark[0] : null;
+    const markCol = mark.length > 1 && mark[1] !== '*' ? mark[1] : null;
+
+    // rows: [key, label], cols: [key, label], value(row, col)
+    let rows = [], cols = [], value, corner;
+    if (dist === 'z') {
+      // Default 1.5–2.6: 12 rows (fits a slide) holding 1.64, 1.96, 2.33 and 2.58.
+      const zr = /^\s*(-?\d+(?:\.\d)?)\s*-\s*(\d+(?:\.\d)?)\s*$/.exec(String(args.z || '1.5-2.6'));
+      const z0 = zr ? Math.round(parseFloat(zr[1]) * 10) : 15, z1 = zr ? Math.round(parseFloat(zr[2]) * 10) : 26;
+      for (let k = z0; k <= z1 && rows.length < 60; k++) rows.push([keyOf(k / 10), (k / 10).toFixed(1)]);
+      for (let d = 0; d <= 9; d++) cols.push([String(d), '0.0' + d]);
+      const tail = String(args.tail || 'upper').toLowerCase();
+      value = (r, c) => {
+        const z = Math.round(parseFloat(r) * 100 + Number(c) * (parseFloat(r) < 0 ? -1 : 1)) / 100;
+        const up = zUpper(z);
+        return tail === 'lower' ? 1 - up : tail === 'center' ? Math.abs(0.5 - up) : up;
+      };
+      corner = '\\(z\\)';
+      // mark: [1.9, 6] or [1.9, 0.06]
+    } else if (dist === 'f') {
+      const p = nums(list(args.p))[0] || 0.05;
+      const v2s = nums(list(args.df)).filter(isFinite);
+      const v1s = nums(list(args.df1)).filter(isFinite);
+      (v2s.length ? v2s : [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]).forEach((v) => rows.push([keyOf(v), String(v)]));
+      (v1s.length ? v1s : [1, 2, 3, 4, 5]).forEach((v) => cols.push([keyOf(v), String(v)]));
+      value = (r, c) => cached('f|' + p + '|' + c + '|' + r, () => point((x) => fUpper(x, Number(c), Number(r)), p, 0));
+      corner = '\\(\\nu_2\\) \\ \\(\\nu_1\\)';
+    } else {
+      const ps = nums(list(args.p));
+      const defP = dist === 't' ? [0.1, 0.05, 0.025, 0.01, 0.005] : [0.995, 0.975, 0.05, 0.025, 0.01];
+      (ps.length ? ps : defP).forEach((p) => cols.push([keyOf(p), String(p)]));
+      const vs = nums(list(args.df));
+      (vs.length ? vs : (dist === 't' ? [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] : [1, 2, 3, 4, 5, 6, 7, 8, 9, 10])).forEach((v) => {
+        if (v === Infinity && dist !== 't') return;
+        rows.push([keyOf(v), v === Infinity ? '\\(\\infty\\)' : String(v)]);
+      });
+      value = (r, c) => cached(dist + '|' + c + '|' + r, () => {
+        const p = Number(c);
+        if (dist === 't') return r === 'inf' ? point(zUpper, p, 0) : point((x) => tUpper(x, Number(r)), p, 0);
+        return point((x) => chiUpper(x, Number(r)), p, 0);
+      });
+      corner = '\\(\\nu\\) \\ \\(p\\)';
+    }
+    const colKey = (m) => {
+      if (m == null) return null;
+      if (dist === 'z') { const n = parseFloat(m); return Number.isFinite(n) ? String(n < 1 && /\./.test(String(m)) ? Math.round(n * 100) : Math.round(n)) : null; }
+      return keyOf(parseFloat(m));
+    };
+    const mr = markRow == null ? null : (String(markRow).toLowerCase() === 'inf' ? 'inf' : keyOf(parseFloat(markRow)));
+    const mc = colKey(markCol);
+
+    // ---- the table (HTML: one cell per value, KaTeX only in the headers) ---------------
+    let h = 0;
+    const sig = JSON.stringify(args);
+    for (let i = 0; i < sig.length; i++) h = (h * 31 + sig.charCodeAt(i)) | 0;
+    const scope = 'mdp-dt-' + Math.abs(h).toString(36);
+    const ri = rows.findIndex((r) => r[0] === mr);
+    const ci = cols.findIndex((c) => c[0] === mc);
+    const fname = (s) => String(s).replace(/[^\p{L}\p{N}_.-]/gu, '');
+    let out = '<table class="mdp-dt-table">\n<thead>\n<tr><th class="mdp-dt-corner">\n\n' + corner + '\n\n</th>';
+    cols.forEach((c, j) => {
+      const label = esc(c[1]);
+      const inner = name ? '\\focus{' + name + '-c' + fname(c[0]) + '}{' + label + '}' : label;
+      out += '<th class="' + (j === ci ? 'mdp-dt-on' : '') + '">\n\n' + inner + '\n\n</th>';
+    });
+    out += '</tr>\n</thead>\n<tbody>\n';
+    rows.forEach((r, i) => {
+      const inner = name ? '\\focus{' + name + '-r' + fname(r[0]) + '}{' + r[1] + '}' : r[1];
+      out += '<tr class="' + (i === ri ? 'mdp-dt-onrow' : '') + '"><th>\n\n' + inner + '\n\n</th>';
+      cols.forEach((c, j) => {
+        const v = value(r[0], c[0]);
+        let cell = Number.isFinite(v) ? fmt(v) : '–';
+        const hit = i === ri && j === ci;
+        // The marked cell's name in the text syntax (\focus), so a text check of the
+        // deck knows it as well as the rendered slide.
+        if (hit && name) cell = '\n\n\\focus{' + name + '-hit}{' + cell + '}\n\n';
+        out += '<td class="' + [j === ci ? 'mdp-dt-oncol' : '', hit ? 'mdp-dt-hit' : ''].filter(Boolean).join(' ') + '">' + cell + '</td>';
+      });
+      out += '</tr>\n';
+    });
+    out += '</tbody>\n</table>';
+    const size = parseFloat(args.size), pad = parseFloat(args.pad);
+    const style = (Number.isFinite(size) ? '--dt-size:' + size + 'em;' : '') + (Number.isFinite(pad) ? '--dt-pad:' + pad + 'em;' : '');
+    return '\n\n<div class="mdp-mod-disttable ' + scope + ' mdp-dt-' + dist + '" style="' + style + '">\n\n' + out + '\n\n</div>\n\n';
+  ]]></render>
+  <style><![CDATA[
+    .mdp-mod-disttable { margin: calc(0.4 * var(--mdp-u, 1rem)) 0; }
+    .mdp-mod-disttable .mdp-dt-table { width: auto; margin: 0 auto; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+    .mdp-mod-disttable .mdp-dt-table th, .mdp-mod-disttable .mdp-dt-table td {
+      font-size: var(--dt-size, 0.72em); padding: var(--dt-pad, 0.12em) 0.7em; text-align: right; white-space: nowrap;
+    }
+    .mdp-mod-disttable .mdp-dt-table th { text-align: center; font-weight: 600; }
+    .mdp-mod-disttable .mdp-dt-table th > p, .mdp-mod-disttable .mdp-dt-table td > p { margin: 0; }
+    .mdp-mod-disttable .mdp-dt-table td, .mdp-mod-disttable .mdp-dt-table tbody th { border-bottom: 1px solid var(--border-color, #ddd); }
+    .mdp-mod-disttable .mdp-dt-table tbody tr { background: transparent; }
+    .mdp-mod-disttable tr.mdp-dt-onrow > *, .mdp-mod-disttable .mdp-dt-oncol, .mdp-mod-disttable th.mdp-dt-on {
+      background: color-mix(in srgb, var(--accent-color, #3b82f6) 13%, var(--bg-color, #fff));
+    }
+    .mdp-mod-disttable td.mdp-dt-hit {
+      background: color-mix(in srgb, var(--accent-color, #3b82f6) 32%, var(--bg-color, #fff)); font-weight: 700;
+    }
+  ]]></style>
+</module>

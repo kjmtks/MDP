@@ -6,7 +6,7 @@ import { loadedModules, isModuleDisabled } from '../modules/moduleManager';
 import { loadedEffects } from '../effects/effectManager';
 import { buildSlideSpecPrompt, describeModulesByName, findModules, suggestModules, describeEffectsByName, suggestEffects } from '../ai/slideSpecPrompt';
 import { loadTaxonomy } from '../ai/loadTaxonomy';
-import { parseArguments } from '../modules/moduleProcessor';
+import { applyModulesToMarkdown, parseArguments } from '../modules/moduleProcessor';
 import { splitMarkdownToBlocks } from '../slide/parser/slideParser';
 import { countInFileImageDefs, imageRefAliases } from '../images/imageRegistry';
 import { confirmDialog } from '../../components/error/errorReporter';
@@ -305,16 +305,26 @@ export function validateDeckText(text: string, themes: ThemeOption[], library?: 
       }
     }
     // Focus cues, as far as the text tells (whether a target is ON the slide needs
-    // the slide rendered — check_deck's `focus`, get_focus_targets).
+    // the slide rendered — check_deck's `focus`, get_focus_targets). The names are
+    // read from the slide with its modules EXPANDED, as the editor renders it: a
+    // module names parts of its own output (@table's rows, @disttable's row and
+    // column, @exercise's question, @explain's rows) that the deck's text never spells.
+    let expanded: string | null = null;
+    const namesText = (): string => {
+      if (expanded === null) {
+        try { expanded = applyModulesToMarkdown(block.rawContent); } catch { expanded = block.rawContent; }
+      }
+      return expanded;
+    };
     if (bi > 0 && HAS_CUE.test(slideScript(block.rawContent))) {
-      for (const p of cueLineProblems(cueSites({ html: '', raw: block.rawContent }), block.rawContent)) {
+      for (const p of cueLineProblems(cueSites({ html: '', raw: block.rawContent }), namesText())) {
         const at = `${where}${p.line ? `, line ${p.line}` : ''}: focus ${p.cue ? `${p.cue} ` : ''}`;
         warnings.push(`${at}${p.level === 'note' ? '(not recommended) ' : ''}${p.target ? `"${p.target}" ` : ''}${p.message}`);
       }
       for (const c of scriptCues(slideScript(block.rawContent))) byWords.push(...cueBases(c).filter(pointsByWords));
     }
     if (bi > 0) {
-      for (const n of duplicateNames(block.rawContent)) {
+      for (const n of duplicateNames(namesText())) {
         warnings.push(`${where}: the name "${n}" is given to more than one place — #${n} points at the first; give each place its own name.`);
       }
     }
