@@ -212,9 +212,10 @@
    * floating, and Chromium prints a fixed box on EVERY page: under the slides
    * it is not seen, but its words are in every page's text (2026-11: "Video
    * export … Clear finished" in each page of a handout). Hidden by visibility,
-   * never display: a figure on the screen twice shares its ids (inlineSvg's
-   * prefix), and a gradient whose first <linearGradient> is in a display:none
-   * copy paints nothing in the PDF. Set on every element, not only the
+   * never display: copies of a figure shared their ids until 2026-11-25 (each
+   * has its own now — inlineSvg's getSvgNode), and a gradient whose first
+   * <linearGradient> was in a display:none copy painted nothing in the PDF.
+   * Set on every element, not only the
    * outermost: a shown build sets its own `visibility: visible`. */
   body :not(.print-container, .print-container *, :has(.print-container)) { visibility: hidden !important; }
 }

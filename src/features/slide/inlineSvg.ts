@@ -22,13 +22,52 @@ export function getFallback(key: string): string | undefined { return fallback.g
 // cloneNode is far cheaper than re-parsing the (often large) SVG string via
 // innerHTML on every slide re-render — the main cost behind drawio re-render
 // flicker and slow tab switches.
-const nodeCache = new Map<string, HTMLTemplateElement>();
+//
+// Every clone gets ids of its OWN. A figure is in one document several times — the
+// PDF's print container (display: none on the screen, and first in the page), the
+// thumbnails, the preview, the slideshow, an MCP render's hidden surface — and
+// `url(#…)` / `href="#…"` resolve to the FIRST element of that id in the document.
+// Chromium draws no marker, gradient, pattern, clip or filter from an element in a
+// display:none subtree: with one set of ids per file, every arrow of a figure lost
+// its head in the preview and the slideshow to the print container's copy
+// (2026-11-25, ビッグデータ解析 07; the presenter window — another document — had
+// them). Only the elements with an id or a reference are touched, found once per
+// template; a figure without references keeps its ids.
+interface SvgTemplate { tpl: HTMLTemplateElement; prefix: string; touch: number[] }
+const nodeCache = new Map<string, SvgTemplate>();
+let copySeq = 0;
 export function getSvgNode(key: string): DocumentFragment | null {
   const svg = cache.get(key);
   if (!svg) return null;
-  let tpl = nodeCache.get(key);
-  if (!tpl) { tpl = document.createElement('template'); tpl.innerHTML = svg; nodeCache.set(key, tpl); }
-  return tpl.content.cloneNode(true) as DocumentFragment;
+  let t = nodeCache.get(key);
+  if (!t) {
+    const tpl = document.createElement('template');
+    tpl.innerHTML = svg;
+    const prefix = idPrefix(key);
+    const ref = `#${prefix}`;
+    const touch: number[] = [];
+    let refers = false;
+    tpl.content.querySelectorAll('*').forEach((el, i) => {
+      let hit = el.id.startsWith(prefix);
+      for (const a of Array.from(el.attributes)) if (a.value.includes(ref)) { hit = true; refers = true; }
+      if (hit) touch.push(i);
+    });
+    t = { tpl, prefix, touch: refers ? touch : [] };
+    nodeCache.set(key, t);
+  }
+  const frag = t.tpl.content.cloneNode(true) as DocumentFragment;
+  if (t.touch.length) {
+    // `ds<hash>-<n>_`: no file's prefix has a '-', so no copy can meet another file's ids.
+    const own = `${t.prefix.slice(0, -1)}-${(++copySeq).toString(36)}_`;
+    const from = `#${t.prefix}`, to = `#${own}`;
+    const all = frag.querySelectorAll('*');
+    for (const i of t.touch) {
+      const el = all[i];
+      if (el.id.startsWith(t.prefix)) el.id = own + el.id.slice(t.prefix.length);
+      for (const a of Array.from(el.attributes)) if (a.value.includes(from)) a.value = a.value.split(from).join(to);
+    }
+  }
+  return frag;
 }
 
 /** Window event fired when a cached workspace SVG was rewritten on disk (e.g. a
@@ -65,6 +104,10 @@ function hashKey(s: string): string {
   return Math.abs(h).toString(36);
 }
 
+/** The prefix a figure's ids get when it is processed (one per file / data URI);
+ *  each injected copy then gets its own (getSvgNode). */
+function idPrefix(key: string): string { return `ds${hashKey(key)}_`; }
+
 function decodeBase64Utf8(b64: string): string {
   const bin = atob(b64);
   const bytes = new Uint8Array(bin.length);
@@ -90,7 +133,7 @@ function processSvg(raw: string, key: string): string {
     });
 
     // 2. Scope ids + references (gradients/clips/markers) to avoid collisions.
-    const prefix = `ds${hashKey(key)}_`;
+    const prefix = idPrefix(key);
     const ids = new Set<string>();
     svg.querySelectorAll('[id]').forEach((el) => { if (el.id) ids.add(el.id); });
     if (ids.size) {
